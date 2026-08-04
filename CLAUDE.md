@@ -1,4 +1,4 @@
-# Regira Source Codebase
+# Regira Packages — Source Repository
 
 This is the **Regira library source repository** — a collection of NuGet packages intended to be consumed by other projects.
 

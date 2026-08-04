@@ -6,7 +6,7 @@ This file is for AI agents working **on** the Regira source codebase (adding mod
 
 ## What this repository is
 
-A collection of .NET NuGet packages published to `https://packages.regira.com`. Each package:
+A collection of .NET NuGet packages published to nuget.org. Each package:
 - Contains source code under `src/{ModuleName}/`
 - Embeds AI instruction files in `src/{ModuleName}/ai/`
 - Ships an MSBuild `.props` and `.targets` file in `src/{ModuleName}/build/` that extracts those AI files into consumer projects on `dotnet build`
@@ -69,7 +69,7 @@ Use the `/update-guide` slash command to identify what changed and propose a gui
 
 When adding or updating features, make sure to update the documentation as well.
 ai/ -> documentation for AI agents
-README.md + docs/ -> documentation for developers
+README.md + src/{ModuleName}/docs/ -> documentation for developers
 The documents for AI agents and the documents for developers should not refer to each other.
 
 Write docs as if authored correctly from scratch — no correction notes or change history.

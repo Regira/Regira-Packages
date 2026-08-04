@@ -20,7 +20,6 @@ A Regira MCP server is available at `https://mcp.regira.com/mcp`. When configure
 
 Run this before generating any code:
 
-- [ ] `NuGet.Config` includes the Regira feed `https://packages.regira.com/v3/index.json` alongside `nuget.org`
 - [ ] **If MCP is configured:** used `get_package` for each installed Regira module to read full guides — no build step required
 - [ ] **If MCP is not configured:** `dotnet restore` and `dotnet build` succeeded so installed Regira packages could extract their embedded `ai/*.md` files into `.regira/instructions/`; that folder was checked for `*.instructions.md` files relevant to the current task
 - [ ] Every extracted primary guide relevant to the current task was read before writing application code
@@ -64,7 +63,7 @@ Template consequences:
 
 1. Choose or confirm the `projectTemplate`
 2. Choose the smallest Regira module set that covers the request
-3. Ensure `NuGet.Config` includes the Regira feed; add matching packages
+3. Add matching packages
 4. **If MCP is configured:** call `get_package` for each Regira module in use to read its guides. **Otherwise:** run `dotnet restore` and `dotnet build` to extract embedded guide files, then check `.regira/instructions/` for extracted guides
 5. Read all applicable primary guides in full before writing entity models, services, controllers, DI registrations, or infrastructure code
 6. Generate code consistent with the template, installed packages, extracted guides, and local conventions
@@ -106,7 +105,6 @@ Web APIs use `app.MapOpenApi()` plus `app.MapScalarApiReference()` as the standa
 ## General engineering rules
 
 - Use the latest stable .NET and C# features unless the project already constrains otherwise
-- Add the Regira feed to `NuGet.Config` before restoring Regira packages
 - Keep `Program.cs` thin; move service registration into `IServiceCollection` extension methods
 - Prefer `Microsoft.Extensions.DependencyInjection`; depend on abstractions, not concrete implementations
 - Use file-scoped namespaces

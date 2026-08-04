@@ -5,7 +5,7 @@ Use this file as the authoritative downstream bootstrap for choosing the project
 In a consumer repository, use this file plus any local `.regira/instructions/*.md` guides as the available sources of truth.
 
 > **Building a browser front-end (Vue 3 SPA)?** That is a separate **npm / TypeScript** family
-> published from `Regira-JsLib`. Load the **front-end consumer bootstrap** —
+> published from `Regira-Modules`. Load the **front-end consumer bootstrap** —
 > `get_bootstrap_guide(platform: "frontend")` — **before** choosing a UI framework, package manager or
 > project structure. Do not route SPA work to the .NET packages below.
 
@@ -18,7 +18,7 @@ than its one-liner.
 | # | Phase | Do | Checkpoint |
 |---|-------|----|------------|
 | 0 | Classify | List top-level entities, their owned collections, and the auth mode. Owned rows are configured through the parent's `Related(...)` — they are not entities, cost no registration slot, and get no controller. | Free tier fits: 5 simple + 2 complex registrations |
-| 1 | Probe | `dotnet --version`, `node -v`, `npm -v`, `git --version` | All four resolve; the Regira feed is in `NuGet.Config` |
+| 1 | Probe | `dotnet --version`, `node -v`, `npm -v`, `git --version` | All four resolve |
 | 2 | API host | `project.setup` (a section of `Regira.Setup` — `get_package("Regira.Setup", "project.setup")`) → host, `DbContext`, `UseEntities<TContext>(e => e.UseDefaults())`, `ConfigureDefaultJsonOptions()`. **Settle the route prefix now** (`RoutePrefixConvention("api")` or none): the SPA's config, its axios base and the dev proxy all have to agree with it, and changing it after phase 4 re-verifies every URL | `dotnet build` clean; `/openapi/v1.json` served |
 | 3 | Register | One `.For<>()` per top-level entity; one `e.Related(...)` per owned collection | No startup **warnings** — an ignored `?q=`, a dual write path or an out-of-scope global filter is a defect, not noise (informational lines are expected). One exception on `net10.0`: EF's `PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning`, one per required dependent of an `IArchivable` principal, is the intended behaviour of soft delete — see `entities.instructions` Step 11 |
 | 4 | Prove the API | create → update → **update again** → re-read | The second save is idempotent and owned rows survive it |
@@ -76,7 +76,6 @@ The local file-extraction system (`dotnet build` → `.regira/instructions/`) re
 
 Run this checklist before any code generation:
 
-- [ ] `NuGet.Config` includes the Regira feed `https://packages.regira.com/v3/index.json` alongside `nuget.org`
 - [ ] **If using licensed packages (e.g. `Regira.Entities.DependencyInjection`, `Regira.Office.Clients`):** on the **free tier, no `UseRegira()` call is needed** — free limits apply automatically. With license keys, store them under `Regira:LicenseKeys` and call `services.UseRegira(configuration)` **before** any module setup calls (e.g. `UseEntities()`). A single key can cover multiple products; add more keys to the array to combine them — the system picks the best per product (paid always wins over free).
 - [ ] **If MCP is configured:** used `get_package_toc` to discover section keys, `get_section_toc` to list headings, and `get_package` (with `section=` and optional `heading=`) to read the relevant guides for each installed Regira module — no build step required
 - [ ] **If MCP is not configured:** `dotnet restore` and `dotnet build` succeeded so installed Regira packages could extract their embedded `ai/*.md` files into `.regira/instructions/`, and that folder was checked for `*.instructions.md` files and relevant setup references at the solution root (or project root when building standalone)
@@ -141,7 +140,6 @@ Keep setup aligned with the selected `projectTemplate`. This file must remain en
 
 - Use the latest stable .NET framework and latest C# features unless the consumer project already targets something else. The LTS version is **.NET 10**.
 - When adding a NuGet package, install the latest stable version rather than pinning an older one — outdated versions may carry known vulnerabilities (e.g. avoid `Microsoft.EntityFrameworkCore.Sqlite` 10.0.0; use the latest patched release). After restoring, run `dotnet list package --vulnerable --include-transitive` and upgrade any flagged package to a patched version.
-- Add the Regira feed to `NuGet.Config` alongside `nuget.org` before restoring Regira packages.
 - Keep `Program.cs` thin and move service registration or middleware setup into extension methods.
 - Prefer `Microsoft.Extensions.DependencyInjection` and depend on abstractions instead of concrete implementations.
 - Use file-scoped namespaces.
@@ -159,11 +157,11 @@ Template consequences:
 
 1. Choose or confirm the `projectTemplate`.
 2. Choose the smallest Regira module set that covers the user's request.
-3. Ensure the NuGet feed exists and add the matching packages.
+3. Add the matching packages.
 4. Inspect existing `PackageReference` items when the installed Regira package set is part of the decision.
 5. Read the guidance for each installed Regira module — cheapest first: if MCP is configured, orient with `get_package_card` (often enough on its own), then `get_package_toc` to list section keys, `get_section_toc` to inspect headings, and `get_package` with `section=` / `heading=` to fetch targeted content without loading unnecessary context. Use `list_types` / `get_type` (or local sources/`.d.ts` when installed) to check API surface instead of loading doc-heavy sections. Otherwise run `dotnet restore` and `dotnet build` to extract embedded `ai/*.md` files into `.regira/instructions/`.
 6. Before generating entity models, services, controllers, DI registrations, or infrastructure code, read the applicable primary guides (`*.instructions.md`, `project.setup.md`, `shared.setup.md`) following the **minimum viable read** in *Guide loading rules* — either via MCP or from `.regira/instructions/`. Skipping the relevant primary guides is a workflow violation.
-7. If guides are unavailable both via MCP and locally, verify the feed is reachable and the restore/build succeeded, then continue with the setup baseline, package routing table, and general engineering rules in this file.
+7. If guides are unavailable both via MCP and locally, verify the restore/build succeeded, then continue with the setup baseline, package routing table, and general engineering rules in this file.
 8. Generate code that stays consistent with the selected `projectTemplate`, installed Regira packages, any extracted local guides, and local project conventions.
 
 ## Regira package routing
@@ -211,12 +209,12 @@ Modules with multiple provider packages, such as `Office.PDF` or `Office.Excel`,
 
 ## Front-end (Vue 3 SPA) routing
 
-Regira's browser front-end is a separate **npm / TypeScript** family published from the `Regira-JsLib`
+Regira's browser front-end is a separate **npm / TypeScript** family published from the `Regira-Modules`
 repo (ids like `regira_modules.vue.entities`) — not the .NET packages above. For a **Vue 3 SPA / admin
 UI / CRUD client**, load the **front-end consumer bootstrap** and follow its reading order:
 `get_package id="regira_modules" section="frontend.bootstrap"` (or `list_packages category="vue"`).
 
-The front-end **default is a full, scalable SPA** using the complete `regira_modules` package (full plugin
+The front-end **default is a full, scalable SPA** using the complete `regira` package (full plugin
 stack + per-entity slice + app shell); only build a headless/lean/demo variant when the user explicitly asks
 — see the front-end bootstrap for details.
 

@@ -78,21 +78,6 @@ MyProject/
 ├── appsettings.json
 ```
 
-### NuGet feed
-
-`Regira.*` packages are served from a private feed. Add `NuGet.Config` to the solution root:
-
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <packageSources>
-    <clear />
-    <add key="NuGet" value="https://api.nuget.org/v3/index.json" />
-    <add key="Regira" value="https://packages.regira.com/v3/index.json" />
-  </packageSources>
-</configuration>
-```
-
 ### Logging (serilog)
 
 All templates use Serilog with console + rolling file sinks configured from `appsettings.json`.

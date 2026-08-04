@@ -21,11 +21,6 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 <PackageReference Include="Regira.Office.Csv.CsvHelper" Version="6.*" />
 ```
 
-> Add the Regira feed to `NuGet.Config`:
-> ```xml
-> <add key="Regira" value="https://packages.regira.com/v3/index.json" />
-> ```
-
 ---
 
 ## `ICsvService` / `ICsvService<T>`

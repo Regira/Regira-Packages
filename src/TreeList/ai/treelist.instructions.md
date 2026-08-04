@@ -10,11 +10,6 @@
 <PackageReference Include="Regira.TreeList" Version="6.*" />
 ```
 
-> The Regira feed must be configured in `NuGet.Config`:
-> ```xml
-> <add key="Regira" value="https://packages.regira.com/v3/index.json" />
-> ```
-
 ---
 
 ## Namespaces

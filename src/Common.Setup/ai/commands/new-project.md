@@ -38,21 +38,7 @@ The scheme is a registration choice on top of `SelfHostingApiWithAuth`, not a se
 
 Inspect any existing `*.csproj` files first. Then choose the smallest package set that covers the user's stated needs. Use the package routing tables in `.regira/instructions/project.setup.md` if available, or the table in `.github/copilot-instructions.md`.
 
-## Step 4 — Generate `NuGet.Config`
-
-Add the Regira feed alongside `nuget.org`:
-
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <packageSources>
-    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
-    <add key="Regira" value="https://packages.regira.com/v3/index.json" protocolVersion="3" />
-  </packageSources>
-</configuration>
-```
-
-## Step 5 — Add packages and restore
+## Step 4 — Add packages and restore
 
 Add the chosen `PackageReference` items to the `.csproj`. Then run:
 
@@ -63,7 +49,7 @@ dotnet build
 
 Report the outcome. If restore or build fails, diagnose and fix before continuing.
 
-## Step 6 — Checkpoint (mandatory stop)
+## Step 5 — Checkpoint (mandatory stop)
 
 Stop here. Do not write any application code yet.
 
@@ -77,6 +63,6 @@ Then explicitly ask: **"Ready to continue and generate application code?"**
 
 Only proceed to application code after the user confirms.
 
-## Step 7 — Load extracted guides and generate code
+## Step 6 — Load extracted guides and generate code
 
 Read every applicable primary guide in `.regira/instructions/` in full before writing any entity models, services, controllers, DI registrations, or infrastructure code. Skipping this step is a workflow violation.

@@ -89,18 +89,11 @@ Webshop.API/
 0. **Plan the simple/complex split first.** Mark every entity *simple* or *complex* **before** scaffolding — it sets each entity's endpoints and controller generics, and the free-tier budget. Definitions, the decision table, and a worked budget example: [entities.instructions §Step 0](./entities.instructions.md#step-0--classify-every-entity-before-scaffolding).
 0.5. **Pin your EF Core provider to your target framework.** Regira's EF Core packages multi-target, so the provider you add (`Microsoft.EntityFrameworkCore.Sqlite`/`.SqlServer`/`Npgsql.EntityFrameworkCore.PostgreSQL`/…) **must match the EF Core major for your TFM**: **`net8.0`/`net9.0` → 9.x**, **`net10.0` → 10.x**. A mismatch builds cleanly but crashes on the first query — see [Troubleshooting](./entities.instructions.md#troubleshooting).
 1. Create an ASP.NET Core Web API project — use the **`BasicApi`** template in the shared project setup guide (`get_package("Regira.Setup", "project.setup")`) as the starting point.
-2. Add `NuGet.Config` with the Regira feed — see the shared project setup guide (`get_package("Regira.Setup", "project.setup")`) — **Shared Conventions → NuGet feed**.
-3. Add required packages to `.csproj`.
-4. Create `YourDbContext` deriving from `DbContext`.
-5. Configure `Program.cs`.
-6. Create the DI extension method (`AddEntityServices`).
-7. Add entities — see [Entity Implementation Workflow](./entities.instructions.md#entity-implementation-workflow).
-
----
-
-## NuGet Feed
-
-> **→ See:** the shared project setup guide (`get_package("Regira.Setup", "project.setup")`) — **Shared Conventions → NuGet feed** for the feed URL and `NuGet.Config` template.
+2. Add required packages to `.csproj`.
+3. Create `YourDbContext` deriving from `DbContext`.
+4. Configure `Program.cs`.
+5. Create the DI extension method (`AddEntityServices`).
+6. Add entities — see [Entity Implementation Workflow](./entities.instructions.md#entity-implementation-workflow).
 
 ---
 

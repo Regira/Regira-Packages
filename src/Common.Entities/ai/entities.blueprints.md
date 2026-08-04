@@ -774,7 +774,7 @@ public async Task<IActionResult> GetOffspring([FromQuery] IList<int> ids, [FromQ
     => Ok(new ListResult<CategoryTreeItem> { Items = (await service.GetOffspring(ids, level)).ToTreeView() });
 ```
 
-`ToTreeView()` flattens the tree depth-first, so the SPA receives parent-before-children order and can rebuild its own tree client-side (the `regira_modules/treelist` npm module is the front-end counterpart).
+`ToTreeView()` flattens the tree depth-first, so the SPA receives parent-before-children order and can rebuild its own tree client-side (the `regira/treelist` npm module is the front-end counterpart).
 
 ### Gotchas
 

@@ -6,21 +6,6 @@
 
 Use this file when a module guide needs shared setup without repeating it.
 
-## NuGet Feed
-
-Regira packages are published at `https://packages.regira.com/v3/index.json`. Add this feed to `NuGet.Config` alongside `nuget.org`:
-
-```xml
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <packageSources>
-    <clear />
-    <add key="NuGet" value="https://api.nuget.org/v3/index.json" />
-    <add key="Regira" value="https://packages.regira.com/v3/index.json" />
-  </packageSources>
-</configuration>
-```
-
 ## Consumer Local Guides
 
 - **Source repository**: the full `ai/` folder is available locally, so this file can point to adjacent guides.

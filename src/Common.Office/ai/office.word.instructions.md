@@ -26,11 +26,6 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 <PackageReference Include="Regira.Office.Word.Mini" Version="6.*" />
 ```
 
-> Add the Regira feed to `NuGet.Config`:
-> ```xml
-> <add key="Regira" value="https://packages.regira.com/v3/index.json" />
-> ```
-
 ---
 
 ## Backend Comparison

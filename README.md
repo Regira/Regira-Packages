@@ -1,4 +1,6 @@
-# Regira Codebase
+# Regira Packages
+
+This is the **public, source-available** repository for the Regira NuGet packages, published on [nuget.org](https://www.nuget.org) under the [Regira Commercial License](LICENSE) (free tier included). Homepage: [regira.com](https://regira.com).
 
 Regira is a collection of .NET libraries providing unified abstractions for common application concerns. All packages follow the same pattern: a shared interface in a `Common.*` project, with one or more backend implementations as separate packages.
 
@@ -118,7 +120,7 @@ The hosted server lives at `https://mcp.regira.com/mcp`. Most clients share the 
 
 | Tool | What it does |
 |------|-------------|
-| `get_bootstrap_guide` | Consumer project setup guide (NuGet config, DI, workflow) |
+| `get_bootstrap_guide` | Consumer project setup guide (project template, DI, workflow) |
 | `list_packages` | Browse all packages, optionally filtered by category |
 | `search_packages` | Keyword/use-case search, returns ranked results |
 | `search_docs` | Full-text search over every package's documentation content — returns ranked `(package, section, heading)` hits with a snippet and the `get_package(...)` call to read each. Optional `package` scope and `limit` |

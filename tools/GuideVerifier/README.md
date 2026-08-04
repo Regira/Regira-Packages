@@ -1,7 +1,7 @@
 # Regira Guide Verifier
 
 Compiles the fenced ` ```csharp ` code blocks in the Entities-family AI guides so a snippet that no
-longer binds against the real API is caught in CI rather than by a consumer.
+longer binds against the real API is caught here rather than by a consumer.
 
 ## What it does
 
@@ -46,10 +46,10 @@ those snippets back under verification.
 
 ## Scope and CI
 
-- Referenced from `.github/workflows/build-test.yml` as a **separate job** with `continue-on-error: true`
-  while the guides still carry many `no-compile` fragments. Make it blocking once most snippets compile.
+- Intended to run in CI as a **separate, non-blocking job** (`continue-on-error`) once workflows are
+  authored, while the guides still carry many `no-compile` fragments. Make it blocking once most snippets compile.
 - **Test-CI only.** This project references the src Entities projects; it must never be pulled into the
-  MCP deploy path (`deploy-mcp.yml`) or the knowledge-base builder (private Regira-Tools repo), which
+  MCP deploy path or the knowledge-base builder (both in the private Regira-Tools repo), which
   stay dependency-free of it.
 
 ## Extending coverage

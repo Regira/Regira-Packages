@@ -21,11 +21,6 @@
 <PackageReference Include="Regira.System.Projects" Version="6.*" />
 ```
 
-> Add the Regira feed to `NuGet.Config`:
-> ```xml
-> <add key="Regira" value="https://packages.regira.com/v3/index.json" />
-> ```
-
 ---
 
 ## System.Hosting
