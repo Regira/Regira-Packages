@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Office.Barcodes.Spire</RootNamespace>
+    <PackageId>Regira.Office.Barcodes.Spire</PackageId>
+    <AssemblyName>Regira.Office.Barcodes.Spire</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.0.0</Version>
+    <Description>Barcode generation using FreeSpire.Barcode for Regira Office.</Description>
+    <PackageTags>regira;office;barcodes;spire;windows</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
+    <ProjectReference Include="..\Drawing.GDI\Drawing.GDI.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FreeSpire.Barcode" Version="6.6.0" />
+  </ItemGroup>
+</Project>

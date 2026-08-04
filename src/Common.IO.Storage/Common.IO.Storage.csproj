@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.IO.Storage</RootNamespace>
+    <PackageId>Regira.IO.Storage</PackageId>
+    <AssemblyName>Regira.IO.Storage</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.0.0</Version>
+    <Description>Abstractions and implementations for file and binary blob storage in Regira.</Description>
+    <PackageTags>regira;io;storage;files;blobs</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common\Common.csproj" />
+  </ItemGroup>
+  <!-- MSBuild targets — auto-imported into consuming builds via NuGet buildTransitive -->
+  <ItemGroup>
+    <None Include="build\Regira.IO.Storage.props" Pack="true" PackagePath="buildTransitive\" />
+    <None Include="build\Regira.IO.Storage.targets" Pack="true" PackagePath="buildTransitive\" />
+  </ItemGroup>
+  <!-- AI instruction files -->
+  <ItemGroup>
+    <None Include="ai\io.storage.instructions.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\io.storage.examples.md" Pack="true" PackagePath="ai\" />
+  </ItemGroup>
+</Project>

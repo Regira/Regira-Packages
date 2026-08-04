@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Media.FFMpeg</RootNamespace>
+    <PackageId>Regira.Media.FFMpeg</PackageId>
+    <AssemblyName>Regira.Media.FFMpeg</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.0.0</Version>
+    <Description>Video and audio processing using FFMpegCore for Regira.</Description>
+    <PackageTags>regira;media;video;audio;ffmpeg</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="FFMpegCore" Version="5.4.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Upgraded for vulnerabilities -->
+    <PackageReference Include="System.Text.Json" Version="10.0.10" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common.Media\Common.Media.csproj" />
+    <ProjectReference Include="..\Common.System\Common.System.csproj" />
+    <ProjectReference Include="..\Drawing.SkiaSharp\Drawing.SkiaSharp.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="ffmpeg.exe">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="ffprobe.exe">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>

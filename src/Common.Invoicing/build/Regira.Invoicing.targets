@@ -1,0 +1,25 @@
+<Project>
+
+  <PropertyGroup>
+    <_RegiraInvoicingFilesRoot>$(MSBuildThisFileDirectory)..\ai\</_RegiraInvoicingFilesRoot>
+    <_RegiraBaseDir Condition="'$(SolutionDir)' != '' And '$(SolutionDir)' != '*Undefined*'">$(SolutionDir)</_RegiraBaseDir>
+    <_RegiraBaseDir Condition="'$(_RegiraBaseDir)' == ''">$(ProjectDir)</_RegiraBaseDir>
+  </PropertyGroup>
+
+  <!--
+    Copies Invoicing AI instruction files into the consuming project's
+    .regira/instructions/ folder on first build.
+  -->
+  <Target Name="RegiraInvoicingExtractAiFiles"
+          BeforeTargets="BeforeBuild"
+          Condition="!Exists('$(_RegiraBaseDir).regira\instructions\invoicing.instructions.md')">
+
+    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" />
+
+    <Copy SourceFiles="$(_RegiraInvoicingFilesRoot)invoicing.instructions.md;$(_RegiraInvoicingFilesRoot)invoicing.examples.md"
+          DestinationFolder="$(_RegiraBaseDir).regira\instructions\"
+          SkipUnchangedFiles="true" />
+
+  </Target>
+
+</Project>

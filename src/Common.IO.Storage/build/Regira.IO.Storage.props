@@ -1,0 +1,8 @@
+<Project>
+
+  <!-- Prevent .regira\ and .claude\ files from appearing as project items -->
+  <PropertyGroup>
+    <DefaultItemExcludes>$(DefaultItemExcludes);.regira\**;.claude\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+</Project>

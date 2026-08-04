@@ -1,0 +1,25 @@
+<Project>
+
+  <PropertyGroup>
+    <_RegiraWebFilesRoot>$(MSBuildThisFileDirectory)..\ai\</_RegiraWebFilesRoot>
+    <_RegiraBaseDir Condition="'$(SolutionDir)' != '' And '$(SolutionDir)' != '*Undefined*'">$(SolutionDir)</_RegiraBaseDir>
+    <_RegiraBaseDir Condition="'$(_RegiraBaseDir)' == ''">$(ProjectDir)</_RegiraBaseDir>
+  </PropertyGroup>
+
+  <!--
+    Copies Web AI instruction files into the consuming project's
+    .regira/instructions/ folder on first build.
+  -->
+  <Target Name="RegiraWebExtractAiFiles"
+          BeforeTargets="BeforeBuild"
+          Condition="!Exists('$(_RegiraBaseDir).regira\instructions\web.instructions.md')">
+
+    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" />
+
+    <Copy SourceFiles="$(_RegiraWebFilesRoot)web.instructions.md;$(_RegiraWebFilesRoot)web.examples.md"
+          DestinationFolder="$(_RegiraBaseDir).regira\instructions\"
+          SkipUnchangedFiles="true" />
+
+  </Target>
+
+</Project>

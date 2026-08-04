@@ -1,0 +1,46 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Print template TEST</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: calc(21.0cm - 2cm);
+            height: calc(29.7cm - 2cm);
+        }
+
+        .page {
+            width: 100%;
+            height: 100%;
+            background-color: pink;
+        }
+
+            .page table {
+                height: 100%;
+                width: 100%;
+            }
+
+                .page table tr td {
+                    height: 33%;
+                }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <table>
+            <tr>
+                <td>HEADER</td>
+            </tr>
+            <tr>
+                <td>MAIN</td>
+            </tr>
+            <tr>
+                <td>FOOTER</td>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>

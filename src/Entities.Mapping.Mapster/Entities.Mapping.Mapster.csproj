@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Entities.Mapping.Mapster</RootNamespace>
+    <PackageId>Regira.Entities.Mapping.Mapster</PackageId>
+    <AssemblyName>Regira.Entities.Mapping.Mapster</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.0.0</Version>
+    <Description>Mapster integration for Regira entity mapping.</Description>
+    <PackageTags>regira;entities;mapping;mapster</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(OutputPath)$(AssemblyName).xml" Pack="true" PackagePath="lib\$(TargetFramework)\" Visible="false" Condition="Exists('$(OutputPath)$(AssemblyName).xml')" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Mapster.DependencyInjection" Version="10.0.11" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Entities.DependencyInjection\Entities.DependencyInjection.csproj" />
+  </ItemGroup>
+</Project>

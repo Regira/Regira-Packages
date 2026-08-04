@@ -1,0 +1,50 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ClassDiagram MajorVersion="1" MinorVersion="1">
+  <Class Name="Regira.Entities.DependencyInjection.ServiceBuilders.EntityServiceBuilder&lt;TContext, TEntity, TKey&gt;">
+    <Position X="7.75" Y="0.5" Width="3.75" />
+    <TypeIdentifier>
+      <HashCode>gAABAAAMAAAAQGIASgAAAAAAQBgBgAABIEAAABAEAAI=</HashCode>
+      <FileName>ServiceBuilders\EntityServiceBuilder.cs</FileName>
+    </TypeIdentifier>
+    <Lollipop Position="0.2" />
+  </Class>
+  <Class Name="Regira.Entities.DependencyInjection.ServiceBuilders.EntitySearchObjectServiceBuilder&lt;TContext, TEntity, TKey, TSearchObject&gt;">
+    <Position X="7.75" Y="7.5" Width="3.75" />
+    <TypeIdentifier>
+      <HashCode>AAABAAAAAAAAAEIACAAAAAAAQBAAgAABIEAAABAAAAI=</HashCode>
+      <FileName>ServiceBuilders\EntitySearchObjectServiceBuilder.cs</FileName>
+    </TypeIdentifier>
+    <Lollipop Position="0.2" />
+  </Class>
+  <Class Name="Regira.Entities.DependencyInjection.ServiceBuilders.ComplexEntityServiceBuilder&lt;TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes&gt;">
+    <Position X="0.5" Y="6.75" Width="3.75" />
+    <TypeIdentifier>
+      <HashCode>AAABAAAEAAAAAEAASgAAAAAAQBgAgAABIEACABIEAAI=</HashCode>
+      <FileName>ServiceBuilders\ComplexEntityServiceBuilder.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="Regira.Entities.DependencyInjection.ServiceBuilders.ComplexEntityIntServiceBuilder&lt;TContext, TEntity, TSearchObject, TSortBy, TIncludes&gt;">
+    <Position X="0.5" Y="0.5" Width="3.75" />
+    <TypeIdentifier>
+      <HashCode>AAABAAAEAAAAAEAASgAAAAAAQBgAgAABIEAAABIEAAI=</HashCode>
+      <FileName>ServiceBuilders\ComplexEntityIntServiceBuilder.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="Regira.Entities.DependencyInjection.ServiceBuilders.EntityIntServiceBuilder&lt;TContext, TEntity&gt;">
+    <Position X="14.75" Y="0.5" Width="3.75" />
+    <TypeIdentifier>
+      <HashCode>AAABAAAAAAAAQAAACAAAAAAAAAgAgAABIEAAABAEAAI=</HashCode>
+      <FileName>ServiceBuilders\EntityIntServiceBuilder.cs</FileName>
+    </TypeIdentifier>
+    <Lollipop Position="0.2" />
+  </Class>
+  <Class Name="Regira.Entities.DependencyInjection.ServiceBuilders.EntityIntSearchObjectServiceBuilder&lt;TContext, TEntity, TSearchObject&gt;">
+    <Position X="14.75" Y="7.5" Width="3.75" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAA=</HashCode>
+      <FileName>ServiceBuilders\EntityIntSearchObjectServiceBuilder.cs</FileName>
+    </TypeIdentifier>
+    <Lollipop Position="0.2" />
+  </Class>
+  <Font Name="Segoe UI" Size="9" />
+</ClassDiagram>

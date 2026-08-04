@@ -1,0 +1,44 @@
+{
+    "From": {
+        "Email": "piro-test@clear-code.com"
+    },
+    "To": [
+        {
+            "Email": "piro.outsider.reflex+1@gmail.com"
+        },
+        {
+            "Email": "piro.outsider.reflex+2@gmail.com"
+        },
+        {
+            "Email": "mailmaster@example.com"
+        },
+        {
+            "Email": "mailmaster@example.org"
+        },
+        {
+            "Email": "webmaster@example.com"
+        },
+        {
+            "Email": "webmaster@example.org"
+        },
+        {
+            "Email": "webmaster@example.jp"
+        },
+        {
+            "Email": "mailmaster@example.jp"
+        }
+    ],
+    "Subject": "test confirmation",
+    "Body": "testtest\r\ntesttest\r\ntesttest\r\ntesttest\r\ntesttest\r\ntesttest\r\n\r\n\r\n",
+    "IsHtml": false,
+    "Attachments": [
+        {
+            "FileName": "sha1hash.txt",
+            "Bytes": "NzRjOGYwOWRmYTMwZWFjY2ZiMzkyYjEzMjMxNGZjNmI5NzhmMzI1YSAqZmxleC1jb25maXJtLW1haWwuMS4xMC4wLnhwaQpjY2VlNGI0YWE0N2Y1MTNhYmNlMzQyY2UxZTJlYzJmZDk2MDBlMzFiICpmbGV4LWNvbmZpcm0tbWFpbC4xLjExLjAueHBpCjA3MWU5ZTM3OGFkMDE3OWJmYWRiMWJkYzY1MGE0OTQ1NGQyMDRhODMgKmZsZXgtY29uZmlybS1tYWlsLjEuMTIuMC54cGkKOWQ3YWExNTM0MThlYThmYmM4YmU3YmE2ZjU0Y2U4YTFjYjdlZTQ2OCAqZmxleC1jb25maXJtLW1haWwuMS45LjkueHBpCjgxNjg1NjNjYjI3NmVhNGY5YTJiNjMwYjlhMjA3ZDkwZmIxMTg1NmUgKmZsZXgtY29uZmlybS1tYWlsLnhwaQo="
+        },
+        {
+            "FileName": "manifest.json",
+            "Bytes": "ewogICJtYW5pZmVzdF92ZXJzaW9uIjogMiwKICAiYXBwbGljYXRpb25zIjogewogICAgImdlY2tvIjogewogICAgICAiaWQiOiAiZmxleGlibGUtY29uZmlybS1tYWlsQGNsZWFyLWNvZGUuY29tIiwKICAgICAgInN0cmljdF9taW5fdmVyc2lvbiI6ICI2OC4wIgogICAgfQogIH0sCiAgIm5hbWUiOiAiRmxleCBDb25maXJtIE1haWwiLAogICJkZXNjcmlwdGlvbiI6ICJDb25maXJtIG1haWxhZGRyZXNzIGFuZCBhdHRhY2htZW50cyBiYXNlZCBvbiBmbGV4aWJsZSBydWxlcy4iLAogICJ2ZXJzaW9uIjogIjIuMCIsCgogICJsZWdhY3kiOiB7CiAgICAidHlwZSI6ICJ4dWwiLAogICAgIm9wdGlvbnMiOiB7CiAgICAgICJwYWdlIjogImNocm9tZTovL2NvbmZpcm0tbWFpbC9jb250ZW50L3NldHRpbmcueHVsIiwKICAgICAgIm9wZW5faW5fdGFiIjogdHJ1ZQogICAgfQogIH0KfQ=="
+        }
+    ]
+}

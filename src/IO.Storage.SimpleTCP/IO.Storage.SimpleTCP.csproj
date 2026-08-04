@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.IO.Storage.SimpleTCP</RootNamespace>
+    <PackageId>Regira.IO.Storage.SimpleTCP</PackageId>
+    <AssemblyName>Regira.IO.Storage.SimpleTCP</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.0.0</Version>
+    <Description>SimpleTCP-based file transfer and storage for Regira IO.</Description>
+    <PackageTags>regira;io;storage;tcp;simpletcp</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common.IO.Storage\Common.IO.Storage.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="SimpleTCP.Core" Version="1.0.4" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.System</RootNamespace>
+    <PackageId>Regira.System</PackageId>
+    <AssemblyName>Regira.System</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.0.0</Version>
+    <Description>System-level utilities including file system, process, and configuration helpers.</Description>
+    <PackageTags>regira;system;utilities;filesystem</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common\Common.csproj" />
+  </ItemGroup>
+  <!-- MSBuild targets — auto-imported into consuming builds via NuGet buildTransitive -->
+  <ItemGroup>
+    <None Include="build\Regira.System.props" Pack="true" PackagePath="buildTransitive\" />
+    <None Include="build\Regira.System.targets" Pack="true" PackagePath="buildTransitive\" />
+  </ItemGroup>
+  <!-- AI instruction files -->
+  <ItemGroup>
+    <None Include="ai\system.instructions.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\system.examples.md" Pack="true" PackagePath="ai\" />
+  </ItemGroup>
+</Project>

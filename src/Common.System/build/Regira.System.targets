@@ -1,0 +1,25 @@
+<Project>
+
+  <PropertyGroup>
+    <_RegiraSystemFilesRoot>$(MSBuildThisFileDirectory)..\ai\</_RegiraSystemFilesRoot>
+    <_RegiraBaseDir Condition="'$(SolutionDir)' != '' And '$(SolutionDir)' != '*Undefined*'">$(SolutionDir)</_RegiraBaseDir>
+    <_RegiraBaseDir Condition="'$(_RegiraBaseDir)' == ''">$(ProjectDir)</_RegiraBaseDir>
+  </PropertyGroup>
+
+  <!--
+    Copies System AI instruction files into the consuming project's
+    .regira/instructions/ folder on first build.
+  -->
+  <Target Name="RegiraSystemExtractAiFiles"
+          BeforeTargets="BeforeBuild"
+          Condition="!Exists('$(_RegiraBaseDir).regira\instructions\system.instructions.md')">
+
+    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" />
+
+    <Copy SourceFiles="$(_RegiraSystemFilesRoot)system.instructions.md;$(_RegiraSystemFilesRoot)system.examples.md"
+          DestinationFolder="$(_RegiraBaseDir).regira\instructions\"
+          SkipUnchangedFiles="true" />
+
+  </Target>
+
+</Project>

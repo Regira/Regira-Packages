@@ -1,0 +1,25 @@
+<Project>
+
+  <PropertyGroup>
+    <_RegiraTreeListFilesRoot>$(MSBuildThisFileDirectory)..\ai\</_RegiraTreeListFilesRoot>
+    <_RegiraBaseDir Condition="'$(SolutionDir)' != '' And '$(SolutionDir)' != '*Undefined*'">$(SolutionDir)</_RegiraBaseDir>
+    <_RegiraBaseDir Condition="'$(_RegiraBaseDir)' == ''">$(ProjectDir)</_RegiraBaseDir>
+  </PropertyGroup>
+
+  <!--
+    Copies TreeList AI instruction files into the consuming project's
+    .regira/instructions/ folder on first build.
+  -->
+  <Target Name="RegiraTreeListExtractAiFiles"
+          BeforeTargets="BeforeBuild"
+          Condition="!Exists('$(_RegiraBaseDir).regira\instructions\treelist.instructions.md')">
+
+    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" />
+
+    <Copy SourceFiles="$(_RegiraTreeListFilesRoot)treelist.instructions.md;$(_RegiraTreeListFilesRoot)treelist.examples.md"
+          DestinationFolder="$(_RegiraBaseDir).regira\instructions\"
+          SkipUnchangedFiles="true" />
+
+  </Target>
+
+</Project>

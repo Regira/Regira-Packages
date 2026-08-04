@@ -1,0 +1,1951 @@
+[
+  {
+    "code": "AF",
+    "title": "Afghanistan",
+    "created": "1919-01-01",
+    "lifeExpectancy": 45.9,
+    "population": 37172386,
+    "callingCode": "+93"
+  },
+  {
+    "code": "AL",
+    "title": "Albania",
+    "created": "1912-01-01",
+    "lifeExpectancy": 71.6,
+    "population": 2866376,
+    "callingCode": "+355"
+  },
+  {
+    "code": "DZ",
+    "title": "Algeria",
+    "created": "1962-01-01",
+    "lifeExpectancy": 69.7,
+    "population": 42228429,
+    "callingCode": "+213"
+  },
+  {
+    "code": "AS",
+    "title": "American Samoa",
+    "created": null,
+    "lifeExpectancy": 75.1,
+    "population": 55465,
+    "callingCode": "+1684"
+  },
+  {
+    "code": "AD",
+    "title": "Andorra",
+    "created": "1278-01-01",
+    "lifeExpectancy": 83.5,
+    "population": 77006,
+    "callingCode": "+376"
+  },
+  {
+    "code": "AO",
+    "title": "Angola",
+    "created": "1975-01-01",
+    "lifeExpectancy": 38.3,
+    "population": 30809762,
+    "callingCode": "+244"
+  },
+  {
+    "code": "AI",
+    "title": "Anguilla",
+    "created": null,
+    "lifeExpectancy": 76.1,
+    "population": 15094,
+    "callingCode": "+1264"
+  },
+  {
+    "code": "AQ",
+    "title": "Antarctica",
+    "created": null,
+    "lifeExpectancy": null,
+    "population": 1106,
+    "callingCode": null
+  },
+  {
+    "code": "AG",
+    "title": "Antigua and Barbuda",
+    "created": "1981-01-01",
+    "lifeExpectancy": 70.5,
+    "population": 96286,
+    "callingCode": "+1268"
+  },
+  {
+    "code": "AR",
+    "title": "Argentina",
+    "created": "1816-01-01",
+    "lifeExpectancy": 75.1,
+    "population": 44494502,
+    "callingCode": "+54"
+  },
+  {
+    "code": "AM",
+    "title": "Armenia",
+    "created": "1991-01-01",
+    "lifeExpectancy": 66.4,
+    "population": 2951776,
+    "callingCode": "+374"
+  },
+  {
+    "code": "AW",
+    "title": "Aruba",
+    "created": null,
+    "lifeExpectancy": 78.4,
+    "population": 105845,
+    "callingCode": "+297"
+  },
+  {
+    "code": "AU",
+    "title": "Australia",
+    "created": "1901-01-01",
+    "lifeExpectancy": 79.8,
+    "population": 24982688,
+    "callingCode": "+61"
+  },
+  {
+    "code": "AT",
+    "title": "Austria",
+    "created": "1918-01-01",
+    "lifeExpectancy": 77.7,
+    "population": 8840521,
+    "callingCode": "+43"
+  },
+  {
+    "code": "AZ",
+    "title": "Azerbaijan",
+    "created": "1991-01-01",
+    "lifeExpectancy": 62.9,
+    "population": 9939800,
+    "callingCode": "+994"
+  },
+  {
+    "code": "BS",
+    "title": "Bahamas",
+    "created": "1973-01-01",
+    "lifeExpectancy": 71.1,
+    "population": 385640,
+    "callingCode": "+1242"
+  },
+  {
+    "code": "BH",
+    "title": "Bahrain",
+    "created": "1971-01-01",
+    "lifeExpectancy": 73,
+    "population": 1569439,
+    "callingCode": "+973"
+  },
+  {
+    "code": "BD",
+    "title": "Bangladesh",
+    "created": "1971-01-01",
+    "lifeExpectancy": 60.2,
+    "population": 161356039,
+    "callingCode": "+880"
+  },
+  {
+    "code": "BB",
+    "title": "Barbados",
+    "created": "1966-01-01",
+    "lifeExpectancy": 73,
+    "population": 286641,
+    "callingCode": "+1246"
+  },
+  {
+    "code": "BY",
+    "title": "Belarus",
+    "created": "1991-01-01",
+    "lifeExpectancy": 68,
+    "population": 9483499,
+    "callingCode": "+375"
+  },
+  {
+    "code": "BE",
+    "title": "Belgium",
+    "created": "1830-01-01",
+    "lifeExpectancy": 77.8,
+    "population": 11433256,
+    "callingCode": "+32"
+  },
+  {
+    "code": "BZ",
+    "title": "Belize",
+    "created": "1981-01-01",
+    "lifeExpectancy": 70.9,
+    "population": 383071,
+    "callingCode": "+501"
+  },
+  {
+    "code": "BJ",
+    "title": "Benin",
+    "created": "1960-01-01",
+    "lifeExpectancy": 50.2,
+    "population": 11485048,
+    "callingCode": "+229"
+  },
+  {
+    "code": "BM",
+    "title": "Bermuda",
+    "created": null,
+    "lifeExpectancy": 76.9,
+    "population": 63973,
+    "callingCode": "+1441"
+  },
+  {
+    "code": "BT",
+    "title": "Bhutan",
+    "created": "1910-01-01",
+    "lifeExpectancy": 52.4,
+    "population": 754394,
+    "callingCode": "+975"
+  },
+  {
+    "code": "BO",
+    "title": "Bolivia",
+    "created": "1825-01-01",
+    "lifeExpectancy": 63.7,
+    "population": 11353142,
+    "callingCode": "+591"
+  },
+  {
+    "code": "BA",
+    "title": "Bosnia and Herzegovina",
+    "created": "1992-01-01",
+    "lifeExpectancy": 71.5,
+    "population": 3323929,
+    "callingCode": "+387"
+  },
+  {
+    "code": "BW",
+    "title": "Botswana",
+    "created": "1966-01-01",
+    "lifeExpectancy": 39.3,
+    "population": 2254126,
+    "callingCode": "+267"
+  },
+  {
+    "code": "BV",
+    "title": "Bouvet Island",
+    "created": null,
+    "lifeExpectancy": null,
+    "population": 0,
+    "callingCode": null
+  },
+  {
+    "code": "BR",
+    "title": "Brazil",
+    "created": "1822-01-01",
+    "lifeExpectancy": 62.9,
+    "population": 209469333,
+    "callingCode": "+55"
+  },
+  {
+    "code": "IO",
+    "title": "British Indian Ocean Territory",
+    "created": null,
+    "lifeExpectancy": null,
+    "population": 0,
+    "callingCode": "+246"
+  },
+  {
+    "code": "BN",
+    "title": "Brunei",
+    "created": "1984-01-01",
+    "lifeExpectancy": 73.6,
+    "population": 428962,
+    "callingCode": null
+  },
+  {
+    "code": "BG",
+    "title": "Bulgaria",
+    "created": "1908-01-01",
+    "lifeExpectancy": 70.9,
+    "population": 7025037,
+    "callingCode": "+359"
+  },
+  {
+    "code": "BF",
+    "title": "Burkina Faso",
+    "created": "1960-01-01",
+    "lifeExpectancy": 46.7,
+    "population": 19751535,
+    "callingCode": "+226"
+  },
+  {
+    "code": "BI",
+    "title": "Burundi",
+    "created": "1962-01-01",
+    "lifeExpectancy": 46.2,
+    "population": 11175378,
+    "callingCode": "+257"
+  },
+  {
+    "code": "KH",
+    "title": "Cambodia",
+    "created": "1953-01-01",
+    "lifeExpectancy": 56.5,
+    "population": 16249798,
+    "callingCode": "+855"
+  },
+  {
+    "code": "CM",
+    "title": "Cameroon",
+    "created": "1960-01-01",
+    "lifeExpectancy": 54.8,
+    "population": 25216237,
+    "callingCode": "+237"
+  },
+  {
+    "code": "CA",
+    "title": "Canada",
+    "created": "1867-01-01",
+    "lifeExpectancy": 79.4,
+    "population": 37057765,
+    "callingCode": "+1"
+  },
+  {
+    "code": "CV",
+    "title": "Cape Verde",
+    "created": "1975-01-01",
+    "lifeExpectancy": 68.9,
+    "population": 543767,
+    "callingCode": null
+  },
+  {
+    "code": "KY",
+    "title": "Cayman Islands",
+    "created": null,
+    "lifeExpectancy": 78.9,
+    "population": 64174,
+    "callingCode": "+1345"
+  },
+  {
+    "code": "CF",
+    "title": "Central African Republic",
+    "created": "1960-01-01",
+    "lifeExpectancy": 44,
+    "population": 4666377,
+    "callingCode": "+236"
+  },
+  {
+    "code": "TD",
+    "title": "Chad",
+    "created": "1960-01-01",
+    "lifeExpectancy": 50.5,
+    "population": 15477751,
+    "callingCode": "+235"
+  },
+  {
+    "code": "CL",
+    "title": "Chile",
+    "created": "1810-01-01",
+    "lifeExpectancy": 75.7,
+    "population": 18729160,
+    "callingCode": "+56"
+  },
+  {
+    "code": "CN",
+    "title": "China",
+    "created": null,
+    "lifeExpectancy": 71.4,
+    "population": 1392730000,
+    "callingCode": "+86"
+  },
+  {
+    "code": "CX",
+    "title": "Christmas Island",
+    "created": null,
+    "lifeExpectancy": null,
+    "population": 1402,
+    "callingCode": "+61"
+  },
+  {
+    "code": "CC",
+    "title": "Cocos (Keeling) Islands",
+    "created": null,
+    "lifeExpectancy": null,
+    "population": 596,
+    "callingCode": "+61"
+  },
+  {
+    "code": "CO",
+    "title": "Colombia",
+    "created": "1810-01-01",
+    "lifeExpectancy": 70.3,
+    "population": 49648685,
+    "callingCode": "+57"
+  },
+  {
+    "code": "KM",
+    "title": "Comoros",
+    "created": "1975-01-01",
+    "lifeExpectancy": 60,
+    "population": 832322,
+    "callingCode": "+269"
+  },
+  {
+    "code": "CG",
+    "title": "Congo",
+    "created": "1960-01-01",
+    "lifeExpectancy": 47.4,
+    "population": 5244363,
+    "callingCode": "+242"
+  },
+  {
+    "code": "CK",
+    "title": "Cook Islands",
+    "created": null,
+    "lifeExpectancy": 71.1,
+    "population": 17379,
+    "callingCode": "+682"
+  },
+  {
+    "code": "CR",
+    "title": "Costa Rica",
+    "created": "1821-01-01",
+    "lifeExpectancy": 75.8,
+    "population": 4999441,
+    "callingCode": "+506"
+  },
+  {
+    "code": "HR",
+    "title": "Croatia",
+    "created": "1991-01-01",
+    "lifeExpectancy": 73.7,
+    "population": 4087843,
+    "callingCode": "+385"
+  },
+  {
+    "code": "CU",
+    "title": "Cuba",
+    "created": "1902-01-01",
+    "lifeExpectancy": 76.2,
+    "population": 11338138,
+    "callingCode": "+53"
+  },
+  {
+    "code": "CY",
+    "title": "Cyprus",
+    "created": "1960-01-01",
+    "lifeExpectancy": 76.7,
+    "population": 1189265,
+    "callingCode": "+357"
+  },
+  {
+    "code": "CZ",
+    "title": "Czech Republic",
+    "created": "1993-01-01",
+    "lifeExpectancy": 74.5,
+    "population": 10629928,
+    "callingCode": "+420"
+  },
+  {
+    "code": "DK",
+    "title": "Denmark",
+    "created": "800-01-01",
+    "lifeExpectancy": 76.5,
+    "population": 5793636,
+    "callingCode": "+45"
+  },
+  {
+    "code": "DJ",
+    "title": "Djibouti",
+    "created": "1977-01-01",
+    "lifeExpectancy": 50.8,
+    "population": 958920,
+    "callingCode": "+253"
+  },
+  {
+    "code": "DM",
+    "title": "Dominica",
+    "created": "1978-01-01",
+    "lifeExpectancy": 73.4,
+    "population": 71625,
+    "callingCode": "+1767"
+  },
+  {
+    "code": "DO",
+    "title": "Dominican Republic",
+    "created": "1844-01-01",
+    "lifeExpectancy": 73.2,
+    "population": 10627165,
+    "callingCode": "+1849"
+  },
+  {
+    "code": "TP",
+    "title": "East Timor",
+    "created": null,
+    "lifeExpectancy": 46,
+    "population": 1267972,
+    "callingCode": "+670"
+  },
+  {
+    "code": "EC",
+    "title": "Ecuador",
+    "created": "1822-01-01",
+    "lifeExpectancy": 71.1,
+    "population": 17084357,
+    "callingCode": "+593"
+  },
+  {
+    "code": "EG",
+    "title": "Egypt",
+    "created": "1922-01-01",
+    "lifeExpectancy": 63.3,
+    "population": 98423595,
+    "callingCode": "+20"
+  },
+  {
+    "code": "SV",
+    "title": "El Salvador",
+    "created": "1841-01-01",
+    "lifeExpectancy": 69.7,
+    "population": 6420744,
+    "callingCode": "+503"
+  },
+  {
+    "code": "GQ",
+    "title": "Equatorial Guinea",
+    "created": "1968-01-01",
+    "lifeExpectancy": 53.6,
+    "population": 1308974,
+    "callingCode": "+240"
+  },
+  {
+    "code": "ER",
+    "title": "Eritrea",
+    "created": "1993-01-01",
+    "lifeExpectancy": 55.8,
+    "population": 3213972,
+    "callingCode": "+291"
+  },
+  {
+    "code": "EE",
+    "title": "Estonia",
+    "created": "1991-01-01",
+    "lifeExpectancy": 69.5,
+    "population": 1321977,
+    "callingCode": "+372"
+  },
+  {
+    "code": "ET",
+    "title": "Ethiopia",
+    "created": null,
+    "lifeExpectancy": 45.2,
+    "population": 109224559,
+    "callingCode": "+251"
+  },
+  {
+    "code": "FK",
+    "title": "Falkland Islands",
+    "created": null,
+    "lifeExpectancy": null,
+    "population": 2840,
+    "callingCode": "+500"
+  },
+  {
+    "code": "FO",
+    "title": "Faroe Islands",
+    "created": null,
+    "lifeExpectancy": 78.4,
+    "population": 48497,
+    "callingCode": "+298"
+  },
+  {
+    "code": "FJ",
+    "title": "Fiji Islands",
+    "created": "1970-01-01",
+    "lifeExpectancy": 67.9,
+    "population": 883483,
+    "callingCode": null
+  },
+  {
+    "code": "FI",
+    "title": "Finland",
+    "created": "1917-01-01",
+    "lifeExpectancy": 77.4,
+    "population": 5515525,
+    "callingCode": "+358"
+  },
+  {
+    "code": "FR",
+    "title": "France",
+    "created": "843-01-01",
+    "lifeExpectancy": 78.8,
+    "population": 66977107,
+    "callingCode": "+33"
+  },
+  {
+    "code": "GF",
+    "title": "French Guiana",
+    "created": null,
+    "lifeExpectancy": 76.1,
+    "population": 290691,
+    "callingCode": "+594"
+  },
+  {
+    "code": "PF",
+    "title": "French Polynesia",
+    "created": null,
+    "lifeExpectancy": 74.8,
+    "population": 277679,
+    "callingCode": "+689"
+  },
+  {
+    "code": "TF",
+    "title": "French Southern territories",
+    "created": null,
+    "lifeExpectancy": null,
+    "population": 0,
+    "callingCode": null
+  },
+  {
+    "code": "GA",
+    "title": "Gabon",
+    "created": "1960-01-01",
+    "lifeExpectancy": 50.1,
+    "population": 2119275,
+    "callingCode": "+241"
+  },
+  {
+    "code": "GM",
+    "title": "Gambia",
+    "created": "1965-01-01",
+    "lifeExpectancy": 53.2,
+    "population": 2280102,
+    "callingCode": "+220"
+  },
+  {
+    "code": "GE",
+    "title": "Georgia",
+    "created": "1991-01-01",
+    "lifeExpectancy": 64.5,
+    "population": 3726549,
+    "callingCode": "+995"
+  },
+  {
+    "code": "DE",
+    "title": "Germany",
+    "created": "1955-01-01",
+    "lifeExpectancy": 77.4,
+    "population": 82905782,
+    "callingCode": "+49"
+  },
+  {
+    "code": "GH",
+    "title": "Ghana",
+    "created": "1957-01-01",
+    "lifeExpectancy": 57.4,
+    "population": 29767108,
+    "callingCode": "+233"
+  },
+  {
+    "code": "GI",
+    "title": "Gibraltar",
+    "created": null,
+    "lifeExpectancy": 79,
+    "population": 33718,
+    "callingCode": "+350"
+  },
+  {
+    "code": "GR",
+    "title": "Greece",
+    "created": "1830-01-01",
+    "lifeExpectancy": 78.4,
+    "population": 10731726,
+    "callingCode": "+30"
+  },
+  {
+    "code": "GL",
+    "title": "Greenland",
+    "created": null,
+    "lifeExpectancy": 68.1,
+    "population": 56025,
+    "callingCode": "+299"
+  },
+  {
+    "code": "GD",
+    "title": "Grenada",
+    "created": "1974-01-01",
+    "lifeExpectancy": 64.5,
+    "population": 111454,
+    "callingCode": "+1473"
+  },
+  {
+    "code": "GP",
+    "title": "Guadeloupe",
+    "created": null,
+    "lifeExpectancy": 77,
+    "population": 395700,
+    "callingCode": "+590"
+  },
+  {
+    "code": "GU",
+    "title": "Guam",
+    "created": null,
+    "lifeExpectancy": 77.8,
+    "population": 165768,
+    "callingCode": "+1671"
+  },
+  {
+    "code": "GT",
+    "title": "Guatemala",
+    "created": "1821-01-01",
+    "lifeExpectancy": 66.2,
+    "population": 17247807,
+    "callingCode": "+502"
+  },
+  {
+    "code": "GG",
+    "title": "Guernsey",
+    "created": null,
+    "callingCode": null
+  },
+  {
+    "code": "GN",
+    "title": "Guinea",
+    "created": "1958-01-01",
+    "lifeExpectancy": 45.6,
+    "population": 12414318,
+    "callingCode": "+224"
+  },
+  {
+    "code": "GW",
+    "title": "Guinea-Bissau",
+    "created": "1974-01-01",
+    "lifeExpectancy": 49,
+    "population": 1874309,
+    "callingCode": "+245"
+  },
+  {
+    "code": "GY",
+    "title": "Guyana",
+    "created": "1966-01-01",
+    "lifeExpectancy": 64,
+    "population": 779004,
+    "callingCode": "+592"
+  },
+  {
+    "code": "HT",
+    "title": "Haiti",
+    "created": "1804-01-01",
+    "lifeExpectancy": 49.2,
+    "population": 11123176,
+    "callingCode": "+509"
+  },
+  {
+    "code": "HM",
+    "title": "Heard Island and McDonald Islands",
+    "created": null,
+    "lifeExpectancy": null,
+    "population": 0,
+    "callingCode": null
+  },
+  {
+    "code": "VA",
+    "title": "Holy See (Vatican City State)",
+    "created": "1929-01-01",
+    "lifeExpectancy": null,
+    "population": 825,
+    "callingCode": null
+  },
+  {
+    "code": "HN",
+    "title": "Honduras",
+    "created": "1838-01-01",
+    "lifeExpectancy": 69.9,
+    "population": 9587522,
+    "callingCode": "+504"
+  },
+  {
+    "code": "HK",
+    "title": "Hong Kong",
+    "created": null,
+    "lifeExpectancy": 79.5,
+    "population": 7451000,
+    "callingCode": "+852"
+  },
+  {
+    "code": "HU",
+    "title": "Hungary",
+    "created": "1918-01-01",
+    "lifeExpectancy": 71.4,
+    "population": 9775564,
+    "callingCode": "+36"
+  },
+  {
+    "code": "IS",
+    "title": "Iceland",
+    "created": "1944-01-01",
+    "lifeExpectancy": 79.4,
+    "population": 352721,
+    "callingCode": "+354"
+  },
+  {
+    "code": "IN",
+    "title": "India",
+    "created": "1947-01-01",
+    "lifeExpectancy": 62.5,
+    "population": 1352617328,
+    "callingCode": "+91"
+  },
+  {
+    "code": "ID",
+    "title": "Indonesia",
+    "created": "1945-01-01",
+    "lifeExpectancy": 70.1,
+    "population": 267663435,
+    "callingCode": "+62"
+  },
+  {
+    "code": "IR",
+    "title": "Iran",
+    "created": "1906-01-01",
+    "lifeExpectancy": 69.7,
+    "population": 81800269,
+    "callingCode": "+98"
+  },
+  {
+    "code": "IQ",
+    "title": "Iraq",
+    "created": "1932-01-01",
+    "lifeExpectancy": 66.5,
+    "population": 38433600,
+    "callingCode": "+964"
+  },
+  {
+    "code": "IE",
+    "title": "Ireland",
+    "created": "1921-01-01",
+    "lifeExpectancy": 76.8,
+    "population": 4867309,
+    "callingCode": "+353"
+  },
+  {
+    "code": "IM",
+    "title": "Isle of Man",
+    "created": null,
+    "callingCode": null
+  },
+  {
+    "code": "IL",
+    "title": "Israel",
+    "created": "1948-01-01",
+    "lifeExpectancy": 78.6,
+    "population": 8882800,
+    "callingCode": "+972"
+  },
+  {
+    "code": "IT",
+    "title": "Italy",
+    "created": "1861-01-01",
+    "lifeExpectancy": 79,
+    "population": 60421760,
+    "callingCode": "+39"
+  },
+  {
+    "code": "CI",
+    "title": "Ivory Coast",
+    "created": "1960-01-01",
+    "lifeExpectancy": 45.2,
+    "population": 25069229,
+    "callingCode": "+225"
+  },
+  {
+    "code": "JM",
+    "title": "Jamaica",
+    "created": "1962-01-01",
+    "lifeExpectancy": 75.2,
+    "population": 2934855,
+    "callingCode": "+1876"
+  },
+  {
+    "code": "JP",
+    "title": "Japan",
+    "created": null,
+    "lifeExpectancy": 80.7,
+    "population": 126529100,
+    "callingCode": "+81"
+  },
+  {
+    "code": "JE",
+    "title": "Jersey",
+    "created": null,
+    "callingCode": null
+  },
+  {
+    "code": "JO",
+    "title": "Jordan",
+    "created": "1946-01-01",
+    "lifeExpectancy": 77.4,
+    "population": 9956011,
+    "callingCode": "+962"
+  },
+  {
+    "code": "KZ",
+    "title": "Kazakhstan",
+    "created": "1991-01-01",
+    "lifeExpectancy": 63.2,
+    "population": 18272430,
+    "callingCode": "+7"
+  },
+  {
+    "code": "KE",
+    "title": "Kenya",
+    "created": "1963-01-01",
+    "lifeExpectancy": 48,
+    "population": 51393010,
+    "callingCode": "+254"
+  },
+  {
+    "code": "KI",
+    "title": "Kiribati",
+    "created": "1979-01-01",
+    "lifeExpectancy": 59.8,
+    "population": 115847,
+    "callingCode": "+686"
+  },
+  {
+    "code": "KW",
+    "title": "Kuwait",
+    "created": "1961-01-01",
+    "lifeExpectancy": 76.1,
+    "population": 4137309,
+    "callingCode": "+965"
+  },
+  {
+    "code": "KG",
+    "title": "Kyrgyzstan",
+    "created": "1991-01-01",
+    "lifeExpectancy": 63.4,
+    "population": 6322800,
+    "callingCode": "+996"
+  },
+  {
+    "code": "LA",
+    "title": "Laos",
+    "created": "1953-01-01",
+    "lifeExpectancy": 53.1,
+    "population": 7061507,
+    "callingCode": "+856"
+  },
+  {
+    "code": "LV",
+    "title": "Latvia",
+    "created": "1991-01-01",
+    "lifeExpectancy": 68.4,
+    "population": 1927174,
+    "callingCode": "+371"
+  },
+  {
+    "code": "LB",
+    "title": "Lebanon",
+    "created": "1941-01-01",
+    "lifeExpectancy": 71.3,
+    "population": 6848925,
+    "callingCode": "+961"
+  },
+  {
+    "code": "LS",
+    "title": "Lesotho",
+    "created": "1966-01-01",
+    "lifeExpectancy": 50.8,
+    "population": 2108132,
+    "callingCode": "+266"
+  },
+  {
+    "code": "LR",
+    "title": "Liberia",
+    "created": "1847-01-01",
+    "lifeExpectancy": 51,
+    "population": 4818977,
+    "callingCode": "+231"
+  },
+  {
+    "code": "LY",
+    "title": "Libyan Arab Jamahiriya",
+    "created": "1951-01-01",
+    "lifeExpectancy": 75.5,
+    "population": 6678567,
+    "callingCode": null
+  },
+  {
+    "code": "LI",
+    "title": "Liechtenstein",
+    "created": "1806-01-01",
+    "lifeExpectancy": 78.8,
+    "population": 37910,
+    "callingCode": "+423"
+  },
+  {
+    "code": "LT",
+    "title": "Lithuania",
+    "created": "1991-01-01",
+    "lifeExpectancy": 69.1,
+    "population": 2801543,
+    "callingCode": "+370"
+  },
+  {
+    "code": "LU",
+    "title": "Luxembourg",
+    "created": "1867-01-01",
+    "lifeExpectancy": 77.1,
+    "population": 607950,
+    "callingCode": "+352"
+  },
+  {
+    "code": "MO",
+    "title": "Macao",
+    "created": null,
+    "lifeExpectancy": 81.6,
+    "population": 631636,
+    "callingCode": null
+  },
+  {
+    "code": "MK",
+    "title": "North Macedonia",
+    "created": "1991-01-01",
+    "lifeExpectancy": 73.8,
+    "population": 2084367,
+    "callingCode": "+389"
+  },
+  {
+    "code": "MG",
+    "title": "Madagascar",
+    "created": "1960-01-01",
+    "lifeExpectancy": 55,
+    "population": 26262368,
+    "callingCode": "+261"
+  },
+  {
+    "code": "MW",
+    "title": "Malawi",
+    "created": "1964-01-01",
+    "lifeExpectancy": 37.6,
+    "population": 18143315,
+    "callingCode": "+265"
+  },
+  {
+    "code": "MY",
+    "title": "Malaysia",
+    "created": "1957-01-01",
+    "lifeExpectancy": 70.8,
+    "population": 31528585,
+    "callingCode": "+60"
+  },
+  {
+    "code": "MV",
+    "title": "Maldives",
+    "created": "1965-01-01",
+    "lifeExpectancy": 62.2,
+    "population": 515696,
+    "callingCode": "+960"
+  },
+  {
+    "code": "ML",
+    "title": "Mali",
+    "created": "1960-01-01",
+    "lifeExpectancy": 46.7,
+    "population": 19077690,
+    "callingCode": "+223"
+  },
+  {
+    "code": "MT",
+    "title": "Malta",
+    "created": "1964-01-01",
+    "lifeExpectancy": 77.9,
+    "population": 484630,
+    "callingCode": "+356"
+  },
+  {
+    "code": "MH",
+    "title": "Marshall Islands",
+    "created": "1990-01-01",
+    "lifeExpectancy": 65.5,
+    "population": 58413,
+    "callingCode": "+692"
+  },
+  {
+    "code": "MQ",
+    "title": "Martinique",
+    "created": null,
+    "lifeExpectancy": 78.3,
+    "population": 376480,
+    "callingCode": "+596"
+  },
+  {
+    "code": "MR",
+    "title": "Mauritania",
+    "created": "1960-01-01",
+    "lifeExpectancy": 50.8,
+    "population": 4403319,
+    "callingCode": "+222"
+  },
+  {
+    "code": "MU",
+    "title": "Mauritius",
+    "created": "1968-01-01",
+    "lifeExpectancy": 71,
+    "population": 1265303,
+    "callingCode": "+230"
+  },
+  {
+    "code": "YT",
+    "title": "Mayotte",
+    "created": null,
+    "lifeExpectancy": 59.5,
+    "population": 270372,
+    "callingCode": "+262"
+  },
+  {
+    "code": "MX",
+    "title": "Mexico",
+    "created": "1810-01-01",
+    "lifeExpectancy": 71.5,
+    "population": 126190788,
+    "callingCode": "+52"
+  },
+  {
+    "code": "FM",
+    "title": "Micronesia, Federated States of",
+    "created": "1990-01-01",
+    "lifeExpectancy": null,
+    "population": 112640,
+    "callingCode": "+691"
+  },
+  {
+    "code": "MD",
+    "title": "Moldova",
+    "created": "1991-01-01",
+    "lifeExpectancy": 64.5,
+    "population": 2706049,
+    "callingCode": "+373"
+  },
+  {
+    "code": "MC",
+    "title": "Monaco",
+    "created": "1861-01-01",
+    "lifeExpectancy": 78.8,
+    "population": 38682,
+    "callingCode": "+377"
+  },
+  {
+    "code": "MN",
+    "title": "Mongolia",
+    "created": "1921-01-01",
+    "lifeExpectancy": 67.3,
+    "population": 3170208,
+    "callingCode": "+976"
+  },
+  {
+    "code": "ME",
+    "title": "Montenegro",
+    "created": "2006-01-01",
+    "population": 631219,
+    "callingCode": null
+  },
+  {
+    "code": "MS",
+    "title": "Montserrat",
+    "created": null,
+    "lifeExpectancy": 78,
+    "population": 5900,
+    "callingCode": "+1664"
+  },
+  {
+    "code": "MA",
+    "title": "Morocco",
+    "created": "1956-01-01",
+    "lifeExpectancy": 69.1,
+    "population": 36029138,
+    "callingCode": "+212"
+  },
+  {
+    "code": "MZ",
+    "title": "Mozambique",
+    "created": "1975-01-01",
+    "lifeExpectancy": 37.5,
+    "population": 29495962,
+    "callingCode": "+258"
+  },
+  {
+    "code": "MM",
+    "title": "Myanmar",
+    "created": "1948-01-01",
+    "lifeExpectancy": 54.9,
+    "population": 53708395,
+    "callingCode": "+95"
+  },
+  {
+    "code": "NA",
+    "title": "Namibia",
+    "created": "1990-01-01",
+    "lifeExpectancy": 42.5,
+    "population": 2448255,
+    "callingCode": "+264"
+  },
+  {
+    "code": "NR",
+    "title": "Nauru",
+    "created": "1968-01-01",
+    "lifeExpectancy": 60.8,
+    "population": 12704,
+    "callingCode": "+674"
+  },
+  {
+    "code": "NP",
+    "title": "Nepal",
+    "created": "1769-01-01",
+    "lifeExpectancy": 57.8,
+    "population": 28087871,
+    "callingCode": "+977"
+  },
+  {
+    "code": "NL",
+    "title": "Netherlands",
+    "created": "1581-01-01",
+    "lifeExpectancy": 78.3,
+    "population": 17231624,
+    "callingCode": "+31"
+  },
+  {
+    "code": "AN",
+    "title": "Netherlands Antilles",
+    "created": null,
+    "lifeExpectancy": 74.7,
+    "population": 227049,
+    "callingCode": null
+  },
+  {
+    "code": "NC",
+    "title": "New Caledonia",
+    "created": null,
+    "lifeExpectancy": 72.8,
+    "population": 284060,
+    "callingCode": "+687"
+  },
+  {
+    "code": "NZ",
+    "title": "New Zealand",
+    "created": "1907-01-01",
+    "lifeExpectancy": 77.8,
+    "population": 4841000,
+    "callingCode": "+64"
+  },
+  {
+    "code": "NI",
+    "title": "Nicaragua",
+    "created": "1838-01-01",
+    "lifeExpectancy": 68.7,
+    "population": 6465513,
+    "callingCode": "+505"
+  },
+  {
+    "code": "NE",
+    "title": "Niger",
+    "created": "1960-01-01",
+    "lifeExpectancy": 41.3,
+    "population": 22442948,
+    "callingCode": "+227"
+  },
+  {
+    "code": "NG",
+    "title": "Nigeria",
+    "created": "1960-01-01",
+    "lifeExpectancy": 51.6,
+    "population": 195874740,
+    "callingCode": "+234"
+  },
+  {
+    "code": "NU",
+    "title": "Niue",
+    "created": null,
+    "lifeExpectancy": null,
+    "population": 1624,
+    "callingCode": "+683"
+  },
+  {
+    "code": "NF",
+    "title": "Norfolk Island",
+    "created": null,
+    "lifeExpectancy": null,
+    "population": 2169,
+    "callingCode": "+672"
+  },
+  {
+    "code": "KP",
+    "title": "North Korea",
+    "created": "1948-01-01",
+    "lifeExpectancy": 70.7,
+    "population": 25549819,
+    "callingCode": null
+  },
+  {
+    "code": "GB",
+    "title": "Northern Ireland",
+    "created": null,
+    "lifeExpectancy": null,
+    "population": 1885400,
+    "callingCode": null
+  },
+  {
+    "code": "MP",
+    "title": "Northern Mariana Islands",
+    "created": null,
+    "lifeExpectancy": 75.5,
+    "population": 56882,
+    "callingCode": "+1670"
+  },
+  {
+    "code": "NO",
+    "title": "Norway",
+    "created": "1905-01-01",
+    "lifeExpectancy": 78.7,
+    "population": 5311916,
+    "callingCode": "+47"
+  },
+  {
+    "code": "OM",
+    "title": "Oman",
+    "created": "1951-01-01",
+    "lifeExpectancy": 71.8,
+    "population": 4829483,
+    "callingCode": "+968"
+  },
+  {
+    "code": "PK",
+    "title": "Pakistan",
+    "created": "1947-01-01",
+    "lifeExpectancy": 61.1,
+    "population": 212215030,
+    "callingCode": "+92"
+  },
+  {
+    "code": "PW",
+    "title": "Palau",
+    "created": "1994-01-01",
+    "lifeExpectancy": 68.6,
+    "population": 17907,
+    "callingCode": "+680"
+  },
+  {
+    "code": "PS",
+    "title": "Palestine",
+    "created": null,
+    "lifeExpectancy": 71.4,
+    "population": 4569087,
+    "callingCode": null
+  },
+  {
+    "code": "PA",
+    "title": "Panama",
+    "created": "1903-01-01",
+    "lifeExpectancy": 75.5,
+    "population": 4176873,
+    "callingCode": "+507"
+  },
+  {
+    "code": "PG",
+    "title": "Papua New Guinea",
+    "created": "1975-01-01",
+    "lifeExpectancy": 63.1,
+    "population": 8606316,
+    "callingCode": "+675"
+  },
+  {
+    "code": "PY",
+    "title": "Paraguay",
+    "created": "1811-01-01",
+    "lifeExpectancy": 73.7,
+    "population": 6956071,
+    "callingCode": "+595"
+  },
+  {
+    "code": "PE",
+    "title": "Peru",
+    "created": "1821-01-01",
+    "lifeExpectancy": 70,
+    "population": 31989256,
+    "callingCode": "+51"
+  },
+  {
+    "code": "PH",
+    "title": "Philippines",
+    "created": "1946-01-01",
+    "lifeExpectancy": 67.5,
+    "population": 106651922,
+    "callingCode": "+63"
+  },
+  {
+    "code": "PN",
+    "title": "Pitcairn",
+    "created": null,
+    "lifeExpectancy": null,
+    "population": 67,
+    "callingCode": null
+  },
+  {
+    "code": "PL",
+    "title": "Poland",
+    "created": "1918-01-01",
+    "lifeExpectancy": 73.2,
+    "population": 37974750,
+    "callingCode": "+48"
+  },
+  {
+    "code": "PT",
+    "title": "Portugal",
+    "created": "1143-01-01",
+    "lifeExpectancy": 75.8,
+    "population": 10283822,
+    "callingCode": "+351"
+  },
+  {
+    "code": "PR",
+    "title": "Puerto Rico",
+    "created": null,
+    "lifeExpectancy": 75.6,
+    "population": 3195153,
+    "callingCode": "+1939"
+  },
+  {
+    "code": "QA",
+    "title": "Qatar",
+    "created": "1971-01-01",
+    "lifeExpectancy": 72.4,
+    "population": 2781677,
+    "callingCode": "+974"
+  },
+  {
+    "code": "RE",
+    "title": "Reunion",
+    "created": null,
+    "lifeExpectancy": 72.7,
+    "population": 859959,
+    "callingCode": "+262"
+  },
+  {
+    "code": "RO",
+    "title": "Romania",
+    "created": "1878-01-01",
+    "lifeExpectancy": 69.9,
+    "population": 19466145,
+    "callingCode": "+40"
+  },
+  {
+    "code": "RU",
+    "title": "Russian Federation",
+    "created": "1991-01-01",
+    "lifeExpectancy": 67.2,
+    "population": 144478050,
+    "callingCode": "+7"
+  },
+  {
+    "code": "RW",
+    "title": "Rwanda",
+    "created": "1962-01-01",
+    "lifeExpectancy": 39.3,
+    "population": 12301939,
+    "callingCode": "+250"
+  },
+  {
+    "code": "SH",
+    "title": "Saint Helena",
+    "created": null,
+    "lifeExpectancy": 76.8,
+    "population": 6600,
+    "callingCode": "+290"
+  },
+  {
+    "code": "KN",
+    "title": "Saint Kitts and Nevis",
+    "created": "1983-01-01",
+    "lifeExpectancy": 70.7,
+    "population": 52441,
+    "callingCode": "+1869"
+  },
+  {
+    "code": "LC",
+    "title": "Saint Lucia",
+    "created": "1979-01-01",
+    "lifeExpectancy": 72.3,
+    "population": 181889,
+    "callingCode": "+1758"
+  },
+  {
+    "code": "PM",
+    "title": "Saint Pierre and Miquelon",
+    "created": null,
+    "lifeExpectancy": 77.6,
+    "population": 5888,
+    "callingCode": "+508"
+  },
+  {
+    "code": "VC",
+    "title": "Saint Vincent and the Grenadines",
+    "created": "1979-01-01",
+    "lifeExpectancy": 72.3,
+    "population": 110210,
+    "callingCode": "+1784"
+  },
+  {
+    "code": "WS",
+    "title": "Samoa",
+    "created": "1962-01-01",
+    "lifeExpectancy": 69.2,
+    "population": 196130,
+    "callingCode": "+685"
+  },
+  {
+    "code": "SM",
+    "title": "San Marino",
+    "created": "885-01-01",
+    "lifeExpectancy": 81.1,
+    "population": 33785,
+    "callingCode": "+378"
+  },
+  {
+    "code": "ST",
+    "title": "Sao Tome and Principe",
+    "created": "1975-01-01",
+    "lifeExpectancy": 65.3,
+    "population": 211028,
+    "callingCode": "+239"
+  },
+  {
+    "code": "SA",
+    "title": "Saudi Arabia",
+    "created": "1932-01-01",
+    "lifeExpectancy": 67.8,
+    "population": 33699947,
+    "callingCode": "+966"
+  },
+  {
+    "code": "SN",
+    "title": "Senegal",
+    "created": "1960-01-01",
+    "lifeExpectancy": 62.2,
+    "population": 15854360,
+    "callingCode": "+221"
+  },
+  {
+    "code": "RS",
+    "title": "Serbia",
+    "created": "2006-01-01",
+    "lifeExpectancy": 76.05,
+    "population": 6963764,
+    "callingCode": "+381"
+  },
+  {
+    "code": "SC",
+    "title": "Seychelles",
+    "created": "1976-01-01",
+    "lifeExpectancy": 70.4,
+    "population": 96762,
+    "callingCode": "+248"
+  },
+  {
+    "code": "SL",
+    "title": "Sierra Leone",
+    "created": "1961-01-01",
+    "lifeExpectancy": 45.3,
+    "population": 7650154,
+    "callingCode": "+232"
+  },
+  {
+    "code": "SG",
+    "title": "Singapore",
+    "created": "1965-01-01",
+    "lifeExpectancy": 80.1,
+    "population": 5638676,
+    "callingCode": "+65"
+  },
+  {
+    "code": "SK",
+    "title": "Slovakia",
+    "created": "1993-01-01",
+    "lifeExpectancy": 73.7,
+    "population": 5446771,
+    "callingCode": "+421"
+  },
+  {
+    "code": "SI",
+    "title": "Slovenia",
+    "created": "1991-01-01",
+    "lifeExpectancy": 74.9,
+    "population": 2073894,
+    "callingCode": "+386"
+  },
+  {
+    "code": "SB",
+    "title": "Solomon Islands",
+    "created": "1978-01-01",
+    "lifeExpectancy": 71.3,
+    "population": 652858,
+    "callingCode": "+677"
+  },
+  {
+    "code": "SO",
+    "title": "Somalia",
+    "created": "1960-01-01",
+    "lifeExpectancy": 46.2,
+    "population": 15008154,
+    "callingCode": "+252"
+  },
+  {
+    "code": "ZA",
+    "title": "South Africa",
+    "created": "1910-01-01",
+    "lifeExpectancy": 51.1,
+    "population": 57779622,
+    "callingCode": "+27"
+  },
+  {
+    "code": "GS",
+    "title": "South Georgia and the South Sandwich Islands",
+    "created": null,
+    "lifeExpectancy": null,
+    "population": 30,
+    "callingCode": "+500"
+  },
+  {
+    "code": "KR",
+    "title": "South Korea",
+    "created": "1948-01-01",
+    "lifeExpectancy": 74.4,
+    "population": 51606633,
+    "callingCode": null
+  },
+  {
+    "code": "SS",
+    "title": "South Sudan",
+    "created": "2011-01-01",
+    "lifeExpectancy": null,
+    "population": 10975920,
+    "callingCode": "+211"
+  },
+  {
+    "code": "ES",
+    "title": "Spain",
+    "created": "1492-01-01",
+    "lifeExpectancy": 78.8,
+    "population": 46796540,
+    "callingCode": "+34"
+  },
+  {
+    "code": "LK",
+    "title": "Sri Lanka",
+    "created": null,
+    "callingCode": null
+  },
+  {
+    "code": "SD",
+    "title": "Sudan",
+    "created": "1956-01-01",
+    "lifeExpectancy": 56.6,
+    "population": 41801533,
+    "callingCode": "+249"
+  },
+  {
+    "code": "SR",
+    "title": "Suriname",
+    "created": "1975-01-01",
+    "lifeExpectancy": 71.4,
+    "population": 575991,
+    "callingCode": "+597"
+  },
+  {
+    "code": "SJ",
+    "title": "Svalbard and Jan Mayen",
+    "created": null,
+    "lifeExpectancy": null,
+    "population": 2572,
+    "callingCode": null
+  },
+  {
+    "code": "SZ",
+    "title": "Swaziland",
+    "created": "1968-01-01",
+    "lifeExpectancy": 40.4,
+    "population": 1136191,
+    "callingCode": "+268"
+  },
+  {
+    "code": "SE",
+    "title": "Sweden",
+    "created": "836-01-01",
+    "lifeExpectancy": 79.6,
+    "population": 10175214,
+    "callingCode": "+46"
+  },
+  {
+    "code": "CH",
+    "title": "Switzerland",
+    "created": "1499-01-01",
+    "lifeExpectancy": 79.6,
+    "population": 8513227,
+    "callingCode": "+41"
+  },
+  {
+    "code": "SY",
+    "title": "Syria",
+    "created": "1941-01-01",
+    "lifeExpectancy": 68.5,
+    "population": 16906283,
+    "callingCode": "+963"
+  },
+  {
+    "code": "TJ",
+    "title": "Tajikistan",
+    "created": "1991-01-01",
+    "lifeExpectancy": 64.1,
+    "population": 9100837,
+    "callingCode": "+992"
+  },
+  {
+    "code": "TZ",
+    "title": "Tanzania",
+    "created": "1961-01-01",
+    "lifeExpectancy": 52.3,
+    "population": 56318348,
+    "callingCode": "+255"
+  },
+  {
+    "code": "TH",
+    "title": "Thailand",
+    "created": "1350-01-01",
+    "lifeExpectancy": 68.6,
+    "population": 69428524,
+    "callingCode": "+66"
+  },
+  {
+    "code": "CD",
+    "title": "The Democratic Republic of Congo",
+    "created": "1960-01-01",
+    "lifeExpectancy": null,
+    "population": 84068091,
+    "callingCode": "+243"
+  },
+  {
+    "code": "TL",
+    "title": "Timor-Leste",
+    "created": null,
+    "callingCode": null
+  },
+  {
+    "code": "TG",
+    "title": "Togo",
+    "created": "1960-01-01",
+    "lifeExpectancy": 54.7,
+    "population": 7889094,
+    "callingCode": "+228"
+  },
+  {
+    "code": "TK",
+    "title": "Tokelau",
+    "created": null,
+    "lifeExpectancy": null,
+    "population": 1411,
+    "callingCode": "+690"
+  },
+  {
+    "code": "TO",
+    "title": "Tonga",
+    "created": "1970-01-01",
+    "lifeExpectancy": 67.9,
+    "population": 103197,
+    "callingCode": "+676"
+  },
+  {
+    "code": "TT",
+    "title": "Trinidad and Tobago",
+    "created": "1962-01-01",
+    "lifeExpectancy": 68,
+    "population": 1389858,
+    "callingCode": "+1868"
+  },
+  {
+    "code": "TN",
+    "title": "Tunisia",
+    "created": "1956-01-01",
+    "lifeExpectancy": 73.7,
+    "population": 11565204,
+    "callingCode": "+216"
+  },
+  {
+    "code": "TR",
+    "title": "Turkey",
+    "created": "1923-01-01",
+    "lifeExpectancy": 71,
+    "population": 82319724,
+    "callingCode": "+90"
+  },
+  {
+    "code": "TM",
+    "title": "Turkmenistan",
+    "created": "1991-01-01",
+    "lifeExpectancy": 60.9,
+    "population": 5850908,
+    "callingCode": "+993"
+  },
+  {
+    "code": "TC",
+    "title": "Turks and Caicos Islands",
+    "created": null,
+    "lifeExpectancy": 73.3,
+    "population": 37665,
+    "callingCode": "+1649"
+  },
+  {
+    "code": "TV",
+    "title": "Tuvalu",
+    "created": "1978-01-01",
+    "lifeExpectancy": 66.3,
+    "population": 11508,
+    "callingCode": "+688"
+  },
+  {
+    "code": "UG",
+    "title": "Uganda",
+    "created": "1962-01-01",
+    "lifeExpectancy": 42.9,
+    "population": 42723139,
+    "callingCode": "+256"
+  },
+  {
+    "code": "UA",
+    "title": "Ukraine",
+    "created": "1991-01-01",
+    "lifeExpectancy": 66,
+    "population": 44622516,
+    "callingCode": "+380"
+  },
+  {
+    "code": "AE",
+    "title": "United Arab Emirates",
+    "created": "1971-01-01",
+    "lifeExpectancy": 74.1,
+    "population": 9630959,
+    "callingCode": "+971"
+  },
+  {
+    "code": "GB",
+    "title": "United Kingdom",
+    "created": "1066-01-01",
+    "lifeExpectancy": 77.7,
+    "population": 66460344,
+    "callingCode": "+44"
+  },
+  {
+    "code": "US",
+    "title": "United States",
+    "created": "1776-01-01",
+    "lifeExpectancy": 77.1,
+    "population": 326687501,
+    "callingCode": "+1"
+  },
+  {
+    "code": "UM",
+    "title": "United States Minor Outlying Islands",
+    "created": null,
+    "lifeExpectancy": null,
+    "population": 300,
+    "callingCode": null
+  },
+  {
+    "code": "UY",
+    "title": "Uruguay",
+    "created": "1828-01-01",
+    "lifeExpectancy": 75.2,
+    "population": 3449299,
+    "callingCode": "+598"
+  },
+  {
+    "code": "UZ",
+    "title": "Uzbekistan",
+    "created": "1991-01-01",
+    "lifeExpectancy": 63.7,
+    "population": 32955400,
+    "callingCode": "+998"
+  },
+  {
+    "code": "VU",
+    "title": "Vanuatu",
+    "created": "1980-01-01",
+    "lifeExpectancy": 60.6,
+    "population": 292680,
+    "callingCode": "+678"
+  },
+  {
+    "code": "VE",
+    "title": "Venezuela",
+    "created": "1811-01-01",
+    "lifeExpectancy": 73.1,
+    "population": 28870195,
+    "callingCode": "+58"
+  },
+  {
+    "code": "VN",
+    "title": "Vietnam",
+    "created": "1945-01-01",
+    "lifeExpectancy": 69.3,
+    "population": 95540395,
+    "callingCode": "+84"
+  },
+  {
+    "code": "VG",
+    "title": "Virgin Islands, British",
+    "created": null,
+    "lifeExpectancy": null,
+    "population": 29802,
+    "callingCode": null
+  },
+  {
+    "code": "VI",
+    "title": "Virgin Islands, U.S.",
+    "created": null,
+    "lifeExpectancy": null,
+    "population": 106977,
+    "callingCode": null
+  },
+  {
+    "code": "WF",
+    "title": "Wallis and Futuna",
+    "created": null,
+    "lifeExpectancy": null,
+    "population": 15289,
+    "callingCode": "+681"
+  },
+  {
+    "code": "EH",
+    "title": "Western Sahara",
+    "created": null,
+    "lifeExpectancy": 49.8,
+    "population": 652271,
+    "callingCode": null
+  },
+  {
+    "code": "YE",
+    "title": "Yemen",
+    "created": "1918-01-01",
+    "lifeExpectancy": 59.8,
+    "population": 28498687,
+    "callingCode": "+967"
+  },
+  {
+    "code": "ZM",
+    "title": "Zambia",
+    "created": "1964-01-01",
+    "lifeExpectancy": 37.2,
+    "population": 17351822,
+    "callingCode": "+260"
+  },
+  {
+    "code": "ZW",
+    "title": "Zimbabwe",
+    "created": "1980-01-01",
+    "lifeExpectancy": 37.8,
+    "population": 14439018,
+    "callingCode": "+263"
+  }
+]

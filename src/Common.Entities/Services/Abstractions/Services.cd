@@ -1,0 +1,89 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ClassDiagram MajorVersion="1" MinorVersion="1" MembersFormat="NameAndType">
+  <Interface Name="Regira.Entities.Abstractions.IEntityService&lt;TEntity, TKey&gt;">
+    <Position X="16.75" Y="3" Width="2.25" />
+    <InheritanceLine Type="Regira.Entities.Abstractions.IEntityReadService&lt;TEntity, TKey&gt;" ManuallyRouted="true" FixedFromPoint="true" FixedToPoint="true">
+      <Path>
+        <Point X="21.5" Y="1.562" />
+        <Point X="20.177" Y="1.562" />
+        <Point X="20.177" Y="3.438" />
+        <Point X="19" Y="3.438" />
+      </Path>
+    </InheritanceLine>
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
+      <FileName>Abstractions\IEntityService.cs</FileName>
+    </TypeIdentifier>
+  </Interface>
+  <Interface Name="Regira.Entities.Abstractions.IEntityService&lt;TEntity, TKey, TSearchObject&gt;">
+    <Position X="20" Y="6" Width="3.25" />
+    <InheritanceLine Type="Regira.Entities.Abstractions.IEntityService&lt;TEntity, TKey&gt;" FixedFromPoint="true">
+      <Path>
+        <Point X="19" Y="3.75" />
+        <Point X="19.375" Y="3.75" />
+        <Point X="19.375" Y="6.563" />
+        <Point X="20" Y="6.563" />
+      </Path>
+    </InheritanceLine>
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
+      <FileName>Abstractions\IEntityService.cs</FileName>
+    </TypeIdentifier>
+  </Interface>
+  <Interface Name="Regira.Entities.Abstractions.IEntityService&lt;TEntity, TKey, TSearchObject, TSortBy, TIncludes&gt;">
+    <Position X="20.25" Y="8" Width="4.5" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
+      <FileName>Abstractions\IEntityService.cs</FileName>
+    </TypeIdentifier>
+  </Interface>
+  <Interface Name="Regira.Entities.Abstractions.IEntityService&lt;TEntity&gt;">
+    <Position X="16.75" Y="5" Width="2" />
+    <InheritanceLine Type="Regira.Entities.Abstractions.IEntityService&lt;TEntity, TKey&gt;" FixedFromPoint="true">
+      <Path>
+        <Point X="17.75" Y="4.127" />
+        <Point X="17.75" Y="5" />
+      </Path>
+    </InheritanceLine>
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
+      <FileName>Abstractions\IEntityService.cs</FileName>
+    </TypeIdentifier>
+  </Interface>
+  <Interface Name="Regira.Entities.Abstractions.IEntityService&lt;TEntity, TSearchObject, TSortBy, TIncludes&gt;">
+    <Position X="18.75" Y="9.75" Width="4" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
+      <FileName>Abstractions\IEntityService.cs</FileName>
+    </TypeIdentifier>
+  </Interface>
+  <Interface Name="Regira.Entities.Abstractions.IEntityReadService&lt;TEntity, TKey&gt;">
+    <Position X="21.5" Y="0.75" Width="2.5" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAABAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAI=</HashCode>
+      <FileName>Abstractions\IEntityReadService.cs</FileName>
+    </TypeIdentifier>
+  </Interface>
+  <Interface Name="Regira.Entities.Abstractions.IEntityReadService&lt;TEntity, TKey, TSearchObject&gt;" Collapsed="true">
+    <Position X="21" Y="3" Width="3.5" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAI=</HashCode>
+      <FileName>Abstractions\IEntityReadService.cs</FileName>
+    </TypeIdentifier>
+  </Interface>
+  <Interface Name="Regira.Entities.Abstractions.IEntityReadService&lt;TEntity, TKey, TSearchObject, TSortBy, TIncludes&gt;" Collapsed="true">
+    <Position X="20.75" Y="4.5" Width="4.75" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAI=</HashCode>
+      <FileName>Abstractions\IEntityReadService.cs</FileName>
+    </TypeIdentifier>
+  </Interface>
+  <Interface Name="Regira.Entities.Abstractions.IEntityWriteService&lt;TEntity, TKey&gt;">
+    <Position X="16.5" Y="0.5" Width="2.75" />
+    <TypeIdentifier>
+      <HashCode>gAIAIIAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
+      <FileName>Abstractions\IEntityWriteService.cs</FileName>
+    </TypeIdentifier>
+  </Interface>
+  <Font Name="Segoe UI" Size="9" />
+</ClassDiagram>

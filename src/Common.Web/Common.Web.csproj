@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Web</RootNamespace>
+    <PackageId>Regira.Web</PackageId>
+    <AssemblyName>Regira.Web</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.0.0</Version>
+    <Description>Common web utilities and ASP.NET Core extensions for Regira.</Description>
+    <PackageTags>regira;web;aspnetcore;mvc</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common\Common.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <!-- MSBuild targets — auto-imported into consuming builds via NuGet buildTransitive -->
+  <ItemGroup>
+    <None Include="build\Regira.Web.props" Pack="true" PackagePath="buildTransitive\" />
+    <None Include="build\Regira.Web.targets" Pack="true" PackagePath="buildTransitive\" />
+  </ItemGroup>
+  <!-- AI instruction files -->
+  <ItemGroup>
+    <None Include="ai\web.instructions.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\web.examples.md" Pack="true" PackagePath="ai\" />
+  </ItemGroup>
+</Project>

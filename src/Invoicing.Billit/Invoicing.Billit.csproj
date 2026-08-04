@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Invoicing.Billit</RootNamespace>
+    <PackageId>Regira.Invoicing.Billit</PackageId>
+    <AssemblyName>Regira.Invoicing.Billit</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.0.0</Version>
+    <Description>Billit API integration for invoicing in Regira.</Description>
+    <PackageTags>regira;invoicing;billit;api</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common.Invoicing\Common.Invoicing.csproj" />
+    <ProjectReference Include="..\Common.IO.Storage\Common.IO.Storage.csproj" />
+    <ProjectReference Include="..\Serializing.Newtonsoft\Serializing.Newtonsoft.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.10" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Office.Excel.NpoiMapper</RootNamespace>
+    <PackageId>Regira.Office.Excel.NpoiMapper</PackageId>
+    <AssemblyName>Regira.Office.Excel.NpoiMapper</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.0.0</Version>
+    <Description>Excel read/write support using NpoiMapper (NPOI) for Regira Office.</Description>
+    <PackageTags>regira;office;excel;npoi;npoiMapper</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.10" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Npoi.Mapper" Version="6.2.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- License required from v4 -->
+    <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Upgraded for vulnerabilities -->
+    <PackageReference Include="System.Drawing.Common" Version="10.0.10" />
+    <PackageReference Include="System.Formats.Asn1" Version="10.0.10" />
+  </ItemGroup>
+</Project>

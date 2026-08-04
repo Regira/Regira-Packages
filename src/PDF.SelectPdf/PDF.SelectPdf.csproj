@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Office.PDF.SelectPdf</RootNamespace>
+    <PackageId>Regira.Office.PDF.SelectPdf</PackageId>
+    <AssemblyName>Regira.Office.PDF.SelectPdf</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.0.0</Version>
+    <Description>HTML-to-PDF conversion using SelectPdf for Regira Office.</Description>
+    <PackageTags>regira;office;pdf;selectpdf;html-to-pdf</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Select.HtmlToPdf.NetCore" Version="26.3.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Upgraded for vulnerabilities -->
+    <PackageReference Include="System.Drawing.Common" Version="10.0.10" />
+  </ItemGroup>
+</Project>

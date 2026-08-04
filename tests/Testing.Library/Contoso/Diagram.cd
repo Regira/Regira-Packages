@@ -1,0 +1,131 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ClassDiagram MajorVersion="1" MinorVersion="1" MembersFormat="NameAndType">
+  <Class Name="Testing.Library.Contoso.Course">
+    <Position X="4.75" Y="10.25" Width="4.25" />
+    <AssociationLine Name="Enrollments" Type="Testing.Library.Contoso.Enrollment" ManuallyRouted="true" FixedFromPoint="true" FixedToPoint="true">
+      <Path>
+        <Point X="4.75" Y="11.188" />
+        <Point X="3.916" Y="11.188" />
+        <Point X="3.916" Y="8.875" />
+        <Point X="2.75" Y="8.875" />
+      </Path>
+    </AssociationLine>
+    <AssociationLine Name="Instructors" Type="Testing.Library.Contoso.Instructor" FixedToPoint="true">
+      <Path>
+        <Point X="6.062" Y="10.25" />
+        <Point X="6.062" Y="7.733" />
+      </Path>
+    </AssociationLine>
+    <TypeIdentifier>
+      <HashCode>gAASAABAAIAEgEEAAAAAAAAAEAAAACAAAAAAAAAAAAA=</HashCode>
+      <FileName>Contoso\Course.cs</FileName>
+    </TypeIdentifier>
+    <ShowAsCollectionAssociation>
+      <Property Name="Attachments" />
+      <Property Name="Enrollments" />
+      <Property Name="Instructors" />
+    </ShowAsCollectionAssociation>
+    <Lollipop Position="0.2" />
+  </Class>
+  <Class Name="Testing.Library.Contoso.CourseAttachment">
+    <Position X="1" Y="10.75" Width="1.75" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
+      <FileName>Contoso\Course.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="Testing.Library.Contoso.Department">
+    <Position X="10.25" Y="1.25" Width="2.25" />
+    <TypeIdentifier>
+      <HashCode>AAASAAAAAAAAAEAAAAAAAAAAAAEAAAQAAAAgIHAAgAA=</HashCode>
+      <FileName>Contoso\Department.cs</FileName>
+    </TypeIdentifier>
+    <ShowAsCollectionAssociation>
+      <Property Name="Courses" />
+    </ShowAsCollectionAssociation>
+    <Lollipop Position="0.2" />
+  </Class>
+  <Class Name="Testing.Library.Contoso.Instructor">
+    <Position X="4.75" Y="6.5" Width="2.75" />
+    <AssociationLine Name="OfficeAssignment" Type="Testing.Library.Contoso.OfficeAssignment" FixedToPoint="true">
+      <Path>
+        <Point X="7.5" Y="7.313" />
+        <Point X="8.75" Y="7.313" />
+      </Path>
+    </AssociationLine>
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAAAAAACAAAAAAAAACAAAAAAAAAAABAAAAA=</HashCode>
+      <FileName>Contoso\Instructor.cs</FileName>
+    </TypeIdentifier>
+    <ShowAsAssociation>
+      <Property Name="OfficeAssignment" />
+    </ShowAsAssociation>
+    <ShowAsCollectionAssociation>
+      <Property Name="Courses" />
+    </ShowAsCollectionAssociation>
+    <Lollipop Position="0.2" />
+  </Class>
+  <Class Name="Testing.Library.Contoso.OfficeAssignment">
+    <Position X="8.75" Y="6.25" Width="2.25" />
+    <TypeIdentifier>
+      <HashCode>AQACAAAAAAAAAAAAAAIAAAAAACAAAAAAAAQAAAAAAAA=</HashCode>
+      <FileName>Contoso\OfficeAssignment.cs</FileName>
+    </TypeIdentifier>
+    <Lollipop Position="0.2" />
+  </Class>
+  <Class Name="Testing.Library.Contoso.Person">
+    <Position X="4" Y="1" Width="4.25" />
+    <AssociationLine Name="Subordinates" Type="Testing.Library.Contoso.Person" FixedFromPoint="true" FixedToPoint="true">
+      <Path>
+        <Point X="8.25" Y="4.188" />
+        <Point X="8.625" Y="4.188" />
+        <Point X="8.625" Y="5.363" />
+        <Point X="7.375" Y="5.363" />
+        <Point X="7.375" Y="4.988" />
+      </Path>
+    </AssociationLine>
+    <TypeIdentifier>
+      <HashCode>AAASIABAAiAkAEEAACAAAAAAAAAAgAEAAQAAICAACAg=</HashCode>
+      <FileName>Contoso\Person.cs</FileName>
+    </TypeIdentifier>
+    <ShowAsCollectionAssociation>
+      <Property Name="Attachments" />
+      <Property Name="Departments" />
+      <Property Name="Subordinates" />
+    </ShowAsCollectionAssociation>
+    <Lollipop Position="0.2" />
+  </Class>
+  <Class Name="Testing.Library.Contoso.PersonAttachment">
+    <Position X="0.5" Y="1.25" Width="1.75" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
+      <FileName>Contoso\Person.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="Testing.Library.Contoso.Student">
+    <Position X="0.5" Y="4.5" Width="2.75" />
+    <InheritanceLine Type="Testing.Library.Contoso.Person" FixedFromPoint="true" FixedToPoint="true">
+      <Path>
+        <Point X="4" Y="3.188" />
+        <Point X="2" Y="3.188" />
+        <Point X="2" Y="4.5" />
+      </Path>
+    </InheritanceLine>
+    <TypeIdentifier>
+      <HashCode>AAACAAAAAAAAAAAAAAAAAAAAAAAAACAAAAAAAAAAAAA=</HashCode>
+      <FileName>Contoso\Student.cs</FileName>
+    </TypeIdentifier>
+    <ShowAsCollectionAssociation>
+      <Property Name="Enrollments" />
+    </ShowAsCollectionAssociation>
+  </Class>
+  <Class Name="Testing.Library.Contoso.Enrollment">
+    <Position X="1.25" Y="7.75" Width="1.5" />
+    <TypeIdentifier>
+      <HashCode>AAAGAAAAQAAAAAAAAIAAAAAAAAAAAAAAAAAAAAECAAA=</HashCode>
+      <FileName>Contoso\Enrollment.cs</FileName>
+    </TypeIdentifier>
+    <Lollipop Position="0.2" />
+  </Class>
+  <Font Name="Segoe UI" Size="9" />
+</ClassDiagram>

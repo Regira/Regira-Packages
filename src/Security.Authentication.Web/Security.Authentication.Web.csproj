@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Security.Authentication.Web</RootNamespace>
+    <PackageId>Regira.Security.Authentication.Web</PackageId>
+    <AssemblyName>Regira.Security.Authentication.Web</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.0.0</Version>
+    <Description>ASP.NET Core authentication middleware and OpenAPI integration for Regira.</Description>
+    <PackageTags>regira;security;authentication;web;aspnetcore;openapi</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
+    <ProjectReference Include="..\Common.Web\Common.Web.csproj" />
+    <ProjectReference Include="..\Security.Authentication\Security.Authentication.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="$(TargetFramework) == 'net10.0'">
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
+    <!-- AspNetCore.OpenApi declares Microsoft.OpenApi 2.0.0, which carries GHSA-v5pm-xwqc-g5wc. Float it to
+         the 2.x the rest of the solution already runs on: projects that also reference Swashbuckle resolve
+         2.11.0 and serve the document fine against this same AspNetCore.OpenApi, so the override is proven
+         here rather than assumed. Staying on 2.x keeps the version the framework package expects.
+         3.x is blocked: AspNetCore.OpenApi 10.0.10's XmlCommentGenerator emits assignments to
+         IOpenApiMediaType.Example, which is read-only in Microsoft.OpenApi 3.x (CS0200). -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.11.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="ai\authentication.web.card.md" Pack="true" PackagePath="ai\" />
+  </ItemGroup>
+</Project>

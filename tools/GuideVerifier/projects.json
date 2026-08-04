@@ -1,0 +1,16 @@
+{
+  "//": "src projects the generated snippet-compilation project references (relative to the repo root). Start with the Entities family; add more as their guides are cleaned up for compilation.",
+  "projects": [
+    "src/Common.Entities/Common.Entities.csproj",
+    "src/Entities.EFcore/Entities.EFcore.csproj",
+    "src/Entities.DependencyInjection/Entities.DependencyInjection.csproj",
+    "src/Entities.Web/Entities.Web.csproj"
+  ],
+  "//guides": "ai folders scanned for ```csharp blocks. Restricted to the projects above so failures map to a referenced assembly.",
+  "guideDirs": [
+    "src/Common.Entities/ai",
+    "src/Entities.EFcore/ai",
+    "src/Entities.DependencyInjection/ai",
+    "src/Entities.Web/ai"
+  ]
+}

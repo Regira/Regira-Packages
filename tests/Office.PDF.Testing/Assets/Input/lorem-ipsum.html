@@ -1,0 +1,97 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Print template TEST</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: calc(21.0cm - 2cm);
+            height: calc(29.7cm - 2cm);
+        }
+
+        .page {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        header {
+            /*page-break-inside: avoid;*/
+        }
+
+            header img.logo {
+                float: left;
+            }
+
+            header h1 {
+                float: right;
+            }
+
+        main {
+            clear: both;
+        }
+
+        footer {
+            /*page-break-inside: avoid;*/
+            background-color: pink;
+        }
+
+        table {
+            page-break-inside: auto;
+        }
+
+            table tr {
+                page-break-inside: avoid;
+                /*page-break-after: auto;*/
+            }
+
+            table td, table th {
+                text-align: left;
+                vertical-align: top;
+            }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <header>
+            <img src="{logo}" class="logo" />
+            <h1>{title}</h1>
+        </header>
+        <main>
+            <h2>MAIN</h2>
+
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nr</th>
+                        <th>Title</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!--{{lijn}}-->
+                    <tr>
+                        <td width="10%">{rowNr}.</td>
+                        <td width="20%">{title}</td>
+                        <td width="70%">
+                            Lorem ipsum dolor sit amet, consectetur adipiscing elit. Mauris mattis lacusut magna bibendum pellentesque. Fusce commodo sagittis nunc nec dignissim. Nullam nec est vitae nibh congue bibendum vel eget neque. Nunc purus nunc, pulvinar sit amet ligula ut, dapibus vehicula purus. Nunc consequat elit id maximus laoreet. Etiam ultrices luctus ligula quis consequat. Phasellus congue orci dolor, a pretium est tincidunt id. Quisque tincidunt condimentum facilisis. Curabitur lobortis, mauris non blandit molestie, metus metus consectetur libero, ac venenatis magna urna sed mi. Suspendisse a urna sollicitudin nibh scelerisque laoreet at sit amet libero. Etiam fermentum turpis turpis. Fusce eleifend ante et libero euismod euismod. Donec dictum tincidunt ante, sed sollicitudin diam luctus at.
+                        </td>
+                    </tr>
+                    <!--{{/lijn}}-->
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <td colspan="3" align="right">Table footer</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </main>
+        <footer>
+            <h2>FOOTER</h2>
+            <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Mauris mattis lacus ut magna bibendum pellentesque. Fusce commodo sagittis nunc nec dignissim. Nullam nec est vitae nibh congue bibendum vel eget neque. Nunc purus nunc, pulvinar sit amet ligula ut, dapibus vehicula purus. Nunc consequat elit id maximus laoreet. Etiam ultrices luctus ligula quis consequat. Phasellus congue orci dolor, a pretium est tincidunt id. Quisque tincidunt condimentum facilisis. Curabitur lobortis, mauris non blandit molestie, metus metus consectetur libero, ac venenatis magna urna sed mi. Suspendisse a urna sollicitudin nibh scelerisque laoreet at sit amet libero. Etiam fermentum turpis turpis. Fusce eleifend ante et libero euismod euismod. Donec dictum tincidunt ante, sed sollicitudin diam luctus at.</p>
+        </footer>
+    </div>
+</body>
+</html>

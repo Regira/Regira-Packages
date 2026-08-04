@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Office</RootNamespace>
+    <PackageId>Regira.Office</PackageId>
+    <AssemblyName>Regira.Office</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.0.0</Version>
+    <Description>Abstractions for office document operations including PDF, Excel, Word, Mail, CSV, OCR, barcodes, and vCards.</Description>
+    <PackageTags>regira;office;pdf;excel;word;mail;csv;ocr;barcodes;vcards</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common.Media\Common.Media.csproj" />
+    <ProjectReference Include="..\Common\Common.csproj" />
+  </ItemGroup>
+  <!-- MSBuild targets — auto-imported into consuming builds via NuGet buildTransitive -->
+  <ItemGroup>
+    <None Include="build\Regira.Office.props" Pack="true" PackagePath="buildTransitive\" />
+    <None Include="build\Regira.Office.targets" Pack="true" PackagePath="buildTransitive\" />
+  </ItemGroup>
+  <!-- AI instruction files -->
+  <ItemGroup>
+    <None Include="ai\office.instructions.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\office.pdf.instructions.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\office.pdf.examples.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\office.excel.instructions.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\office.excel.examples.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\office.word.instructions.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\office.word.examples.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\office.mail.instructions.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\office.mail.examples.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\office.csv.instructions.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\office.csv.examples.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\office.barcodes.instructions.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\office.barcodes.examples.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\office.ocr.instructions.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\office.ocr.examples.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\office.vcards.instructions.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\office.vcards.examples.md" Pack="true" PackagePath="ai\" />
+  </ItemGroup>
+</Project>

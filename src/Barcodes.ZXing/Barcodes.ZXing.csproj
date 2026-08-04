@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Office.Barcodes.ZXing</RootNamespace>
+    <PackageId>Regira.Office.Barcodes.ZXing</PackageId>
+    <AssemblyName>Regira.Office.Barcodes.ZXing</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.0.0</Version>
+    <Description>Barcode reading and generation using ZXing.Net for Regira Office.</Description>
+    <PackageTags>regira;office;barcodes;zxing;qrcode</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
+    <ProjectReference Include="..\Drawing.SkiaSharp\Drawing.SkiaSharp.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ZXing.Net.Bindings.SkiaSharp" Version="0.16.22" />
+  </ItemGroup>
+</Project>

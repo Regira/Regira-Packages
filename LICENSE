@@ -1,0 +1,53 @@
+Copyright (c) 2026 Regira bv. All rights reserved.
+
+REGIRA COMMERCIAL LICENSE
+
+This software and associated documentation files (the "Software") are the
+proprietary property of Regira bv ("Regira"). Use of this Software is governed
+by the following terms.
+
+1. FREE TIER USE
+
+   Use of this Software without a license key is permitted subject to the
+   following limitations enforced at runtime:
+
+   - regira.entities: up to 5 simple entity registrations and 2 complex entity
+     registrations per application.
+   - regira.services: up to 5 requests per 60 seconds.
+
+   These limits are enforced automatically. No payment or registration is
+   required for free-tier use within these limits.
+
+2. COMMERCIAL USE
+
+   Use beyond the free-tier limits requires a valid LicenseKey issued by
+   Regira. Available license tiers include Trial (30 days), 1-Year, and
+   Lifetime. Contact Regira to obtain a commercial license.
+
+3. RESTRICTIONS
+
+   Except as expressly permitted above, you may not:
+
+   a. Copy, modify, merge, publish, distribute, sublicense, or sell copies of
+      the Software or any substantial portion thereof.
+   b. Remove or alter any proprietary notices, labels, or license keys embedded
+      in the Software.
+   c. Reverse-engineer, decompile, or disassemble the Software except to the
+      extent permitted by applicable law.
+   d. Use the Software to build a competing product or service.
+
+4. DISCLAIMER OF WARRANTIES
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
+   REGIRA BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+   ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+   WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+5. GOVERNING LAW
+
+   This license shall be governed by the laws of Belgium, without regard to
+   its conflict of law provisions.
+
+For licensing inquiries, contact: b2b@regira.com

@@ -1,0 +1,25 @@
+<Project>
+
+  <PropertyGroup>
+    <_RegiraSecurityFilesRoot>$(MSBuildThisFileDirectory)..\ai\</_RegiraSecurityFilesRoot>
+    <_RegiraBaseDir Condition="'$(SolutionDir)' != '' And '$(SolutionDir)' != '*Undefined*'">$(SolutionDir)</_RegiraBaseDir>
+    <_RegiraBaseDir Condition="'$(_RegiraBaseDir)' == ''">$(ProjectDir)</_RegiraBaseDir>
+  </PropertyGroup>
+
+  <!--
+    Copies Security AI instruction files into the consuming project's
+    .regira/instructions/ folder on first build.
+  -->
+  <Target Name="RegiraSecurityExtractAiFiles"
+          BeforeTargets="BeforeBuild"
+          Condition="!Exists('$(_RegiraBaseDir).regira\instructions\security.instructions.md')">
+
+    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" />
+
+    <Copy SourceFiles="$(_RegiraSecurityFilesRoot)security.instructions.md;$(_RegiraSecurityFilesRoot)security.examples.md"
+          DestinationFolder="$(_RegiraBaseDir).regira\instructions\"
+          SkipUnchangedFiles="true" />
+
+  </Target>
+
+</Project>

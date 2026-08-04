@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0-windows;net10.0-windows</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Office.PDF.PockyBum522</RootNamespace>
+    <PackageId>Regira.Office.PDF.PockyBum522</PackageId>
+    <AssemblyName>Regira.Office.PDF.PockyBum522</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.0.0</Version>
+    <Description>PDF printing on Windows using SimpleFreePdfPrinter for Regira Office.</Description>
+    <PackageTags>regira;office;pdf;printing;windows</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SimpleFreePdfPrinter" Version="1.7.48" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
+  </ItemGroup>
+</Project>

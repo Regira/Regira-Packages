@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.IO.Storage.GitHub</RootNamespace>
+    <PackageId>Regira.IO.Storage.GitHub</PackageId>
+    <AssemblyName>Regira.IO.Storage.GitHub</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.0.0</Version>
+    <Description>GitHub-based file storage implementation for Regira IO storage.</Description>
+    <PackageTags>regira;io;storage;github</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common.IO.Storage\Common.IO.Storage.csproj" />
+  </ItemGroup>
+</Project>

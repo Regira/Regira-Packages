@@ -1,0 +1,89 @@
+<Project>
+    <PropertyGroup>
+        <!-- Point dotnet test and VS Test Explorer at the shared run settings. -->
+        <VSTestRunSettingsFile>$(MSBuildThisFileDirectory)Regira.runsettings</VSTestRunSettingsFile>
+    </PropertyGroup>
+
+    <!--
+        Shared package metadata for all Regira NuGet packages.
+        Individual projects still own PackageId, Description, PackageTags and Version,
+        and opt into packing via <GeneratePackageOnBuild>.
+    -->
+    <PropertyGroup>
+        <Authors>Regira</Authors>
+        <Company>Regira bv</Company>
+        <Product>Regira packages</Product>
+        <Copyright>Copyright (c) 2026 Regira bv. All rights reserved.</Copyright>
+
+        <!-- Proprietary commercial license shipped in the package root. -->
+        <PackageLicenseFile>LICENSE</PackageLicenseFile>
+
+        <!-- PackageProjectUrl is set below: the per-library docs page when the project has a README
+             (GitHub Pages only serves folders containing one), the regira.com homepage otherwise. -->
+        <RepositoryUrl>https://github.com/Regira/Regira-Packages.git</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+
+        <!-- Symbols (snupkg) with portable PDBs. The source is public (source-available, commercial
+             license); SourceLink can be enabled once the public repo is live. -->
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <DebugType>portable</DebugType>
+        <DebugSymbols>true</DebugSymbols>
+
+        <!-- Deterministic/reproducible builds on CI. -->
+        <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+        <Deterministic>true</Deterministic>
+    </PropertyGroup>
+
+    <!-- Pack the root LICENSE file referenced by PackageLicenseFile above. -->
+    <ItemGroup>
+        <None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="\" Visible="false" Condition="Exists('$(MSBuildThisFileDirectory)LICENSE')" />
+    </ItemGroup>
+
+    <!-- Shared package icon (128x128 transparent PNG) shipped in the package root. -->
+    <PropertyGroup Condition="Exists('$(MSBuildThisFileDirectory)icon.png')">
+        <PackageIcon>icon.png</PackageIcon>
+    </PropertyGroup>
+    <ItemGroup>
+        <None Include="$(MSBuildThisFileDirectory)icon.png" Pack="true" PackagePath="\" Visible="false" Condition="Exists('$(MSBuildThisFileDirectory)icon.png')" />
+    </ItemGroup>
+
+    <!--
+        Package README, surfaced on the nuget.org package page.
+          - If the project folder has a README.md / Readme.md (these double as the GitHub Pages docs),
+            pack that file (renamed to README.md in the package root).
+          - Otherwise generate a minimal stub into obj/ at pack time. The stub is never written into the
+            repo tree, so the GitHub Pages build is unaffected.
+    -->
+    <PropertyGroup>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <RegiraLocalReadme Condition="Exists('$(MSBuildProjectDirectory)\README.md')">$(MSBuildProjectDirectory)\README.md</RegiraLocalReadme>
+        <RegiraLocalReadme Condition="'$(RegiraLocalReadme)' == '' and Exists('$(MSBuildProjectDirectory)\Readme.md')">$(MSBuildProjectDirectory)\Readme.md</RegiraLocalReadme>
+        <!-- Docs deep link only where a page actually exists (GitHub Pages 404s README-less folders). -->
+        <PackageProjectUrl Condition="'$(RegiraLocalReadme)' != ''">https://regira.github.io/Regira-Packages/src/$(MSBuildProjectName)</PackageProjectUrl>
+        <PackageProjectUrl Condition="'$(RegiraLocalReadme)' == ''">https://regira.com</PackageProjectUrl>
+        <!-- obj/ is gitignored, so the generated stub never reaches the repo tree / GitHub Pages. -->
+        <RegiraGeneratedReadme>$(MSBuildProjectDirectory)\obj\regira-readme\README.md</RegiraGeneratedReadme>
+    </PropertyGroup>
+
+    <!-- Pack the committed README (renamed to README.md in the package root) when present. -->
+    <ItemGroup Condition="'$(RegiraLocalReadme)' != ''">
+        <None Include="$(RegiraLocalReadme)" Pack="true" PackagePath="README.md" Visible="false" />
+    </ItemGroup>
+
+    <!-- Otherwise pack the generated stub (written by RegiraGenerateReadme before the nuspec is built).
+         The item is declared statically so pack's file collection sees it; the file is produced at build time. -->
+    <ItemGroup Condition="'$(RegiraLocalReadme)' == ''">
+        <None Include="$(RegiraGeneratedReadme)" Pack="true" PackagePath="\" Visible="false" />
+    </ItemGroup>
+
+    <!-- Generate the stub README from the project's own metadata (PackageId/Description). -->
+    <Target Name="RegiraGenerateReadme" BeforeTargets="GenerateNuspec"
+            Condition="'$(RegiraLocalReadme)' == '' and '$(IsPackable)' != 'false'">
+        <PropertyGroup>
+            <RegiraReadmeText># $(PackageId)%0A%0A$(Description)%0A%0A## Installation%0A%0A```sh%0Adotnet add package $(PackageId)%0A```%0A%0A## Links%0A%0A- Documentation: https://regira.github.io/Regira-Packages/%0A- Homepage: https://regira.com%0A- Source: https://github.com/Regira/Regira-Packages%0A%0A## License%0A%0ARegira Commercial License. A free tier is available%3B a license key is required beyond the free-tier limits. See the bundled LICENSE file or contact b2b@regira.com.</RegiraReadmeText>
+        </PropertyGroup>
+        <MakeDir Directories="$(MSBuildProjectDirectory)\obj\regira-readme" />
+        <WriteLinesToFile File="$(RegiraGeneratedReadme)" Lines="$(RegiraReadmeText)" Overwrite="true" />
+    </Target>
+</Project>

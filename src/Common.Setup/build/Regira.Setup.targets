@@ -1,0 +1,62 @@
+<Project>
+
+  <PropertyGroup>
+    <_RegiraSetupFilesRoot>$(MSBuildThisFileDirectory)..\ai\</_RegiraSetupFilesRoot>
+    <!--
+      Extract only when a solution context is present, so files land once at the
+      solution root. Per-project builds (SolutionDir undefined) are skipped to
+      avoid scattering duplicate copies into every consuming project folder.
+    -->
+    <_RegiraBaseDir Condition="'$(SolutionDir)' != '' And '$(SolutionDir)' != '*Undefined*'">$(SolutionDir)</_RegiraBaseDir>
+  </PropertyGroup>
+
+  <!--
+    Copies shared Regira setup guides into the consuming project's
+    .regira/instructions/ folder on first build.
+  -->
+  <Target Name="RegiraSetupExtractAiFiles"
+          BeforeTargets="BeforeBuild"
+          Condition="'$(_RegiraBaseDir)' != '' And (!Exists('$(_RegiraBaseDir).regira\instructions\project.setup.md') Or !Exists('$(_RegiraBaseDir).regira\instructions\shared.setup.md'))">
+
+    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" />
+
+    <Copy SourceFiles="$(_RegiraSetupFilesRoot)project.setup.md;$(_RegiraSetupFilesRoot)shared.setup.md"
+          DestinationFolder="$(_RegiraBaseDir).regira\instructions\"
+          SkipUnchangedFiles="true" />
+
+  </Target>
+
+  <!--
+    Copies copilot-instructions.md into the consuming project's
+    .github/instructions/ folder on first build, giving VS Code Copilot
+    Regira-aware context without any manual setup.
+  -->
+  <Target Name="RegiraSetupExtractCopilotInstructions"
+          BeforeTargets="BeforeBuild"
+          Condition="'$(_RegiraBaseDir)' != '' And !Exists('$(_RegiraBaseDir).github\instructions\copilot-instructions.md')">
+
+    <MakeDir Directories="$(_RegiraBaseDir).github\instructions" />
+
+    <Copy SourceFiles="$(_RegiraSetupFilesRoot)copilot-instructions.md"
+          DestinationFolder="$(_RegiraBaseDir).github\instructions\"
+          SkipUnchangedFiles="true" />
+
+  </Target>
+
+  <!--
+    Copies Regira slash commands into the consuming project's
+    .claude/commands/ folder on first build.
+  -->
+  <Target Name="RegiraSetupExtractCommandFiles"
+          BeforeTargets="BeforeBuild"
+          Condition="'$(_RegiraBaseDir)' != '' And !Exists('$(_RegiraBaseDir).claude\commands\new-project.md')">
+
+    <MakeDir Directories="$(_RegiraBaseDir).claude\commands" />
+
+    <Copy SourceFiles="$(_RegiraSetupFilesRoot)commands\new-project.md;$(_RegiraSetupFilesRoot)commands\new-entity.md;$(_RegiraSetupFilesRoot)commands\sync-guides.md;$(_RegiraSetupFilesRoot)commands\evaluate.md"
+          DestinationFolder="$(_RegiraBaseDir).claude\commands\"
+          SkipUnchangedFiles="true" />
+
+  </Target>
+
+</Project>

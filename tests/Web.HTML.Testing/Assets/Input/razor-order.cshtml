@@ -1,0 +1,21 @@
+﻿@model Web.HTML.Testing.Models.Order
+<!DOCTYPE html>
+
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta charset="utf-8" />
+    <title>Razor model test</title>
+</head>
+<body>
+    <img src="@Model.ImgBase64" />
+    <p>Order: @Model.Title</p>
+    <p>Created @Model.Created.ToShortDateString().</p>
+
+    <ul>
+        @foreach (var orderline in Model.OrderLines)
+        {
+            <li>@orderline.Title: @orderline.Amount x @orderline.Price</li>
+        }
+    </ul>
+</body>
+</html>

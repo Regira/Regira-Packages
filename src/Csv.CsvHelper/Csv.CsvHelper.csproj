@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Office.Csv.CsvHelper</RootNamespace>
+    <PackageId>Regira.Office.Csv.CsvHelper</PackageId>
+    <AssemblyName>Regira.Office.Csv.CsvHelper</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.0.0</Version>
+    <Description>CSV read/write support using CsvHelper for Regira Office.</Description>
+    <PackageTags>regira;office;csv;csvhelper</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="CsvHelper" Version="33.1.0" />
+  </ItemGroup>
+  <ItemGroup Condition="$(TargetFramework) == 'net8.0' OR $(TargetFramework) == 'net9.0'">
+    <PackageReference Include="System.Interactive.Async" Version="7.0.1" />
+  </ItemGroup>
+</Project>

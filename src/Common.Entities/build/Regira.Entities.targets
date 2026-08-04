@@ -1,0 +1,29 @@
+<Project>
+
+  <PropertyGroup>
+    <_RegiraEntitiesFilesRoot>$(MSBuildThisFileDirectory)..\ai\</_RegiraEntitiesFilesRoot>
+    <!--
+      Extract only when a solution context is present, so files land once at the
+      solution root. Per-project builds (SolutionDir undefined) are skipped to
+      avoid scattering duplicate copies into every consuming project folder.
+    -->
+    <_RegiraBaseDir Condition="'$(SolutionDir)' != '' And '$(SolutionDir)' != '*Undefined*'">$(SolutionDir)</_RegiraBaseDir>
+  </PropertyGroup>
+
+  <!--
+    Copies Entities AI instruction files into the consuming project's
+    .regira/instructions/ folder on first build.
+  -->
+  <Target Name="RegiraEntitiesExtractAiFiles"
+          BeforeTargets="BeforeBuild"
+          Condition="'$(_RegiraBaseDir)' != '' And !Exists('$(_RegiraBaseDir).regira\instructions\entities.instructions.md')">
+
+    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" />
+
+    <Copy SourceFiles="$(_RegiraEntitiesFilesRoot)entities.instructions.md;$(_RegiraEntitiesFilesRoot)entities.setup.md;$(_RegiraEntitiesFilesRoot)entities.examples.md;$(_RegiraEntitiesFilesRoot)entities.patterns.md;$(_RegiraEntitiesFilesRoot)entities.signatures.md;$(_RegiraEntitiesFilesRoot)entities.namespaces.md;$(_RegiraEntitiesFilesRoot)entities.advanced.example.md"
+          DestinationFolder="$(_RegiraBaseDir).regira\instructions\"
+          SkipUnchangedFiles="true" />
+
+  </Target>
+
+</Project>

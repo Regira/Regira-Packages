@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Entities.EFcore</RootNamespace>
+    <PackageId>Regira.Entities.EFcore</PackageId>
+    <AssemblyName>Regira.Entities.EFcore</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.0.0</Version>
+    <Description>Entity Framework Core integration for the Regira entity framework.</Description>
+    <PackageTags>regira;entities;efcore;entityframework;repository;dbcontext;persistence;crud</PackageTags>
+  </PropertyGroup>
+  <!-- AI instruction files -->
+  <ItemGroup>
+    <None Include="ai\entities.efcore.namespaces.md" Pack="true" PackagePath="ai\" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="$(OutputPath)$(AssemblyName).xml" Pack="true" PackagePath="lib\$(TargetFramework)\" Visible="false" Condition="Exists('$(OutputPath)$(AssemblyName).xml')" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common.Entities\Common.Entities.csproj" />
+    <ProjectReference Include="..\DAL.EFcore\DAL.EFcore.csproj" />
+  </ItemGroup>
+  <!-- Global-filter applicability is shared with the DI package's startup validator and with the tests
+       that pin it; it is framework plumbing, not a consumer-facing API. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Regira.Entities.DependencyInjection" />
+    <InternalsVisibleTo Include="Entities.Testing" />
+  </ItemGroup>
+</Project>

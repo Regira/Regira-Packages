@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Regira.GuideVerifier</RootNamespace>
+    <AssemblyName>Regira.GuideVerifier</AssemblyName>
+    <IsPackable>false</IsPackable>
+
+    <!-- Test-CI only: this project references the src Entities family to compile the guide snippets.
+         It is deliberately NOT referenced by the MCP deploy path (deploy-mcp.yml) or the knowledge-base
+         builder — keep it standalone. -->
+    <IsPublishable>false</IsPublishable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Roslyn: classify each ```csharp block (type declarations vs. statements) so we know whether to
+         emit it at namespace scope or wrap it in an async method body. Syntax-only parsing. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.6.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The manifest of src projects the generated compilation references is copied next to the exe. -->
+    <None Include="projects.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

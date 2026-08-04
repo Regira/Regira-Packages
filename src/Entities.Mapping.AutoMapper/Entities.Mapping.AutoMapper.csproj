@@ -1,0 +1,33 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Entities.Mapping.AutoMapper</RootNamespace>
+    <PackageId>Regira.Entities.Mapping.AutoMapper</PackageId>
+    <AssemblyName>Regira.Entities.Mapping.AutoMapper</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.0.0</Version>
+    <Description>AutoMapper integration for Regira entity mapping.</Description>
+    <PackageTags>regira;entities;mapping;automapper</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(OutputPath)$(AssemblyName).xml" Pack="true" PackagePath="lib\$(TargetFramework)\" Visible="false" Condition="Exists('$(OutputPath)$(AssemblyName).xml')" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Spans the AutoMapper relicensing boundary deliberately. 14.0.0 is the last MIT release; 15.0.0+ is
+         RPL-1.5 or a paid Lucky Penny Software license. NuGet resolves the floor, so this package builds and
+         ships against MIT 14.0.0 and imposes no copyleft obligation by default; a consumer who wants the
+         GHSA-rvv3-g6hj-g44x fix pins 16.x themselves and accepts that license. The integration only touches
+         AddAutoMapper, AllowNullCollections, IMapper.Map and CreateMap, which are unchanged across the range. -->
+    <PackageReference Include="AutoMapper" Version="[14.0.0,17.0.0)" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Entities.DependencyInjection\Entities.DependencyInjection.csproj" />
+    <ProjectReference Include="..\Entities.Web\Entities.Web.csproj" />
+  </ItemGroup>
+</Project>

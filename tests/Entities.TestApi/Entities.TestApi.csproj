@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <IsPackable>false</IsPackable>
+        <Authors>Regira bv</Authors>
+        <UserSecretsId>a148955e-1052-48e7-a8da-4534748de1c4</UserSecretsId>
+    
+        <Description>Test API host project for Regira entity integration tests.</Description>
+        <PackageTags>regira;testing;entities;api</PackageTags>
+</PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="10.0.10" />
+        <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
+        <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
+        <PackageReference Include="Scalar.AspNetCore" Version="2.16.17" />
+        <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+        <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+        <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\..\src\Entities.Mapping.AutoMapper\Entities.Mapping.AutoMapper.csproj" />
+        <ProjectReference Include="..\..\src\Entities.Mapping.Mapster\Entities.Mapping.Mapster.csproj" />
+        <ProjectReference Include="..\Testing.Library\_Testing.Library.csproj" />
+        <ProjectReference Include="..\..\src\Entities.DependencyInjection\Entities.DependencyInjection.csproj" />
+        <ProjectReference Include="..\..\src\IO.Storage.Azure\IO.Storage.Azure.csproj" />
+        <ProjectReference Include="..\..\src\Serializing.Newtonsoft\Serializing.Newtonsoft.csproj" />
+    </ItemGroup>
+</Project>

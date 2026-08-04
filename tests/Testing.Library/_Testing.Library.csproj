@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+	<TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+	<ImplicitUsings>enable</ImplicitUsings>
+	<Nullable>enable</Nullable>
+	<LangVersion>latest</LangVersion>
+	<RootNamespace>Testing.Library</RootNamespace>
+	<IsPackable>false</IsPackable>
+	<Authors>Regira bv</Authors>
+	<GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+
+	<Description>Shared test fixtures and helpers for Regira unit and integration tests.</Description>
+	<PackageTags>regira;testing;library</PackageTags>
+</PropertyGroup>
+  <ItemGroup Condition="$(TargetFramework) == 'net8.0'">
+	<PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.17" />
+  </ItemGroup>
+  <ItemGroup Condition="$(TargetFramework) == 'net10.0'">
+	<PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
+  </ItemGroup>
+  <ItemGroup>
+	<ProjectReference Include="..\..\src\Common.Entities\Common.Entities.csproj" />
+  </ItemGroup>
+</Project>
