@@ -67,6 +67,6 @@ Raised repeatedly by evaluations, still unbuilt as of 2026-07-19:
 
 - A first-class `IEntitySeeder` / `SeedEntities()` helper — seeding is documented as a hand-rolled pattern only.
 - A Roslyn analyzer for `For<>()` ↔ controller ↔ `IEntityService` generic alignment — currently enforced by prose alone.
-- Publishing the front-end package to a public registry; the `github:` specifier trips agent and CI sandboxes, and the guides already warn about it.
+- ~~Publishing the front-end package to a public registry; the `github:` specifier trips agent and CI sandboxes, and the guides already warn about it.~~ **Resolved (2026-08-05):** `regira` 6.0.0 published to npm; the front-end guides now use the registry install and the `git`-binary/SSH caveats are gone.
 - Uniform parameterless `Count()` across the `IEntityService` shapes. **Decided:** keep the untyped shortcuts rather than obsolete them, and document the asymmetry instead — the universal `IEntityService<TEntity, TKey>` exposes only `Count(object? so)`, so callers holding it pass `null` explicitly.
 - Uniform MCP tool error handling — only the two fuzzy/reflective tools are wrapped, and they differ in style (one swallows the exception, one surfaces its message). The rest propagate to the transport; there is no shared wrapper or convention.

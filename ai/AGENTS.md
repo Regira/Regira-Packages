@@ -229,7 +229,7 @@ If the MCP is not configured or unavailable:
 
 ## General engineering rules
 
-Apply these conventions when no narrower module guide exists, or as a supplement when the module guide does not cover the topic. Reuse the setup baseline above for framework, feed, namespace, and web-API defaults instead of re-stating them elsewhere.
+Apply these conventions when no narrower module guide exists, or as a supplement when the module guide does not cover the topic. Reuse the setup baseline above for framework, namespace, and web-API defaults instead of re-stating them elsewhere.
 
 ### Following conventions
 

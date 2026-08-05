@@ -31,7 +31,7 @@ Run this before generating any code:
 Use the narrowest relevant guidance. Never load every guide up front.
 
 1. For project scaffolding or app-shape changes → read the project setup guide (`get_package("Regira.Setup", "project.setup")`, or `project.setup.md` locally) in full
-2. For shared setup concerns (NuGet feed, logging, OpenAPI) → read `shared.setup.md` in full
+2. For shared setup concerns (logging, OpenAPI) → read `shared.setup.md` in full
 3. For module-specific work → read the matching `*.instructions.md` in full before writing code
 4. For exact method signatures, namespaces, or examples → consult `*.signatures.md`, `*.namespaces.md`, `*.examples.md` by section on demand
 5. **Never guess** a namespace, method name, or package name — look it up or ask
