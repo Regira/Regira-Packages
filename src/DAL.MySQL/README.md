@@ -37,10 +37,9 @@ string cs    = settings.BuildConnectionString();
 
 Extends `DbCommunicator<MySqlConnection>` (Dapper). Execute raw queries via the underlying `DbConnection`.
 
-```csharp
+```csharp no-compile
 var comm = new MySqlCommunicator(settings.BuildConnectionString());
-await comm.Open();
-var rows = await comm.DbConnection.QueryAsync<Product>("SELECT * FROM products");
+var rows = await comm.OpenDbConnection.QueryAsync<Product>("SELECT * FROM products");
 ```
 
 ## SQLDumpManager
@@ -48,8 +47,11 @@ var rows = await comm.DbConnection.QueryAsync<Product>("SELECT * FROM products")
 Corrects query ordering in a SQL dump file to ensure foreign key constraints are satisfied during restoration.
 
 ```csharp
-var mgr = new SQLDumpManager(settings);
-mgr.OnAction = (msg, data) => Console.WriteLine(msg);
+var settings = new MySqlSettings("localhost", "mydb", username: "root", password: "pass");
+string sqlDumpContent = await File.ReadAllTextAsync("dump.sql");
+
+var mgr = new SQLDumpManager(settings, null); // null splitter → SQLDumpManager.DefaultSplitter
+mgr.OnAction += (msg, data) => Console.WriteLine(msg);
 
 var result = await mgr.CorrectQuerySequence(sqlDumpContent);
 // result.Output  — corrected SQL
@@ -61,7 +63,8 @@ var result = await mgr.CorrectQuerySequence(sqlDumpContent);
 Stream-based — no temp files.
 
 ```csharp
-var options = new MySqlBackupOptions { DbSettings = settings };
+var settings = new MySqlSettings("localhost", "mydb", username: "root", password: "pass");
+var options  = new MySqlBackupOptions { DbSettings = settings };
 
 IMemoryFile backup = await new MySqlBackupService(options).Backup();
 await new MySqlRestoreService(options).Restore(backup);

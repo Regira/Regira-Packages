@@ -22,24 +22,32 @@ Regira DAL.EFcore provides Entity Framework Core extensions and utilities for ch
 
 Returns all tracked entries with pending changes (`Added`, `Modified`, or `Deleted`).
 
-```csharp
+```csharp no-compile
 var pending = dbContext.GetPendingEntries();
 var pendingProducts = dbContext.GetPendingEntries<Product>();
 ```
 
 ### `SaveAndCleanUpOnError`
 
-Wraps `SaveChangesAsync` and rolls back only the failing entries on a `DbUpdateException`, allowing the remaining entries to be retried.
+Wraps `SaveChangesAsync`; on a `DbUpdateException` it resets the failing entries (detaches added, reverts modified/deleted to `Unchanged`) and then **rethrows**. Catch the exception and call save again to persist the remaining entries.
 
-```csharp
-await dbContext.SaveAndCleanUpOnError();
+```csharp no-compile
+try
+{
+    await dbContext.SaveAndCleanUpOnError();
+}
+catch (DbUpdateException)
+{
+    // failing entries have been reset — retry saves the rest
+    await dbContext.SaveChangesAsync();
+}
 ```
 
 ### `AutoNormalizeStringsForEntries`
 
 Runs string normalization (via `NormalizingUtility`) over all pending non-deleted entries.
 
-```csharp
+```csharp no-compile
 dbContext.AutoNormalizeStringsForEntries();
 // or with custom options:
 dbContext.AutoNormalizeStringsForEntries(new NormalizingOptions { … });
@@ -49,7 +57,7 @@ dbContext.AutoNormalizeStringsForEntries(new NormalizingOptions { … });
 
 Discovers all `IInterceptor` registrations from an `IServiceCollection` and adds them to the `DbContextOptionsBuilder`.
 
-```csharp
+```csharp no-compile
 optionsBuilder.AddRegisteredInterceptors(services);
 ```
 
@@ -63,7 +71,7 @@ Automatically truncates string values to the maximum length defined by `[MaxLeng
 
 Call manually inside `SaveChanges` / `SaveChangesAsync` overrides:
 
-```csharp
+```csharp no-compile
 public override async Task<int> SaveChangesAsync(CancellationToken ct = default)
 {
     this.AutoTruncateStringsToMaxLengthForEntries();
@@ -75,7 +83,7 @@ public override async Task<int> SaveChangesAsync(CancellationToken ct = default)
 
 Register as an interceptor for automatic truncation on every save without touching the `DbContext`:
 
-```csharp
+```csharp no-compile
 // Manual registration
 optionsBuilder.AddAutoTruncateInterceptors();
 
@@ -92,7 +100,7 @@ optionsBuilder.AddRegisteredInterceptors(services);
 
 Applies a uniform precision and scale to all `decimal` properties in the model.
 
-```csharp
+```csharp no-compile
 // In OnModelCreating (all TFMs)
 modelBuilder.SetDecimalPrecisionConvention(precision: 18, scale: 4);
 
@@ -111,7 +119,7 @@ The converter honors the process-wide `Regira.Utilities.DateTimeDefaults.UseUtc`
 default): when the policy is disabled it passes values through unchanged. Properties that already have a
 value converter configured are skipped, so a per-property converter acts as an opt-out.
 
-```csharp
+```csharp no-compile
 // In AddDbContext — DbContextOptionsBuilder extension
 services.AddDbContext<AppDbContext>(options => options
     .UseSqlite(connectionString)
@@ -132,7 +140,7 @@ configurationBuilder.SetUtcDateTimeConvention();
 
 Retrieves the data-annotation attributes for each property of an entity entry, with results cached per entity type to avoid repeated reflection.
 
-```csharp
+```csharp no-compile
 var attributes = entry.GetPropertyAttributes();
 // IDictionary<IProperty, Attribute[]>
 ```
@@ -145,6 +153,6 @@ var attributes = entry.GetPropertyAttributes();
 
 Finds all service descriptors in an `IServiceCollection` that implement the given interface — used internally by `AddRegisteredInterceptors`.
 
-```csharp
+```csharp no-compile
 var interceptorDescriptors = services.CollectDescriptors<IInterceptor>();
 ```

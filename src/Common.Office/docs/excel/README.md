@@ -35,6 +35,7 @@ Regira Office.Excel provides a **unified abstraction** for reading and writing E
 IExcelService excel = new Regira.Office.Excel.MiniExcel.ExcelManager();
 
 // Read all sheets from a file
+byte[] bytes      = await File.ReadAllBytesAsync("workbook.xlsx");
 IBinaryFile file  = bytes.ToBinaryFile();
 var sheets        = await excel.Read(file);
 
@@ -50,23 +51,27 @@ IMemoryFile output = await excel.Create(sheets);
 
 ### IExcelReader / IExcelReader\<T\>
 
-```csharp
+```csharp no-compile
 Task<IEnumerable<ExcelSheet>>    Read(IBinaryFile input, string[]? headers = null, CancellationToken cancellationToken = default);
 Task<IEnumerable<ExcelSheet<T>>> Read(IBinaryFile input, string[]? headers = null, CancellationToken cancellationToken = default);  // generic
 ```
 
-`headers` — when supplied, only these columns are returned (by name).
+`headers` — behavior differs per backend:
+
+- **ClosedXML** — only the named columns are returned (matched case-insensitively against row 1).
+- **EPPlus** — row 1 is **not** treated as a header row: it is read as data, and your array supplies the dictionary keys (positionally).
+- **MiniExcel / NpoiMapper** — the parameter is ignored; row 1 is always used as headers.
 
 ### IExcelWriter / IExcelWriter\<T\>
 
-```csharp
+```csharp no-compile
 Task<IMemoryFile> Create(IEnumerable<ExcelSheet>    sheets, CancellationToken cancellationToken = default);
 Task<IMemoryFile> Create(IEnumerable<ExcelSheet<T>> sheets, CancellationToken cancellationToken = default);  // generic
 ```
 
 ### IExcelService / IExcelService\<T\>
 
-Composite interfaces: `IExcelService : IExcelServiceCore, IExcelReader, IExcelWriter` and `IExcelService<T> : IExcelServiceCore, IExcelReader<T>, IExcelWriter<T>`. Use these as the injection target.
+Composite interfaces: `IExcelService : IExcelServiceCore, IExcelReader, IExcelWriter` and `IExcelService<T> : IExcelServiceCore, IExcelReader<T>, IExcelWriter<T> where T : class, new()`. Use these as the injection target.
 
 ## ExcelSheet\<T\>
 
@@ -83,7 +88,9 @@ All four implementations accept an `Options` object:
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `DateFormat` | `string` | `"yyyy-MM-dd hh:mm:ss"` | Format applied to DateTime cells |
+| `DateFormat` | `string` | `"yyyy-MM-dd hh:mm:ss"` (`"yyyy/MM/dd"` for EPPlus) | Format applied to DateTime cells on write |
+
+`DateFormat` is honored by **EPPlus** and **NpoiMapper** only; **ClosedXML** and **MiniExcel** declare the option but never use it.
 
 EPPlus adds one extra option:
 
@@ -112,14 +119,16 @@ Locked at EPPlus **v4** (free licence; v5+ is commercial). Supports `DataSet` di
 
 ```csharp
 // Write from a DataSet
+IExcelService excel = new Regira.Office.Excel.EPPlus.ExcelManager();
+DataSet myDataSet   = new();
 IMemoryFile file = ((Regira.Office.Excel.EPPlus.ExcelManager)excel).Create(myDataSet);
 ```
 
 ### MiniExcel
 
-Lowest memory footprint — uses streaming under the hood. The only implementation with a **generic `ExcelManager<T>`** that maps rows directly to typed objects. Automatically renames duplicate column headers (`"Col"` → `"Col_2"`, `"Col_3"`, …).
+Lowest memory footprint — uses streaming under the hood. Has a **generic `ExcelManager<T>`** that maps rows directly to typed objects (as does NpoiMapper). Automatically renames duplicate column headers (`"Col"` → `"Col_2"`, `"Col_3"`, …).
 
-```csharp
+```csharp no-compile
 IExcelService<Product> excel = new Regira.Office.Excel.MiniExcel.ExcelManager<Product>();
 
 var sheets   = await excel.Read(file);          // IEnumerable<ExcelSheet<Product>>
@@ -130,7 +139,7 @@ var products = sheets.First().Data!;            // ICollection<Product>
 
 Uses Npoi.Mapper for property-to-column binding. Also has a generic `ExcelManager<T>`. Good for scenarios where column names match property names (or are annotated).
 
-```csharp
+```csharp no-compile
 IExcelService<Order> excel = new Regira.Office.Excel.NpoiMapper.ExcelManager<Order>();
 ```
 

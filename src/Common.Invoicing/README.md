@@ -33,7 +33,7 @@ Regira Invoicing covers electronic invoice creation, UBL/Peppol conversion, and 
 
 ### DI Registration
 
-```csharp
+```csharp no-compile
 services.AddBillit(sp => new BillitConfig
 {
     PartyId = configuration["Billit:PartyId"],
@@ -44,7 +44,7 @@ services.AddBillit(sp => new BillitConfig
 
 ### IInvoiceManager
 
-```csharp
+```csharp no-compile
 Task<ICreateInvoiceResult> Create(IInvoice item);
 Task<ISendInvoiceResult>   Send(params string[] ids);    // send by IDs
 Task<ISendInvoiceResult>   Send(IInvoice input);          // send by invoice object
@@ -56,25 +56,27 @@ Task<ISendInvoiceResult>   Send(IInvoice input);          // send by invoice obj
 
 ### IUblConverter
 
-```csharp
+```csharp no-compile
 XDocument Convert(UblDocumentInput input);
 ```
 
 Produces a UBL 2.1 `Invoice` document.
 
 ```csharp
+IInvoice invoice = new Invoice { /* lines, parties, tax, etc. */ };
+
 var converter = new UblConverter();
 XDocument ubl = converter.Convert(new UblDocumentInput
 {
-    // IInvoice-based input with lines, parties, tax, etc.
+    Invoice = invoice   // required
 });
 ```
 
 ### Supporting constants
 
 - `UblConstants` — Customization ID and Profile ID for Peppol BIS Billing 3.0
-- `InvoiceTypeCode` — e.g. `380` (commercial invoice), `381` (credit note)
-- `PaymentMeansCode` — e.g. `31` (bank transfer), `58` (SEPA credit transfer)
+- `InvoiceTypeCode` — e.g. `380` (`Commercial`), `383` (`DebitNote`); credit notes have no type code — they are distinguished by the UBL root element name
+- `PaymentMeansCode` — `1` (`NotDefined`), `42` (`BankAccount`), `ZZZ` (`MutuallyDefined`)
 - `TaxCategoryCode` — `S` (standard), `Z` (zero-rated), `E` (exempt), `AE` (reverse charge)
 
 ---
@@ -89,11 +91,12 @@ XDocument ubl = converter.Convert(new UblDocumentInput
 | `SenderID` | `string` | Your Peppol participant ID |
 | `SenderName` | `string` | Display name |
 | `Token` | `string` | API token |
-| `SecretKey` | `string` | HMAC secret for request signing |
+| `SecretKey` | `string` | Secret key included in the request seal |
+| `IsProduction` | `bool` | Target the production gateway (default `false`) |
 
 ### PeppolService
 
-```csharp
+```csharp no-compile
 var service = new PeppolService(gatewaySettings, jsonSerializer);
 
 UblDocumentResponse result = await service.Send(ublDocument);
@@ -102,18 +105,18 @@ if (result.Success)
     Console.WriteLine($"Sent. Reference: {result.Reference}");
 ```
 
-Requests are signed with `SealUtility.Generate()` — a HMAC digest combining token, date, sender ID, and reference ID.
+Requests are sealed with `SealUtility.Generate()` — an MD5 digest over the token, sender ID, reference ID, date, and the secret key.
 
 ---
 
 ## Typical end-to-end flow
 
-```csharp
+```csharp no-compile
 // 1. Build the invoice domain model
 IInvoice invoice = BuildInvoice(order);
 
 // 2. Convert to UBL XML
-XDocument ubl = new UblConverter().Convert(new UblDocumentInput { /* … */ });
+XDocument ubl = new UblConverter().Convert(new UblDocumentInput { Invoice = invoice });
 
 // 3. Transmit via Peppol
 var result = await peppolService.Send(ubl);

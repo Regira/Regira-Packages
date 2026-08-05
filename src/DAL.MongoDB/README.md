@@ -30,50 +30,75 @@ Regira DAL.MongoDB provides lightweight MongoDB connectivity using the MongoDB D
 ```csharp
 var settings = new MongoSettings("localhost", "mydb");
 // or parse from connection string:
-var settings = MongoSettings.FromConnectionString("mongodb://user:pass@host:27017/mydb");
+settings = MongoSettings.FromConnectionString("mongodb://user:pass@host:27017/mydb");
 ```
 
 ## MongoCommunicator
 
 ```csharp
+var settings = new MongoSettings("localhost", "mydb");
 var comm = new MongoCommunicator(settings);
-// Access underlying IMongoDatabase via comm.Database
 var names = comm.ListCollectionNames();   // IAsyncEnumerable<string>
 ```
 
+The underlying `IMongoDatabase` (`Database`) is `protected internal` — it is not accessible on the communicator from consumer code, only from repository classes derived from `MongoDbRepositoryBase<TEntity>`.
+
 ## MongoDbRepositoryBase\<TEntity\>
 
-Extend this to build a repository. Override `GetFilter()`, `SortResult()`, and `PageResult()` for custom queries.
+Extend this to build a repository (`TEntity` must be a class with a parameterless constructor). The base constructor takes the communicator, an `ISerializer`, id accessor delegates, and an optional collection name. Override `GetFilter()`, `SortResult()`, and `PageResult()` for custom queries.
 
 ```csharp
-public class ProductRepository(MongoCommunicator comm)
-    : MongoDbRepositoryBase<Product>(comm)
+public class Product
 {
-    protected override FilterDefinition<Product> GetFilter(object? so) { … }
+    public string? Id { get; set; }
+    public string? Name { get; set; }
+}
+
+public class ProductRepository(MongoCommunicator comm, ISerializer serializer)
+    : MongoDbRepositoryBase<Product>(
+        comm,
+        serializer,
+        getIdFunc: p => p.Id,
+        setIdAction: (p, id) => p.Id = id,
+        collectionName: "products")
+{
+    protected override FilterDefinition<BsonDocument> GetFilter(IDictionary<string, object?>? so)
+    {
+        var filter = base.GetFilter(so);
+        if (so?.TryGetValue("name", out var name) == true && name != null)
+        {
+            filter &= Builders<BsonDocument>.Filter.Eq("Name", name.ToString());
+        }
+        return filter;
+    }
 }
 ```
 
 CRUD methods:
 
-```csharp
+```csharp no-compile
 Task<TEntity?>             Details(object id)
-Task<IEnumerable<TEntity>> List(object? searchObject)
-Task<int>                  Count(object? searchObject)
-Task                       Save(TEntity item)
-Task                       Delete(TEntity item)
+Task<IEnumerable<TEntity>> List(object? searchObject = null)
+Task<long>                 Count(object? searchObject = null)
+Task<long>                 Save(TEntity item)     // inserted (1) or modified count
+Task<long>                 Delete(TEntity item)   // deleted count
 ```
 
 ## MongoBackupService / MongoRestoreService
 
-Requires `mongodump` / `mongorestore` executables in `MongoOptions.ToolsDirectory`.
+Requires `mongodump` / `mongorestore` executables in `MongoOptions.ToolsDirectory`. Both services also take an `IProcessHelper` (e.g. `ProcessHelper` from `Regira.System`) to run those executables.
 
 ```csharp
-var svc = new MongoBackupService(new MongoOptions
+var settings = new MongoSettings("localhost", "mydb");
+var options = new MongoOptions
 {
     DbSettings     = settings,
     ToolsDirectory = "/usr/bin"
-});
-IMemoryFile backup = await svc.Backup();
+};
+IProcessHelper processHelper = new ProcessHelper();
+
+IMemoryFile backup = await new MongoBackupService(options, processHelper).Backup();
+await new MongoRestoreService(options, processHelper).Restore(backup);
 ```
 
 ## Backup/Restore contracts

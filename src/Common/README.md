@@ -55,6 +55,8 @@ The IO abstraction hierarchy is the most widely referenced part of this library.
 The standard concrete implementation of `IBinaryFile`.
 
 ```csharp
+byte[] pdfBytes = File.ReadAllBytes("invoice.pdf");
+
 var file = new BinaryFileItem
 {
     FileName    = "invoice.pdf",
@@ -66,27 +68,36 @@ var file = new BinaryFileItem
 Implicit conversions are available from `byte[]` and `Stream`:
 
 ```csharp
+byte[] pdfBytes = File.ReadAllBytes("invoice.pdf");
+using var someStream = File.OpenRead("invoice.pdf");
+
 BinaryFileItem f1 = pdfBytes;
 BinaryFileItem f2 = someStream;
 ```
 
 ### Extension methods
 
-**`BinaryFileExtensions`** — work with any `IMemoryFile`:
+**`MemoryFileExtensions`** — work with any `IMemoryFile`:
 
 ```csharp
+IMemoryFile file = new BinaryFileItem { FileName = "invoice.pdf" };
+
 byte[]? bytes  = file.GetBytes();
 Stream? stream = file.GetStream();
 long    length = file.GetLength();
 bool    hasIt  = file.HasContent();
 ```
 
-**`BinaryFileExtensions`** — factory helpers:
+**`BinaryFileExtensions`** — factory helpers (`byte[]`/`Stream` overloads take a content type; the `IMemoryFile` overload takes a filename):
 
 ```csharp
-IBinaryFile f = bytes.ToBinaryFile("invoice.pdf");
-IBinaryFile f = stream.ToBinaryFile("data.csv");
-IBinaryFile f = memoryFile.ToBinaryFile("copy.pdf");
+byte[] bytes = File.ReadAllBytes("invoice.pdf");
+using var stream = File.OpenRead("data.csv");
+IMemoryFile memoryFile = new BinaryFileItem { Bytes = bytes };
+
+IBinaryFile f1 = bytes.ToBinaryFile("application/pdf");
+IBinaryFile f2 = stream.ToBinaryFile("text/csv");
+IBinaryFile f3 = memoryFile.ToBinaryFile("copy.pdf");
 ```
 
 ---
@@ -116,11 +127,14 @@ ContentTypeUtility.Extend(new Dictionary<string, string[]>
 Conversions between bytes, streams, strings, and Base64.
 
 ```csharp
-byte[]  bytes   = FileUtility.GetBytes(stream);
-Stream  stream  = FileUtility.GetStream(bytes);
-string  text    = FileUtility.GetString(bytes, Encoding.UTF8);
-string  b64     = FileUtility.GetBase64String(bytes);
-byte[]  back    = FileUtility.GetBytesFromString(b64);           // Base64 → bytes
+using var stream = File.OpenRead("data.bin");
+
+byte[]? bytes   = FileUtility.GetBytes(stream);
+Stream? stream2 = FileUtility.GetStream(bytes);
+string? text    = FileUtility.GetString(bytes, Encoding.UTF8);
+string  b64     = FileUtility.GetBase64String(bytes!);
+byte[]  back    = FileUtility.GetBytes(b64);                     // Base64 → bytes
+byte[]  encoded = FileUtility.GetBytesFromString(text!);         // text → bytes (encoding)
 ```
 
 ---
@@ -131,14 +145,14 @@ byte[]  back    = FileUtility.GetBytesFromString(b64);           // Base64 → b
 
 ```csharp
 // Validation
-bool ok = RegexUtility.IsValidEmail("alice@example.com");
-bool ok = RegexUtility.IsValidUrl("https://example.com");
-bool ok = RegexUtility.IsValidPhoneNumber("+32 123 456 789");
+bool okEmail = RegexUtility.IsValidEmail("alice@example.com");
+bool okUrl   = RegexUtility.IsValidUrl("https://example.com");
+bool okPhone = RegexUtility.IsValidPhoneNumber("+32 123 456 789");
 ```
 
 ### CollectionUtility
 
-```csharp
+```csharp no-compile
 List<T>           list     = source.AsList<T>();
 IEnumerable<T>    distinct = source.DistinctBy(x => x.Id);
 ```
@@ -154,9 +168,9 @@ Type underlying   = TypeUtility.GetSimpleType(typeof(int?));   // int
 
 ### ObjectUtility
 
-```csharp
-// Merge non-null properties from source onto target
-ObjectUtility.Merge(source, target);
+```csharp no-compile
+// Merge non-null properties from one or more sources onto target
+ObjectUtility.Merge(target, source);
 
 // Populate from an anonymous object or dictionary
 ObjectUtility.Fill(target, new { Name = "Alice", Age = 30 });
@@ -165,7 +179,9 @@ ObjectUtility.Fill(target, new { Name = "Alice", Age = 30 });
 ### UriUtility
 
 ```csharp
-string slug    = UriUtility.Slugify("Héllo Wörld!");           // "hello-world"
+byte[] bytes = File.ReadAllBytes("logo.png");
+
+string slug    = UriUtility.Slugify("Héllo Wörld!");           // "Hello-World" (case is preserved)
 string dataUrl = UriUtility.ToBase64ImageUrl(bytes, "image/png");
 string abs     = UriUtility.ToAbsoluteUri("../images/logo.png");
 ```
@@ -240,14 +256,19 @@ string? result = normalizer.Normalize("Héllo Wörld");  // "hello world"
 Decorate properties so `ObjectNormalizer` knows which ones to normalise.
 
 ```csharp
-[Normalized]
-public string? Name { get; set; }
+public class Article
+{
+    public string? Title { get; set; }
 
-[Normalized(SourceProperty = nameof(Title))]
-public string? NormalizedTitle { get; set; }
+    [Normalized]
+    public string? Name { get; set; }
+
+    [Normalized(SourceProperty = nameof(Title))]
+    public string? NormalizedTitle { get; set; }
+}
 ```
 
-```csharp
+```csharp no-compile
 var normalizer = new ObjectNormalizer();
 normalizer.HandleNormalize(myEntity, recursive: true);
 ```
@@ -261,10 +282,10 @@ normalizer.HandleNormalize(myEntity, recursive: true);
 ```csharp
 public interface ICacheProvider
 {
-    IEnumerable<string> Keys { get; }
-    object?             this[string key] { get; }
+    IList<string> Keys { get; }
+    object?       this[string key] { get; set; }
     T?    Get<T>(string key);
-    void  Set<T>(string key, T value);
+    void  Set<T>(string key, T? value, int? duration = null);
     void  Remove(string key);
     void  RemoveAll();
 }
@@ -272,12 +293,14 @@ public interface ICacheProvider
 
 ### DictionaryCacheProvider
 
-Thread-safe in-memory cache backed by `ConcurrentDictionary`. Supports an optional key prefix to namespace entries.
+Thread-safe in-memory cache backed by a **static** `ConcurrentDictionary` — entries are shared process-wide across all instances; the optional key prefix is the only isolation between them.
 
 ```csharp
+var products = new List<string> { "chair", "table" };
+
 var cache = new DictionaryCacheProvider("products");
 cache.Set("list", products);
-var list = cache.Get<List<Product>>("list");
+var list = cache.Get<List<string>>("list");
 ```
 
 ---
@@ -289,9 +312,9 @@ var list = cache.Get<List<Product>>("list");
 ```csharp
 public interface ISerializer
 {
-    string  Serialize<T>(T value);
-    T?      Deserialize<T>(string? input);
-    object? Deserialize(string? input, Type type);
+    string  Serialize<T>(T obj);
+    T?      Deserialize<T>(string? content);
+    object? Deserialize(string? content, Type type);
 }
 ```
 
@@ -306,8 +329,8 @@ Thin contracts for pluggable encryption and hashing.
 ```csharp
 public interface IEncrypter
 {
-    string Encrypt(string plainText, string? key);
-    string Decrypt(string encryptedText, string? key);
+    string Encrypt(string plainText, string? key = null);
+    string Decrypt(string encryptedText, string? key = null);
 }
 
 public interface IHasher
@@ -325,17 +348,17 @@ Lightweight database connectivity contracts. Implementations live in the `DAL.*`
 
 ### IDbSettings
 
-```csharp
-string BuildConnectionString();
+```csharp no-compile
+string BuildConnectionString(params KeyValuePair<string, string>[] extraOptions);
 ```
 
 Extend `DbSettingsBase` to implement a provider-specific connection string builder.
 
 ### IDbCommunicator
 
-```csharp
-Task Open();
-Task Close();
+```csharp no-compile
+IDbConnection Open();
+IDbConnection Close();
 ```
 
 `DbCommunicator<TDbConnection>` is the generic implementation; provider-specific communicators (Postgres, MySQL, …) extend it.
@@ -343,6 +366,8 @@ Task Close();
 ### PagingInfo + QueryExtensions
 
 ```csharp
+var query = Enumerable.Range(1, 100).AsQueryable();
+
 var paging = new PagingInfo { PageSize = 20, Page = 2 };
 var page   = query.PageQuery(paging).ToList();
 ```
@@ -376,7 +401,7 @@ See the individual DAL project docs for implementations:
 
 A `List<T>` that disposes every `IDisposable` element when itself is disposed. Useful for holding image files, streams, or other resources that need coordinated cleanup.
 
-```csharp
+```csharp no-compile
 using var images = new DisposableCollection<IImageFile>();
 images.Add((await imageService.Parse(bytes1))!);
 images.Add((await imageService.Parse(bytes2))!);

@@ -10,44 +10,40 @@ namespace Regira.GuideVerifier;
 /// </summary>
 public static class GeneratedProject
 {
-    // Usings prepended to every STATEMENT snippet so the common Regira Entities / EF Core / DI symbols the
-    // guides reference resolve without each snippet restating them. Declaration snippets keep their own
-    // usings (Roslyn preserves them); these are added too, harmless when unused (CS8019 is not an error).
-    private static readonly string[] CommonUsings =
+    // Usings prepended to every snippet so ubiquitous BCL symbols resolve without each snippet restating
+    // them; the manifest group's `usings` add the family-specific namespaces on top. Declaration snippets
+    // keep their own usings (Roslyn preserves them); these are added too, harmless when unused (CS8019 is
+    // not an error).
+    private static readonly string[] BaseUsings =
     [
         "System",
         "System.Collections.Generic",
         "System.Linq",
         "System.Threading.Tasks",
-        "System.ComponentModel.DataAnnotations",
-        "Microsoft.EntityFrameworkCore",
-        "Microsoft.Extensions.DependencyInjection",
-        "Regira.Entities.Models",
-        "Regira.Entities.Models.Abstractions",
-        "Regira.Entities.Services.Abstractions",
-        "Regira.Entities.Extensions",
-        "Regira.Entities.Attachments.Models",
-        "Regira.Entities.Attachments.Abstractions",
-        "Regira.Entities.DependencyInjection.Extensions",
-        "Regira.Entities.DependencyInjection.Attachments",
     ];
 
     /// <summary>Writes the project and its snippet files; returns the generated .csproj path.</summary>
-    public static string Write(string dir, IReadOnlyList<Snippet> snippets, IReadOnlyList<string> projectReferences)
+    public static string Write(
+        string dir,
+        IReadOnlyList<Snippet> snippets,
+        IReadOnlyList<string> projectReferences,
+        IReadOnlyList<string> groupUsings,
+        IReadOnlyList<string> frameworkReferences)
     {
         Directory.CreateDirectory(dir);
 
+        var usings = BaseUsings.Concat(groupUsings).Distinct().ToList();
         foreach (var snippet in snippets)
-            File.WriteAllText(Path.Combine(dir, $"{snippet.Id}.cs"), Emit(snippet));
+            File.WriteAllText(Path.Combine(dir, $"{snippet.Id}.cs"), Emit(snippet, usings));
 
         var csprojPath = Path.Combine(dir, "GuideSnippets.csproj");
-        File.WriteAllText(csprojPath, Csproj(projectReferences));
+        File.WriteAllText(csprojPath, Csproj(projectReferences, frameworkReferences));
         return csprojPath;
     }
 
-    private static string Emit(Snippet snippet)
+    private static string Emit(Snippet snippet, IReadOnlyList<string> allUsings)
     {
-        var usings = string.Join("\n", CommonUsings.Select(u => $"using {u};"));
+        var usings = string.Join("\n", allUsings.Select(u => $"using {u};"));
         var provenance = $"// {snippet.Location} (line {snippet.FenceLine} of {snippet.RelativeFile})";
         var sb = new StringBuilder();
         sb.Append(provenance).Append('\n');
@@ -83,9 +79,11 @@ public static class GeneratedProject
     private static string Indent(string code, string indent) =>
         string.Join("\n", code.Replace("\r\n", "\n").Split('\n').Select(l => l.Length == 0 ? l : indent + l));
 
-    private static string Csproj(IReadOnlyList<string> projectReferences)
+    private static string Csproj(IReadOnlyList<string> projectReferences, IReadOnlyList<string> frameworkReferences)
     {
         var refs = new StringBuilder();
+        foreach (var f in frameworkReferences)
+            refs.AppendLine($"    <FrameworkReference Include=\"{f}\" />");
         foreach (var p in projectReferences)
             refs.AppendLine($"    <ProjectReference Include=\"{p}\" />");
 

@@ -9,9 +9,8 @@ namespace Regira.Entities.Models;
 /// pages, generic handlers); the provider's constraint message stays server-side, on
 /// <see cref="Exception.InnerException"/> and in the write service's warning log.<br />
 /// <b>Every write surface must map this exception</b> — current mappings: the controller helpers
-/// (<c>ControllerExtensions.Save</c>/<c>Delete</c>), the <c>[EntityConstraintConflict]</c> exception filter
-/// (attachment controller bases), the FastEndpoints minimal-API group filter, and the four FastEndpoints
-/// <c>Endpoint&lt;&gt;</c> bases. A new write surface without a mapping leaks this as a 500.
+/// (<c>ControllerExtensions.Save</c>/<c>Delete</c>) and the <c>[EntityConstraintConflict]</c> exception filter
+/// (attachment controller bases). A new write surface without a mapping leaks this as a 500.
 /// </summary>
 public class EntityConstraintException(string message, Exception? innerException = null)
     : Exception(message, innerException)

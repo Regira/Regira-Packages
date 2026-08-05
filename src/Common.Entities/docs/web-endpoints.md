@@ -125,7 +125,7 @@ services.For<AuditLog>(e => e.SetPageSize());
 
 - Both values are optional; `null` means that aspect is off.
 - The default only fills in when the request has no positive `pageSize`; an explicit larger `pageSize` is honoured unless `MaxPageSize` clamps it; `page` is preserved.
-- **Enforced at the HTTP boundary only** — on every HTTP surface (MVC controllers and FastEndpoints alike), so `MaxPageSize` cannot be escaped by picking a different surface. Calling `IEntityService.List(...)` directly (without `PagingInfo`) still returns the full set — the service layer keeps full control.
+- **Enforced at the HTTP boundary only** — the MVC controllers apply the single shared clamp (`EntityListOptionsExtensions.ApplyPagingDefaults`), which any other HTTP surface can reuse so `MaxPageSize` cannot be escaped. Calling `IEntityService.List(...)` directly (without `PagingInfo`) still returns the full set — the service layer keeps full control.
 
 #### Save (Add/Modify/Patch)
 

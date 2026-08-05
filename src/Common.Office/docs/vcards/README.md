@@ -6,6 +6,7 @@ Regira VCards provides reading and writing of vCard contact files in versions 2.
 
 | Project | Package | Backend |
 |---------|---------|---------|
+| `Common.Office` | *(transitive)* | Shared abstractions and models |
 | `VCards.FolkerKinzel` | `Regira.Office.VCards.FolkerKinzel` | FolkerKinzel.VCards |
 
 ## Installation
@@ -25,6 +26,9 @@ var manager = new VCardManager();
 ### Read
 
 ```csharp
+var manager = new VCardManager();
+string vcfContent = await File.ReadAllTextAsync("contacts.vcf");
+
 // Single vCard from a .vcf string
 VCard contact = await manager.Read(vcfContent);
 
@@ -35,14 +39,18 @@ IEnumerable<VCard> contacts = await manager.ReadMany(vcfContent);
 ### Write
 
 ```csharp
+var manager = new VCardManager();
+VCard contact = new() { FormattedName = "Alice Smith" };
+VCard[] contacts = [contact];
+
 // Single contact
 string vcf = await manager.Write(contact);
 
 // Single contact, explicit version
-string vcf = await manager.Write(contact, VCardVersion.V4_0);
+string vcf4 = await manager.Write(contact, VCardVersion.V4_0);
 
 // Multiple contacts into one .vcf string
-string vcf = await manager.Write(contacts, VCardVersion.V3_0);
+string vcfAll = await manager.Write(contacts, VCardVersion.V3_0);
 ```
 
 ### VCardVersion

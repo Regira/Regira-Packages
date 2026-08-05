@@ -25,6 +25,7 @@ Regira Office.Word provides Word document creation from templates, conversion, m
 ```csharp
 IWordService word = new Regira.Office.Word.Spire.WordManager();
 
+byte[] templateBytes = await File.ReadAllBytesAsync("template.docx");
 IMemoryFile doc = await word.Create(new WordTemplateInput
 {
     Template         = templateBytes.ToMemoryFile(),
@@ -40,34 +41,34 @@ IMemoryFile doc = await word.Create(new WordTemplateInput
 
 ### IWordCreator
 
-```csharp
-Task<IMemoryFile> Create(WordTemplateInput input);
+```csharp no-compile
+Task<IMemoryFile> Create(WordTemplateInput input, CancellationToken cancellationToken = default);
 ```
 
 ### IWordConverter
 
-```csharp
-Task<IMemoryFile> Convert(WordTemplateInput input, FileFormat format);
-Task<IMemoryFile> Convert(WordTemplateInput input, ConversionOptions options);
+```csharp no-compile
+Task<IMemoryFile> Convert(WordTemplateInput input, FileFormat format, CancellationToken cancellationToken = default);
+Task<IMemoryFile> Convert(WordTemplateInput input, ConversionOptions options, CancellationToken cancellationToken = default);
 ```
 
 ### IWordMerger
 
-```csharp
-Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs);
+```csharp no-compile
+Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default);
 ```
 
 ### IWordTextExtractor / IWordImageExtractor / IWordToImagesService
 
-```csharp
-Task<string>                    GetText(WordTemplateInput input);
-Task<IEnumerable<WordImage>>    GetImages(WordTemplateInput input);
-Task<IEnumerable<IImageFile>>   ToImages(WordTemplateInput input);  // one image per page
+```csharp no-compile
+Task<string>                    GetText(WordTemplateInput input, CancellationToken cancellationToken = default);
+Task<IEnumerable<WordImage>>    GetImages(WordTemplateInput input, CancellationToken cancellationToken = default);
+Task<IEnumerable<IImageFile>>   ToImages(WordTemplateInput input, CancellationToken cancellationToken = default);  // one image per page
 ```
 
 ### IWordService
 
-Composite of all the above. `Word.Spire.WordManager` implements this.
+Composite of all the above. `Word.Spire.WordManager` implements this. An `[Obsolete]` alias `IWordManager : IWordService` remains for backward compatibility.
 
 ## WordTemplateInput
 
@@ -119,8 +120,9 @@ Docx  Doc  Dotx  Dot  Docm  Dotm  Pdf  Html  Rtf  Odt  EPub  Jpeg  Png
 | Property | Type | Description |
 |----------|------|-------------|
 | `Name` | `string` | Matches image placeholder name in the template |
-| `File` | `IMemoryFile` | Image bytes |
+| `File` | `IMemoryFile?` | Image bytes |
 | `Size` | `ImageSize?` | Override image dimensions |
+| `HorizontalAlignment` | `HorizontalAlignment?` | Optional image alignment |
 
 ### WordHeaderFooterInput
 

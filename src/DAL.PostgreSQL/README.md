@@ -1,12 +1,12 @@
 # Regira DAL — PostgreSQL
 
-Regira DAL.PostgreSQL provides PostgreSQL connectivity via Dapper, plus backup/restore via `pg_dump`/`pg_restore`.
+Regira DAL.PostgreSQL provides PostgreSQL backup/restore via `pg_dump`/`pg_restore` (settings, options, and backup/restore services — no CRUD or communicator surface).
 
 ## Projects
 
 | Project | Package | Backend | CRUD | Backup / Restore |
 |---------|---------|---------|------|-----------------|
-| `DAL.PostgreSQL` | `Regira.DAL.PostgreSQL` | PostgreSQL | via Dapper | ✓ (pg_dump) |
+| `DAL.PostgreSQL` | `Regira.DAL.PostgreSQL` | PostgreSQL | — | ✓ (pg_dump) |
 
 ## Installation
 
@@ -35,6 +35,9 @@ var settings = new PgSettings("localhost", "mydb", "postgres", "pass");
 Requires `pg_dump` / `pg_restore` executables. Supports schema-specific backups.
 
 ```csharp
+var settings = new PgSettings("localhost", "mydb", "postgres", "pass");
+IProcessHelper processHelper = new ProcessHelper();   // Regira.System
+
 var options = new PgOptions
 {
     DbSettings     = settings,
@@ -43,13 +46,14 @@ var options = new PgOptions
     Overwrite      = true
 };
 
-IMemoryFile backup = await new PgBackupService(options, processHelper).Backup();
-await new PgRestoreService(options, processHelper).Restore(backup);
+// third parameter is a nullable ILogger — pass null (or an injected logger)
+IMemoryFile backup = await new PgBackupService(options, processHelper, null).Backup();
+await new PgRestoreService(options, processHelper, null).Restore(backup);
 ```
 
 `PgRestoreService` can also create the target database if it does not exist:
 
-```csharp
+```csharp no-compile
 await pgRestore.Create(connection, "new_database");
 bool exists = await pgRestore.Exists(connection, "new_database");
 ```
@@ -59,8 +63,12 @@ bool exists = await pgRestore.Exists(connection, "new_database");
 Standalone manager — useful when you want both backup and restore from the same object.
 
 ```csharp
+var settings = new PgSettings("localhost", "mydb", "postgres", "pass");
+var options  = new PgOptions { DbSettings = settings };
+IProcessHelper processHelper = new ProcessHelper();   // Regira.System
+
 var mgr = new BackupRestoreManager(processHelper, options);
-await mgr.Backup(settings, "sourceDb", "/backups/snapshot.dump");
+mgr.Backup(settings, "sourceDb", "/backups/snapshot.dump");   // synchronous (void)
 await mgr.Restore(settings, "targetDb", "/backups/snapshot.dump", overwrite: true);
 ```
 

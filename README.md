@@ -31,7 +31,7 @@ Regira is a collection of .NET libraries providing unified abstractions for comm
 
 | Module | Description |
 |--------|-------------|
-| [Drawing](src/Common.Media) | Image processing, format conversion, and layer composition |
+| [Media](src/Common.Media) | Image processing, format conversion, and layer composition |
 | [Video](src/Common.Media/docs/video.md) | Video compression and snapshot extraction via FFMpeg |
 
 ---
@@ -109,8 +109,8 @@ The hosted server lives at `https://mcp.regira.com/mcp`. Most clients share the 
 
 | Client | Config file | Notes |
 |--------|-------------|-------|
-| Claude Code (VS Code extension) | `.claude/settings.json` (project) | Tools appear automatically |
-| Claude Desktop | `~/.claude/claude_desktop_config.json` | Restart Claude Desktop |
+| Claude Code (VS Code extension) | `.mcp.json` (repo root) | Tools appear automatically |
+| Claude Desktop | `claude_desktop_config.json` in the Claude app-data folder (Windows: `%APPDATA%\Claude`, macOS: `~/Library/Application Support/Claude`) | Restart Claude Desktop |
 | GitHub Copilot (VS Code) | `.vscode/mcp.json` (project) | Rename the top key `mcpServers` → `servers`; then switch Copilot Chat to **Agent mode** |
 | Cursor | — | No file: Settings → MCP Servers → Add server → paste `https://mcp.regira.com/mcp` |
 
@@ -142,7 +142,7 @@ This works for both a new empty folder and an existing application that needs ex
 
 ### Optional — Per-package guides (post-install)
 
-AI guides are first-class artifacts embedded inside each NuGet package under `ai/`. When a Regira package is installed and you run `dotnet build`, its `.targets` file copies those guide files into `.regira/instructions/` at the solution root. The agent therefore sees only the guides relevant to the packages actually installed — detailed implementation instructions, code examples, and API signatures — not the full Regira source tree.
+AI guides are first-class artifacts embedded inside NuGet packages under `ai/`. Most guide-carrying packages also ship a `build/*.targets` file; when such a package is installed and you run `dotnet build`, that `.targets` file copies its guide files into `.regira/instructions/` at the solution root. (A few packages pack guides without a local-extraction `.targets` file — those guides are served via the MCP server only — and `Regira.Entities` extracts seven of its nine packed guides.) The agent therefore sees only the guides relevant to the packages actually installed — detailed implementation instructions, code examples, and API signatures — not the full Regira source tree.
 
 Install `Regira.Setup` to also extract the shared setup guides `project.setup.md` and `shared.setup.md`. Individual module packages extract their own guides the same way.
 

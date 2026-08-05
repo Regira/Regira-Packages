@@ -8,7 +8,7 @@ using System.Collections.Concurrent;
 
 namespace Regira.Entities.Web;
 
-/// <summary>Shared save-endpoint behavior for the MVC controllers and the FastEndpoints auto-endpoints.</summary>
+/// <summary>Shared save-endpoint behavior at the HTTP boundary — used by the MVC controllers, reusable by any other HTTP surface.</summary>
 public static class EntitySaveHelper
 {
     private static readonly ConcurrentDictionary<(Type Entity, Type InputDto), bool> PreservesArchivedStateCache = new();

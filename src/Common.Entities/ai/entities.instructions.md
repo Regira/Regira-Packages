@@ -805,7 +805,7 @@ Diagnostic code `REGIRA0001` marks the obsolete `EntityPrimerContainer(DbContext
 | `0` or negative | `MaxPageSize` — opts out of paging, capped at the max |
 | positive `n` | `n`, clamped to `MaxPageSize` |
 
-- **Enforced at the HTTP boundary only** — on *every* HTTP surface: `EntityControllerBase` List/Search and the FastEndpoints list/search endpoints share one rule, so `MaxPageSize` cannot be escaped by picking a different surface. Direct `IEntityService` calls are unaffected — they apply the `PagingInfo` you pass as-is (`PageSize` null or `<= 0` → everything, uncapped), so the service layer keeps full control.
+- **Enforced at the HTTP boundary only** — `EntityControllerBase` List/Search apply one shared rule (`EntityListOptionsExtensions.ApplyPagingDefaults`), which any other HTTP surface can reuse so `MaxPageSize` cannot be escaped. Direct `IEntityService` calls are unaffected — they apply the `PagingInfo` you pass as-is (`PageSize` null or `<= 0` → everything, uncapped), so the service layer keeps full control.
 - `MaxPageSize` is always the ceiling; `null` for either option turns that aspect off.
 
 **Global — inside `UseEntities()`:**
@@ -1010,8 +1010,8 @@ Controllers automatically catch `EntityInputException` and return `BadRequest (4
 
 `SaveChanges()` wraps a database **integrity-constraint** violation (unique index, FK, NOT NULL, check —
 detected per provider: SQLSTATE class 23, SQLite error 19, SQL Server 547/515/2601/2627) in
-`EntityConstraintException`; every write surface (controller bases, attachment controllers, minimal-API
-and FastEndpoints endpoints) returns **409 Conflict**. The response detail is generic — the provider's
+`EntityConstraintException`; every write surface (controller bases, attachment controllers) returns
+**409 Conflict**. The response detail is generic — the provider's
 constraint message can leak index names and other users' values, so it is logged server-side (warning) by
 the write service instead. Transient faults (deadlocks, timeouts, concurrency conflicts) are **not**
 wrapped and keep surfacing as 500s for alerting. When the client can fix the input, prefer an explicit

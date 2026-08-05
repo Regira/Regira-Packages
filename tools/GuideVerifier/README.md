@@ -1,20 +1,24 @@
 # Regira Guide Verifier
 
-Compiles the fenced ` ```csharp ` code blocks in the Entities-family AI guides so a snippet that no
-longer binds against the real API is caught here rather than by a consumer.
+Compiles the fenced ` ```csharp ` code blocks in the AI guides, package READMEs and Office topic docs
+so a snippet that no longer binds against the real API is caught here rather than by a consumer.
 
 ## What it does
 
-1. Reads `projects.json` — the `projects` it ProjectReferences and the `guideDirs` (ai/ folders) it scans.
-2. Pulls every ` ```csharp ` block from each `*.md` in those folders (skipping `no-compile` blocks).
+1. Reads `projects.json` — a list of **groups**. Each group pairs guide sources (`guideDirs` scanned
+   for `*.md`, and/or individual `guideFiles`) with the src `projects` its snippets compile against,
+   plus optional `usings` (prepended to every snippet in the group) and `frameworkReferences`
+   (e.g. `Microsoft.AspNetCore.App`). Groups build independently, so doc families with unrelated —
+   or conflicting — dependency sets stay isolated.
+2. Pulls every ` ```csharp ` block from each guide file (skipping `no-compile` blocks).
 3. Classifies each block with Roslyn:
    - **Declaration** blocks (types / namespaces / usings) are emitted at namespace scope, each in its own
      namespace to avoid cross-guide type collisions.
    - **Statement / expression** blocks are wrapped in an `async` method body (with `sp` / `scope`
      service-provider locals, matching the guides' idiom).
-4. Writes a throwaway project to a temp dir (outside the repo, so it inherits no `Directory.Build.props`)
-   that references the manifest's src projects, runs `dotnet build`, and reports each failure as
-   `file.md § <heading>` with the compiler error. Exits non-zero on any failure.
+4. Per group: writes a throwaway project to a temp dir (outside the repo, so it inherits no
+   `Directory.Build.props`) that references the group's src projects, runs `dotnet build`, and reports
+   each failure as `file.md § <heading>` with the compiler error. Exits non-zero when any group fails.
 
 ## Run it
 
@@ -22,6 +26,9 @@ longer binds against the real API is caught here rather than by a consumer.
 dotnet run --project tools/GuideVerifier
 # or point it at a repo root explicitly:
 dotnet run --project tools/GuideVerifier -- /path/to/Regira-Packages
+# or run a subset of groups (comma-separated):
+dotnet run --project tools/GuideVerifier -- . --group entities
+dotnet run --project tools/GuideVerifier -- . --group office-pdf,office-excel
 ```
 
 ## The `no-compile` convention
@@ -48,11 +55,14 @@ those snippets back under verification.
 
 - Intended to run in CI as a **separate, non-blocking job** (`continue-on-error`) once workflows are
   authored, while the guides still carry many `no-compile` fragments. Make it blocking once most snippets compile.
-- **Test-CI only.** This project references the src Entities projects; it must never be pulled into the
+- **Test-CI only.** This project references src projects; it must never be pulled into the
   MCP deploy path or the knowledge-base builder (both in the private Regira-Tools repo), which
   stay dependency-free of it.
 
 ## Extending coverage
 
-Add a src project (and, optionally, its ai/ folder) to `projects.json`. Start small — each new guide
-folder usually needs a triage pass to mark its partial snippets `no-compile` before the run is green.
+Add a group (or extend an existing one) in `projects.json`: guide sources plus the src projects those
+snippets need, and any group-wide `usings`. Keep a group's dependency set coherent — when two doc
+families need conflicting implementation packages (as the Office backends do), give each its own group.
+Start small — each new guide file usually needs a triage pass to mark its partial snippets `no-compile`
+before the run is green.

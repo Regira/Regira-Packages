@@ -375,7 +375,8 @@ public static class ControllerExtensions
 
     /// <summary>
     /// Resolves the effective paging for a List/Search request from the configured <see cref="EntityListOptions"/>.
-    /// Enforced at the HTTP boundary only — the FastEndpoints surface applies the same rule, while direct
+    /// Enforced at the HTTP boundary only — the clamp lives in the shared
+    /// <see cref="EntityListOptionsExtensions.ApplyPagingDefaults"/> helper, while direct
     /// service calls keep full control. A per-entity
     /// <see cref="EntityListOptions{TEntity}"/>, when registered, fully replaces the global options.
     /// An omitted <c>PageSize</c> (<c>null</c>) falls back to <see cref="EntityListOptions.DefaultPageSize"/>;

@@ -36,7 +36,7 @@ Task<long> Count(TSearchObject? so, CancellationToken token = default)
 Task<long> Count(IList<TSearchObject?> so, CancellationToken token = default)
 ```
 
-> **Paging at the service layer:** `List` only pages when you pass a `PagingInfo` with a positive `PageSize`; otherwise it returns the full set. The configurable default/maximum page size (`DefaultPageSize` / `MaxPageSize`, or per-entity `e.SetPageSize(...)`) is applied at the **HTTP boundary** (MVC controllers and FastEndpoints alike), not here — so direct service calls keep full control. See [Web Endpoints → Paging](web-endpoints.md#paging).
+> **Paging at the service layer:** `List` only pages when you pass a `PagingInfo` with a positive `PageSize`; otherwise it returns the full set. The configurable default/maximum page size (`DefaultPageSize` / `MaxPageSize`, or per-entity `e.SetPageSize(...)`) is applied at the **HTTP boundary** (the MVC controllers), not here — so direct service calls keep full control. See [Web Endpoints → Paging](web-endpoints.md#paging).
 
 ### Write Operations
 

@@ -72,9 +72,8 @@ public class EntityConstraintException(string message, Exception? innerException
 ```
 
 - **Every web write surface returns 409 Conflict** with `ClientMessage` as the `ProblemDetails` detail:
-  the controller helpers (`ControllerExtensions.Save`/`Delete`), the `[EntityConstraintConflict]` exception
-  filter (attachment controller bases), the FastEndpoints minimal-API group filter, and the FastEndpoints
-  `Endpoint<>` bases. The provider's constraint message is logged server-side (warning) by the write service.
+  the controller helpers (`ControllerExtensions.Save`/`Delete`) and the `[EntityConstraintConflict]` exception
+  filter (attachment controller bases). The provider's constraint message is logged server-side (warning) by the write service.
 - **Direct `SaveChanges()` callers** (seeding, jobs, custom services): catch `EntityConstraintException`,
   not `DbUpdateException` — a `catch (DbUpdateException)` no longer sees constraint failures, only
   transient faults. `Message` is the same generic text (safe to render anywhere); the provider message is
@@ -370,7 +369,7 @@ public static class QueryExtensions
 }
 ```
 
-**Default & maximum page size** — configure these so List/Search endpoints page automatically instead of returning the full set. Enforced at the HTTP boundary only (MVC controllers and FastEndpoints alike); direct `IEntityService` calls keep full control.
+**Default & maximum page size** — configure these so List/Search endpoints page automatically instead of returning the full set. Enforced at the HTTP boundary only (by the MVC controllers, via the shared `ApplyPagingDefaults` clamp); direct `IEntityService` calls keep full control.
 
 ```csharp
 // Global (all entities)

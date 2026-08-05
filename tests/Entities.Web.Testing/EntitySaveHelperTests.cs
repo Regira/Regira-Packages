@@ -10,7 +10,7 @@ namespace Entities.Web.Testing;
 
 /// <summary>
 /// Tests for <see cref="EntitySaveHelper.ResolveSavedItem{TEntity,TKey}"/> — the RefetchAfterSave
-/// behavior shared by the MVC Save extension and the FastEndpoints auto-endpoints.
+/// behavior applied at the HTTP boundary by the MVC Save extension.
 /// </summary>
 public class EntitySaveHelperTests
 {

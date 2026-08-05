@@ -6,7 +6,8 @@ public static class EntityListOptionsExtensions
 {
     /// <summary>
     /// Resolves the effective paging for a list/search request from <paramref name="options"/> —
-    /// the single clamp algorithm shared by the MVC controllers and the FastEndpoints auto-endpoints.
+    /// the single clamp algorithm applied at the HTTP boundary (used by the MVC controllers; any
+    /// other HTTP surface can reuse it).
     /// An omitted <c>PageSize</c> (<c>null</c>) falls back to <see cref="EntityListOptions.DefaultPageSize"/>;
     /// a non-positive <c>PageSize</c> (an explicit opt-out) falls back to <see cref="EntityListOptions.MaxPageSize"/>;
     /// a positive value is honoured. <c>MaxPageSize</c> is always the ceiling. <see cref="PagingInfo"/> is a

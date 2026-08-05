@@ -12,7 +12,7 @@ using Regira.Utilities;
 
 namespace Regira.DAL.PostgreSQL.Services;
 
-public class PgRestoreService(PgOptions options, IProcessHelper processHelper, ILogger<PgBackupService>? logger) : IDbRestoreService
+public class PgRestoreService(PgOptions options, IProcessHelper processHelper, ILogger<PgRestoreService>? logger) : IDbRestoreService
 {
     private readonly string _restoreProcessPath = Path.Combine(options.ToolsDirectory, "pg_restore.exe");
 

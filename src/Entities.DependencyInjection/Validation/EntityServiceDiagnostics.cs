@@ -5,7 +5,7 @@ namespace Regira.Entities.DependencyInjection.Validation;
 
 /// <summary>
 /// Shared formatting for "entity service not registered" diagnostics: used by the request-time
-/// <c>GetRequiredEntityService</c> helpers (MVC and FastEndpoints) and by the startup validators,
+/// <c>GetRequiredEntityService</c> helper (MVC controllers) and by the startup validators,
 /// so a mismatch reads the same wherever it surfaces.
 /// </summary>
 public static class EntityServiceDiagnostics

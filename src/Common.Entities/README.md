@@ -4,6 +4,20 @@ Regira Entities is a generic, extensible framework for managing **data entities*
 It provides a **standardized** way to handle CRUD operations, filtering, sorting, and includes, 
 while allowing **customization** through generic type parameters, interfaces and specialized helper services.
 
+## Installation
+
+The core abstractions ship as `Regira.Entities`. The setup below additionally requires the DI, EF Core, and Web sibling packages:
+
+```xml
+<!-- Core abstractions and base types -->
+<PackageReference Include="Regira.Entities" Version="6.*" />
+
+<!-- Required for the sample below -->
+<PackageReference Include="Regira.Entities.DependencyInjection" Version="6.*" />
+<PackageReference Include="Regira.Entities.EFcore" Version="6.*" />
+<PackageReference Include="Regira.Entities.Web" Version="6.*" />
+```
+
 ## Core Concepts
 
 ### Generic Type Parameters
@@ -72,7 +86,7 @@ Assuming a `Repository` with a `DbContext` is being used.
 
 basic sample setup which whill register a `IEntityService` for Category, Product and Order entities, using the default `EntityRepository` implementation.
 
-```csharp
+```csharp no-compile
 builder.Services
     .UseRegira(LICENSE) // free tier and trial available
     .UseEntities<MyDbContext>(options => options.UseDefaults())

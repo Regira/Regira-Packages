@@ -25,7 +25,7 @@ Regira Payments provides payment processing via Mollie and POM, built on the sha
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `Api` | `string` | Mollie API base URL |
+| `Api` | `string` | Mollie API base URL — currently not consumed (the underlying `PaymentClient` is constructed from `Key` only) |
 | `Key` | `string` | Mollie API key (`test_...` or `live_...`) |
 | `MaxPageSize` | `int` | Default `250` |
 | `RedirectFactory` | `Func<IPayment, string>?` | Builds redirect URL per payment |
@@ -33,7 +33,7 @@ Regira Payments provides payment processing via Mollie and POM, built on the sha
 
 ### PaymentService
 
-```csharp
+```csharp no-compile
 var svc = new Regira.Payments.Mollie.Services.PaymentService(new MollieConfig
 {
     Api             = "https://api.mollie.com/v2",
@@ -79,11 +79,12 @@ await svc.WebHook(paymentId, async p =>
 ### PaymentService
 
 ```csharp
-// jsonSerializer: Regira.Serializing.Abstractions.ISerializer
+var pomSettings = new PomSettings { /* sender + API credentials, endpoints */ };
+ISerializer jsonSerializer = new JsonSerializer(); // Regira.Serializing.Newtonsoft.Json
 var svc = new Regira.Payments.Pom.PaymentService(pomSettings, jsonSerializer);
 
 // Get payment status
-IPayment? existing = await svc.Details(paymentId);
+IPayment? existing = await svc.Details("pom-payment-id");
 
 // Create a payment link
 var payment = new Payment // Regira.Invoicing.Payments.Models

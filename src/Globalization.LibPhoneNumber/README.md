@@ -16,7 +16,7 @@ Regira Globalization extends the phone number formatting and country utilities b
 
 ## PhoneNumberFormatter
 
-Implements both `INormalizer` and `IFormatter`.
+Implements both `INormalizer` and `IFormatter`. Note that both interfaces declare only `Normalize` — `Format` is a method of the `PhoneNumberFormatter` class itself, so call it through a `PhoneNumberFormatter` reference.
 
 ```csharp
 // Use the system culture to infer the default country code
@@ -35,7 +35,7 @@ string? local = be.Normalize("0471 12 34 56");        // "+32471123456"
 | `Normalize` | E.164 (e.g. `+32471123456`) — suitable for storage |
 | `Format` | International display (e.g. `+32 471 12 34 56`) |
 
-Returns `null` when the input cannot be parsed as a valid phone number.
+`null` or whitespace input is returned unchanged. Input that cannot be parsed as a phone number throws a `PhoneNumbers.NumberParseException` — wrap calls in a try/catch when the input is untrusted.
 
 ## Country Utilities (Common)
 

@@ -31,7 +31,7 @@ Regira IO.Storage provides a **unified abstraction** for file storage operations
 
 ## Quick Start
 
-```csharp
+```csharp no-compile
 services.AddSingleton<IFileService>(_ =>
     new BinaryFileService(new FileSystemOptions { RootFolder = "/var/app/uploads" }));
 
@@ -46,7 +46,7 @@ All backends implement this interface. **Identifiers** are relative paths within
 
 ### Read
 
-```csharp
+```csharp no-compile
 Task<bool>                Exists(string identifier)
 Task<byte[]?>             GetBytes(string identifier)
 Task<Stream?>             GetStream(string identifier)
@@ -55,7 +55,7 @@ Task<IEnumerable<string>> List(FileSearchObject? so = null)
 
 ### Write
 
-```csharp
+```csharp no-compile
 Task<string> Save(string identifier, byte[] bytes,  string? contentType = null)
 Task<string> Save(string identifier, Stream stream, string? contentType = null)
 Task         Move(string sourceIdentifier, string targetIdentifier)
@@ -66,7 +66,7 @@ Task         Delete(string identifier)
 
 ### URI helpers
 
-```csharp
+```csharp no-compile
 string  Root { get; }                        // storage root URI / path
 string  GetAbsoluteUri(string identifier)    // relative → absolute
 string  GetIdentifier(string uri)            // absolute → relative
@@ -113,6 +113,8 @@ Path        →  /var/app/storage/invoices/2024/inv-001.pdf
 `IFileService` provides helpers to move between the two representations:
 
 ```csharp
+IFileService service = new BinaryFileService(new FileSystemOptions { RootFolder = "/var/app/storage" });
+
 string absolute = service.GetAbsoluteUri("invoices/2024/inv-001.pdf");
 // → /var/app/storage/invoices/2024/inv-001.pdf  (or the equivalent Azure/SFTP URL)
 
@@ -137,6 +139,8 @@ Filter parameter for `List()`.
 | `Type` | `FileEntryTypes` | `All` | `Files`, `Directories`, or `All` |
 
 ```csharp
+IFileService storage = new BinaryFileService(new FileSystemOptions { RootFolder = "/var/app/storage" });
+
 var images = await storage.List(new FileSearchObject
 {
     FolderUri  = "products/",
@@ -160,7 +164,7 @@ var service = new BinaryFileService(new FileSystemOptions { RootFolder = "/var/a
 
 **Network shares** — for a UNC path protected by a username & password, use `NetworkFileService` with a `NetworkShareCommunicator`. The communicator authenticates against the share lazily on the first file operation (or eagerly via `await communicator.Open()`); dispose it on application shutdown to release the connection.
 
-```csharp
+```csharp no-compile
 services.AddSingleton(new NetworkFileSystemOptions
 {
     RootFolder = @"\\fileserver\share\uploads",
@@ -184,7 +188,7 @@ services.AddSingleton<IFileService, NetworkFileService>();
 
 **Text files** — use `TextFileService` directly, or wrap any `IFileService` with the `DefaultTextFileService` decorator:
 
-```csharp
+```csharp no-compile
 var text = new DefaultTextFileService(anyFileService, Encoding.UTF8);
 string? content = await text.GetContents("config/app.json");
 await text.Save("config/app.json", jsonString);
@@ -207,10 +211,11 @@ await communicator.Open();   // idempotent — safe to call multiple times
 var service = new BinaryBlobService(communicator);
 ```
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `ConnectionString` | `string` | Azure Storage connection string |
-| `ContainerName` | `string` | Blob container name |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `ConnectionString` | `string?` | `null` | Azure Storage connection string |
+| `ContainerName` | `string?` | `null` | Blob container name |
+| `CreateContainerIfNotExists` | `bool` | `true` | Create the container when missing — set `false` to fail fast on misconfigured names |
 
 ---
 
@@ -237,7 +242,8 @@ var service = new SftpService(communicator);
 | `Port` | `int` | `22` | SSH port |
 | `UserName` | `string` | *(required)* | Login username |
 | `Password` | `string?` | `null` | Login password |
-| `ContainerName` | `string` | `"/"` | Remote base directory |
+| `ContainerName` | `string?` | `"/"` | Remote base directory |
+| `Contained` | `bool` | `true` | Reject identifiers that escape `ContainerName` |
 
 > `SftpCommunicator` holds a single persistent connection. Dispose it on application shutdown.
 
@@ -248,13 +254,15 @@ var service = new SftpService(communicator);
 **Package:** `Regira.IO.Storage.GitHub` — **NuGet dependency:** none (uses `HttpClient`)
 
 ```csharp
+ISerializer jsonSerializer = new JsonSerializer();   // e.g. Regira.Serializing.Newtonsoft
+
 var service = new GitHubService(
-    new GitHubOptions
+    new GitHubCommunicator(new GitHubOptions
     {
         Uri       = "https://api.github.com/repos/owner/repo",
         Key       = "ghp_xxxxxxxxxxxx",   // PAT — optional for public-repo reads
         UserAgent = "MyApp/1.0"
-    },
+    }),
     jsonSerializer
 );
 ```
@@ -276,7 +284,7 @@ Fully implements `IFileService` — `Save`/`Move`/`Delete` create commits on `Br
 
 `ZipFileService` implements `IFileService` and `IDisposable`. Construct it with a `ZipFileCommunicator` that points to an existing archive or starts a fresh one:
 
-```csharp
+```csharp no-compile
 // Open an existing zip file
 using var zipService = new ZipFileService(new ZipFileCommunicator { SourceFile = existingZip });
 var entries = await zipService.List();
@@ -290,26 +298,30 @@ await newZip.Save("data.csv", csvBytes);
 | `ZipFileCommunicator` | Type | Description |
 |-----------------------|------|-------------|
 | `SourceFile` | `IMemoryFile?` | Existing zip to open — omit to start empty |
-| `Password` | `string?` | Archive password (optional) |
+| `Password` | `string?` | Currently not consumed by `ZipFileService` — for password-protected ZIPs use `Regira.IO.Compression.SharpZipLib` (see [Compression](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/docs/compression.html)) |
 
 > `ZipFileServiceFactory` is a convenience wrapper: `new ZipFileServiceFactory().Create(sourceFile, password)` is equivalent to constructing `ZipFileService` directly.
 
 ### ZipBuilder — create archives
 
 ```csharp
+byte[] pdfBytes = [/* … */], csvBytes = [/* … */];
+
 IMemoryFile zip = await new ZipBuilder()
     .For([new BinaryFileItem { FileName = "report.pdf", Bytes = pdfBytes },
           new BinaryFileItem { FileName = "data.csv",   Bytes = csvBytes }])
     .Build();
 ```
 
-### ZipUtility — extension methods
+### ZipUtility — zip/unzip helpers
 
-```csharp
-IMemoryFile archive         = files.Zip();                             // collection → zip
-IMemoryFile archive         = paths.Zip(baseFolder: "/var/exports");   // paths → zip
-BinaryFileCollection items  = existingZip.Unzip();                     // zip → collection
-string[] extracted          = existingZip.Unzip(targetDirectory: "/tmp/out");
+`Zip` is an extension method; `Unzip` is a static method on `ZipUtility`.
+
+```csharp no-compile
+IMemoryFile zipFromFiles    = files.Zip();                             // collection → zip
+IMemoryFile zipFromPaths    = paths.Zip(baseFolder: "/var/exports");   // paths → zip
+BinaryFileCollection items  = ZipUtility.Unzip(existingZip);           // zip → collection
+string[] extracted          = ZipUtility.Unzip(existingZip, targetDirectory: "/tmp/out");
 ```
 
 ## Helpers
@@ -317,6 +329,8 @@ string[] extracted          = existingZip.Unzip(targetDirectory: "/tmp/out");
 ### FileProcessor — recursive processing
 
 ```csharp
+IFileService fileService = new BinaryFileService(new FileSystemOptions { RootFolder = "/var/app/storage" });
+
 await new FileProcessor(fileService).ProcessFiles(
     new FileSearchObject { FolderUri = "exports/", Recursive = true },
     async (identifier, svc) => { /* process each file */ }
@@ -326,6 +340,8 @@ await new FileProcessor(fileService).ProcessFiles(
 ### FileNameHelper — unique filenames
 
 ```csharp
+IFileService fileService = new BinaryFileService(new FileSystemOptions { RootFolder = "/var/app/storage" });
+
 var helper = new FileNameHelper(fileService);
 string safe = await helper.NextAvailableFileName("invoices/report.pdf");
 // → "invoices/report-(1).pdf" when "invoices/report.pdf" already exists
@@ -336,18 +352,21 @@ Customise the pattern: `new FileNameHelper.Options { NumberPattern = " ({0})" }`
 ### ExportHelper — copy between services
 
 ```csharp
+IFileService source = new BinaryFileService(new FileSystemOptions { RootFolder = "/var/app/storage" });
+IFileService target = new BinaryFileService(new FileSystemOptions { RootFolder = "/mnt/backup" });
+
 await new ExportHelper(source, target)
     .Export(new FileSearchObject { FolderUri = "backups/", Recursive = true });
 ```
 
 ### FileNameUtility — path helpers
 
-```csharp
+```csharp no-compile
 FileNameUtility.GetAbsoluteUri("folder/file.txt", root)
 FileNameUtility.GetRelativeUri(absolutePath, root)
 FileNameUtility.GetCleanFileName("folder/sub/file.txt")  // → "file.txt"
 FileNameUtility.Combine("folder", "sub", "file.txt")
-FileNameUtility.SanitizeFilename("con.txt")              // avoids Windows reserved names
+FileNameUtility.SanitizeFilename(@"CON\report.txt")      // → @"_XXX_\report.txt" — replaces path segments that exactly match a Windows reserved name ("con.txt" is left as-is)
 FileNameUtility.GetUncShareRoot(@"\\server\share\sub")   // → @"\\server\share" (null for non-UNC)
 ```
 

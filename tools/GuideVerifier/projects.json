@@ -1,16 +1,396 @@
 {
-  "//": "src projects the generated snippet-compilation project references (relative to the repo root). Start with the Entities family; add more as their guides are cleaned up for compilation.",
-  "projects": [
-    "src/Common.Entities/Common.Entities.csproj",
-    "src/Entities.EFcore/Entities.EFcore.csproj",
-    "src/Entities.DependencyInjection/Entities.DependencyInjection.csproj",
-    "src/Entities.Web/Entities.Web.csproj"
-  ],
-  "//guides": "ai folders scanned for ```csharp blocks. Restricted to the projects above so failures map to a referenced assembly.",
-  "guideDirs": [
-    "src/Common.Entities/ai",
-    "src/Entities.EFcore/ai",
-    "src/Entities.DependencyInjection/ai",
-    "src/Entities.Web/ai"
+  "//": "Snippet-compilation groups. Each group pairs guide files/folders with the src projects their ```csharp blocks compile against, and builds as its own throwaway project — so doc families with unrelated (or conflicting) dependency sets stay isolated. `usings` are prepended to every snippet in the group; `frameworkReferences` add e.g. ASP.NET Core. Run one group with: dotnet run --project tools/GuideVerifier -- . --group <name>",
+  "groups": [
+    {
+      "name": "entities",
+      "projects": [
+        "src/Common.Entities/Common.Entities.csproj",
+        "src/Entities.EFcore/Entities.EFcore.csproj",
+        "src/Entities.DependencyInjection/Entities.DependencyInjection.csproj",
+        "src/Entities.Web/Entities.Web.csproj"
+      ],
+      "guideDirs": [
+        "src/Common.Entities/ai",
+        "src/Entities.EFcore/ai",
+        "src/Entities.Web/ai"
+      ],
+      "guideFiles": [
+        "src/Common.Entities/README.md"
+      ],
+      "usings": [
+        "System.ComponentModel.DataAnnotations",
+        "Microsoft.EntityFrameworkCore",
+        "Microsoft.Extensions.DependencyInjection",
+        "Regira.Entities.Models",
+        "Regira.Entities.Models.Abstractions",
+        "Regira.Entities.Services.Abstractions",
+        "Regira.Entities.Extensions",
+        "Regira.Entities.Attachments.Models",
+        "Regira.Entities.Attachments.Abstractions",
+        "Regira.Entities.DependencyInjection.Extensions",
+        "Regira.Entities.DependencyInjection.Attachments"
+      ]
+    },
+    {
+      "name": "core",
+      "projects": [
+        "src/Common/Common.csproj",
+        "src/TreeList/TreeList.csproj",
+        "src/Serializing.Newtonsoft/Serializing.Newtonsoft.csproj",
+        "src/Globalization.LibPhoneNumber/Globalization.LibPhoneNumber.csproj"
+      ],
+      "guideFiles": [
+        "src/Common/README.md",
+        "src/TreeList/README.md",
+        "src/Serializing.Newtonsoft/README.md",
+        "src/Globalization.LibPhoneNumber/README.md"
+      ],
+      "usings": [
+        "System.IO",
+        "System.Text",
+        "System.Globalization",
+        "Regira.Utilities",
+        "Regira.TreeList",
+        "Regira.IO.Abstractions",
+        "Regira.IO.Models",
+        "Regira.IO.Extensions",
+        "Regira.IO.Utilities",
+        "Regira.Normalizing",
+        "Regira.Normalizing.Models",
+        "Regira.Dimensions",
+        "Regira.Caching",
+        "Regira.Collections",
+        "Regira.Serializing.Abstractions",
+        "Regira.Serializing.Newtonsoft.Json",
+        "Regira.DAL.Paging",
+        "Regira.Web.Utilities",
+        "Regira.Globalization.Models",
+        "Regira.Globalization.Utilities",
+        "Regira.Globalization.LibPhoneNumber"
+      ]
+    },
+    {
+      "name": "system",
+      "projects": [
+        "src/Common.System/Common.System.csproj",
+        "src/System.Hosting/System.Hosting.csproj",
+        "src/System.Projects/System.Projects.csproj",
+        "src/Common.IO.Storage/Common.IO.Storage.csproj"
+      ],
+      "guideFiles": [
+        "src/Common.System/README.md"
+      ],
+      "usings": [
+        "System.Xml.Linq",
+        "Microsoft.AspNetCore.Builder",
+        "Microsoft.Extensions.DependencyInjection",
+        "Regira.System",
+        "Regira.System.Abstractions",
+        "Regira.IO.Abstractions",
+        "Regira.IO.Models",
+        "Regira.System.Hosting.HostOptions.Extensions",
+        "Regira.System.Hosting.WindowsService",
+        "Regira.System.Hosting.Background.DependencyInjection",
+        "Regira.System.Projects.Models",
+        "Regira.System.Projects.Services"
+      ],
+      "frameworkReferences": ["Microsoft.AspNetCore.App"]
+    },
+    {
+      "name": "web",
+      "projects": [
+        "src/Common.Web/Common.Web.csproj",
+        "src/Web.Swagger/Web.Swagger.csproj",
+        "src/Web.HTML.RazorLight/Web.HTML.RazorLight.csproj",
+        "src/Web.HTML.RazorEngineCore/Web.HTML.RazorEngineCore.csproj",
+        "src/System.Hosting/System.Hosting.csproj",
+        "src/Serializing.Newtonsoft/Serializing.Newtonsoft.csproj"
+      ],
+      "guideFiles": [
+        "src/Common.Web/README.md"
+      ],
+      "usings": [
+        "Microsoft.AspNetCore.Builder",
+        "Microsoft.AspNetCore.Mvc",
+        "Microsoft.Extensions.DependencyInjection",
+        "Regira.Serializing.Abstractions",
+        "Regira.Serializing.Newtonsoft.Json",
+        "Regira.Web.HTML",
+        "Regira.Web.HTML.Abstractions",
+        "Regira.Web.ExceptionHandling",
+        "Regira.Web.ExceptionHandling.DependencyInjection",
+        "Regira.Web.Middleware",
+        "Regira.Web.Routing",
+        "Regira.Web.Formatters",
+        "Regira.Web.Swagger.Extensions",
+        "Regira.Web.Swagger.Security",
+        "Regira.System.Hosting.HostOptions.Extensions",
+        "Regira.System.Hosting.Background.DependencyInjection"
+      ],
+      "frameworkReferences": ["Microsoft.AspNetCore.App"]
+    },
+    {
+      "name": "security",
+      "projects": [
+        "src/Common.Security/Common.Security.csproj",
+        "src/Security.Hashing.BCryptNet/Security.Hashing.BCryptNet.csproj",
+        "src/Security.Authentication/Security.Authentication.csproj"
+      ],
+      "guideFiles": [
+        "src/Common.Security/README.md"
+      ],
+      "usings": [
+        "System.Security.Claims",
+        "Microsoft.AspNetCore.Builder",
+        "Microsoft.Extensions.Configuration",
+        "Microsoft.Extensions.DependencyInjection",
+        "Regira.Security.Core",
+        "Regira.Security.Encryption",
+        "Regira.Security.Authentication.Core.Extensions",
+        "Regira.Security.Authentication.Core.Models",
+        "Regira.Security.Authentication.Jwt.Extensions",
+        "Regira.Security.Authentication.Jwt.Models",
+        "Regira.Security.Authentication.ApiKey.Extensions",
+        "Regira.Security.Authentication.ApiKey.Models",
+        "Regira.Security.Authentication.Cookie.Extensions",
+        "Regira.Security.Authentication.OpenIdConnect.Extensions"
+      ],
+      "frameworkReferences": ["Microsoft.AspNetCore.App"]
+    },
+    {
+      "name": "storage",
+      "projects": [
+        "src/Common.IO.Storage/Common.IO.Storage.csproj",
+        "src/IO.Storage.Azure/IO.Storage.Azure.csproj",
+        "src/IO.Storage.SSH/IO.Storage.SSH.csproj",
+        "src/IO.Storage.GitHub/IO.Storage.GitHub.csproj",
+        "src/IO.Compression.SharpZipLib/IO.Compression.SharpZipLib.csproj",
+        "src/Serializing.Newtonsoft/Serializing.Newtonsoft.csproj"
+      ],
+      "guideFiles": [
+        "src/Common.IO.Storage/README.md"
+      ],
+      "usings": [
+        "Regira.IO.Abstractions",
+        "Regira.IO.Models",
+        "Regira.IO.Storage",
+        "Regira.IO.Storage.Abstractions",
+        "Regira.IO.Storage.Azure",
+        "Regira.IO.Storage.Compression",
+        "Regira.IO.Storage.FileSystem",
+        "Regira.IO.Storage.GitHub",
+        "Regira.IO.Storage.Helpers",
+        "Regira.IO.Storage.SSH",
+        "Regira.Serializing.Abstractions",
+        "Regira.Serializing.Newtonsoft.Json"
+      ]
+    },
+    {
+      "name": "dal",
+      "projects": [
+        "src/DAL.EFcore/DAL.EFcore.csproj",
+        "src/DAL.MongoDB/DAL.MongoDB.csproj",
+        "src/DAL.MySQL/DAL.MySQL.csproj",
+        "src/DAL.MySQL.MySqlBackup/DAL.MySQL.MySqlBackup.csproj",
+        "src/DAL.PostgreSQL/DAL.PostgreSQL.csproj",
+        "src/Common.System/Common.System.csproj"
+      ],
+      "guideFiles": [
+        "src/DAL.EFcore/README.md",
+        "src/DAL.MongoDB/README.md",
+        "src/DAL.MySQL/README.md",
+        "src/DAL.PostgreSQL/README.md"
+      ],
+      "usings": [
+        "System.IO",
+        "MongoDB.Bson",
+        "MongoDB.Driver",
+        "Regira.DAL.MongoDB.Abstractions",
+        "Regira.DAL.MongoDB.Core",
+        "Regira.DAL.MongoDB.Services",
+        "Regira.DAL.MySQL.Models",
+        "Regira.DAL.MySQL.MySqlBackup",
+        "Regira.DAL.MySQL.Services",
+        "Regira.DAL.PostgreSQL.Core",
+        "Regira.DAL.PostgreSQL.Services",
+        "Regira.IO.Abstractions",
+        "Regira.Serializing.Abstractions",
+        "Regira.System",
+        "Regira.System.Abstractions"
+      ]
+    },
+    {
+      "name": "commerce",
+      "projects": [
+        "src/Common.Payments/Common.Payments.csproj",
+        "src/Payments.Mollie/Payments.Mollie.csproj",
+        "src/Payments.Pom/Payments.Pom.csproj",
+        "src/Common.Invoicing/Common.Invoicing.csproj",
+        "src/Invoicing.Billit/Invoicing.Billit.csproj",
+        "src/Invoicing.UblSharp/Invoicing.UblSharp.csproj",
+        "src/Invoicing.ViaAdValvas/Invoicing.ViaAdValvas.csproj",
+        "src/Serializing.Newtonsoft/Serializing.Newtonsoft.csproj"
+      ],
+      "guideFiles": [
+        "src/Common.Payments/README.md",
+        "src/Common.Invoicing/README.md"
+      ],
+      "usings": [
+        "System.Xml.Linq",
+        "Regira.Invoicing.Invoices.Models",
+        "Regira.Invoicing.Invoices.Models.Abstractions",
+        "Regira.Invoicing.Payments.Abstractions",
+        "Regira.Invoicing.Payments.Models",
+        "Regira.Invoicing.UblSharp.Core",
+        "Regira.Invoicing.UblSharp.Services",
+        "Regira.Payments.Pom",
+        "Regira.Serializing.Abstractions",
+        "Regira.Serializing.Newtonsoft.Json"
+      ]
+    },
+    {
+      "name": "media",
+      "projects": [
+        "src/Common.Media/Common.Media.csproj",
+        "src/Drawing.SkiaSharp/Drawing.SkiaSharp.csproj",
+        "src/Drawing.GDI/Drawing.GDI.csproj"
+      ],
+      "guideFiles": [
+        "src/Common.Media/README.md"
+      ],
+      "usings": [
+        "Regira.Media.Drawing.Dimensions",
+        "Regira.Media.Drawing.Enums",
+        "Regira.Media.Drawing.Models",
+        "Regira.Media.Drawing.Services",
+        "Regira.Media.Drawing.Services.Abstractions"
+      ]
+    },
+    {
+      "name": "office-pdf",
+      "projects": [
+        "src/Common.Office/Common.Office.csproj",
+        "src/PDF.SelectPdf/PDF.SelectPdf.csproj",
+        "src/PDF.DocNET/PDF.DocNET.csproj",
+        "src/PDF.Spire/PDF.Spire.csproj",
+        "src/PDF.Puppeteer/PDF.Puppeteer.csproj",
+        "src/PDF.Playwright/PDF.Playwright.csproj",
+        "src/PDF.PDFtoPrinter/PDF.PDFtoPrinter.csproj",
+        "src/Drawing.SkiaSharp/Drawing.SkiaSharp.csproj"
+      ],
+      "guideFiles": [
+        "src/Common.Office/README.md",
+        "src/Common.Office/docs/pdf/README.md"
+      ],
+      "usings": [
+        "System.IO",
+        "Regira.IO.Abstractions",
+        "Regira.IO.Extensions",
+        "Regira.Media.Drawing.Services.Abstractions",
+        "Regira.Office.Models",
+        "Regira.Office.PDF.Abstractions",
+        "Regira.Office.PDF.Models"
+      ]
+    },
+    {
+      "name": "office-excel",
+      "projects": [
+        "src/Common.Office/Common.Office.csproj",
+        "src/Excel.ClosedXML/Excel.ClosedXML.csproj",
+        "src/Excel.EPPlus/Excel.EPPlus.csproj",
+        "src/Excel.MiniExcel/Excel.MiniExcel.csproj",
+        "src/Excel.NpoiMapper/Excel.NpoiMapper.csproj"
+      ],
+      "guideFiles": [
+        "src/Common.Office/docs/excel/README.md"
+      ],
+      "usings": [
+        "System.Data",
+        "System.IO",
+        "Regira.IO.Abstractions",
+        "Regira.IO.Extensions",
+        "Regira.Office.Excel.Abstractions",
+        "Regira.Office.Excel.Models"
+      ]
+    },
+    {
+      "name": "office-word",
+      "projects": [
+        "src/Common.Office/Common.Office.csproj",
+        "src/Word.Mini/Word.Mini.csproj",
+        "src/Word.Spire/Word.Spire.csproj"
+      ],
+      "guideFiles": [
+        "src/Common.Office/docs/word/README.md"
+      ],
+      "usings": [
+        "System.IO",
+        "Regira.IO.Abstractions",
+        "Regira.IO.Extensions",
+        "Regira.Office.Word.Abstractions",
+        "Regira.Office.Word.Models"
+      ]
+    },
+    {
+      "name": "office-mail",
+      "projects": [
+        "src/Common.Office/Common.Office.csproj",
+        "src/Mail.SendGrid/Mail.SendGrid.csproj",
+        "src/Mail.MailGun/Mail.MailGun.csproj",
+        "src/Mail.MSGReader/Mail.MSGReader.csproj",
+        "src/Mail.Web/Mail.Web.csproj",
+        "src/Security.Authentication.Web/Security.Authentication.Web.csproj"
+      ],
+      "guideFiles": [
+        "src/Common.Office/docs/mail/README.md"
+      ],
+      "usings": [
+        "Microsoft.AspNetCore.Identity.UI.Services",
+        "Microsoft.Extensions.Configuration",
+        "Microsoft.Extensions.DependencyInjection",
+        "Regira.Office.Mail.Abstractions",
+        "Regira.Office.Mail.Models",
+        "Regira.Office.Mail.Services",
+        "Regira.Office.Mail.SendGrid.DependencyInjection",
+        "Regira.Office.Mail.MailGun.DependencyInjection",
+        "Regira.Security.Authentication.Web.Mail"
+      ],
+      "frameworkReferences": ["Microsoft.AspNetCore.App"]
+    },
+    {
+      "name": "office-data",
+      "projects": [
+        "src/Common.Office/Common.Office.csproj",
+        "src/Csv.CsvHelper/Csv.CsvHelper.csproj",
+        "src/VCards.FolkerKinzel/VCards.FolkerKinzel.csproj",
+        "src/Barcodes.ZXing/Barcodes.ZXing.csproj",
+        "src/Barcodes.QRCoder/Barcodes.QRCoder.csproj",
+        "src/Barcodes.Spire/Barcodes.Spire.csproj",
+        "src/Barcodes.UziGranot/Barcodes.UziGranot.csproj",
+        "src/OCR.PaddleOCR/OCR.PaddleOCR.csproj",
+        "src/OCR.Tesseract/OCR.Tesseract.csproj",
+        "src/Common.Web/Common.Web.csproj"
+      ],
+      "guideFiles": [
+        "src/Common.Office/docs/csv/README.md",
+        "src/Common.Office/docs/vcards/README.md",
+        "src/Common.Office/docs/barcodes/README.md",
+        "src/Common.Office/docs/ocr/README.md"
+      ],
+      "usings": [
+        "System.IO",
+        "Regira.IO.Abstractions",
+        "Regira.IO.Extensions",
+        "Regira.Media.Drawing.Dimensions",
+        "Regira.Media.Drawing.Models.Abstractions",
+        "Regira.Office.Barcodes.Abstractions",
+        "Regira.Office.Barcodes.Models",
+        "Regira.Office.OCR.Models.DTO",
+        "Regira.Office.VCards.Abstractions",
+        "Regira.Office.VCards.FolkerKinzel",
+        "Regira.Office.VCards.Models"
+      ],
+      "frameworkReferences": ["Microsoft.AspNetCore.App"]
+    }
   ]
 }

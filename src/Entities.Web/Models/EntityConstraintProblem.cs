@@ -6,7 +6,7 @@ namespace Regira.Entities.Web;
 
 /// <summary>
 /// The single source of the 409 response body for <see cref="EntityConstraintException"/> —
-/// every write surface (MVC helpers/filter, minimal-API filter, FastEndpoints bases) emits this shape.
+/// every write surface (the MVC helpers and the <c>[EntityConstraintConflict]</c> filter) emits this shape.
 /// Lives with the web response contract, not with any one of its handlers.
 /// </summary>
 public static class EntityConstraintProblem

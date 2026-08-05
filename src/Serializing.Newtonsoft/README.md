@@ -18,7 +18,7 @@ Regira Serializing provides JSON serialisation via the `ISerializer` contract de
 
 Implements `ISerializer`. Registers as a singleton in most consuming projects.
 
-```csharp
+```csharp no-compile
 ISerializer json = new Regira.Serializing.Newtonsoft.Json.JsonSerializer();
 
 string s    = json.Serialize(myObject);
@@ -56,6 +56,6 @@ Independent of converters, the serializer always uses camelCase property naming 
 
 ### DI Registration
 
-```csharp
+```csharp no-compile
 services.AddSingleton<ISerializer, Regira.Serializing.Newtonsoft.Json.JsonSerializer>();
 ```

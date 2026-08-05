@@ -17,7 +17,7 @@ Regira Office.Csv provides async CSV read and write via CsvHelper, with both gen
 
 ## Quick Start
 
-```csharp
+```csharp no-compile
 // Non-generic — rows as Dictionary<string, object>
 ICsvService csv = new CsvManager();
 var rows = await csv.Read(csvString);
@@ -29,14 +29,14 @@ var products = await csv.Read(csvString);
 
 ## ICsvService / ICsvService\<T\>
 
-```csharp
+```csharp no-compile
 // Read
-Task<List<T>>    Read(string input,       CsvOptions? options = null);
-Task<List<T>>    Read(IBinaryFile input,  CsvOptions? options = null);
+Task<List<T>>    Read(string input,       CsvOptions? options = null, CancellationToken cancellationToken = default);
+Task<List<T>>    Read(IBinaryFile input,  CsvOptions? options = null, CancellationToken cancellationToken = default);
 
 // Write
-Task<string>     Write(IEnumerable<T> items,     CsvOptions? options = null);
-Task<IMemoryFile> WriteFile(IEnumerable<T> items, CsvOptions? options = null);
+Task<string>     Write(IEnumerable<T> items,     CsvOptions? options = null, CancellationToken cancellationToken = default);
+Task<IMemoryFile> WriteFile(IEnumerable<T> items, CsvOptions? options = null, CancellationToken cancellationToken = default);
 ```
 
 `ICsvService` is `ICsvService<IDictionary<string, object>>`.
@@ -50,10 +50,19 @@ Task<IMemoryFile> WriteFile(IEnumerable<T> items, CsvOptions? options = null);
 
 ### CsvHelperOptions (extends CsvOptions)
 
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `IgnoreBadData` | `bool` | `false` | Skip malformed rows instead of throwing |
-| `PreserveWhitespace` | `bool` | `false` | Keep leading/trailing whitespace in cell values |
+| Member | Type | Default | Description |
+|--------|------|---------|-------------|
+| `IgnoreBadData` | `bool` (public field) | `false` | Skip malformed rows instead of throwing |
+| `PreserveWhitespace` | `bool` (public field) | `false` | Keep leading/trailing whitespace in cell values |
+
+> `IgnoreBadData` and `PreserveWhitespace` are only honored when the `CsvHelperOptions` instance is
+> passed to the **`CsvManager` constructor**. On the per-call `options` parameter only `Delimiter`
+> and `Culture` are read — the two flags are silently ignored there.
+
+```csharp no-compile
+// Flags must go through the constructor:
+var csv = new CsvManager<Product>(new CsvHelperOptions { IgnoreBadData = true });
+```
 
 ## Notes
 
@@ -64,7 +73,7 @@ Task<IMemoryFile> WriteFile(IEnumerable<T> items, CsvOptions? options = null);
 
 ## Examples
 
-```csharp
+```csharp no-compile
 // Read from uploaded file
 var csvFile = formFile.ToNamedFile().ToBinaryFile();
 var rows    = await new CsvManager().Read(csvFile);

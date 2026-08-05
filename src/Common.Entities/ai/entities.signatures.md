@@ -1544,8 +1544,8 @@ public class EntityReadOptions
 }
 public class EntityReadOptions<TEntity> : EntityReadOptions where TEntity : class;  // per-entity override
 
-// DTO wire-shape descriptor recorded by UseMapping<TDto, TInputDto>(); the FastEndpoints auto-endpoints
-// (MapEntityEndpoints) map through it when present, else serve the raw entity with a startup warning.
+// DTO wire-shape descriptor recorded by UseMapping<TDto, TInputDto>(); registered as a singleton so
+// endpoint scanners and other infrastructure can resolve the wire shape configured for an entity.
 public sealed record EntityMappingRegistration(Type EntityType, Type DtoType, Type InputDtoType);
 ```
 

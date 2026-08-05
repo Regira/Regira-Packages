@@ -65,7 +65,8 @@ string cipher = enc.Encrypt("sensitive value");
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `Secret` | `string?` | built-in salt key | Signing / derivation secret |
-| `AlgorithmType` | `string?` | `"SHA512"` | Hash algorithm used for key derivation |
+| `AlgorithmType` | `string?` | `"SHA512"` | Hash algorithm — read only by `SymmetricEncrypter`, `SimpleHasher`, and the BCrypt hasher; `AesEncrypter` and the PBKDF2 `Hasher` hard-wire SHA-512 |
+| `Iterations` | `int?` | `500000` | PBKDF2 iteration count used by the `Hasher` |
 | `Encoding` | `Encoding?` | UTF-8 | Text encoding |
 
 ---
@@ -77,14 +78,14 @@ Two `IHasher` implementations:
 ```csharp
 public interface IHasher
 {
-    string Hash(string? plainText);
-    bool   Verify(string? plainText, string hashedValue);
+    string Hash(string plainText);
+    bool   Verify(string plainText, string hashedValue);
 }
 ```
 
 ### Hasher (PBKDF2)
 
-Stores a per-hash random salt + PBKDF2 digest (10 000 iterations, SHA-512, 64-byte output). Constant-time verification.
+Stores a per-hash random salt + PBKDF2 digest (500 000 iterations by default — configurable via `CryptoOptions.Iterations` — SHA-512, 64-byte output). Constant-time verification.
 
 ```csharp
 var hasher = new Regira.Security.Hashing.Hasher();
@@ -94,7 +95,7 @@ bool ok       = hasher.Verify("myPassword123", stored);   // true
 
 ### Security.Hashing.BCryptNet — BCrypt Hasher
 
-Enhanced BCrypt (SHA-384 by default). Highest cost factor. Recommended for passwords.
+Enhanced BCrypt (SHA-384 by default), using the BCrypt.Net default work factor. Recommended for passwords.
 
 ```csharp
 var hasher = new Regira.Security.Hashing.BCryptNet.Hasher();
@@ -115,18 +116,21 @@ Double-SHA with salt — fast but weaker. Use for non-password data only.
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `Secret` | `string` | *(required)* | HMAC signing key — `HS256` needs ≥ 32 bytes, `HS384` ≥ 48, the `HS512` default ≥ 64. Enforced at registration |
-| `Algorithm` | `string?` | `null` | Signing algorithm as a JWA id; `HS512` when unset |
+| `Algorithm` | `string?` | `null` | Signing algorithm as a JWA id; HS512 when unset (applied as `SecurityAlgorithms.HmacSha512Signature`, the XML-dsig URI spelling) |
 | `ValidateSecretLength` | `bool` | `true` | Whether registration rejects a `Secret` too short for `Algorithm` |
+| `AuthenticationScheme` | `string` | `"Bearer"` | Name of the JwtBearer scheme |
 | `Authority` | `string?` | `null` | Token issuer |
 | `Audience` | `string?` | `null` | Single audience |
 | `Audiences` | `ICollection<string>?` | `null` | Multiple audiences |
 | `LifeSpan` | `int` | `7200` | Token lifetime in seconds |
+| `IncludeIssuedDate` | `bool` | `true` | Include an `iat` claim in created tokens |
 | `NameClaimType` | `string` | `"name"` | Claim used as user name |
 | `RoleClaimType` | `string` | `"role"` | Claim used as role |
+| `UseJwtClaimTypes` | `bool` | `true` | Configure the token handlers' claim-type maps to the short JWT spellings (`sub`, `name`, `email`) instead of the WS-2008 URIs |
 
 ### ITokenHelper
 
-```csharp
+```csharp no-compile
 string      Create(IEnumerable<Claim> claims, string? audience = null, int? lifeSpan = null);
 Task<bool>  Validate(string token);
 ```
@@ -134,6 +138,9 @@ Task<bool>  Validate(string token);
 ### DI registration
 
 ```csharp
+var services = new ServiceCollection();
+IConfiguration configuration = new ConfigurationManager();
+
 services.AddJwtAuthentication(o => configuration.GetSection(AuthenticationSections.Jwt).Bind(o));
 // Registers ITokenHelper as transient and configures the JwtBearer scheme.
 
@@ -151,7 +158,7 @@ services.AddJwtAuthentication(options =>
 
 Namespace `Regira.Security.Authentication.Jwt.Extensions` — historical; these apply to every scheme.
 
-```csharp
+```csharp no-compile
 string? userId = User.FindUserId();             // NameIdentifier / sub
 string? name   = User.FindUserName();           // Identity.Name, then Name / name
 string? email  = User.FindEmail();              // Email / email
@@ -182,6 +189,9 @@ stable user id on an Entra token** — Entra's `sub` is pairwise per application
 `EntraId`:
 
 ```csharp
+var services = new ServiceCollection();
+IConfiguration configuration = new ConfigurationManager();
+
 services.AddJwtAuthentication(o => configuration.GetSection(AuthenticationSections.Jwt).Bind(o));
 ```
 
@@ -198,7 +208,7 @@ services.AddJwtAuthentication(o => configuration.GetSection(AuthenticationSectio
 
 ### IApiKeyOwnerService
 
-```csharp
+```csharp no-compile
 Task<ApiKeyOwner?> FindByOwner(string id);
 Task<ApiKeyOwner?> FindByKey(string apiKey);
 Task<bool>         Validate(string id, string apiKey);
@@ -211,10 +221,14 @@ Task<bool>         Validate(string id, string apiKey);
 | `OwnerId` | `string` | Owner identifier |
 | `Key` | `string` | API key value |
 | `Roles` | `ICollection<string>` | Roles assigned to this key |
+| `Claims` | `ICollection<ApiKeyOwner.Claim>` | Extra claims (`Type` / `Value` pairs) added to the principal |
 
 ### DI registration
 
 ```csharp
+var services = new ServiceCollection();
+IConfiguration configuration = new ConfigurationManager();
+
 // In-memory keys from code
 services.AddApiKeyAuthentication()
         .AddInMemoryApiKeyAuthentication(new[]
@@ -244,6 +258,9 @@ Opt-in, chained off `AddJwtAuthentication`. Closes the gap a SPA on the JWT sche
 way to renew it.
 
 ```csharp
+var services = new ServiceCollection();
+IConfiguration configuration = new ConfigurationManager();
+
 services.AddJwtAuthentication(o => configuration.GetSection("Authentication:Jwt").Bind(o))
         .AddRefreshTokens();                      // in-memory store — development only
 ```
@@ -295,7 +312,7 @@ and users are signed out at random. Neither shows up on one developer machine.
 Implement `IRefreshTokenStore` over your own `DbContext` — five methods, of which only `TryRevoke` needs care — and
 register it first:
 
-```csharp
+```csharp no-compile
 services.AddJwtAuthentication(…)
         .AddRefreshTokenStore<MyEfRefreshTokenStore>()
         .AddRefreshTokens();
@@ -322,6 +339,9 @@ authority signs with rotating asymmetric keys published at a JWKS endpoint. `Add
 `ITokenHelper` — it reads tokens, it does not mint them.
 
 ```csharp
+var services = new ServiceCollection();
+IConfiguration configuration = new ConfigurationManager();
+
 // Any OpenID Connect provider
 services.AddBearerAuthentication(o =>
 {
@@ -402,6 +422,9 @@ For server-rendered apps, Blazor Server, and same-site SPAs. No extra package �
 framework.
 
 ```csharp
+var services = new ServiceCollection();
+IConfiguration configuration = new ConfigurationManager();
+
 services.AddCookieAuthentication(o =>
 {
     o.IsApi = true;                          // 401/403 instead of a 302 to LoginPath
@@ -433,7 +456,7 @@ services.AddCookieAuthentication(configuration);
 
 ### Signing in and out
 
-```csharp
+```csharp no-compile
 await HttpContext.SignInWithClaimsAsync(claims, isPersistent: true);   // normalizes first
 await HttpContext.SignOutCookieAsync();
 ```
@@ -466,6 +489,9 @@ schemes — the OIDC handler runs the challenge and code exchange, a cookie hold
 `AddOidcAuthentication` registers both.
 
 ```csharp
+var services = new ServiceCollection();
+IConfiguration configuration = new ConfigurationManager();
+
 // Entra ID
 services.AddEntraIdSignIn(o =>
 {
@@ -541,6 +567,9 @@ The code exchange itself needs a live provider — verify the full round trip ag
 it carries, and makes itself the default authenticate and challenge scheme.
 
 ```csharp
+var services = new ServiceCollection();
+IConfiguration configuration = new ConfigurationManager();
+
 services.AddApiKeyAuthentication()
         .AddInMemoryApiKeyAuthentication(configuration.GetSection("Authentication:ApiKeys").ToApiKeyOwners());
 
@@ -554,16 +583,19 @@ perfectly good credential of the other kind. Rules naming an unregistered scheme
 mattering. No `AddAuthorization` default policy is needed to name the schemes.
 
 Built-in rules, first match wins: `Authorization: Bearer …` → the bearer scheme; a non-empty API-key header →
-the API-key scheme. A blank API-key header deliberately does not match, so it cannot capture a request that the
-bearer scheme could have served.
+the API-key scheme; the default-named authentication cookie → the cookie scheme (`SchemeForwardRules.Cookie()`,
+skipped when that scheme is not registered). A blank API-key header deliberately does not match, so it cannot
+capture a request that the bearer scheme could have served.
 
 | `SchemeSelectorOptions` | Type | Default | Description |
 |---|---|---|---|
 | `AuthenticationScheme` | `string` | `"Smart"` | Name of the policy scheme |
 | `DisplayName` | `string` | *(descriptive)* | Display name of the policy scheme |
 | `FallbackScheme` | `string?` | `null` | Scheme for a request with no recognised credential; defaults to the lowest-ordered registered rule |
+| `ChallengeScheme` | `string?` | `null` | Scheme that answers a challenge; when unset, a registered sign-in scheme (see below) or the forwarding rules decide |
+| `ForwardChallengeToSignInScheme` | `bool` | `true` | Whether a registered interactive sign-in scheme answers challenges when `ChallengeScheme` is unset |
 | `Rules` | `IList<SchemeForwardRule>` | `[]` | Extra rules, added before the built-in ones |
-| `UseDefaultRules` | `bool` | `true` | Whether to include the bearer and API-key rules |
+| `UseDefaultRules` | `bool` | `true` | Whether to include the bearer, API-key, and cookie rules |
 
 Build rules with `SchemeForwardRules.Bearer(scheme)`, `.Basic(scheme)`, `.ApiKey(scheme)`,
 `.Cookie(scheme, cookieName)`, or `new SchemeForwardRule(order, scheme, context => …)`.
@@ -577,7 +609,7 @@ transformer so guarded operations name the real schemes instead, plus a document
 
 `Security.Authentication.Web` ships three abstract base controllers over ASP.NET Core Identity's `UserManager<TUser>`. Subclass each with a closed user type — `[ApiController]` and the route templates are declared on the base classes and inherited, so the concrete controllers need no attributes of their own:
 
-```csharp
+```csharp no-compile
 public class AccountController(
     ITokenHelper tokenHelper,
     UserManager<AppUser> userManager,
@@ -610,6 +642,8 @@ public class UsersController(UserManager<AppUser> userManager)
 The controllers carry no per-action `[Authorize]`. Instead, **the host applies a global authorization requirement when mapping them, so that every endpoint requires an authenticated user and only `[AllowAnonymous]` actions stay public:**
 
 ```csharp
+var app = WebApplication.Create();
+
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -659,9 +693,9 @@ that. See *Refresh Tokens* above.
 | Endpoint | Anon | Request body | Success | Failure |
 |----------|:----:|--------------|---------|---------|
 | `POST users` | | `{ username, password, confirmEmailUrl? }` | `200` | `400` identity errors |
-| `POST users/confirm-email` | ✅ | `{ token, userName }` | `200` | `400` malformed token or identity errors |
+| `POST users/confirm-email` | ✅ | `{ token, userName, password? }` | `200` | `400` malformed token or identity errors |
 
-`username` is used as both the user name and the email address. When `confirmEmailUrl` is supplied, a confirmation email carrying a Base64 `token` is sent; `confirm-email` decodes it and returns `400` on a malformed token. Creating a user that already exists is a no-op `200`.
+`username` is used as both the user name and the email address. When `confirmEmailUrl` is supplied, a confirmation email carrying a Base64 `token` is sent; `confirm-email` decodes it and returns `400` on a malformed token. Creating a user that already exists is a no-op `200`. The optional `password` on the confirm-email input is not used by the base implementation — it is available to overrides.
 
 ### OpenAPI document transformers (`Security.Authentication.Web`)
 
@@ -680,7 +714,7 @@ one, without which a generated client cannot tell a public endpoint from a guard
 Cookie has no dedicated OpenAPI security type; it is emitted as an API key with `in: cookie`, the accepted
 convention. Adding a scheme needs no transformer change.
 
-```csharp
+```csharp no-compile
 builder.Services.AddOpenApi(options =>
 {
     options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();

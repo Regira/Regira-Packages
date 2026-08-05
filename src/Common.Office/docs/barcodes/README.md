@@ -52,21 +52,21 @@ Console.WriteLine(result?.Contents?[0]);   // "ABC-1234"
 
 ### IBarcodeWriter
 
-```csharp
+```csharp no-compile
 Task<IImageFile> Create(BarcodeInput input, CancellationToken cancellationToken = default);
 ```
 
 ### IBarcodeReader
 
-```csharp
+```csharp no-compile
 Task<BarcodeReadResult?> Read(IImageFile img, BarcodeFormat? format = null, CancellationToken cancellationToken = default);
 ```
 
-Pass `format` to narrow the scanner to a specific type; omit to try all supported formats.
+Pass `format` to narrow the scanner to a specific type; pass `null` (the default) to try all supported formats. Note that passing `BarcodeFormat.Any` is **not** the same as `null`: ZXing maps `Any` to its `All_1D` set, so 2D symbologies (QR, DataMatrix, PDF417, Aztec) are then excluded.
 
 ### IQRCodeWriter / IQRCodeReader
 
-```csharp
+```csharp no-compile
 Task<IImageFile>          Create(QRCodeInput input, CancellationToken cancellationToken = default);
 Task<BarcodeReadResult?>  Read(IImageFile qrCode, CancellationToken cancellationToken = default);
 ```
@@ -99,7 +99,7 @@ Inherits `BarcodeInput`. Format is locked to `QRCode`. Default size is square (`
 
 ```csharp
 QRCodeInput qr = "https://example.com";   // implicit
-var qr = new QRCodeInput { Content = "Hello", Size = new ImageSize(300, 300) };
+var custom = new QRCodeInput { Content = "Hello", Size = new ImageSize(300, 300) };
 ```
 
 ## Output — BarcodeReadResult
@@ -111,9 +111,10 @@ var qr = new QRCodeInput { Content = "Hello", Size = new ImageSize(300, 300) };
 
 ## BarcodeFormat
 
-Flags enum — can be combined with `|`. The `Any` value scans for all supported symbologies.
+Flags enum — can be combined with `|`. `Any` is the combination of all 13 symbology flags, but the ZXing reader maps it to its 1D-only set (`All_1D`) — to scan every symbology pass `format: null` instead. `UnKnown = 0` is what a read returns when the detected symbology has no mapping.
 
 ```
+UnKnown = 0
 Code39  Code93  Code128  CodaBar  DataMatrix
 Ean8    Ean13   Itf      Upca     Upce
 QRCode  Pdf417  Aztec    Any
@@ -135,7 +136,7 @@ Write-only. No `IBarcodeReader`. Uses GDI+ internally.
 
 ### UziGranot
 
-Self-contained — no NuGet dependency. Generates PNG directly with zlib compression. Can detect multiple QR codes in a single image. Error correction level fixed at M.
+Self-contained — no NuGet dependency. Builds a PNG (zlib/deflate) as an intermediate stream, but the returned `IImageFile` is re-encoded as **JPEG**, like the other backends. Can detect multiple QR codes in a single image. Error correction level fixed at M.
 
 ## Implementation comparison
 

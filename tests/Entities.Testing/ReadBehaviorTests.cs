@@ -62,7 +62,7 @@ public class ReadBehaviorTests
         Assert.That(captured, Has.Some.EqualTo(EnumUtility.GetMaxFlagValue<EntityIncludes>()));
     }
 
-    // Shared paging clamp algorithm (used by MVC and the FastEndpoints auto-endpoints)
+    // Shared paging clamp algorithm applied at the HTTP boundary (used by the MVC controllers)
     [TestCase(null, 10, 100, 10)]   // omitted → default
     [TestCase(0, 10, 100, 100)]     // explicit opt-out → max
     [TestCase(25, 10, 100, 25)]     // explicit within range

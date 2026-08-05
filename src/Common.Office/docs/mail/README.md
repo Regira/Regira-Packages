@@ -11,6 +11,7 @@ Regira Office.Mail provides a **unified abstraction** for sending email through 
 | `Mail.MailGun` | `Regira.Office.Mail.MailGun` | Mailgun REST API |
 | `Mail.Web` | `Regira.Office.Mail.Web` | HTTP request DTOs for mail endpoints |
 | `Mail.MSGReader` | `Regira.Office.Mail.MSGReader` | Read existing `.msg` and `.eml` files |
+| `Security.Authentication.Web` | `Regira.Security.Authentication.Web` | `IdentityMailer` bridge to ASP.NET Identity's `IEmailSender` |
 
 ## Installation
 
@@ -26,11 +27,17 @@ Regira Office.Mail provides a **unified abstraction** for sending email through 
 
 <!-- Mail.MSGReader -->
 <PackageReference Include="Regira.Office.Mail.MSGReader" Version="6.*" />
+
+<!-- IdentityMailer (ASP.NET Identity integration) -->
+<PackageReference Include="Regira.Security.Authentication.Web" Version="6.*" />
 ```
 
 ## Quick Start
 
 ```csharp
+IServiceCollection services  = new ServiceCollection();
+IConfiguration configuration = new ConfigurationBuilder().Build();
+
 // Register (pick one)
 services.AddSendGrid(cfg => cfg.Key = configuration["Mail:SendGrid:Key"]!);
 // or
@@ -41,10 +48,12 @@ services.AddMailGun(cfg =>
     cfg.Domain = configuration["Mail:MailGun:Domain"]!;
 });
 
-// Use
+// Use — the parameters are interface-typed, so construct the concrete models
+// (the implicit string conversions don't apply to IMailAddress/IMailRecipient)
+IMailService mailer = services.BuildServiceProvider().GetRequiredService<IMailService>();
 await mailer.Send(
-    sender:     "no-reply@example.com",
-    recipients: ["alice@example.com"],
+    sender:     new MailAddress { Email = "no-reply@example.com" },
+    recipients: [new MailRecipient { Email = "alice@example.com" }],
     subject:    "Hello",
     message:    "<p>Hi!</p>"
 );
@@ -54,7 +63,7 @@ await mailer.Send(
 
 Both backends implement this interface.
 
-```csharp
+```csharp no-compile
 // Parameter-based overload
 Task<IMailResponse> Send(
     IMailAddress             sender,
@@ -86,13 +95,17 @@ Represents a complete outgoing email.
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `From` | `IMailAddress?` | `null` | Sender address |
-| `To` | `ICollection<IMailRecipient>` | `[]` | Recipients (To / Cc / Bcc) |
+| `From` | `MailAddress?` | `null` | Sender address |
+| `To` | `ICollection<MailRecipient>` | `[]` | Recipients (To / Cc / Bcc) |
 | `ReplyTo` | `IMailAddress?` | `null` | Reply-To address |
 | `Subject` | `string?` | `null` | Email subject |
 | `Body` | `string?` | `null` | Message body |
 | `IsHtml` | `bool` | `true` | HTML vs plain text |
-| `Attachments` | `ICollection<INamedFile>?` | `null` | File attachments |
+| `Attachments` | `ICollection<BinaryFileItem>?` | `null` | File attachments |
+
+`MessageObject` exposes the concrete model types shown above; the interface-typed members of
+`IMessageObject` (`IMailAddress? From`, `ICollection<IMailRecipient> To`, `ICollection<INamedFile>? Attachments`)
+are implemented explicitly and convert to/from the concrete types.
 
 ### IMailAddress / MailAddress
 
@@ -149,6 +162,8 @@ charges may still apply.
 ## DI Registration
 
 ```csharp
+IServiceCollection services = new ServiceCollection();
+
 // SendGrid
 services.AddSendGrid(cfg => cfg.Key = "SG.xxx");
 
@@ -177,7 +192,9 @@ Both extension methods register `IMailService` as a transient service.
 
 ### MailException
 
-Thrown when the provider returns a non-success response.
+Thrown by the shared `MailerBase` for invalid attachments (missing file name or empty content), and by
+**SendGrid** when the provider returns a non-success response. The **Mailgun** backend throws a plain
+`Exception` on failure instead — a `catch (MailException)` block will not catch Mailgun send failures.
 
 | Property | Type | Description |
 |----------|------|-------------|
@@ -194,9 +211,10 @@ Thrown when an invalid email address is assigned to `MailAddress.Email`.
 
 ## Testing — DummyMailer
 
-`DummyMailer` implements `IMailService` (via `MailerBase`) and does nothing. Register it in tests to suppress actual sending:
+`DummyMailer` implements `IMailService` (via `MailerBase`) and sends nothing — it returns an empty `MailResponse`, so `Success` is `false`. Register it in tests to suppress actual sending:
 
 ```csharp
+IServiceCollection services = new ServiceCollection();
 services.AddSingleton<IMailService, DummyMailer>();
 ```
 
@@ -204,7 +222,7 @@ services.AddSingleton<IMailService, DummyMailer>();
 
 `Mail.Web` ships `MailInput` for accepting email requests over HTTP. `MailInputExtensions.ToMessageObject()` converts it to a domain `IMessageObject`.
 
-```csharp
+```csharp no-compile
 [HttpPost]
 public async Task<IActionResult> Send([FromBody] MailInput input, IMailService mailer)
 {
@@ -219,7 +237,7 @@ public async Task<IActionResult> Send([FromBody] MailInput input, IMailService m
 | Property | Type | Validation | Description |
 |----------|------|------------|-------------|
 | `From` | `Address?` | — | Optional sender override |
-| `To` | `ICollection<Recipient>` | `[Required]` | Recipients |
+| `To` | `ICollection<Recipient>?` | `[Required]` | Recipients |
 | `ReplyTo` | `Address?` | — | Reply-To address |
 | `Subject` | `string?` | `[Required]` | Email subject |
 | `Body` | `string?` | — | HTML or plain text body |
@@ -230,9 +248,11 @@ public async Task<IActionResult> Send([FromBody] MailInput input, IMailService m
 
 ## ASP.NET Identity Integration
 
-`IdentityMailer` bridges `IMailService` to the ASP.NET Identity `IEmailSender` interface.
+`IdentityMailer` (from the `Regira.Security.Authentication.Web` package, namespace
+`Regira.Security.Authentication.Web.Mail`) bridges `IMailService` to the ASP.NET Identity `IEmailSender` interface.
 
 ```csharp
+IServiceCollection services = new ServiceCollection();
 services.AddSingleton<IEmailSender>(provider =>
     new IdentityMailer(
         provider.GetRequiredService<IMailService>(),

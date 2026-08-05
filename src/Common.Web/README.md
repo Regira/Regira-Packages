@@ -35,7 +35,7 @@ Regira Web.HTML provides Razor-based HTML template rendering plus common web uti
 
 ### IHtmlParser
 
-```csharp
+```csharp no-compile
 Task<string> Parse<T>(string html, T model);
 ```
 
@@ -53,6 +53,9 @@ Replaces `{{PropertyName}}` tokens with property values serialized via `ISeriali
 ```
 
 ```csharp
+ISerializer jsonSerializer = new JsonSerializer();
+string template = "<p>Hello {{Name}}!</p>";
+
 var parser = new HtmlTemplateParser(jsonSerializer);
 string html = await parser.Parse(template, new { Name = "Alice", Address = "123 Main St", showAddress = true });
 ```
@@ -62,6 +65,9 @@ string html = await parser.Parse(template, new { Name = "Alice", Address = "123 
 Full Razor syntax. Strips `@model` directives and `Layout` blocks (not supported by the engine). Best for simple templates without layout inheritance.
 
 ```csharp
+string razorTemplate = "<p>Hello @Model.Name</p>";
+var model = new { Name = "Alice" };
+
 IHtmlParser parser = new Regira.Web.HTML.RazorEngineCore.RazorTemplateParser();
 string html = await parser.Parse(razorTemplate, model);
 ```
@@ -71,6 +77,9 @@ string html = await parser.Parse(razorTemplate, model);
 Lighter alternative with memory caching. Supports a `TemplateKey` option for cache reuse.
 
 ```csharp
+string razorTemplate = "<p>Hello @Model.Name</p>";
+var model = new { Name = "Alice" };
+
 IHtmlParser parser = new Regira.Web.HTML.RazorLight.RazorTemplateParser(new()
 {
     TemplateKey = "invoice-template"   // reuse compiled template across calls
@@ -87,7 +96,10 @@ string html = await parser.Parse(razorTemplate, model);
 Catches unhandled exceptions and logs them without exposing internals to the caller.
 
 ```csharp
-services.AddGlobalExceptionHandling();
+var builder = WebApplication.CreateBuilder();
+builder.Services.AddGlobalExceptionHandling();
+
+var app = builder.Build();
 app.UseGlobalExceptionHandling();
 ```
 
@@ -96,6 +108,7 @@ app.UseGlobalExceptionHandling();
 Sets `CultureInfo.CurrentCulture` from a `culture` route value or query parameter.
 
 ```csharp
+var app = WebApplication.Create();
 app.UseRequestCulture();
 // Request: GET /api/products?culture=nl-BE  → sets nl-BE culture
 ```
@@ -105,6 +118,7 @@ app.UseRequestCulture();
 Apply a central route prefix to every controller.
 
 ```csharp
+var services = new ServiceCollection();
 services.AddControllers(options =>
     options.UseCentralRoutePrefix(new RouteAttribute("api/v1")));
 ```
@@ -114,13 +128,14 @@ services.AddControllers(options =>
 Enables `[FromBody] string` binding for `text/plain` requests.
 
 ```csharp
+var services = new ServiceCollection();
 services.AddControllers(options =>
     options.InputFormatters.Insert(0, new TextPlainInputFormatter()));
 ```
 
 ### ControllerExtensions
 
-```csharp
+```csharp no-compile
 // Return INamedFile as a download or inline
 return this.File(namedFile, inline: true);
 ```
@@ -129,11 +144,11 @@ return this.File(namedFile, inline: true);
 
 Extension methods on `HttpRequest`:
 
-```csharp
+```csharp no-compile
 string  url     = Request.CurrentUrl();
 Uri     baseUrl = Request.GetBaseUrl();
 Uri     abs     = Request.GetAbsoluteUrl("/images/logo.png");
-Uri?    ref     = Request.GetReferrer();
+Uri?    referrer = Request.GetReferrer();
 IPAddress? ip   = Request.GetIPAddress();
 ```
 
@@ -144,6 +159,7 @@ IPAddress? ip   = Request.GetIPAddress();
 Add JWT Bearer and/or API Key inputs to the Swagger UI:
 
 ```csharp
+var builder = WebApplication.CreateBuilder();
 builder.Services.AddSwaggerGen(o =>
 {
     JwtAuthenticationExtensions.AddJwtAuthentication(o);
@@ -155,6 +171,7 @@ builder.Services.AddSwaggerGen(o =>
 Make enums display as strings in Swagger:
 
 ```csharp
+var builder = WebApplication.CreateBuilder();
 builder.Services.AddControllers().DisplayEnumAsString();
 ```
 
@@ -169,13 +186,16 @@ Configure via `appsettings.json` under `"Hosting"`:
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `ServiceName` | `string?` | `null` | App / Windows Service display name |
+| `Mode` | `string` | `"Production"` | Hosting mode (inherited from `HostOptions`; see `HostingModes`) |
 | `LocalPort` | `int?` | `null` | Override listening port |
+| `SelfHosting` | `bool` | `false` | Flags the app as self-hosted (e.g. Kestrel / Windows Service) |
 | `EnableSwagger` | `bool` | `true` | Toggle Swagger UI |
 | `EnableCors` | `bool` | `false` | Toggle CORS |
 | `EnableHttps` | `bool` | `false` | Toggle HTTPS redirect |
 | `RoutePrefix` | `string?` | `null` | API route prefix |
 
 ```csharp
+var builder = WebApplication.CreateBuilder();
 builder.Host.UseWebHostOptions();
 ```
 
@@ -183,11 +203,11 @@ builder.Host.UseWebHostOptions();
 
 Queue and execute long-running work without blocking requests.
 
-```csharp
+```csharp no-compile
 services.UseBackgroundQueue();
 
 // In a controller
-public IActionResult StartExport(IBackgroundTaskQueue queue)
+public IActionResult StartExport([FromServices] IBackgroundTaskQueue queue)
 {
     queue.QueueBackgroundWorkItem(async token =>
     {
@@ -199,10 +219,11 @@ public IActionResult StartExport(IBackgroundTaskQueue queue)
 
 Typed tasks with progress tracking:
 
-```csharp
+```csharp no-compile
 services.UseBackgroundQueue<ReportTask>();
 
-var task = taskManager.Execute<string>(async (sp, t) =>
+// inject IBackgroundQueueManager<ReportTask>
+var task = queueManager.Execute<string>(async (sp, t) =>
 {
     t.SetProgress(0.5);
     return await GenerateReport(sp, t.Id);

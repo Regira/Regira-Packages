@@ -6,7 +6,7 @@ Regira Drawing is a .NET image processing library that provides a **consistent a
 
 | Project | Package | Purpose |
 |---------|---------|---------|
-| `Common.Media` | *(transitive)* | Shared abstractions, models, DTOs, and `ImageBuilder` |
+| `Common.Media` | `Regira.Media` | Shared abstractions, models, DTOs, and `ImageBuilder` |
 | `Drawing.SkiaSharp` | `Regira.Drawing.SkiaSharp` | **Preferred** — cross-platform (SkiaSharp) |
 | `Drawing.GDI` | `Regira.Drawing.GDI` | Windows-only alternative (GDI+) |
 
@@ -22,7 +22,7 @@ Regira Drawing is a .NET image processing library that provides a **consistent a
 
 ## Quick Start
 
-```csharp
+```csharp no-compile
 // Register
 services.AddSingleton<IImageService, Regira.Drawing.SkiaSharp.Services.ImageService>();
 
@@ -70,14 +70,15 @@ RGBA struct with hex string support.
 | Format | Example | Alpha |
 |--------|---------|-------|
 | `#RGB` | `#F00` | 255 (opaque) |
+| `#RGBA` | `#F008` | from hex |
 | `#RRGGBB` | `#FF0000` | 255 (opaque) |
 | `#RRGGBBAA` | `#FF000080` | from hex |
 | Static constants | `Color.White`, `Color.Black`, `Color.Transparent` | |
 
 ```csharp
 Color c = "#FF000080";   // implicit from string
-string rgb  = c.Hex;    // "FF0000"
-string rgba = c.HexA;   // "FF000080"
+string rgb  = c.Hex;    // "#FF0000"
+string rgba = c.HexA;   // "#FF000080"
 ```
 
 ### ImageFormat
@@ -90,9 +91,9 @@ Png  Jpeg  Webp  Gif  Bmp  Tiff  Ico  Heif  Tga  Wbmp  …
 
 CSS-style distance from each edge.
 
-```csharp
+```csharp no-compile
 new ImageEdgeOffset(top: 10, left: 20, bottom: 10, right: 20)
-new ImageEdgeOffset(10, 20)   // top + left only
+new ImageEdgeOffset(10, 20)   // top + left; Bottom and Right stay null
 ```
 
 ### ImagePosition
@@ -126,7 +127,7 @@ Controls how a layer is positioned and rendered when composited.
 
 ### Parsing
 
-```csharp
+```csharp no-compile
 Task<IImageFile?> Parse(Stream? stream)
 Task<IImageFile?> Parse(byte[]? bytes)
 Task<IImageFile?> Parse(byte[] rawBytes, ImageSize size, ImageFormat? format = null)
@@ -137,14 +138,14 @@ The third overload accepts unencoded pixel data together with explicit dimension
 
 ### Format
 
-```csharp
+```csharp no-compile
 Task<ImageFormat> GetFormat(IImageFile input)
 Task<IImageFile>  ChangeFormat(IImageFile input, ImageFormat targetFormat)
 ```
 
 ### Transform
 
-```csharp
+```csharp no-compile
 Task<ImageSize>  GetDimensions(IImageFile input)
 Task<IImageFile> Resize(IImageFile input, ImageSize wantedSize, int quality = 100)     // preserves aspect ratio
 Task<IImageFile> ResizeFixed(IImageFile input, ImageSize size, int quality = 100)      // ignores aspect ratio
@@ -158,15 +159,15 @@ Task<IImageFile> FlipVertical(IImageFile input)
 
 ### Color
 
-```csharp
+```csharp no-compile
 Task<Color>      GetPixelColor(IImageFile input, int x, int y)
-Task<IImageFile> MakeTransparent(IImageFile input, Color? color = null)  // null = auto-detect background
+Task<IImageFile> MakeTransparent(IImageFile input, Color? color = null)  // null = light gray (245, 245, 245)
 Task<IImageFile> MakeOpaque(IImageFile input)
 ```
 
 ### Draw / Create
 
-```csharp
+```csharp no-compile
 Task<IImageFile> Create(ImageSize size, Color? backgroundColor = null, ImageFormat? format = null)
 Task<IImageFile> CreateTextImage(LabelImageOptions? options = null)
 Task<IImageFile> Draw(IEnumerable<ImageLayer> items, IImageFile? target = null)
@@ -178,7 +179,7 @@ Task<IImageFile> Draw(IEnumerable<ImageLayer> items, IImageFile? target = null)
 
 ### Registration
 
-```csharp
+```csharp no-compile
 services.AddSingleton<IImageService, Regira.Drawing.SkiaSharp.Services.ImageService>();
 services.AddSingleton<IImageCreator, CanvasImageCreator>();
 services.AddSingleton<IImageCreator, LabelImageCreator>();
@@ -192,7 +193,7 @@ services.AddSingleton<IImageCreator>(provider =>
 
 ### Fluent API
 
-```csharp
+```csharp no-compile
 var result = await new ImageBuilder(imageService, imageCreators)
     .SetBaseLayer(new CanvasImageOptions { Size = new ImageSize(800, 600), BackgroundColor = Color.White })
     .Add(layer1, layer2, layer3)
@@ -213,7 +214,7 @@ If no base layer is set, `Build()` auto-calculates a canvas that fits all added 
 
 Three generic types let you add image files, canvases, or labels as layers:
 
-```csharp
+```csharp no-compile
 // Existing image — pin to bottom-right
 new ImageLayer { Source = imageFile,
                  Options = new() { Position = ImagePosition.Right | ImagePosition.Bottom, Margin = 10 } }
@@ -233,7 +234,7 @@ new ImageLayer<LabelImageOptions>  { Source = new() { Text = "DRAFT", FontSize =
 
 Implement `IImageCreator<T>` to make `ImageBuilder` understand any source type:
 
-```csharp
+```csharp no-compile
 public class QrCodeCreator(IQrService qr) : ImageCreatorBase<QrCodeOptions>
 {
     public override async Task<IImageFile?> Create(QrCodeOptions input, CancellationToken cancellationToken = default) =>
@@ -246,6 +247,8 @@ services.AddSingleton<IImageCreator, QrCodeCreator>();
 ## Text Images
 
 ```csharp
+IImageService imageService = new Regira.Drawing.SkiaSharp.Services.ImageService();
+
 using var img = await imageService.CreateTextImage("Hello World");   // implicit string shorthand
 ```
 
@@ -280,18 +283,18 @@ Both implement `IImageService` and are interchangeable in consuming code.
 | DTO | Description |
 |-----|-------------|
 | `ImageLayerDto` | Image bytes + draw options |
+| `ImageLayerOptionsDto` | Draw options: unit, size, position, rotation, opacity |
 | `CanvasImageDto` | Blank canvas definition |
 | `CanvasImageLayerDto` | Canvas with draw positioning |
 | `LabelImageLayerDto` | Text content + label style + draw options |
-| `DrawImageLayerDto` | Top-level input: optional target + layer list |
 
-All measurement properties (`Width`, `Height`, `Top`, `Left`, …) are `float` and interpreted via `DimensionUnit`:
+All measurement properties (`Width`, `Height`, `Top`, `Left`, …) are `float` and interpreted according to the DTO's `DimensionUnit` property, of type `LengthUnit`:
 
 | `LengthUnit` | Description |
 |--------------|-------------|
-| `Points` | CSS/PDF points (default) |
-| `Pixels` | Screen pixels |
-| `Millimeters` / `Centimeters` / `Inches` | Physical units |
+| `Points` | Points / pixels (default) |
+| `Inches` | Physical inches |
+| `Millimeters` | Physical millimeters |
 | `Percent` | Relative to canvas size |
 
 A live demo is available at [services.regira.com/office](https://services.regira.com/office/index.html) — endpoint `/drawing/create`, samples at `/drawing/samples/**`.

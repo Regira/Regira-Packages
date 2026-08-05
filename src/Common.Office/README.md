@@ -9,7 +9,7 @@ Regira Office is a collection of document and communication libraries for .NET a
 | [Barcodes](https://regira.github.io/Regira-Packages/src/Common.Office/docs/barcodes) | Barcode and QR code generation and scanning |
 | [CSV](https://regira.github.io/Regira-Packages/src/Common.Office/docs/csv) | CSV reading and writing via CsvHelper |
 | [Excel](https://regira.github.io/Regira-Packages/src/Common.Office/docs/excel) | Excel workbook reading and writing |
-| [Mail](https://regira.github.io/Regira-Packages/src/Common.Office/docs/mail) | Email sending via SendGrid and Mailgun |
+| [Mail](https://regira.github.io/Regira-Packages/src/Common.Office/docs/mail) | Email sending via SendGrid and Mailgun; reading `.msg`/`.eml` files (MSGReader) and HTTP mail DTOs (Mail.Web) |
 | [OCR](https://regira.github.io/Regira-Packages/src/Common.Office/docs/ocr) | Optical character recognition via Tesseract and PaddleOCR |
 | [PDF](https://regira.github.io/Regira-Packages/src/Common.Office/docs/pdf) | HTML→PDF, PDF operations, and printing |
 | [VCards](https://regira.github.io/Regira-Packages/src/Common.Office/docs/vcards) | vCard contact file reading and writing |

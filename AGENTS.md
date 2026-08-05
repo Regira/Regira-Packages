@@ -76,6 +76,16 @@ Write docs as if authored correctly from scratch — no correction notes or chan
 
 ---
 
+## Versioning & releases
+
+Every package owns its own `<Version>` in its `.csproj` (SemVer). Published versions are **immutable on nuget.org** — a version can never be overwritten or reused.
+
+- **Any change that ships** — source, the packed `ai/` guides, `build/` props/targets — must leave the changed package's `<Version>` **higher than its last published version**: patch for fixes and guide-only changes, minor for backward-compatible features, major for breaking changes. If the version was already bumped since the last publish, several edits may share that bump.
+- Do not bump packages you did not change. Dependent packages are re-versioned by the release tooling (ProjectFilesProcessor in the private Regira-Tools repo) when it publishes to nuget.org.
+- **Record every shipped change in [CHANGELOG.md](CHANGELOG.md) in the same change**: one bullet under the `## Unreleased` heading — `` `PackageId` x.y.z — one-line summary``. At publish time the Unreleased block becomes a dated release heading.
+
+---
+
 ## Slash commands
 
 Source lives in `src/Common.Setup/ai/commands/`.
@@ -95,6 +105,7 @@ Source lives in `src/Common.Setup/ai/commands/`.
 ## Key conventions
 
 - Guides travel with packages — every public API change that affects usage patterns needs a corresponding guide update
+- Every shipped change bumps the changed package's version and adds a `CHANGELOG.md` bullet — see *Versioning & releases*
 - Never add consumer-scaffolding content to this file; it belongs in `ai/AGENTS.md`
 - Keep `Program.cs` thin and use `IServiceCollection` extension methods
 - Prefer abstractions over concrete types in cross-module dependencies

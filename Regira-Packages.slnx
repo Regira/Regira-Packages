@@ -5,6 +5,7 @@
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path=".gitignore" />
+    <File Path="CHANGELOG.md" />
     <File Path="LICENSE" />
     <File Path="README.md" />
     <File Path="Regira.runsettings" />
@@ -86,10 +87,6 @@
     <Project Path="src/Mail.MSGReader/Mail.MSGReader.csproj" />
     <Project Path="src/Mail.SendGrid/Mail.SendGrid.csproj" />
     <Project Path="src/Mail.Web/Mail.Web.csproj" />
-  </Folder>
-  <Folder Name="/src/Office/Mail/docs/">
-    <File Path="docs/Office.Mail/01-index.md" />
-    <File Path="docs/Office.Mail/02-examples.md" />
   </Folder>
   <Folder Name="/src/Office/OCR/">
     <Project Path="src/OCR.PaddleOCR/OCR.PaddleOCR.csproj" />

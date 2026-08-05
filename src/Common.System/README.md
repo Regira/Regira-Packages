@@ -1,11 +1,12 @@
 # Regira System
 
-Regira System provides application hosting utilities, background task management, Windows Service support, and .csproj project parsing.
+Regira System provides process execution helpers, application hosting utilities, background task management, Windows Service support, and .csproj project parsing.
 
 ## Projects
 
 | Project | Package | Purpose |
 |---------|---------|---------|
+| `Common.System` | `Regira.System` | Process execution helpers |
 | `System.Hosting` | `Regira.System.Hosting` | Host config, background queues, Windows Service |
 | `System.Projects` | `Regira.System.Projects` | Parse and manage .csproj files |
 
@@ -14,8 +15,63 @@ See [Web](https://regira.github.io/Regira-Packages/src/Common.Web#systemhosting)
 ## Installation
 
 ```xml
+<PackageReference Include="Regira.System" Version="6.*" />
 <PackageReference Include="Regira.System.Hosting" Version="6.*" />
 <PackageReference Include="Regira.System.Projects" Version="6.*" />
+```
+
+---
+
+## Process execution (`Regira.System`)
+
+### IProcessHelper / ProcessHelper
+
+Run shell commands or executables and capture their output.
+
+```csharp
+public interface IProcessHelper
+{
+    IProcessOutput ExecuteCommand(string command, bool waitForOutput = false);
+    IProcessOutput ExecuteFile(string filename, bool waitForOutput = false, string? arguments = null);
+}
+```
+
+`ProcessHelper` is the default implementation. `ExecuteCommand` writes the command to a temporary `.bat` file (in `Options.TempFolder`, or a generated temp directory) and executes it; `ExecuteFile` starts the given executable directly. Pass `waitForOutput: true` to capture stdout/stderr.
+
+```csharp
+IProcessHelper processHelper = new ProcessHelper(new ProcessHelper.Options
+{
+    TempFolder = @"C:\Temp"   // optional; holds the temporary .bat file
+});
+
+IProcessOutput result = processHelper.ExecuteCommand("dotnet --version", waitForOutput: true);
+Console.WriteLine(result.Output);     // captured stdout
+Console.WriteLine(result.ExitCode);   // process exit code
+```
+
+### IProcessOutput / ProcessOutput
+
+```csharp
+public interface IProcessOutput
+{
+    string? Output { get; set; }
+    string? Error { get; set; }
+    int ExitCode { get; set; }
+}
+```
+
+`Output` and `Error` are only populated when `waitForOutput` is `true`.
+
+### ProcessHelperExtensions
+
+Open a path or an `IBinaryFile` with the OS default application (a file without a path is written to a temp file first):
+
+```csharp
+IProcessHelper processHelper = new ProcessHelper();
+IBinaryFile binaryFile = new BinaryFileItem { FileName = "invoice.pdf" };
+
+processHelper.OpenFileByOS(@"C:\docs\invoice.pdf");
+processHelper.OpenFileByOS(binaryFile);
 ```
 
 ---
@@ -37,12 +93,13 @@ See [Web](https://regira.github.io/Regira-Packages/src/Common.Web#systemhosting)
 ```
 
 ```csharp
+var builder = WebApplication.CreateBuilder();
 builder.Host.UseWebHostOptions();
 ```
 
 ### Background task queue
 
-```csharp
+```csharp no-compile
 services.UseBackgroundQueue();
 // or typed:
 services.UseBackgroundQueue<MyTask>();
@@ -51,6 +108,7 @@ services.UseBackgroundQueue<MyTask>();
 ### Windows Service installer
 
 ```csharp
+var app = WebApplication.Create();
 app.AddWindowsServiceInstaller(new WindowsServiceOptions
 {
     ServiceName        = "MyApi",
@@ -82,7 +140,7 @@ Console.WriteLine(string.Join(", ", proj.TargetFrameworks!)); // "net8.0, net10.
 
 Update and write back:
 
-```csharp
+```csharp no-compile
 proj.Version = new Version("5.1.0");
 XDocument updated = parser.Update(xml, proj);
 updated.Save("MyLib.csproj");
@@ -90,7 +148,8 @@ updated.Save("MyLib.csproj");
 
 ### ProjectService
 
-```csharp
+```csharp no-compile
+// ITextFileService comes from the Regira.IO.Storage package
 var service = new ProjectService(parser, textFileService);
 
 Project       single  = await service.Details("src/MyLib/MyLib.csproj");
@@ -103,7 +162,7 @@ await service.Save(proj);   // writes changes back to disk
 
 Build a dependency tree from all projects in the solution:
 
-```csharp
+```csharp no-compile
 var manager = new ProjectManager(projectService);
 ProjectTree tree = await manager.BuildTree();
 

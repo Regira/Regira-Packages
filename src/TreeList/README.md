@@ -38,7 +38,7 @@ extension methods, and includes built-in protection against circular references.
 
 ### From a flat collection with a parent selector
 
-```csharp
+```csharp no-compile
 var people = new[]
 {
     new Person { Id = 1, Name = "Alice", ParentId = null },
@@ -55,7 +55,7 @@ Console.WriteLine(tree.Roots[0].Children.Count);   // 2  (Bob, Carol)
 
 ### From roots with a children selector (best performance)
 
-```csharp
+```csharp no-compile
 var roots = people.Where(p => p.ParentId == null);
 
 var tree = people.ToTreeList(
@@ -76,7 +76,7 @@ child!.AddChild("grandchild");
 
 Once the tree is built every node exposes navigation extension methods:
 
-```csharp
+```csharp no-compile
 var node = tree.First(n => n.Value.Name == "Bob");
 
 // Single-node navigation
@@ -91,7 +91,7 @@ var nephews   = node.GetNephews();      // children of uncles
 
 Extension methods also work on **collections of nodes**:
 
-```csharp
+```csharp no-compile
 IEnumerable<TreeNode<Person>> subset = tree.Where(n => n.Level == 1);
 
 var roots     = subset.GetRoots();      // root nodes reachable from subset
@@ -104,7 +104,7 @@ var withSelf  = subset.WithOffspring(); // self + all descendants
 
 ## Ordering & Views
 
-```csharp
+```csharp no-compile
 // Depth-first traversal (default)
 var ordered = tree.OrderByHierarchy();
 
@@ -120,7 +120,7 @@ TreeView<Person> view = tree.ToTreeView();
 `ReverseTree` inverts all parent-child relationships.  
 Leaf nodes become roots; the original root becomes a leaf.
 
-```csharp
+```csharp no-compile
 var reversed = tree.ReverseTree();
 ```
 
@@ -129,7 +129,7 @@ var reversed = tree.ReverseTree();
 By default the tree throws `InvalidChildException<T>` when a circular reference is detected.  
 This behaviour can be configured:
 
-```csharp
+```csharp no-compile
 var tree = new TreeList<Person>(new TreeList<Person>.TreeOptions
 {
     EnableAutoCheck = true,   // validate before adding (default: true)

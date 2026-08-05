@@ -8,10 +8,10 @@ Regira Office.PDF provides a **unified abstraction** for PDF operations — HTML
 |---------|---------|---------|----------|---------|-------|
 | `Common.Office` | *(transitive)* | Shared abstractions | — | — | — |
 | `PDF.SelectPdf` | `Regira.Office.PDF.SelectPdf` | Select.HtmlToPdf | ✓ full | — | — |
-| `PDF.Puppeteer` | `Regira.Office.PDF.Puppeteer` | PuppeteerSharp | ✓ A4 | — | — |
+| `PDF.Puppeteer` | `Regira.Office.PDF.Puppeteer` | PuppeteerSharp | ✓ Letter | — | — |
 | `PDF.Playwright` | `Regira.Office.PDF.MsPlaywright` | Microsoft.Playwright | ✓ A4 | — | — |
 | `PDF.DocNET` | `Regira.Office.PDF.DocNET` | Docnet.Core | — | merge, split, img↔pdf, text | — |
-| `PDF.Spire` | `Regira.Office.PDF.Spire` | FreeSpire.PDF | — | merge, split, img, text | ✓ |
+| `PDF.Spire` | `Regira.Office.PDF.Spire` | FreeSpire.PDF | — | merge, split, pdf→img, text | ✓ |
 | `PDF.PDFtoPrinter` | `Regira.Office.PDF.PDFtoPrinter` | PDFtoPrinter | — | — | ✓ (Win) |
 | `PDF.PockyBum522` | `Regira.Office.PDF.PockyBum522` | SimpleFreePdfPrinter | — | — | ✓ (Win) |
 
@@ -46,7 +46,11 @@ IMemoryFile file = await pdf.Create(new HtmlInput
     Orientation = PageOrientation.Portrait
 });
 
-// Merge PDFs (DocNET)
+// Merge PDFs (DocNET — needs an IImageService for the image-related operations)
+IMemoryFile pdf1 = File.ReadAllBytes("1.pdf").ToMemoryFile();
+IMemoryFile pdf2 = File.ReadAllBytes("2.pdf").ToMemoryFile();
+IMemoryFile pdf3 = File.ReadAllBytes("3.pdf").ToMemoryFile();
+IImageService imageService = new Regira.Drawing.SkiaSharp.Services.ImageService();
 IPdfMerger merger = new Regira.Office.PDF.DocNET.PdfManager(imageService);
 IMemoryFile merged = (await merger.Merge([pdf1, pdf2, pdf3]))!;
 ```
@@ -55,29 +59,34 @@ IMemoryFile merged = (await merger.Merge([pdf1, pdf2, pdf3]))!;
 
 ### IHtmlToPdfService
 
-```csharp
-Task<IMemoryFile> Create(HtmlInput input, CancellationToken cancellationToken = default);
+```csharp no-compile
+Task<IMemoryFile> Create(HtmlInput template, CancellationToken cancellationToken = default);
 ```
 
-### IPdfMerger / IPdfSplitter
+### IPdfMerger / IPdfSplitter / IPdfEditor
 
-```csharp
+```csharp no-compile
+// IPdfMerger
 Task<IMemoryFile?>              Merge(IEnumerable<IMemoryFile> items, CancellationToken cancellationToken = default);
+
+// IPdfSplitter
 Task<IEnumerable<IMemoryFile>>  Split(IMemoryFile pdf, IEnumerable<PdfSplitRange> ranges, CancellationToken cancellationToken = default);
 Task<int>                       GetPageCount(IMemoryFile pdf, CancellationToken cancellationToken = default);
+
+// IPdfEditor : IPdfMerger, IPdfSplitter
 Task<IMemoryFile?>              RemovePages(IMemoryFile pdf, IEnumerable<int> pages, CancellationToken cancellationToken = default);
 ```
 
 ### IPdfToImageService / IImagesToPdfService
 
-```csharp
+```csharp no-compile
 Task<IList<IImageFile>>  ToImages(IMemoryFile pdf, PdfToImagesOptions? options = null, CancellationToken cancellationToken = default);
 Task<IMemoryFile?>       ImagesToPdf(ImagesInput input, CancellationToken cancellationToken = default);
 ```
 
 ### IPdfTextExtractor / IPdfTextService
 
-```csharp
+```csharp no-compile
 Task<string>          GetText(IMemoryFile pdf, CancellationToken cancellationToken = default);
 Task<IList<string>>   GetTextPerPage(IMemoryFile pdf, CancellationToken cancellationToken = default);
 Task<IMemoryFile?>    RemoveEmptyPages(IMemoryFile pdf, CancellationToken cancellationToken = default);
@@ -85,7 +94,7 @@ Task<IMemoryFile?>    RemoveEmptyPages(IMemoryFile pdf, CancellationToken cancel
 
 ### IPdfPrinter
 
-```csharp
+```csharp no-compile
 string              DefaultPrinter { get; }
 Task<IList<string>> List(CancellationToken cancellationToken = default);
 Task                Print(PdfPrinterInput input, CancellationToken cancellationToken = default);
@@ -150,19 +159,20 @@ Full support for all `HtmlInput` properties: page size, orientation, margins, he
 
 ### Puppeteer / Playwright — headless Chromium
 
-Both download Chromium automatically on first use (thread-safe via semaphore). Fixed to A4 — custom page sizes and margins are not respected. Use for pixel-perfect rendering of complex CSS.
+Both download Chromium automatically on first use (thread-safe via semaphore). Custom page sizes and margins from `HtmlInput` are not respected: Playwright always renders A4, while Puppeteer uses the PuppeteerSharp default paper size (**Letter**). Use for pixel-perfect rendering of complex CSS.
 
 ### DocNET — recommended for PDF operations
 
 Implements `IPdfService` (merge, split, images↔pdf, text extraction, page removal). Requires `IImageService` in the constructor.
 
 ```csharp
+IImageService imageService = new Regira.Drawing.SkiaSharp.Services.ImageService();
 var pdf = new Regira.Office.PDF.DocNET.PdfManager(imageService);
 ```
 
 ### Spire — PDF operations + printing
 
-Similar PDF operations to DocNET. Also ships `PdfPrinter` for Windows printing with page size override support.
+Implements `IPdfMerger`, `IPdfSplitter`, `IPdfToImageService` and `IPdfTextExtractor` — not the full `IPdfService`: there is no `RemovePages`, `ImagesToPdf`, `GetTextPerPage` or `RemoveEmptyPages`, and image conversion is PDF→image only. Also ships `PdfPrinter` for Windows printing with page size override support.
 
 ## Overview
 

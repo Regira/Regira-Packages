@@ -19,7 +19,7 @@ than its one-liner.
 |---|-------|----|------------|
 | 0 | Classify | List top-level entities, their owned collections, and the auth mode. Owned rows are configured through the parent's `Related(...)` — they are not entities, cost no registration slot, and get no controller. | Free tier fits: 5 simple + 2 complex registrations |
 | 1 | Probe | `dotnet --version`, `node -v`, `npm -v`, `git --version` | All four resolve |
-| 2 | API host | `project.setup` (a section of `Regira.Setup` — `get_package("Regira.Setup", "project.setup")`) → host, `DbContext`, `UseEntities<TContext>(e => e.UseDefaults())`, `ConfigureDefaultJsonOptions()`. **Settle the route prefix now** (`RoutePrefixConvention("api")` or none): the SPA's config, its axios base and the dev proxy all have to agree with it, and changing it after phase 4 re-verifies every URL | `dotnet build` clean; `/openapi/v1.json` served |
+| 2 | API host | `project.setup` (a section of `Regira.Setup` — `get_package("Regira.Setup", "project.setup")`) → host, `DbContext`, `UseEntities<TContext>(e => e.UseDefaults())`, `ConfigureDefaultJsonOptions()`. **Settle the route prefix now** (`opts.UseCentralRoutePrefix(new RouteAttribute("api"))` from `Regira.Web.Routing`, or none): the SPA's config, its axios base and the dev proxy all have to agree with it, and changing it after phase 4 re-verifies every URL | `dotnet build` clean; `/openapi/v1.json` served |
 | 3 | Register | One `.For<>()` per top-level entity; one `e.Related(...)` per owned collection | No startup **warnings** — an ignored `?q=`, a dual write path or an out-of-scope global filter is a defect, not noise (informational lines are expected). One exception on `net10.0`: EF's `PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning`, one per required dependent of an `IArchivable` principal, is the intended behaviour of soft delete — see `entities.instructions` Step 11 |
 | 4 | Prove the API | create → update → **update again** → re-read | The second save is idempotent and owned rows survive it |
 | 5 | SPA shell | `get_bootstrap_guide(platform: "frontend")`, then the shell generator (`--no-auth` when there is no auth) | `npm run dev` serves the shell; `index.html` has the `#modals` host; a no-auth app reaches `AppStatus.Ready` |
@@ -58,12 +58,12 @@ A Regira MCP server is available at `https://mcp.regira.com/mcp`. It provides fu
 
 **Configuration snippets:**
 
-Claude Desktop (`~/.claude/claude_desktop_config.json`):
+Claude Desktop (`claude_desktop_config.json` in the Claude app-data folder — Windows: `%APPDATA%\Claude`, macOS: `~/Library/Application Support/Claude`):
 ```json
 { "mcpServers": { "regira": { "url": "https://mcp.regira.com/mcp" } } }
 ```
 
-VS Code / Claude Code (`.claude/settings.json` in your project):
+VS Code / Claude Code (`.mcp.json` at your repo root):
 ```json
 { "mcpServers": { "regira": { "url": "https://mcp.regira.com/mcp" } } }
 ```
@@ -78,7 +78,7 @@ Run this checklist before any code generation:
 
 - [ ] **If using licensed packages (e.g. `Regira.Entities.DependencyInjection`, `Regira.Office.Clients`):** on the **free tier, no `UseRegira()` call is needed** — free limits apply automatically. With license keys, store them under `Regira:LicenseKeys` and call `services.UseRegira(configuration)` **before** any module setup calls (e.g. `UseEntities()`). A single key can cover multiple products; add more keys to the array to combine them — the system picks the best per product (paid always wins over free).
 - [ ] **If MCP is configured:** used `get_package_toc` to discover section keys, `get_section_toc` to list headings, and `get_package` (with `section=` and optional `heading=`) to read the relevant guides for each installed Regira module — no build step required
-- [ ] **If MCP is not configured:** `dotnet restore` and `dotnet build` succeeded so installed Regira packages could extract their embedded `ai/*.md` files into `.regira/instructions/`, and that folder was checked for `*.instructions.md` files and relevant setup references at the solution root (or project root when building standalone)
+- [ ] **If MCP is not configured:** `dotnet restore` and `dotnet build` succeeded so installed Regira packages could extract their embedded `ai/*.md` files into `.regira/instructions/`, and that folder was checked for `*.instructions.md` files and relevant setup references at the solution root (or, for most packages, the project root when building standalone — see *Default workflow* below)
 - [ ] Primary guides relevant to the selected modules (`project.setup.md`, `shared.setup.md`, matching `*.instructions.md`) had their core sections read before writing application code in that area, and deep references were consulted on demand — following the **minimum viable read** in *Guide loading rules* below
 
 Only proceed to project scaffolding, infrastructure changes, or domain code once all applicable checks are satisfied.
@@ -87,7 +87,7 @@ Only proceed to project scaffolding, infrastructure changes, or domain code once
 
 Ask the user what they're building if it isn't already clear, then follow the **Code generation workflow** below. For an existing project, inspect current `*.csproj` files before choosing packages or scaffolding. Prefer project-local instructions over shared Regira guidance when both exist, and ask for feedback rather than guessing missing APIs or conventions.
 
-Read module guides before writing code: if MCP is configured, call `get_package` for each installed Regira module; otherwise check `.regira/instructions/` for extracted guides. Regira packages that carry AI files embed them inside the NuGet package under `ai/`. During `dotnet build`, their bundled `.props` and `.targets` files copy those files into `.regira/instructions/` at the solution root (`$(SolutionDir)`), falling back to the project root when building standalone. Use `Regira.Setup` when the consumer needs local copies of `project.setup.md` and `shared.setup.md` through the package-extraction workflow.
+Read module guides before writing code: if MCP is configured, call `get_package` for each installed Regira module; otherwise check `.regira/instructions/` for extracted guides. Regira packages that carry AI files embed them inside the NuGet package under `ai/`. During `dotnet build`, their bundled `.props` and `.targets` files copy those files into `.regira/instructions/` at the solution root (`$(SolutionDir)`); most fall back to the project root when building standalone, but `Regira.Entities`, `Regira.Setup`, and `Regira.Office` extract only when building in a solution context. Use `Regira.Setup` when the consumer needs local copies of `project.setup.md` and `shared.setup.md` through the package-extraction workflow.
 
 ## Guide loading rules
 
@@ -170,7 +170,7 @@ When the consumer project already contains Regira packages, inspect the project'
 
 | Installed package pattern | Module or family | Guidance | Use when | Main packages and defaults |
 |---------------------------|------------------|----------|----------|----------------------------|
-| `Regira.Entities*` | `Entities` | Dedicated module guides | CRUD APIs, entity services, DTO mapping, EF Core repositories, and generated endpoints | `Regira.Entities`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Mapping.Mapster` (default mapping), `Regira.Entities.Mapping.AutoMapper`, `Regira.Entities.EFcore`, `Regira.Entities.Web`, `Regira.Entities.Web.FastEndpoints` |
+| `Regira.Entities*` | `Entities` | Dedicated module guides | CRUD APIs, entity services, DTO mapping, EF Core repositories, and generated endpoints | `Regira.Entities`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Mapping.Mapster` (default mapping), `Regira.Entities.Mapping.AutoMapper`, `Regira.Entities.EFcore`, `Regira.Entities.Web` |
 | `Regira.IO.Storage*` | `IO.Storage` | Dedicated module guides | File storage, uploads, Azure Blob, SFTP, ZIP, or SimpleTCP file transfer | `Regira.IO.Storage`, `Regira.IO.Storage.Azure`, `Regira.IO.Storage.SSH`, `Regira.IO.Storage.GitHub`, `Regira.IO.Storage.SimpleTCP` |
 | `Regira.IO.Compression.SharpZipLib` | `IO.Compression` | No dedicated family guide | ZIP archive creation and extraction, especially password-protected ZIP files | `Regira.IO.Compression.SharpZipLib` |
 | `Regira.Office` | `Office` | Dedicated family overview | Office family overview or when the user still needs to choose between PDF, Excel, Word, Mail, OCR, and related submodules | `Regira.Office` |
@@ -198,6 +198,7 @@ When the consumer project already contains Regira packages, inspect the project'
 | `Regira.DAL.MySQL*` | `DAL.MySQL` | No dedicated family guide | MySQL or MariaDB connectivity and backup workflows | `Regira.DAL.MySQL`, `Regira.DAL.MySQL.MySqlBackup` |
 | `Regira.DAL.PostgreSQL` | `DAL.PostgreSQL` | No dedicated family guide | PostgreSQL connectivity | `Regira.DAL.PostgreSQL` |
 | `Regira.Globalization.LibPhoneNumber` | `Globalization` | No dedicated family guide | Phone number parsing and formatting | `Regira.Globalization.LibPhoneNumber` |
+| `Regira.Licensing` | `Licensing` | No dedicated family guide | License key registration and offline validation — `UseRegira(configuration)` or `UseRegira(licenseKey)` before any module setup calls (see the pre-flight checklist) | `Regira.Licensing` |
 | `Regira.Setup` | `Setup` | Shared setup guides | Shared project-template and setup-guide extraction for local AI guidance | `Regira.Setup` |
 | `Regira.Serializing.Newtonsoft` | `Serializing` | No dedicated family guide | Newtonsoft.Json-based serialization | `Regira.Serializing.Newtonsoft` |
 
