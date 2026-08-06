@@ -50,7 +50,7 @@ public async Task ResizeAndStore(IFileService storage, IImageService images, str
     using var webp    = images.ChangeFormat(resized, ImageFormat.Webp);
 
     var newPath = Path.ChangeExtension(path, ".webp");
-    await storage.Save(newPath, webp.Bytes!);
+    await storage.Save(newPath, webp.GetBytes()!);
 }
 ```
 

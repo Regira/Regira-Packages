@@ -43,4 +43,17 @@
 
 ---
 
+## Reading a result
+
+Every sub-module returns its output as an `IMemoryFile`. ⚠️ **Read it with `GetBytes()`** — the extension in
+`Regira.IO.Extensions` (assembly `Regira.Common`) — **never `.Bytes` directly.** `IMemoryFile` extends both
+`IMemoryBytesFile` (`Bytes`) and `IMemoryStreamFile` (`Stream`), and a producer fills exactly one of them.
+Which one is not a property of the backend you chose: it varies **per method**, and one class mixes both —
+DocNET's `Split` hands back bytes while its `Merge(IEnumerable<IMemoryFile>)` hands back a stream. So there
+is no rule of thumb to apply and nothing to check at the call site; `.Bytes` simply reads `null` for half the
+API, saving or returning an empty body with no exception and no log. `GetBytes()` reads whichever half is
+populated, and is correct everywhere.
+
+---
+
 🚨 Always load the sub-module instruction file before writing any code. Do not invent API signatures.

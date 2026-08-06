@@ -14,7 +14,7 @@ public async Task<string> CreateQrCode(IQRCodeService qr, IFileService storage, 
     });
 
     var path = FileNameUtility.Combine(folder, $"{Guid.NewGuid()}.jpg");
-    return await storage.Save(path, img.Bytes!);
+    return await storage.Save(path, img.GetBytes()!);
 }
 ```
 

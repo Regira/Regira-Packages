@@ -24,7 +24,7 @@ public async Task<byte[]> ProcessProductImage(byte[] uploadedBytes)
     using var original = (await _imageService.Parse(uploadedBytes))!;
     using var resized  = await _imageService.Resize(original, new ImageSize(800, 800));
     using var webp     = await _imageService.ChangeFormat(resized, ImageFormat.Webp);
-    return webp.Bytes!;
+    return webp.GetBytes()!;
 }
 ```
 
@@ -35,7 +35,7 @@ public async Task<byte[]> CreateThumbnail(byte[] imageBytes)
 {
     using var img       = (await _imageService.Parse(imageBytes))!;
     using var thumbnail = await _imageService.Resize(img, new ImageSize(120, 120));
-    return thumbnail.Bytes!;
+    return thumbnail.GetBytes()!;
 }
 ```
 
@@ -57,6 +57,6 @@ public async Task<byte[]> AddWatermark(byte[] imageBytes)
         })
         .Build();
 
-    return result.Bytes!;
+    return result.GetBytes()!;
 }
 ```

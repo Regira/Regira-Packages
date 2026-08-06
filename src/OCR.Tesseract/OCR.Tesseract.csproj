@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Office.OCR.Tesseract</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.0</Version>
+    <Version>6.0.1</Version>
     <Description>Optical character recognition using Tesseract for Regira Office.</Description>
     <PackageTags>regira;office;ocr;tesseract</PackageTags>
   </PropertyGroup>
@@ -25,12 +25,23 @@
     <None Remove="tessdata\eng.traineddata" />
     <None Remove="tessdata\readme.md" />
   </ItemGroup>
+  <!--
+    An explicit PackagePath packs the trained data ONCE, at a path the targets below read. Without it
+    <Content> falls back to the automatic contentFiles layout, which emits a 4 MB copy per TFM *and* under
+    content/ — three dead copies, since contentFiles never reach a transitive consumer anyway.
+    CopyToOutputDirectory stays for in-repo ProjectReference consumers, which bypass the package entirely.
+    The readme documents the data's provenance for someone browsing the package; it is not shipped.
+  -->
   <ItemGroup>
-    <Content Include="tessdata\eng.traineddata">
+    <Content Include="tessdata\eng.traineddata" Pack="true" PackagePath="tessdata\">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="tessdata\readme.md">
+    <Content Include="tessdata\readme.md" Pack="false">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+  <!-- MSBuild targets — auto-imported into consuming builds via NuGet buildTransitive. -->
+  <ItemGroup>
+    <None Include="build\Regira.Office.OCR.Tesseract.targets" Pack="true" PackagePath="buildTransitive\" />
   </ItemGroup>
 </Project>

@@ -30,7 +30,7 @@ services.AddSingleton<IImageService, Regira.Drawing.SkiaSharp.Services.ImageServ
 using var image   = (await imageService.Parse(inputBytes))!;
 using var resized = await imageService.Resize(image, new ImageSize(200, 200));
 using var webp    = await imageService.ChangeFormat(resized, ImageFormat.Webp);
-return webp.Bytes!;
+return webp.GetBytes()!;
 ```
 
 ## Core Models

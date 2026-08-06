@@ -389,6 +389,14 @@ This is the sanctioned shape, not a deviation — but keep it **read-only**, and
   reach the aggregate, so add `.Where(x => !x.IsArchived)` there.
 - ⚠️ No write path here. An aggregate endpoint that also mutates re-creates the dual-write problem the
   one-writer rule exists to prevent.
+- ⚠️ **Project a `GroupBy` into an anonymous type, then shape the DTO after `ToListAsync()`.** A positional
+  **record constructor** inside the projection (`.Select(g => new Bucket(g.Key, g.Count()))`) does not
+  translate — EF throws *"The LINQ expression … could not be translated"*, which surfaces as a 500 with an
+  empty body on a green build. The anonymous type above translates; map it to your DTO in memory.
+- ⚠️ **Prefer a `join` over a correlated `SelectMany`.** `db.A.SelectMany(a => db.B.Where(b => b.AId == a.Id)…)`
+  compiles to `CROSS APPLY`, and the SQLite provider these guides default to rejects it outright
+  (*"Translating this query requires the SQL APPLY operation"*). The same shape in a **processor** that
+  aggregates children into `[NotMapped]` fields (§Step 7) hits it for the same reason.
 - On the client this is a plain `useAxios()` call with its own `useFeedback()` — not a slice, not a pooled
   store. See the front-end `entities.patterns` → *Custom endpoints on a service* and *Feedback for custom
   saves*.
@@ -519,7 +527,7 @@ invoice number, source-system id).
 use a prepper instead: `EntityPrepperBase<T>.Prepare(modified, original, …)` hands you the full `original`
 entity (`null` on create); register with `e.AddPrepper<T>()`.
 
-### Aggregates over a non-owned child collection
+## Aggregates over a non-owned child collection
 
 The case above assumes the children ride the parent's DTO. When they don't — the **optional parent FK** row
 of the Relationship Patterns decision table, `Invoice.Total` summed from the `Intervention`s that point at it
@@ -546,8 +554,14 @@ Three consequences follow from the child owning the write:
   Attaching an intervention to an invoice therefore has to save the invoice too, or the total lags.
 - **Seeding needs a second pass over the parents.** At create time the total is necessarily `0`, so add a
   final wave that re-`Modify()`s every parent purely to re-run this hook — see §Bulk insert / update.
+- ⚠️ **A query filter on the child also hides its rows from this recompute.** A dependent you query directly
+  carries `HasQueryFilter(x => !x.Parent!.IsArchived)` (§Step 11) — and that filter applies here too, while
+  the parent is *still archived at the moment the prepper runs*. A restore (`PATCH {"isArchived": false}`)
+  therefore sums zero rows and writes the total to `0`, returns 200, and logs nothing. Add
+  `IgnoreQueryFilters()` to the aggregate query, scoped by the parent FK so it can only ever see this
+  aggregate's own children.
 
-### Server-generated sequential codes
+## Server-generated sequential codes
 
 `Code = $"ORD-{Guid.NewGuid():N}"[..16]` is unique and unordered. A *sequential* code (`REQ-2026-00001`)
 that also survives bulk seeding cannot count rows per item: queued rows are invisible to a query until

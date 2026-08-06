@@ -524,6 +524,15 @@ public static class QueryExtensions
 }
 ```
 
+**How it decides:** it reads `query.Expression.Type` — whether the *composed expression tree* already reports
+an ordering — not the runtime type. That distinction is the whole point: an EF Core query object satisfies
+`is IOrderedQueryable<T>` before any ordering exists, which is why the hand-rolled check throws.
+
+**Chaining is therefore supported, and is how you write a multi-key sort.** Inside one `SortBy` arm,
+`query.OrderOrThenBy(x => x.LastName).OrderOrThenBy(x => x.FirstName)` composes `OrderBy(LastName)
+.ThenBy(FirstName)`: the first call returns an `IOrderedQueryable<T>`, so the second sees an ordered
+expression tree and continues it. No need to split a composite sort across several enum members.
+
 ---
 
 ## Service Builders

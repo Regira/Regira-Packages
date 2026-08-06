@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Globalization.LibPhoneNumber</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.0</Version>
+    <Version>6.0.1</Version>
     <Description>Phone number parsing and formatting using libphonenumber-csharp for Regira.</Description>
     <PackageTags>regira;globalization;phone;libphonenumber</PackageTags>
   </PropertyGroup>

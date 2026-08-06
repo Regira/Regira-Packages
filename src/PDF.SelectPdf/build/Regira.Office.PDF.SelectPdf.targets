@@ -1,0 +1,65 @@
+<Project>
+
+  <!--
+    Select.HtmlToPdf.NetCore ships its native companion `Select.Html.dep` as a NuGet `contentFiles`
+    item, and contentFiles only flow to a project that references the package DIRECTLY. A consumer of
+    Regira.Office.PDF.SelectPdf gets the managed assembly through the transitive reference but not the
+    companion file, so the build succeeds and every conversion throws
+    "Conversion failure. Could not find 'Select.Html.dep'" at run time.
+
+    These targets carry it the rest of the way, into both the build output and the publish folder,
+    reading it from the restored package rather than redistributing it. Set
+    RegiraSelectPdfCopyNativeDep=false to opt out and place the file yourself.
+  -->
+
+  <PropertyGroup>
+    <RegiraSelectPdfCopyNativeDep Condition="'$(RegiraSelectPdfCopyNativeDep)' == ''">true</RegiraSelectPdfCopyNativeDep>
+    <!-- NuGetPackageRoot is NOT guaranteed to end in a separator — it does for the default global-packages
+         folder and does not when NUGET_PACKAGES is set — so normalise it before composing a path. -->
+    <_RegiraNuGetRoot>$([MSBuild]::EnsureTrailingSlash('$(NuGetPackageRoot)'))</_RegiraNuGetRoot>
+  </PropertyGroup>
+
+  <Target Name="_RegiraSelectPdfResolveNativeDep"
+          DependsOnTargets="ResolvePackageAssets"
+          Condition="'$(RegiraSelectPdfCopyNativeDep)' == 'true'">
+    <!-- The managed assembly resolves through the transitive reference; its package version tells us where the companion lives. -->
+    <ItemGroup>
+      <_RegiraSelectPdfAsset Include="@(RuntimeCopyLocalItems)"
+                             Condition="'%(RuntimeCopyLocalItems.NuGetPackageId)' == 'Select.HtmlToPdf.NetCore'" />
+      <_RegiraSelectPdfDepCandidate Include="$(_RegiraNuGetRoot)select.htmltopdf.netcore/%(_RegiraSelectPdfAsset.NuGetPackageVersion)/contentFiles/any/any/Select.Html.dep" />
+      <_RegiraSelectPdfDep Include="@(_RegiraSelectPdfDepCandidate->Distinct())" Condition="Exists('%(Identity)')" />
+    </ItemGroup>
+    <!-- Without this the failure mode is exactly the one these targets exist to remove: a green build and
+         a throw on the first conversion. Warn if the package moved its contentFiles layout or the root
+         could not be resolved. -->
+    <Warning Condition="'@(_RegiraSelectPdfAsset)' != '' And '@(_RegiraSelectPdfDep)' == ''"
+             Text="Regira.Office.PDF.SelectPdf: resolved Select.HtmlToPdf.NetCore but could not locate Select.Html.dep under '$(_RegiraNuGetRoot)select.htmltopdf.netcore/*/contentFiles/any/any/'. Every conversion will throw at run time until it is placed beside the app. Set RegiraSelectPdfCopyNativeDep=false to manage it yourself." />
+  </Target>
+
+  <!-- The item check belongs on the task, not on the target: MSBuild evaluates a target's Condition
+       BEFORE running its DependsOnTargets, so a condition reading an item the dependency produces can
+       never become true. -->
+
+  <Target Name="RegiraSelectPdfCopyNativeDepToOutput"
+          AfterTargets="Build"
+          DependsOnTargets="_RegiraSelectPdfResolveNativeDep"
+          Condition="'$(RegiraSelectPdfCopyNativeDep)' == 'true'">
+    <Copy SourceFiles="@(_RegiraSelectPdfDep)"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true"
+          Condition="'@(_RegiraSelectPdfDep)' != ''" />
+  </Target>
+
+  <Target Name="RegiraSelectPdfPublishNativeDep"
+          AfterTargets="ComputeFilesToPublish"
+          DependsOnTargets="_RegiraSelectPdfResolveNativeDep"
+          Condition="'$(RegiraSelectPdfCopyNativeDep)' == 'true'">
+    <ItemGroup Condition="'@(_RegiraSelectPdfDep)' != ''">
+      <ResolvedFileToPublish Include="@(_RegiraSelectPdfDep)">
+        <RelativePath>Select.Html.dep</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
+</Project>

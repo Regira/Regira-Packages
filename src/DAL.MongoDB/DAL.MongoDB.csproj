@@ -11,7 +11,7 @@
     <AssemblyName>Regira.DAL.MongoDB</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.0</Version>
+    <Version>6.0.1</Version>
     <Description>MongoDB data access layer for Regira using the official MongoDB driver.</Description>
     <PackageTags>regira;dal;mongodb;nosql</PackageTags>
   </PropertyGroup>

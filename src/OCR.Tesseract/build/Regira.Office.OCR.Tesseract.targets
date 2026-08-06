@@ -1,0 +1,55 @@
+<Project>
+
+  <!--
+    The English trained data ships at a fixed `tessdata/` path in this package rather than as NuGet
+    `contentFiles`, because contentFiles only flow to a project that references the package DIRECTLY — a
+    transitive consumer would build cleanly and then fail at run time when Tesseract cannot find
+    `tessdata/eng.traineddata`. These targets copy it into the consumer's output and publish folders.
+
+    Set RegiraTesseractCopyTessData=false to opt out — appropriate when you ship your own tessdata
+    (a different language, or a trained model of your own) and do not want the English default beside it.
+  -->
+
+  <PropertyGroup>
+    <RegiraTesseractCopyTessData Condition="'$(RegiraTesseractCopyTessData)' == ''">true</RegiraTesseractCopyTessData>
+    <_RegiraTessDataRoot>$(MSBuildThisFileDirectory)../tessdata/</_RegiraTessDataRoot>
+  </PropertyGroup>
+
+  <Target Name="_RegiraTesseractResolveTessData"
+          Condition="'$(RegiraTesseractCopyTessData)' == 'true'">
+    <!-- Trained data only: the folder's readme documents the data's provenance for someone reading the
+         package, and has no business in a consumer's output or publish folder. -->
+    <ItemGroup>
+      <_RegiraTessDataFile Include="$(_RegiraTessDataRoot)**/*.traineddata" />
+    </ItemGroup>
+    <Warning Condition="'@(_RegiraTessDataFile)' == ''"
+             Text="Regira.Office.OCR.Tesseract: no .traineddata found under '$(_RegiraTessDataRoot)', so none was copied to the output — Tesseract will fail at run time. Set RegiraTesseractCopyTessData=false if you ship your own." />
+  </Target>
+
+  <!-- The item check belongs on the task, not on the target: MSBuild evaluates a target's Condition
+       BEFORE running its DependsOnTargets, so a condition reading an item the dependency produces can
+       never become true. -->
+
+  <Target Name="RegiraTesseractCopyTessDataToOutput"
+          AfterTargets="Build"
+          DependsOnTargets="_RegiraTesseractResolveTessData"
+          Condition="'$(RegiraTesseractCopyTessData)' == 'true'">
+    <Copy SourceFiles="@(_RegiraTessDataFile)"
+          DestinationFolder="$(OutDir)tessdata/%(RecursiveDir)"
+          SkipUnchangedFiles="true"
+          Condition="'@(_RegiraTessDataFile)' != ''" />
+  </Target>
+
+  <Target Name="RegiraTesseractPublishTessData"
+          AfterTargets="ComputeFilesToPublish"
+          DependsOnTargets="_RegiraTesseractResolveTessData"
+          Condition="'$(RegiraTesseractCopyTessData)' == 'true'">
+    <ItemGroup Condition="'@(_RegiraTessDataFile)' != ''">
+      <ResolvedFileToPublish Include="@(_RegiraTessDataFile)">
+        <RelativePath>tessdata/%(RecursiveDir)%(Filename)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
+</Project>

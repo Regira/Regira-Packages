@@ -56,7 +56,7 @@ var options = new MongoOptions
 IMemoryFile backup = await new MongoBackupService(options).Backup();
 
 // Store the backup via IO.Storage
-await fileService.Save($"backups/{DateTime.Today:yyyyMMdd}.archive", backup.Bytes!);
+await fileService.Save($"backups/{DateTime.Today:yyyyMMdd}.archive", backup.GetBytes()!);
 ```
 
 ---

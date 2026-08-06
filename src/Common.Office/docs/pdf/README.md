@@ -53,7 +53,15 @@ IMemoryFile pdf3 = File.ReadAllBytes("3.pdf").ToMemoryFile();
 IImageService imageService = new Regira.Drawing.SkiaSharp.Services.ImageService();
 IPdfMerger merger = new Regira.Office.PDF.DocNET.PdfManager(imageService);
 IMemoryFile merged = (await merger.Merge([pdf1, pdf2, pdf3]))!;
+
+// Reading a result — GetBytes() (Regira.IO.Extensions), not .Bytes
+byte[] bytes = merged.GetBytes()!;
 ```
+
+`IMemoryFile` extends both `IMemoryBytesFile` (`Bytes`) and `IMemoryStreamFile` (`Stream`), and a producer
+fills exactly one. Which one varies per method rather than per backend — DocNET's `Split` returns
+byte-backed files while the `Merge` above returns a stream-backed one — so `.Bytes` reads `null` for half the
+API and yields an empty file with no exception. `GetBytes()` normalises both and is correct everywhere.
 
 ## Interfaces
 

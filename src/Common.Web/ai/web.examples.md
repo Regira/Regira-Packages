@@ -49,7 +49,7 @@ public IActionResult StartReport([FromServices] IBackgroundTaskQueue queue)
     queue.QueueBackgroundWorkItem(async token =>
     {
         var report = await _reportService.Generate(token);
-        await _fileService.Save("reports/latest.xlsx", report.Bytes!);
+        await _fileService.Save("reports/latest.xlsx", report.GetBytes()!);
     });
     return Accepted();
 }

@@ -11,7 +11,7 @@
     <AssemblyName>Regira.System.Hosting</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.0</Version>
+    <Version>6.0.1</Version>
     <Description>Generic Host and Windows Service support extensions for Regira.</Description>
     <PackageTags>regira;system;hosting;windowsservice;generichost</PackageTags>
   </PropertyGroup>

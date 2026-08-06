@@ -9,7 +9,7 @@ IQRCodeService qr  = new Regira.Office.Barcodes.ZXing.QRCodeService();
 IImageFile     img = await qr.Create($"https://warehouse.example.com/items/{item.Id}");
 
 // Save to storage (output is JPEG)
-await _fileService.Save($"items/{item.Id}/qr.jpg", img.Bytes!);
+await _fileService.Save($"items/{item.Id}/qr.jpg", img.GetBytes()!);
 ```
 
 ## Generate a Code128 barcode for a shipment

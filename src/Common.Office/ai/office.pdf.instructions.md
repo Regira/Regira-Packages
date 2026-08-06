@@ -186,6 +186,20 @@ IMemoryFile merged = (await merger.Merge([pdf1, pdf2, pdf3]))!;
 // Extract text (DocNET)
 IPdfTextExtractor extractor = new Regira.Office.PDF.DocNET.PdfManager(imageService);
 string text = await extractor.GetText(pdfFile);
+
+// Reading a result: whether it carries bytes or a stream depends on the method, so read it with
+// GetBytes() (Regira.IO.Extensions, in Regira.Common), which normalises both shapes.
+byte[] bytes = file.GetBytes()!;
 ```
+
+⚠️ **Read the result with `GetBytes()`, never `.Bytes` directly.** `IMemoryFile` extends both
+`IMemoryBytesFile` (`Bytes`) and `IMemoryStreamFile` (`Stream`), which makes `.Bytes` look like the obvious
+accessor — but a producer fills exactly one of them, and which one is a property of the **method**, not of
+the backend you picked. `Create` returns a stream-backed file on SelectPdf and Puppeteer and a byte-backed
+one on Playwright; DocNET's `Split` returns bytes where its `Merge(IEnumerable<IMemoryFile>)` returns a
+stream; Spire is stream-backed throughout `Merge`/`Split`. So there is nothing to check at the call site,
+and `.Bytes` is simply null for half the API — producing a **200 with an empty body**: no exception, no
+log, and a download that opens as a zero-byte file. `GetBytes()` returns the bytes whichever half is
+populated.
 
 ---

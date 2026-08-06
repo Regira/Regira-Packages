@@ -27,7 +27,7 @@ public async Task SendOrderConfirmation(Order order, IMemoryFile invoicePdf)
         ],
         Attachments =
         [
-            new BinaryFileItem { FileName = $"invoice-{order.Number}.pdf", Bytes = invoicePdf.Bytes }
+            new BinaryFileItem { FileName = $"invoice-{order.Number}.pdf", Bytes = invoicePdf.GetBytes() }
         ]
     };
 
