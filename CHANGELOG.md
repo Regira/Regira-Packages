@@ -7,7 +7,8 @@ Unreleased block becomes a dated release heading.
 
 ## Unreleased
 
-- `Regira.Setup` 6.0.1 — the packed `copilot-instructions.md` no longer routes a "NuGet feed" setup concern to `shared.setup.md`; packages install from nuget.org with no feed configuration.
+- All packages — version aligned at 6.0.1 for a whole-family publish.
+- `Regira.Setup` 6.0.2 — the packed `copilot-instructions.md` no longer routes a "NuGet feed" setup concern to `shared.setup.md`; packages install from nuget.org with no feed configuration.
 - `Regira.Office.PDF.SelectPdf` 6.0.1 — ships a `buildTransitive` targets file that copies SelectPdf's native `Select.Html.dep` into the consumer's build and publish output. NuGet does not flow the upstream package's `contentFiles` through a transitive reference, so every consumer built cleanly and then threw `Conversion failure. Could not find 'Select.Html.dep'` on the first conversion. Opt out with `RegiraSelectPdfCopyNativeDep=false`.
 - `Regira.Office.OCR.Tesseract` 6.0.1 — ships a `buildTransitive` targets file that copies `tessdata/eng.traineddata` into the consumer's build and publish output, for the same reason. The trained data now packs once at a fixed `tessdata/` path instead of four times via the automatic `contentFiles` layout (7.5 MB → 1.9 MB), and `tessdata/readme.md` is no longer shipped to consumers. Opt out with `RegiraTesseractCopyTessData=false`.
 - `Regira.Office` 6.0.1 — packed guides: results are read with `GetBytes()`, never `.Bytes`. `IMemoryFile` carries either bytes or a stream depending on the method (DocNET's `Split` returns bytes, its `Merge(IEnumerable<IMemoryFile>)` a stream), so `.Bytes` was null for half the API and produced a 200 with an empty body; the PDF, Word, mail, OCR and barcode examples used it.

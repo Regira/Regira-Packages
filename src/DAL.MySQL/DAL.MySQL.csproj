@@ -11,7 +11,7 @@
     <AssemblyName>Regira.DAL.MySQL</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.0</Version>
+    <Version>6.0.1</Version>
     <Description>MySQL data access layer for Regira using Dapper and MySqlConnector.</Description>
     <PackageTags>regira;dal;mysql;dapper</PackageTags>
   </PropertyGroup>

@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Security.Authentication</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.0</Version>
+    <Version>6.0.1</Version>
     <Description>JWT and OAuth2 authentication helpers using Duende IdentityModel for Regira.</Description>
     <PackageTags>regira;security;authentication;jwt;oauth2</PackageTags>
   </PropertyGroup>

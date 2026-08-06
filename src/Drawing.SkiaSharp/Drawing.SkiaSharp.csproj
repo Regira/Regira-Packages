@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Drawing.SkiaSharp</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.0</Version>
+    <Version>6.0.1</Version>
     <Description>SkiaSharp-based image processing and drawing utilities for Regira.</Description>
     <PackageTags>regira;drawing;skiasharp;images</PackageTags>
   </PropertyGroup>
