@@ -5,7 +5,7 @@ adds one bullet under **Unreleased** in the same change (format: `` `PackageId` 
 and leaves that package's `<Version>` higher than its last published version. At publish time the
 Unreleased block becomes a dated release heading.
 
-## Unreleased
+## 6.0.1 — 2026-08-06
 
 - All packages — version aligned at 6.0.1 for a whole-family publish.
 - `Regira.Setup` 6.0.2 — the packed `copilot-instructions.md` no longer routes a "NuGet feed" setup concern to `shared.setup.md`; packages install from nuget.org with no feed configuration.
