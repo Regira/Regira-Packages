@@ -28,7 +28,11 @@
         "Regira.Entities.Attachments.Models",
         "Regira.Entities.Attachments.Abstractions",
         "Regira.Entities.DependencyInjection.Extensions",
-        "Regira.Entities.DependencyInjection.Attachments"
+        "Regira.Entities.DependencyInjection.Attachments",
+        "Microsoft.AspNetCore.Mvc"
+      ],
+      "frameworkReferences": [
+        "Microsoft.AspNetCore.App"
       ]
     },
     {

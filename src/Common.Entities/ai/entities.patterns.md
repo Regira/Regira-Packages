@@ -407,7 +407,18 @@ A state machine (submit / approve / reject / reopen) is neither a CRUD write nor
 the entity controller on the **same** resource route, as a second controller with distinct templates — this
 is supported, and keeps the guard off the hot path where every ordinary PATCH would pay for it:
 
-```csharp no-compile
+```csharp
+public enum RequestStatus { Draft, Submitted, Approved }
+
+public class CreditRequest : IEntity<int>
+{
+    public int Id { get; set; }
+    public RequestStatus Status { get; set; }
+    public DateTime? DecidedOn { get; set; }
+}
+
+public class DecisionInput { public string? Reason { get; set; } }
+
 [ApiController, Route("credit-requests")]                                    // same prefix as the entity controller
 public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> service) : ControllerBase
 {
@@ -417,9 +428,12 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
         var item = await service.Details(id);
         if (item == null) return NotFound();
         if (item.Status != RequestStatus.Submitted)
-            throw new EntityInputException(nameof(item.Status), "Only a submitted request can be approved.");
+        {
+            ModelState.AddModelError(nameof(item.Status), "Only a submitted request can be approved.");
+            return BadRequest(ModelState);
+        }
 
-        item.Status = RequestStatus.Approved;                                // …guard, decide, stamp
+        item.Status = RequestStatus.Approved;                                // …decide, stamp
         item.DecidedOn = DateTime.UtcNow;
         await service.Modify(item);
         await service.SaveChanges();                                         // no base controller here — save explicitly
@@ -428,15 +442,22 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
 }
 ```
 
-- **Write through `IEntityService`, not the raw `DbContext`** — that keeps preppers, primers and row security
-  in play, so the action and the CRUD route cannot diverge.
-- ⚠️ **The transitioned fields must stay on `TInputDto`.** They are server-owned in spirit, but excluding them
-  makes every ordinary PATCH reset them to `null`/default (§Server-owned / immutable fields on update). Keep
-  `Status`/`DecidedOn` on the DTO and let this controller be their real writer; take *only* fields nothing
-  outside the entity pipeline writes (`Code`, computed totals) off it.
+- ⚠️ **Return the 400 yourself, via `ModelState` + `BadRequest`.** `EntityInputException<T>` becomes a
+  field-level 400 only inside `ControllerExtensions.Save` (the path `EntityControllerBase` writes through)
+  and `EntityAttachmentControllerBase`; nothing maps it globally, so from a plain `ControllerBase` it escapes
+  unhandled as a **500**. That applies to a *prepper* too: preppers run in `EntityWriteService.PrepareItem`,
+  reached from `Add`/`Modify` — so one throwing during the `service.Modify(item)` above escapes this action
+  just the same. Only a write that goes **through** `ControllerExtensions.Save` is inside the catch. Wrap the
+  call in `try`/`catch (EntityInputException<CreditRequest> ex)` and map `ex.InputErrors` into `ModelState`
+  if a prepper is the one guarding.
+- **Write through `IEntityService`** — keeps preppers, primers and row security in play, so the action and the
+  CRUD route cannot diverge.
+- ⚠️ **Keep the transitioned fields on `TInputDto`.** Excluding them makes every ordinary PATCH reset them to
+  `null`/default (§Server-owned / immutable fields on update). Leave `Status`/`DecidedOn` on the DTO and let
+  this controller be their real writer; take off only fields nothing outside the entity pipeline writes
+  (`Code`, computed totals).
 - Distinct route templates mean no collision — ASP.NET resolves `POST /credit-requests/{id}/approve` and the
-  base controller's `PATCH /credit-requests/{id}` independently. A genuine duplicate throws at startup, not
-  at request time.
+  base controller's `PATCH /credit-requests/{id}` independently.
 
 ## Owned children that are both sortable and individually togglable
 
