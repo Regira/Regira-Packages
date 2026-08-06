@@ -41,7 +41,7 @@ public IActionResult StartExport([FromServices] IBackgroundTaskQueue queue)
     {
         var data   = await _dataService.QueryAsync(token);
         var excel  = _excelService.Export(data);
-        await _fileService.Save("reports/latest.xlsx", excel.Bytes!);
+        await _fileService.Save("reports/latest.xlsx", excel.GetBytes()!);
     });
     return Accepted();
 }

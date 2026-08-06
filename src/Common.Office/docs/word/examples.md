@@ -21,7 +21,7 @@ IMemoryFile doc = await word.Create(new WordTemplateInput
     }
 });
 
-await fileService.Save("invoices/INV-2024-0042.docx", doc.Bytes!);
+await fileService.Save("invoices/INV-2024-0042.docx", doc.GetBytes()!);
 ```
 
 ---
@@ -117,7 +117,7 @@ await searchIndex.AddDocumentAsync(documentId, text);
 var images = (await word.ToImages(new WordTemplateInput { Template = docxFile })).ToList();
 
 for (int i = 0; i < images.Count; i++)
-    await fileService.Save($"previews/page-{i + 1}.jpg", images[i].Bytes!);
+    await fileService.Save($"previews/page-{i + 1}.jpg", images[i].GetBytes()!);
 ```
 
 ---

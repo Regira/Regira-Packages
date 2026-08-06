@@ -28,7 +28,7 @@ public async Task<string?> ReadCroppedRegion(byte[] imageBytes)
     using var cropped = await _imageService.CropRectangle(img, new ImageEdgeOffset(top: 50, left: 30, bottom: 50, right: 30));
     using var gray    = await _imageService.MakeOpaque(cropped);
 
-    var result = await _ocr.Read(new ImageFile { Bytes = gray.Bytes });
+    var result = await _ocr.Read(new ImageFile { Bytes = gray.GetBytes() });
     return result.Text;
 }
 ```

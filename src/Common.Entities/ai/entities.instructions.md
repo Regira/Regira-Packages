@@ -135,7 +135,9 @@ The two rules that are easy to get wrong and that `entities.setup.md` assumes yo
 >
 > **Budget tally (free tier = 5 simple + 2 complex, two independent buckets — not a shared pool of 7).** One
 > slot per distinct entity type; the built-in attachment feature costs one extra *simple* slot per owner (the
-> per-owner join entity). Write the tally as a comment block atop your `Add{Entities}()` extension:
+> per-owner join entity registered by `HasAttachments`). The shared `Attachment` base that `WithAttachments`
+> registers is **free infrastructure** — it costs nothing, however many owners use it. Write the tally as a
+> comment block atop your `Add{Entities}()` extension:
 >
 > | Entity | Classification | Running tally |
 > |---|---|---|
@@ -143,6 +145,7 @@ The two rules that are easy to get wrong and that `entities.setup.md` assumes yo
 > | `Product` | simple | 2/5 simple |
 > | `Order` | complex (typed `TSortBy`/`TIncludes`) | 1/2 complex |
 > | `OrderLine` | owned child via `e.Related()` — no slot | — |
+> | `Attachment` | shared base via `WithAttachments` — no slot | — |
 > | `ProductAttachment` | simple (`HasAttachments` join) | 3/5 simple |
 >
 > **→ 3 simple / 1 complex → fits free.** Confirm the tally at runtime: the app logs
@@ -478,7 +481,7 @@ The **parent FK needs no stamping**. New children reach the store through the pa
 | Relationship | Use `Related()`? | Notes |
 |---|---|---|
 | Owned child list (e.g., order lines) | ✅ Yes | Child has no own `.For<>()` registration; lifecycle is fully controlled by the parent |
-| Optional parent FK (e.g., `InvoiceId?` on Intervention) | ❌ No | Manage via the child entity's own service |
+| Optional parent FK (e.g., `InvoiceId?` on Intervention) | ❌ No | Manage via the child entity's own service. A total the parent rolls up from these children is a prepper reading the persisted rows — [`entities.patterns.md`](./entities.patterns.md) § Aggregates over a non-owned child collection |
 | Many-to-many join entity | ✅ Yes | The join entity itself is owned; see join-entity example in `entities.examples.md` |
 | Independent entity with back-ref collection | ❌ No | Use `Include()` in the query builder to load the navigation property |
 
@@ -529,6 +532,8 @@ Run during `SaveChanges()` via EF Core interceptors; can inspect other modified 
   - `.After<TAfterMapper>()` — separate class when DI is needed; `options.AddAfterMapper<T>()` registers a global one. The class-based overload returns the **untyped** builder (drops `TDto`/`TInputDto`), so `.AfterInput(...)` no longer compiles after it (CS1061) — chain the typed `.After(...)`/`.AfterInput(...)` inline when you need both (e.g. a renamed DTO collection — see [`entities.patterns.md`](./entities.patterns.md) — Renamed DTO property)
 - **`AddMapping<TSource, TTarget>()`** — an escape hatch. Register an explicit mapping for a specific (usually nested/child) type pair **only** when Mapster's convention produces the wrong result — e.g. a child DTO whose shape diverges from the entity, or a child input type that needs a custom mapping. It is **not** required to project nested related collections; Mapster does that by convention.
 
+> ⚠️ **An after-mapper runs for the read root only** (§Step 7): the same DTO nested inside another entity's projection is mapped without it. So a computed field that must also appear on, say, a `PersonCoreDto` carried by every `TicketDto` cannot come from an after-mapper — put it on the entity as a `[NotMapped]` getter and let Mapster project it. The failure is silent in the worst way: the field populates on `/people` and is blank on every ticket row, board card and comment, and nothing — compiler, DI validation, or a single-page smoke test — reports it.
+
 > **Empty nested collection in a response?** That is almost always a missing **`Includes`** (the navigation was never loaded from the database), **not** a missing mapping — see §Step 4 and Troubleshooting. Check `e.Includes(...)` before adding any `AddMapping`.
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — Additional Patterns > Mapping / AfterMapper
@@ -560,6 +565,8 @@ Add `DbSet<YourEntity>` and configure any relationships in `OnModelCreating`.
 > ```
 >
 > A dependent you also query **directly** (an aggregate over `OrderLine`, not through `Order`) needs one more thing: give it a matching `HasQueryFilter(x => !x.Order!.IsArchived)` in `OnModelCreating`. That is what keeps its own count and items in agreement — and it never collides with the named archived filter, because the archived filter only touches `IArchivable` types.
+>
+> ⚠️ That filter also hides the rows from the **parent's own** aggregate recompute, which runs while the parent is still archived — so restoring the parent zeroes a computed total, with a 200 and no error. Any prepper summing such a dependent needs `IgnoreQueryFilters()`, scoped by the parent FK: [`entities.patterns.md`](./entities.patterns.md) § Aggregates over a non-owned child collection.
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — DbContext
 
@@ -681,6 +688,8 @@ Expected: `Code` and `Total` are unchanged from step 1 (not `null`/`0`) and `sta
 
 **Assert your seed data's domain invariants with a query, not by eyeballing a page.** Name each rule the data must satisfy ("every asset whose status is *In use* has a holder"; "every event has at least one session"), then prove it with a search that must return `count: 0` — `GET /assets/search?statusId=3&isAssigned=false`. This is the one class of bug a green build, a green type-check *and* a passing round-trip all miss: the generator loop that skips a case leaves data that is individually valid and collectively wrong, and it only shows up as something looking odd on a page nobody scrolled to.
 
+**Then check the *distributions*, not only the invariants.** An invariant catches the rule you thought of; a ratio catches the one you didn't. Count each state your UI visualises — a bucket sitting at **0 % or 100 % of its population is a generator bug**, however plausible each individual row is. The classic shape is a date derived from a uniformly-spread `Created` against a much shorter SLA or due window: every row is defensible and every open item is overdue, which makes the badge, the filter and the dashboard tile meaningless. Derive such dates relative to each row's own window instead, and re-count.
+
 Rows scoped to a user/tenant, or endpoints gated by role? One more check applies — §Security & Authorization → *Verify per identity*.
 
 ---
@@ -697,6 +706,7 @@ Seed through the services, not the DbContext (no controller, so the usual gotcha
 - It does **not** auto-persist — call `await service.SaveChanges()` yourself.
 - Bulk: loop `await service.Add(item)` (⚠️ **preppers run per item**, so a DB-touching prepper makes the loop N+1 — batch its lookups), then `SaveChanges()` **once** — see [`entities.patterns.md`](./entities.patterns.md) → Bulk insert / update. Standard EF auto-increment rules apply, so flush a parent batch before assigning `child.ParentId = parent.Id`.
 - This `SaveChanges()` **clears the change tracker** (unlike stock EF Core) — saved entities detach. To touch an earlier wave again, re-`Modify()` it first.
+- ⚠️ **Re-read that earlier wave detached and without navigations** — `db.Invoices.AsNoTracking().ToListAsync()`, then `Modify` each. **`Details(id)` is the wrong reader here:** it applies every registered `Includes(...)`, so each row arrives carrying its own copy of a shared principal, and attaching the second one throws *"The instance of entity type 'X' cannot be tracked because another instance with the same key value is already being tracked."* This is the natural last wave of any seed that has a derived aggregate to settle (§ Aggregates over a non-owned child collection), so it is where the crash lands.
 - **Reference earlier waves by foreign key, not by navigation object.** Those rows are detached once the tracker clears, so `item.Shopper = shopper` re-adds that instance as a *new* graph member and the wave dies on `UNIQUE constraint failed: Shoppers.Id`. Read the keys you need (`.AsNoTracking()`, select the id) and assign `item.ShopperId = id`. Reserve navigation objects for children genuinely created in the same wave.
 - **Owned/join rows have no service of their own** — a collection managed by `e.Related()` (m2m join, hierarchy join) can't be seeded through the service loop. Seed it through the owning parent's navigation, or via the `DbContext` for a standalone join — see [`entities.patterns.md`](./entities.patterns.md) → *Seeding owned / join rows*.
 - **Uniqueness checks within one wave must be in-memory.** Rows still queued in the change tracker are invisible to a database query — an `AnyAsync(...)` dedupe check passes and the wave then dies on a `UNIQUE` constraint at `SaveChanges()`. Dedupe a wave with a `HashSet` of keys instead.

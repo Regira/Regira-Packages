@@ -38,7 +38,7 @@ IMemoryFile pdf = await word.Convert(
     new WordTemplateInput { Template = contract },
     FileFormat.Pdf);
 
-await _fileService.Save($"contracts/{client.Id}/contract-{DateTime.Today:yyyyMMdd}.pdf", pdf.Bytes!);
+await _fileService.Save($"contracts/{client.Id}/contract-{DateTime.Today:yyyyMMdd}.pdf", pdf.GetBytes()!);
 ```
 
 ## Merge addendum into the main contract

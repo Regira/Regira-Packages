@@ -16,7 +16,7 @@ IMemoryFile invoicePdf = await pdf.Create(new HtmlInput
     Margins           = new Margins { Top = 20, Bottom = 20, Left = 15, Right = 15 }
 });
 
-await _fileService.Save($"invoices/{invoice.Number}.pdf", invoicePdf.Bytes!);
+await _fileService.Save($"invoices/{invoice.Number}.pdf", invoicePdf.GetBytes()!);
 ```
 
 ## Merge monthly invoices into one PDF

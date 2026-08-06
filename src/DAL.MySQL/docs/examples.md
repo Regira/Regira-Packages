@@ -22,7 +22,7 @@ var options = new MySqlBackupOptions { DbSettings = settings };
 
 // Backup
 IMemoryFile backup = await new MySqlBackupService(options).Backup();
-await fileService.Save("backups/mysql-latest.sql.gz", backup.Bytes!);
+await fileService.Save("backups/mysql-latest.sql.gz", backup.GetBytes()!);
 
 // Restore to a different database
 var restoreOptions = new MySqlBackupOptions

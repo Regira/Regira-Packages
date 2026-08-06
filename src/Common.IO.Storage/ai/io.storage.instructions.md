@@ -52,7 +52,11 @@ BinaryFileItem f1 = pdfBytes;
 BinaryFileItem f2 = someStream;
 ```
 
-### Extension methods — `BinaryFileExtensions`
+### Extension methods — `MemoryFileExtensions` / `BinaryFileExtensions`
+
+Both live in `Regira.IO.Extensions` in **`Regira.Common`**. `GetBytes()`/`GetStream()`/`GetLength()`/
+`HasContent()` come from `MemoryFileExtensions` and work on any `IMemoryFile`; the `ToBinaryFile(...)`
+factories come from `BinaryFileExtensions`.
 
 ```csharp
 byte[]? bytes  = file.GetBytes();
@@ -64,6 +68,15 @@ IBinaryFile f = bytes.ToBinaryFile("invoice.pdf");
 IBinaryFile f = stream.ToBinaryFile("data.csv");
 IBinaryFile f = memoryFile.ToBinaryFile("copy.pdf");
 ```
+
+⚠️ **`GetBytes()` is the accessor, not `.Bytes`.** `IMemoryFile` extends both `IMemoryBytesFile` (`Bytes`)
+and `IMemoryStreamFile` (`Stream`), and a producer fills only one of them — anything built from a stream
+(`stream.ToMemoryFile(...)`) leaves `Bytes` null, and `HasBytes()` reports `false` for it. Which half a
+given result carries is a property of the **method**, not of the implementation you registered: across the
+Office backends one PDF manager returns bytes from `Split` and a stream from `Merge`, and two HTML→PDF
+implementations return a stream where a third returns bytes. So there is nothing to check at the call site.
+Reading `.Bytes` yields an empty response body with no error. `GetBytes()` reads whichever half is
+populated.
 
 ### `ContentTypeUtility`
 

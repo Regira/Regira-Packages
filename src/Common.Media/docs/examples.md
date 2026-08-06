@@ -10,7 +10,7 @@ public async Task<byte[]> CreateThumbnail(byte[] input, int maxSize = 200)
     using var image   = (await imageService.Parse(input))!;
     using var resized = await imageService.Resize(image, new ImageSize(maxSize, maxSize));
     using var webp    = await imageService.ChangeFormat(resized, ImageFormat.Webp);
-    return webp.Bytes!;
+    return webp.GetBytes()!;
 }
 ```
 

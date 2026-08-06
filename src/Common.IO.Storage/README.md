@@ -64,6 +64,13 @@ Task         Delete(string identifier)
 
 > `Save` returns the final identifier used — it may differ if the backend renames on conflict.
 
+> **Passing an `IMemoryFile` to `Save`? Read it with `GetBytes()`, not `.Bytes`.** `IMemoryFile` extends
+> both `IMemoryBytesFile` (`Bytes`) and `IMemoryStreamFile` (`Stream`), and a producer fills exactly one —
+> which one varies per method, not per implementation. `.Bytes` is therefore `null` for anything built from
+> a stream (an Excel export, a PDF merge, a database backup), and `Save(identifier, null!)` writes an empty
+> file with no exception. `GetBytes()`/`GetStream()` (`MemoryFileExtensions`, `Regira.IO.Extensions` in
+> `Regira.Common`) normalise both halves.
+
 ### URI helpers
 
 ```csharp no-compile

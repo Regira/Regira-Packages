@@ -17,7 +17,7 @@ IMemoryFile result = await pdf.Create(new HtmlInput
     Margins             = [20, 20, 20, 20]   // top, right, bottom, left (points)
 });
 
-await fileService.Save("reports/output.pdf", result.Bytes!);
+await fileService.Save("reports/output.pdf", result.GetBytes()!);
 ```
 
 ---
@@ -89,7 +89,7 @@ var images = await converter.ToImages(pdf, new PdfToImagesOptions
 
 int page = 1;
 foreach (var img in images)
-    await fileService.Save($"pages/page-{page++}.jpg", img.Bytes!);
+    await fileService.Save($"pages/page-{page++}.jpg", img.GetBytes()!);
 ```
 
 ---
