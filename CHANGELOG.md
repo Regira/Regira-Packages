@@ -5,7 +5,7 @@ adds one bullet under **Unreleased** in the same change (format: `` `PackageId` 
 and leaves that package's `<Version>` higher than its last published version. At publish time the
 Unreleased block becomes a dated release heading.
 
-## Unreleased
+## 6.0.2 — 2026-08-08
 
 - All packages — version aligned at 6.0.2 for a whole-family publish.
 - `Regira.Entities.EFcore` 6.0.2 — a required relationship the change tracker refuses to sever is now reported as a constraint conflict (409) instead of an unhandled `InvalidOperationException`. EF resolves that case client-side, before the provider is reached, so it never arrived as the `DbUpdateException` the constraint path catches — a hierarchy that eager-loads its own children hit it on every parent delete. Both throw sites are covered (`Remove`, and `SaveChanges` under deferred cascade timing), including the `Attachment` principal removed by `EntityAttachmentWriteService`. Adds `InvalidOperationExceptionExtensions.IsSeveredRequiredRelationship`.
