@@ -31,7 +31,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 **Program.cs**
 ```csharp no-compile
-// Basic setup: follow the shared project setup guide — get_package("Regira.Setup", "project.setup") — for the selected template first.
+// Basic setup: follow the shared project setup guide — get_package(id: "Regira.Setup", section: "project.setup") — for the selected template first.
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<ProjectsContext>(options =>
     // use DB provider at wish

@@ -541,11 +541,14 @@ public interface IOrderService : IEntityService<Order, OrderSearchObject, Entity
 public class OrderManager(IEntityRepository<Order, OrderSearchObject, EntitySortBy, OrderIncludes> service)
     : EntityWrappingServiceBase<Order, OrderSearchObject, EntitySortBy, OrderIncludes>(service), IOrderService
 {
-    public override Task Add(Order item, CancellationToken token = default) { Validate(item); if (string.IsNullOrWhiteSpace(item.Code)) item.Code = $"ORD-{Guid.NewGuid():N}"[..16]; return base.Add(item, token); } // fits Code's [MaxLength(16)]; a longer value truncates and collides on the unique index
-    public override Task<Order?> Modify(Order item, CancellationToken token = default) { Validate(item); return base.Modify(item, token); }
-    private static void Validate(Order item)
+    public override Task Add(Order item, CancellationToken token = default) { RequireLines(item.OrderLines?.Any() == true); if (string.IsNullOrWhiteSpace(item.Code)) item.Code = $"ORD-{Guid.NewGuid():N}"[..16]; return base.Add(item, token); } // fits Code's [MaxLength(16)]; a longer value truncates and collides on the unique index
+    // Same three-way on the collection as Prepare() below: null = not sent (a status-only PATCH), leave the
+    // stored lines alone; [] = an explicit delete-all, which would strand the order without lines. Validating
+    // null the same as [] rejects every partial update that doesn't resend the full child list.
+    public override Task<Order?> Modify(Order item, CancellationToken token = default) { RequireLines(item.OrderLines is not { Count: 0 }); return base.Modify(item, token); }
+    private static void RequireLines(bool hasLines)
     {
-        if (item.OrderLines?.Any() != true)
+        if (!hasLines)
             throw new EntityInputException<Order>("Saving order failed")
             {
                 InputErrors = { ["OrderLines"] = "Order must contain at least one order line." }
@@ -570,6 +573,8 @@ public static EntityServiceCollection<WebshopDbContext> AddOrders(this IEntitySe
             //   null = not sent, stored lines untouched   |   [] = delete-all   |   populated = the new set.
             // Only null may skip the recompute, and even then Total must come from the PERSISTED lines:
             // returning early leaves Total at the DTO's default (0) on every status-only PATCH.
+            // The [] branch is unreachable for Order specifically — OrderManager.Modify rejects an empty
+            // collection above — but keep the three-way: an aggregate that allows delete-all needs it.
             if (order.OrderLines == null)
             {
                 order.Total = order.Id > 0

@@ -70,9 +70,30 @@ public class EntityWriteService<TContext, TEntity, TKey>(
         => item.IsNew() ? Add(item, token) : Modify(item, token);
     public virtual Task Remove(TEntity item, CancellationToken token = default)
     {
-        DbSet.Remove(item);
+        RemoveGuarded(() => DbSet.Remove(item), item.Id);
         Logger?.LogDebug($"Removing {typeof(TEntity).FullName} #{item.Id}");
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Marks a row Deleted, reporting a required relationship the change tracker cannot sever as the same
+    /// constraint conflict the database would have raised.<br />
+    /// Marking is already enough to trip it: EF cascades the state change to tracked dependents there and
+    /// then, so the failure surfaces here rather than at <see cref="SaveChanges"/> — see that method for the
+    /// counterpart on the flush path. Every removal has to go through this, including principals deleted
+    /// alongside the entity itself, or one unguarded <c>Remove</c> puts the raw exception back.
+    /// </summary>
+    protected void RemoveGuarded(Action remove, object? id = null)
+    {
+        try
+        {
+            remove();
+        }
+        catch (InvalidOperationException ex) when (ex.IsSeveredRequiredRelationship())
+        {
+            Logger?.LogWarning(ex, "A required relationship blocked the removal of {EntityType} #{Id}", typeof(TEntity).FullName, id);
+            throw new EntityConstraintException(EntityConstraintException.ClientMessage, ex);
+        }
     }
 
     public virtual async Task PrepareItem(TEntity item, TEntity? original, CancellationToken token = default)
@@ -111,6 +132,14 @@ public class EntityWriteService<TContext, TEntity, TKey>(
             // the provider's constraint text stays in the log + InnerException — Message must be safe to
             // render anywhere (dev exception pages, generic exception handlers) without leaking index
             // names or other users' values
+            throw new EntityConstraintException(EntityConstraintException.ClientMessage, ex);
+        }
+        catch (InvalidOperationException ex) when (ex.IsSeveredRequiredRelationship())
+        {
+            // The change tracker rejected the same integrity rule the database would have, one step earlier:
+            // tracked dependents make EF fix up the severed required FK client-side, so the provider is never
+            // reached and no DbUpdateException is raised. Same cause, same answer to the caller.
+            Logger?.LogWarning(ex, "A required relationship blocked the change for {EntityType}", typeof(TEntity).FullName);
             throw new EntityConstraintException(EntityConstraintException.ClientMessage, ex);
         }
     }

@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Office.Word.Spire</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.1</Version>
+    <Version>6.0.2</Version>
     <Description>Word document processing using FreeSpire.Doc for Regira Office.</Description>
     <PackageTags>regira;office;word;spire;docx</PackageTags>
   </PropertyGroup>

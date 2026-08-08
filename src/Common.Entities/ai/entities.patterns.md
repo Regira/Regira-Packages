@@ -115,8 +115,8 @@ await links.SaveChanges(); // pipeline writes the file, fills Path/Length, assig
   attachment's content — they don't create one. Without a nested `Attachment`, `AttachmentId`
   stays `0` and the FK fails.
 
-**See:** `get_package("Regira.Entities", section: "patterns", heading: "Bulk insert / update")`
-and `get_package("Regira.Entities", section: "examples", heading: "Attachments")`.
+**See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "Bulk insert / update")`
+and `get_package(id: "Regira.Entities", section: "examples", heading: "Attachments")`.
 
 ### Bulk insert / seed many rows
 <!-- how_to: key=bulk-insert aliases=bulk,seed,seeding,import,addrange,batch,many,insert,loop -->
@@ -136,7 +136,7 @@ await service.SaveChanges();       // one round-trip flushes the whole batch
 - The change tracker is cleared after every `SaveChanges()`; re-attach with `Modify` before
   touching an already-saved entity in a later wave.
 
-**See:** `get_package("Regira.Entities", section: "patterns", heading: "Bulk insert / update")`.
+**See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "Bulk insert / update")`.
 
 ### Back-date Created / LastModified when seeding
 <!-- how_to: key=back-date-timestamps aliases=timestamp,timestamps,created,lastmodified,date,dates,historical,backdate,seed -->
@@ -149,7 +149,7 @@ await service.Add(new Ticket { /* … */ Created = new DateTime(2024, 3, 1) });
 await service.SaveChanges(); // the pre-set Created is kept; the primer does not overwrite it
 ```
 
-**See:** `get_package("Regira.Entities", section: "patterns", heading: "Bulk insert / update")`.
+**See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "Bulk insert / update")`.
 
 ### Which service is registered for an entity (incl. attachments)
 <!-- how_to: key=registered-service aliases=registered,service,resolve,getrequiredservice,inject,injection,which,what -->
@@ -164,7 +164,7 @@ search-object / read / write / repository variants). Attachments specifically:
 link is an `IEntityAttachment`, not an `IAttachment`, so that typed overload can't bind to it.
 Use `IEntityService<…>`.
 
-**See:** `get_package("Regira.Entities", section: "examples", heading: "Attachments")`.
+**See:** `get_package(id: "Regira.Entities", section: "examples", heading: "Attachments")`.
 
 ### Sync nested owned collections (children of children)
 <!-- how_to: key=nested-related aliases=nested,grandchild,grandchildren,sub-collection,subcollection,related,two-level,deep,graph -->
@@ -185,7 +185,7 @@ tracked as added). Deeper levels nest the same way. Neither level needs its own 
 controller, budget slot, or a hand-written prepper — write a prepper only for logic beyond
 collection syncing.
 
-**See:** `get_package("Regira.Entities", section: "blueprints", heading: "Stakeholders")` for the
+**See:** `get_package(id: "Regira.Entities", section: "blueprints", heading: "Stakeholders")` for the
 full worked model, and §Step 8 in the instructions for the `Related()` signature.
 
 ## Soft Delete
@@ -695,6 +695,17 @@ Add Parent, and Children navigation properties. Filter on `ParentId` or `ChildId
 > **Multi-parent?** A node under several parents is a many-to-many self-reference, not a tree: use a self-referencing join entity (`ParentEntities`/`ChildEntities` collections) instead of `ParentId`. See the `RelatedCategory` recipe in [`entities.examples.md`](./entities.examples.md) — Category entity, with full wiring in [`entities.advanced.example.md`](./entities.advanced.example.md).
 
 > **`QuerySplittingBehavior` warning.** Eager-loading two or more *collection* navigations in one query (e.g. `ParentEntities` + `ChildEntities`) trips EF Core's Cartesian-explosion warning. Harmless for small data; otherwise add `.AsSplitQuery()` inside `Includes(...)`, or set `UseQuerySplittingBehavior(SplitQuery)` on the provider.
+
+> **Delete behaviour on a required self-referencing FK.** Deleting an in-use node comes back as **409**
+> under either `Restrict` or `ClientNoAction` — they differ in who refuses it. `Restrict` also has EF fix the
+> relationship up **client-side**, and a hierarchy eager-loads its own children, so the dependents are
+> tracked and the change tracker rejects the delete before the provider is reached. `ClientNoAction` skips
+> that and lets the database decide, which is the simpler contract for a tree:
+> ```csharp
+> builder.HasOne(x => x.Parent).WithMany(x => x.Children)
+>     .HasForeignKey(x => x.ParentId).OnDelete(DeleteBehavior.ClientNoAction);
+> ```
+> A nullable `ParentId` is the other valid answer: orphaned children survive as new roots.
 
 > **Beyond direct relations** — *"everything under X, any depth"* filters (`AncestorId`/`OffspringId` on the SearchObject), tree endpoints, and in-memory tree assembly with `Regira.TreeList`: see [`entities.blueprints.md`](./entities.blueprints.md) — Recursive entities (mapped recursive-CTE table-valued functions composed inside query filters).
 

@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Office.OCR.Tesseract</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.1</Version>
+    <Version>6.0.2</Version>
     <Description>Optical character recognition using Tesseract for Regira Office.</Description>
     <PackageTags>regira;office;ocr;tesseract</PackageTags>
   </PropertyGroup>

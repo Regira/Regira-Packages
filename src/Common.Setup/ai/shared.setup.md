@@ -2,7 +2,7 @@
 
 > **Role:** Load this file for setup rules reused by multiple module guides and for consumer-guide sync or distribution mechanics.
 >
-> **Boundaries:** Use [`AGENTS.md`](../../../ai/AGENTS.md) for module discovery, top-level routing, and the execution-oriented consumer workflow. Use the project setup guide — `get_package("Regira.Setup", "project.setup")` — for project-template choice and baseline app shape.
+> **Boundaries:** Use [`AGENTS.md`](../../../ai/AGENTS.md) for module discovery, top-level routing, and the execution-oriented consumer workflow. Use the project setup guide — `get_package(id: "Regira.Setup", section: "project.setup")` — for project-template choice and baseline app shape.
 
 Use this file when a module guide needs shared setup without repeating it.
 
@@ -17,7 +17,7 @@ Keep these responsibilities separate in consumer projects:
 - `.regira/instructions/*.md` are optional local guides created by package extraction.
 - `Regira.Setup` is the package path for extracting the shared setup guides `project.setup.md` and `shared.setup.md` during build.
 - Module packages that ship AI files can extract their own module-specific guides during build through their package targets.
-- The `project.setup` section (`get_package("Regira.Setup", "project.setup")`) stays focused on template selection and baseline app shape.
+- The `project.setup` section (`get_package(id: "Regira.Setup", section: "project.setup")`) stays focused on template selection and baseline app shape.
 - `shared.setup.md` stays focused on setup rules reused across modules and local guide extraction behavior.
 
 Consumers do not need the source-repository `ai/` folder for the normal one-file flow. Install `Regira.Setup` when the shared setup guides should be extracted locally through package restore and build.
@@ -25,7 +25,7 @@ Consumers do not need the source-repository `ai/` folder for the normal one-file
 ## Related Files
 
 - [`AGENTS.md`](../../../ai/AGENTS.md) — canonical downstream bootstrap to copy as `./AGENTS.md`
-- **Project setup guide** — `get_package("Regira.Setup", "project.setup")` — canonical shared project-template guide; extractable to `.regira/instructions/project.setup.md` through `Regira.Setup`
+- **Project setup guide** — `get_package(id: "Regira.Setup", section: "project.setup")` — canonical shared project-template guide; extractable to `.regira/instructions/project.setup.md` through `Regira.Setup`
 
 ## Authoring Rules
 

@@ -590,7 +590,7 @@ finally
 > **Entities + OpenAPI:** the JSON options above configure controllers only. `AddOpenApi()` instead reads
 > `Http.Json.JsonOptions`, so on a `Regira.Entities` API swap this block for `ConfigureDefaultJsonOptions()`
 > (`Regira.Entities.Web.DependencyInjection`) — it applies cycles/nulls/enum-names to **both** sets so the
-> generated schema matches the wire format (`get_package("Regira.Entities", "entities.setup")` → P3).
+> generated schema matches the wire format (`get_package(id: "Regira.Entities", section: "entities.setup")` → P3).
 
 > A browser SPA on `http://` is 307-redirected by `UseHttpsRedirection()`; see *Calling the API in dev*
 > (front-end `regira_modules.vue.entities` → `entities.setup`) to wire the dev SPA to this API.

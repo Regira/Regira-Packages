@@ -5,5 +5,5 @@
 > is documented in the `Regira.Entities` package, which is also where the setup, instructions, examples and
 > signatures guides live.
 >
-> `get_package("Regira.Entities", section: "namespaces")` — or `get_package_toc(id: "Regira.Entities")` for
+> `get_package(id: "Regira.Entities", section: "namespaces")` — or `get_package_toc(id: "Regira.Entities")` for
 > the full guide set.

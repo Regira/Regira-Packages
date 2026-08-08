@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Entities.Mapping.Mapster</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.1</Version>
+    <Version>6.0.2</Version>
     <Description>Mapster integration for Regira entity mapping.</Description>
     <PackageTags>regira;entities;mapping;mapster</PackageTags>
   </PropertyGroup>

@@ -71,4 +71,4 @@ return tree.ToTreeView();   // parent-before-children order for the client
 ```
 
 > Full recipe (keyless projection, `HasDbFunction` mapping, recursive-CTE SQL, subtree SearchObject filters):
-> `get_package("Regira.Entities", section: "blueprints", heading: "Recursive entities")`.
+> `get_package(id: "Regira.Entities", section: "blueprints", heading: "Recursive entities")`.

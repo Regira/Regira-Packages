@@ -12,7 +12,7 @@
     <Description>Shared Regira setup guides and AI instruction extraction support for consumer projects.</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.2</Version>
+    <Version>6.0.3</Version>
     <PackageTags>regira;setup;ai;guides</PackageTags>
   </PropertyGroup>
   <ItemGroup>
@@ -28,9 +28,5 @@
     <None Include="ai\commands\new-entity.md" Pack="true" PackagePath="ai\commands\" />
     <None Include="ai\commands\sync-guides.md" Pack="true" PackagePath="ai\commands\" />
     <None Include="ai\commands\evaluate.md" Pack="true" PackagePath="ai\commands\" />
-  </ItemGroup>
-  <ItemGroup>
-    <!-- Added for automated versioning -->
-    <ProjectReference Include="..\Common\Common.csproj" />
   </ItemGroup>
 </Project>

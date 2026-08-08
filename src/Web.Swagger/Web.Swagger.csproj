@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Web.Swagger</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.1</Version>
+    <Version>6.0.2</Version>
     <Description>Swagger/OpenAPI documentation extensions using Swashbuckle for Regira.</Description>
     <PackageTags>regira;web;swagger;openapi;swashbuckle</PackageTags>
   </PropertyGroup>

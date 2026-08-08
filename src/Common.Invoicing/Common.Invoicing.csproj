@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Invoicing</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.1</Version>
+    <Version>6.0.2</Version>
     <Description>Abstractions for invoicing workflows in Regira.</Description>
     <PackageTags>regira;invoicing;billing</PackageTags>
   </PropertyGroup>

@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Office.PDF.DocNET</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.1</Version>
+    <Version>6.0.2</Version>
     <Description>PDF rendering and page extraction using Docnet.Core for Regira Office.</Description>
     <PackageTags>regira;office;pdf;docnet</PackageTags>
   </PropertyGroup>

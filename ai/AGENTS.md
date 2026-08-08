@@ -19,7 +19,7 @@ than its one-liner.
 |---|-------|----|------------|
 | 0 | Classify | List top-level entities, their owned collections, and the auth mode. Owned rows are configured through the parent's `Related(...)` — they are not entities, cost no registration slot, and get no controller. | Free tier fits: 5 simple + 2 complex registrations |
 | 1 | Probe | `dotnet --version`, `node -v`, `npm -v`, `git --version` | All four resolve |
-| 2 | API host | `project.setup` (a section of `Regira.Setup` — `get_package("Regira.Setup", "project.setup")`) → host, `DbContext`, `UseEntities<TContext>(e => e.UseDefaults())`, `ConfigureDefaultJsonOptions()`. **Settle the route prefix now** (`opts.UseCentralRoutePrefix(new RouteAttribute("api"))` from `Regira.Web.Routing`, or none): the SPA's config, its axios base and the dev proxy all have to agree with it, and changing it after phase 4 re-verifies every URL | `dotnet build` clean; `/openapi/v1.json` served |
+| 2 | API host | `project.setup` (a section of `Regira.Setup` — `get_package(id: "Regira.Setup", section: "project.setup")`) → host, `DbContext`, `UseEntities<TContext>(e => e.UseDefaults())`, `ConfigureDefaultJsonOptions()`. **Settle the route prefix now** (`opts.UseCentralRoutePrefix(new RouteAttribute("api"))` from `Regira.Web.Routing`, or none): the SPA's config, its axios base and the dev proxy all have to agree with it, and changing it after phase 4 re-verifies every URL | `dotnet build` clean; `/openapi/v1.json` served |
 | 3 | Register | One `.For<>()` per top-level entity; one `e.Related(...)` per owned collection | No startup **warnings** — an ignored `?q=`, a dual write path or an out-of-scope global filter is a defect, not noise (informational lines are expected). One exception on `net10.0`: EF's `PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning`, one per required dependent of an `IArchivable` principal, is the intended behaviour of soft delete — see `entities.instructions` Step 11 |
 | 4 | Prove the API | create → update → **update again** → re-read | The second save is idempotent and owned rows survive it |
 | 5 | SPA shell | `get_bootstrap_guide(platform: "frontend")`, then the shell generator (`--no-auth` when there is no auth) | `npm run dev` serves the shell; `index.html` has the `#modals` host; a no-auth app reaches `AppStatus.Ready` |
@@ -40,21 +40,26 @@ A Regira MCP server is available at `https://mcp.regira.com/mcp`. It provides fu
 
 **Configure once** in your AI tool, then use these tools roughly in this order:
 
-| Tool | Purpose |
-|---|---|
-| `get_bootstrap_guide` | Start here. Loads this consumer bootstrap guide; pass `heading` for one part (`heading: "toc"` lists them) once you know your way around. |
-| `recommend_packages` | First-pass package suggestions from a feature description. |
-| `search_packages` | Refine package discovery when you already have keywords or a concrete use case. |
-| `list_packages` | Browse the full package catalog when the fit is still broad or category-driven. |
-| `get_package_card` | **Orient here before loading sections** — the 10-bullet must-know card per package; it often suffices for a task and tells you which section to drill into. |
-| `get_package_toc` | After picking a package, list the available documentation sections such as `instructions`, `examples`, `setup`, or `signatures`. |
-| `get_section_toc` | After picking a section, list its headings before loading content. |
-| `get_package` | Read the actual package guidance, optionally narrowed to one section or heading. Supports `maxChars` and `page`. |
-| `search_docs` | **When you don't know where a topic lives** — searches every package's documentation at once and returns the matching headings with a snippet and the exact `get_package(...)` call to read each. Reach for this before guessing a section, and to confirm that something genuinely isn't documented. |
-| `get_example` | Pull only the examples that match a topic once you know what you want to see. Use `section` to scope to `examples` or `instructions`. |
-| `how_to` | Answer "how do I do X in code?" for common Regira Entities tasks — the registered service, a minimal snippet, and a doc pointer. |
-| `list_types` | Optional branch: inspect the public API surface from the source map without loading docs. |
-| `get_type` | Optional branch: inspect one type and its member signatures in detail. |
+Canonical parameter names are **not** uniform across these tools — the search term is `query` on one,
+`pattern` on another and `task` on a third, and a package is `id` everywhere except `search_docs`, where
+`package` scopes the search. Copy the call form from this table rather than inferring it from a neighbouring
+tool; where a package is taken, `id`, `pkg` and `package` all resolve, so a wrong guess costs nothing.
+
+| Tool | Call | Purpose |
+|---|---|---|
+| `get_bootstrap_guide` | `get_bootstrap_guide(heading: "toc")`, then `heading: "<one heading>"`; `platform: "frontend"` for the Vue guide | Start here. `heading` also takes a comma-separated list. |
+| `recommend_packages` | `recommend_packages(feature: "shopping list API with QR codes")` | First-pass package suggestions from a feature description. `platform` is optional. |
+| `search_packages` | `search_packages(query: "PDF generation")` | Refine package discovery when you already have keywords or a concrete use case. |
+| `list_packages` | `list_packages(category: "entities")` | Browse the full package catalog when the fit is still broad or category-driven. |
+| `get_package_card` | `get_package_card(id: "Regira.Entities")` | **Orient here before loading sections** — the 10-bullet must-know card per package; it often suffices for a task and tells you which section to drill into. |
+| `get_package_toc` | `get_package_toc(id: "Regira.Entities")` | After picking a package, list the available documentation sections such as `instructions`, `examples`, `setup`, or `signatures`. |
+| `get_section_toc` | `get_section_toc(id: "Regira.Entities", section: "entities.examples")` | After picking a section, list its headings before loading content. |
+| `get_package` | `get_package(id: "Regira.Entities", section: "entities.examples", heading: "Order + OrderLine entities")` | Read the actual package guidance, optionally narrowed to one section or heading. `heading` takes a comma-separated list; supports `maxChars` and `page`. |
+| `search_docs` | `search_docs(query: "soft delete", package: "Regira.Entities")` | **When you don't know where a topic lives** — searches every package's documentation at once and returns the matching headings with a snippet and the exact `get_package(...)` call to read each. Reach for this before guessing a section, and to confirm that something genuinely isn't documented. An unscoped search keeps at most 2 hits per package; raise `hitsPerPackage` (or pass `package`) when the answer is a third mention inside one guide. |
+| `get_example` | `get_example(id: "Regira.Entities", pattern: "many-to-many join")` | Pull only the examples that match a topic once you know what you want to see. Use `section` to scope to `examples` or `instructions`. |
+| `how_to` | `how_to(task: "seed data")`, or no argument to list recipes | Answer "how do I do X in code?" for common Regira Entities tasks — the registered service, a minimal snippet, and a doc pointer. |
+| `list_types` | `list_types(id: "Regira.Entities", nameFilter: "EntityService")` | Optional branch: inspect the public API surface from the source map without loading docs. |
+| `get_type` | `get_type(id: "Regira.Entities", typeName: "IEntityService")` | Optional branch: inspect one type and its member signatures in detail. |
 
 **Configuration snippets:**
 
@@ -96,7 +101,7 @@ Use the narrowest relevant guidance instead of loading broad instruction sets up
 Primary guides (`project.setup.md`, `shared.setup.md`, matching `*.instructions.md`) follow a **minimum viable read**: the package card first (often sufficient to orient), then the guide's core sections — decision material, workflow steps, and patterns — before generating code in that area. Troubleshooting tables and quick-reference sections exist for lookup: fetch a row when you have the symptom, not as pre-reading. Deep references (`*.setup.md`, `*.examples.md`, `*.signatures.md`, `*.namespaces.md`) should be consulted surgically by section/heading when the current task needs them; prefer `get_type` / installed `.d.ts` files over doc sections for exact signatures.
 
 1. Never load the whole `ai/` folder when a narrower guide exists.
-2. For project scaffolding or app-shape changes, load the project setup guide — `get_package("Regira.Setup", "project.setup")` (or `.regira/instructions/project.setup.md` locally).
+2. For project scaffolding or app-shape changes, load the project setup guide — `get_package(id: "Regira.Setup", section: "project.setup")` (or `.regira/instructions/project.setup.md` locally).
 3. For shared setup concerns reused across modules, load `shared.setup.md`.
 4. For module-specific work, load the matching `*.instructions.md` guide before writing code.
 5. Load deep references such as `*.setup.md`, `*.examples.md`, `*.signatures.md`, and `*.namespaces.md` only when the current task needs them.

@@ -1,7 +1,7 @@
 # Regira Entities — Project Setup
 
 > **AI Agent Rule**: Follow this guide to scaffold a new Regira Entities API project from scratch.
-> Start from the **`BasicApi`** template in the shared project setup guide — `get_package("Regira.Setup", "project.setup")` — and apply the Entities-specific additions below.
+> Start from the **`BasicApi`** template in the shared project setup guide — `get_package(id: "Regira.Setup", section: "project.setup")` — and apply the Entities-specific additions below.
 > In consumer repositories, prefer extracted `.regira/instructions/project.setup.md` when it exists locally. If it is not available yet, use the fallback baseline in this guide and keep the API surface aligned with `app.MapOpenApi()` plus `app.MapScalarApiReference()`.
 > When available, combine with [`entities.namespaces.md`](./entities.namespaces.md) for exact `using` directives
 > and [`entities.examples.md`](./entities.examples.md) for complete working code.
@@ -88,7 +88,7 @@ Webshop.API/
 
 0. **Plan the simple/complex split first.** Mark every entity *simple* or *complex* **before** scaffolding — it sets each entity's endpoints and controller generics, and the free-tier budget. Definitions, the decision table, and a worked budget example: [entities.instructions §Step 0](./entities.instructions.md#step-0--classify-every-entity-before-scaffolding).
 0.5. **Pin your EF Core provider to your target framework.** Regira's EF Core packages multi-target, so the provider you add (`Microsoft.EntityFrameworkCore.Sqlite`/`.SqlServer`/`Npgsql.EntityFrameworkCore.PostgreSQL`/…) **must match the EF Core major for your TFM**: **`net8.0`/`net9.0` → 9.x**, **`net10.0` → 10.x**. A mismatch builds cleanly but crashes on the first query — see [Troubleshooting](./entities.instructions.md#troubleshooting).
-1. Create an ASP.NET Core Web API project — use the **`BasicApi`** template in the shared project setup guide (`get_package("Regira.Setup", "project.setup")`) as the starting point.
+1. Create an ASP.NET Core Web API project — use the **`BasicApi`** template in the shared project setup guide (`get_package(id: "Regira.Setup", section: "project.setup")`) as the starting point.
 2. Add required packages to `.csproj`.
 3. Create `YourDbContext` deriving from `DbContext`.
 4. Configure `Program.cs`.
@@ -185,7 +185,7 @@ dotnet add package Serilog.Settings.Configuration
 ## P1: Project Files
 
 > Start from the **`BasicApi`** template in the shared project setup guide and apply the Entities-specific additions below.
-> - **Via MCP:** call `get_package("Regira.Setup", "project.setup")` to read the template.
+> - **Via MCP:** call `get_package(id: "Regira.Setup", section: "project.setup")` to read the template.
 > - **Via local extraction:** read `.regira/instructions/project.setup.md` if it exists.
 > - **Fallback (if neither is available):** ASP.NET Core Web API project, thin `Program.cs`, DI via extension methods, `app.MapOpenApi()` (requires `Microsoft.AspNetCore.OpenApi`), `app.MapScalarApiReference()` (requires `Scalar.AspNetCore` + `using Scalar.AspNetCore;`), and no `UseSwaggerUI()`.
 

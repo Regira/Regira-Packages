@@ -595,7 +595,7 @@ Three escalating layers for self-referencing entities. Layers 1–2 are covered 
 **Not tree-only.** The worked example is a **graph** — a `Category` reachable from several parents through the `RelatedCategories` join — so "recursive" here means self-referencing, not single-parent. If you need to filter on a subtree/subgraph of a node, this is the section, whatever the arity.
 
 1. **Direct relations** — `ParentEntities`/`ChildEntities` + `ParentId`/`ChildId`/`IsRoot` filters: see the **Category** entity in [`entities.examples.md`](./entities.examples.md) (single-parent variant: §Hierarchical Data in [`entities.patterns.md`](./entities.patterns.md)).
-2. **In-memory trees** — load flat rows, assemble with `Regira.TreeList` (`ToTreeList`, `GetOffspring`, `OrderByHierarchy`, …): `get_package("Regira.TreeList")`.
+2. **In-memory trees** — load flat rows, assemble with `Regira.TreeList` (`ToTreeList`, `GetOffspring`, `OrderByHierarchy`, …): `get_package(id: "Regira.TreeList")`.
 3. **Whole-subtree SQL** — *"all products under category X, any depth"* as a **table-valued function** (recursive CTE) mapped into EF Core, composable inside any query filter. This scales where loading the whole table into a `TreeList` doesn't, at the cost of provider-specific SQL (shown for SQL Server).
 
 > **Which layer? Match your provider.** Layer 3 is **SQL Server** (`OPENJSON`/`CREATE FUNCTION` don't exist on
@@ -922,7 +922,7 @@ collections managed as owned children via nested `e.Related(...)` — no own reg
 polymorphic (`[JsonPolymorphic]` + Mapster `MapWith` branching on the runtime type). Link users via a
 1:1 `PartyUser { UserId, PartyId }` join, not a field on `Party`.
 
-**See:** `get_package("Regira.Entities", section: "blueprints", heading: "Stakeholders")`.
+**See:** `get_package(id: "Regira.Entities", section: "blueprints", heading: "Stakeholders")`.
 
 ### Add free-form labels/tags to an entity
 <!-- how_to: key=entity-labels aliases=label,labels,tag,tags,entitylabel,keyvalue,metadata -->
@@ -933,7 +933,7 @@ collection — `e.Related(x => x.Labels, x => x.Labels?.Prepare())` — behind a
 `options.AddNormalizer<IEntityLabel, EntityLabelNormalizer>()` + the owner's normalizer. Costs no
 budget slots.
 
-**See:** `get_package("Regira.Entities", section: "blueprints", heading: "EntityLabels")`.
+**See:** `get_package(id: "Regira.Entities", section: "blueprints", heading: "EntityLabels")`.
 
 ### Make an app multi-tenant (row-level isolation)
 <!-- how_to: key=multi-tenancy aliases=tenant,tenants,tenancy,multitenant,tenantid,isolation -->
@@ -949,7 +949,7 @@ Both resolve the active tenant from a scoped `ITenantContext` reading the `tenan
 (`AddHttpContextAccessor()` required); switching tenants re-mints the token. Seeders swap in a
 `WritableTenantContext`. Don't register the filter on the identity/admin context.
 
-**See:** `get_package("Regira.Entities", section: "blueprints", heading: "Multi-tenancy")`.
+**See:** `get_package(id: "Regira.Entities", section: "blueprints", heading: "Multi-tenancy")`.
 
 ### Filter a whole subtree (ancestors / descendants at any depth)
 <!-- how_to: key=recursive-tree aliases=tree,subtree,hierarchy,recursive,ancestor,ancestors,offspring,descendants,cte,dbfunction,treelist -->
@@ -966,9 +966,9 @@ if (so.AncestorId?.Any() == true)
 Create the functions with `ExecuteSqlRawAsync` after `EnsureCreated()` (or `migrationBuilder.Sql`) —
 SQL Server syntax; other providers need their own dialect. For tree *endpoints*, materialize the rows
 and assemble with `Regira.TreeList`'s `ToTreeList(...)` + `ToTreeView()`. In-memory-only trees skip the
-SQL entirely — see `get_package("Regira.TreeList")`.
+SQL entirely — see `get_package(id: "Regira.TreeList")`.
 
-**See:** `get_package("Regira.Entities", section: "blueprints", heading: "Recursive entities")`.
+**See:** `get_package(id: "Regira.Entities", section: "blueprints", heading: "Recursive entities")`.
 
 ### Manage ASP.NET Identity users through the entity pipeline
 <!-- how_to: key=identity-user-entity aliases=identity,user,users,usermanager,accounts,claims -->
@@ -979,7 +979,7 @@ creates via `userManager.CreateAsync(item, password)`; claim diffs reconciled ma
 `e.HasRepository<...>()` + `e.UseEntityService<...>()`, and expose with the standard
 `EntityControllerBase`. Query filters are typed on the **inner** IdentityUser type.
 
-**See:** `get_package("Regira.Entities", section: "blueprints", heading: "Identity users")`.
+**See:** `get_package(id: "Regira.Entities", section: "blueprints", heading: "Identity users")`.
 
 ### Serve read-only reference data as an entity (no table)
 <!-- how_to: key=virtual-entity aliases=readonly,read-only,reference,static,countries,currencies,in-memory,lookup -->
@@ -992,4 +992,4 @@ services.For<Country, string>(e => e.UseEntityService<CountryRepository>());
 
 The standard controller and SPA components work unchanged.
 
-**See:** `get_package("Regira.Entities", section: "blueprints", heading: "Virtual entity")`.
+**See:** `get_package(id: "Regira.Entities", section: "blueprints", heading: "Virtual entity")`.
