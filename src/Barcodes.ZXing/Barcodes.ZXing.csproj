@@ -11,9 +11,9 @@
     <AssemblyName>Regira.Office.Barcodes.ZXing</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.2</Version>
+    <Version>6.1.0</Version>
     <Description>Barcode reading and generation using ZXing.Net for Regira Office.</Description>
-    <PackageTags>regira;office;barcodes;zxing;qrcode</PackageTags>
+    <PackageTags>regira;office;barcodes;barcode;qrcode;qr-code;scanner;zxing</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.Office\Common.Office.csproj" />

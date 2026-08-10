@@ -11,9 +11,9 @@
     <AssemblyName>Regira.IO.Storage</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.2</Version>
+    <Version>6.1.0</Version>
     <Description>Abstractions and implementations for file and binary blob storage in Regira.</Description>
-    <PackageTags>regira;io;storage;files;blobs</PackageTags>
+    <PackageTags>regira;io;storage;file-storage;files;blobs</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common\Common.csproj" />

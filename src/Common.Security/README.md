@@ -740,3 +740,7 @@ used, and a guarded operation for which no scheme resolves is logged as a warnin
 
 1. **[Index](https://regira.github.io/Regira-Packages/src/Common.Security/)** — Overview, encryption, hashing, and every authentication scheme
 1. [Examples](https://regira.github.io/Regira-Packages/src/Common.Security/docs/examples.html) — Hash passwords, JWT + refresh tokens, API keys, cookies, Entra ID, Identity controllers
+
+## License
+
+Apache License 2.0 — this package contains no license validation and no runtime limits. See [LICENSE](https://github.com/Regira/Regira-Packages/blob/main/LICENSE). A few companion packages are commercially licensed with a free tier; see the [licensing overview](https://regira.github.io/Regira-Packages/licensing.html).

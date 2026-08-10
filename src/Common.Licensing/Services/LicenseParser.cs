@@ -10,9 +10,9 @@ namespace Regira.Licensing.Services;
 /// </summary>
 public static class LicenseParser
 {
-    // Base64-encoded DER of RSA-2048 SubjectPublicKeyInfo (dev/test key — replace with production key before publishing).
+    // Base64-encoded DER of RSA-2048 SubjectPublicKeyInfo.
     // The corresponding private key is stored outside this repository.
-    private const string EmbeddedPublicKeyBase64 = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAz6/Ggy7H6y83Jub+twRDguE5eBHh59/nZppDNUmPBYSnr/WFgnB/mfrpStH6uJrrKEOL1zILOxLGp5JfnhbqazMXtr3wGUpT/wgg/E/IFLcYUBjIXGWczmXbHtXvxk2Rz76re5+jAau0tyi5Xab1+9535QsOsckGMSBm/16X1AxTntg0oApEZzdmefzQJ4EhCu0OmdjL+BLsGyDVo9wGRP2725Tq9qhCmQW+749TpE3+0+FhOYXRF0YwD+gZU0a00c2fa31GcXnUxg43EjJgKH+q0oXIdxtBpjbbARFfBan2trz5p/NZiUapBs/FvylTnG04qN9My6hg5/LVFD51DQIDAQAB";
+    private const string EmbeddedPublicKeyBase64 = "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAmXxEoFiONcUKyaYepqXq3xvje+m+eFFLHt0A4tAngU+KLOKuxjip6NG2tWmC6MDsrYISp3TKQSEZ58LL6gzsOd42L7wsNUNd/9wg8TGK8vcmyt3PlJmGt9NXSsBAuRaY5M3o/Q5vJHWvZx9Of8RUA087yGuLq1JdOaXaa6NNBoEedOabou1VBmiS0MA5WCSEUeTlbpgb07Pk6AJ+M2LEBZpeJCqS8dgijoF/prmDMDtIV0RJp2ARKsNi8udxEFC941I1p1v3l2ws7ji/uM0nldPMI2VQxCTFx1vJA1Zh1KkZo657r53cGJleRE4A62sg5eoPDieO+C46thTUyZvdjQIDAQAB";
 
     private static readonly Lazy<RSA> EmbeddedPublicKey = new(LoadEmbeddedPublicKey);
 

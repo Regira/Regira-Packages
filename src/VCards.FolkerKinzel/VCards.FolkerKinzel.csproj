@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Office.VCards.FolkerKinzel</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.2</Version>
+    <Version>6.1.0</Version>
     <Description>vCard read/write support using FolkerKinzel.VCards for Regira Office.</Description>
     <PackageTags>regira;office;vcards;contacts;folkerkinzel</PackageTags>
   </PropertyGroup>

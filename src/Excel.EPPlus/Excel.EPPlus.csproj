@@ -11,9 +11,9 @@
     <AssemblyName>Regira.Office.Excel.EPPlus</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.2</Version>
-    <Description>Excel read/write support using EPPlus for Regira Office.</Description>
-    <PackageTags>regira;office;excel;epplus</PackageTags>
+    <Version>6.1.0</Version>
+    <Description>Excel spreadsheet reading and writing (import/export) using EPPlus for Regira Office.</Description>
+    <PackageTags>regira;office;excel;spreadsheet;import;export;epplus</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.Office\Common.Office.csproj" />

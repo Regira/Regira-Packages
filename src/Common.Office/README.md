@@ -19,3 +19,7 @@ Regira Office is a collection of document and communication libraries for .NET a
 
 - [Drawing / Images](https://regira.github.io/Regira-Packages/src/Common.Media) — Image processing used by several Office modules
 - [IO.Storage](https://regira.github.io/Regira-Packages/src/Common.IO.Storage) — File storage abstraction used for input/output
+
+## License
+
+Apache License 2.0 — this package contains no license validation and no runtime limits. See [LICENSE](https://github.com/Regira/Regira-Packages/blob/main/LICENSE). A few companion packages are commercially licensed with a free tier; see the [licensing overview](https://regira.github.io/Regira-Packages/licensing.html).

@@ -11,9 +11,9 @@
     <AssemblyName>Regira.Office</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.2</Version>
+    <Version>6.1.0</Version>
     <Description>Abstractions for office document operations including PDF, Excel, Word, Mail, CSV, OCR, barcodes, and vCards.</Description>
-    <PackageTags>regira;office;pdf;excel;word;mail;csv;ocr;barcodes;vcards</PackageTags>
+    <PackageTags>regira;office;pdf;excel;word;mail;csv;ocr;barcodes;vcards;mcp;ai-agents</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.Media\Common.Media.csproj" />

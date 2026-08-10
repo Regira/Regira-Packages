@@ -15,29 +15,36 @@
         <Product>Regira packages</Product>
         <Copyright>Copyright (c) 2026 Regira bv. All rights reserved.</Copyright>
 
-        <!-- Proprietary commercial license shipped in the package root. -->
-        <PackageLicenseFile>LICENSE</PackageLicenseFile>
+        <!-- Licensing is split per package: the license-validating packages (flagged with
+             RegiraLicenseEnforced in their csproj) ship the commercial license file, everything else
+             is Apache-2.0 via SPDX expression. The property-level selection lives in
+             Directory.Build.targets because it must see the csproj-set flag. -->
 
         <!-- PackageProjectUrl is set below: the per-library docs page when the project has a README
              (GitHub Pages only serves folders containing one), the regira.com homepage otherwise. -->
         <RepositoryUrl>https://github.com/Regira/Regira-Packages.git</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
 
-        <!-- Symbols (snupkg) with portable PDBs. The source is public (source-available, commercial
-             license); SourceLink can be enabled once the public repo is live. -->
+        <!-- Symbols (snupkg) with portable PDBs, plus SourceLink into the public GitHub repo
+             (built into the SDK; no package reference needed). -->
         <IncludeSymbols>true</IncludeSymbols>
         <SymbolPackageFormat>snupkg</SymbolPackageFormat>
         <DebugType>portable</DebugType>
         <DebugSymbols>true</DebugSymbols>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
 
         <!-- Deterministic/reproducible builds on CI. -->
         <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
         <Deterministic>true</Deterministic>
     </PropertyGroup>
 
-    <!-- Pack the root LICENSE file referenced by PackageLicenseFile above. -->
+    <!-- Pack the commercial license file (referenced by PackageLicenseFile in Directory.Build.targets)
+         only for the license-validating packages. Item conditions evaluate after csproj properties,
+         so the csproj-set flag is visible here. -->
     <ItemGroup>
-        <None Include="$(MSBuildThisFileDirectory)LICENSE" Pack="true" PackagePath="\" Visible="false" Condition="Exists('$(MSBuildThisFileDirectory)LICENSE')" />
+        <None Include="$(MSBuildThisFileDirectory)legal\REGIRA-COMMERCIAL-LICENSE.md" Pack="true" PackagePath="\" Visible="false"
+              Condition="'$(RegiraLicenseEnforced)' == 'true' and Exists('$(MSBuildThisFileDirectory)legal\REGIRA-COMMERCIAL-LICENSE.md')" />
     </ItemGroup>
 
     <!-- Shared package icon (128x128 transparent PNG) shipped in the package root. -->
@@ -50,7 +57,7 @@
 
     <!--
         Package README, surfaced on the nuget.org package page.
-          - If the project folder has a README.md / Readme.md (these double as the GitHub Pages docs),
+          - If the project folder has a README.md (these double as the GitHub Pages docs),
             pack that file (renamed to README.md in the package root).
           - Otherwise generate a minimal stub into obj/ at pack time. The stub is never written into the
             repo tree, so the GitHub Pages build is unaffected.
@@ -58,7 +65,6 @@
     <PropertyGroup>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <RegiraLocalReadme Condition="Exists('$(MSBuildProjectDirectory)\README.md')">$(MSBuildProjectDirectory)\README.md</RegiraLocalReadme>
-        <RegiraLocalReadme Condition="'$(RegiraLocalReadme)' == '' and Exists('$(MSBuildProjectDirectory)\Readme.md')">$(MSBuildProjectDirectory)\Readme.md</RegiraLocalReadme>
         <!-- Docs deep link only where a page actually exists (GitHub Pages 404s README-less folders). -->
         <PackageProjectUrl Condition="'$(RegiraLocalReadme)' != ''">https://regira.github.io/Regira-Packages/src/$(MSBuildProjectName)</PackageProjectUrl>
         <PackageProjectUrl Condition="'$(RegiraLocalReadme)' == ''">https://regira.com</PackageProjectUrl>
@@ -77,11 +83,14 @@
         <None Include="$(RegiraGeneratedReadme)" Pack="true" PackagePath="\" Visible="false" />
     </ItemGroup>
 
-    <!-- Generate the stub README from the project's own metadata (PackageId/Description). -->
+    <!-- Generate the stub README from the project's own metadata (PackageId/Description).
+         The License paragraph reflects whether this package actually validates a license key. -->
     <Target Name="RegiraGenerateReadme" BeforeTargets="GenerateNuspec"
             Condition="'$(RegiraLocalReadme)' == '' and '$(IsPackable)' != 'false'">
         <PropertyGroup>
-            <RegiraReadmeText># $(PackageId)%0A%0A$(Description)%0A%0A## Installation%0A%0A```sh%0Adotnet add package $(PackageId)%0A```%0A%0A## Links%0A%0A- Documentation: https://regira.github.io/Regira-Packages/%0A- Homepage: https://regira.com%0A- Source: https://github.com/Regira/Regira-Packages%0A%0A## License%0A%0ARegira Commercial License. A free tier is available%3B a license key is required beyond the free-tier limits. See the bundled LICENSE file or contact b2b@regira.com.</RegiraReadmeText>
+            <RegiraLicenseParagraph Condition="'$(RegiraLicenseEnforced)' == 'true'">Regira Commercial License. A free tier is included%3B this package validates an optional license key at startup, and a key is required beyond the free-tier limits. See the bundled REGIRA-COMMERCIAL-LICENSE.md, https://regira.com/licensing, or contact b2b@regira.com.</RegiraLicenseParagraph>
+            <RegiraLicenseParagraph Condition="'$(RegiraLicenseEnforced)' != 'true'">Apache License 2.0. This package contains no license validation and no runtime limits. A few companion packages are commercially licensed with a free tier — see https://regira.github.io/Regira-Packages/licensing.html.</RegiraLicenseParagraph>
+            <RegiraReadmeText># $(PackageId)%0A%0A$(Description)%0A%0A## Installation%0A%0A```sh%0Adotnet add package $(PackageId)%0A```%0A%0A## Links%0A%0A- Documentation: https://regira.github.io/Regira-Packages/%0A- Homepage: https://regira.com%0A- Source: https://github.com/Regira/Regira-Packages%0A- AI agents: connect the Regira MCP server at https://mcp.regira.com/mcp for docs search, examples and scaffolding guidance%0A%0A## License%0A%0A$(RegiraLicenseParagraph)</RegiraReadmeText>
         </PropertyGroup>
         <MakeDir Directories="$(MSBuildProjectDirectory)\obj\regira-readme" />
         <WriteLinesToFile File="$(RegiraGeneratedReadme)" Lines="$(RegiraReadmeText)" Overwrite="true" />

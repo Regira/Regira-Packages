@@ -11,9 +11,9 @@
     <AssemblyName>Regira.Entities</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.2</Version>
+    <Version>6.1.0</Version>
     <Description>Abstractions and base types for the Regira CRUD entity framework.</Description>
-    <PackageTags>regira;entities;crud;data;model;filtering;sorting;search;pagination;repository;abstractions</PackageTags>
+    <PackageTags>regira;entities;crud;data;model;filtering;sorting;search;pagination;repository;abstractions;mcp;ai-agents</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.IO.Storage\Common.IO.Storage.csproj" />

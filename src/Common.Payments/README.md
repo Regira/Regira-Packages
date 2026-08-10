@@ -106,3 +106,7 @@ await svc.Save(payment);
 - The shared contracts (`IPayment`, `IPaymentService`, the `Payment` model, `PaymentStatus`) ship in the `Regira.Invoicing` package, under `Regira.Invoicing.Payments.Abstractions`, `.Models` and `.Enums`.
 - POM's `PaymentService` implements `IPaymentService`; Mollie's is a standalone class with a richer surface (`List`, `Delete`, `WebHook`, and `Save` returning `CreatePaymentResponse`).
 - Mollie uses the official `Mollie.Api` NuGet client; POM calls its REST API via `HttpClient` with a token from the auth endpoint (`X-Authentication` header).
+
+## License
+
+Apache License 2.0 — this package contains no license validation and no runtime limits. See [LICENSE](https://github.com/Regira/Regira-Packages/blob/main/LICENSE). A few companion packages are commercially licensed with a free tier; see the [licensing overview](https://regira.github.io/Regira-Packages/licensing.html).
