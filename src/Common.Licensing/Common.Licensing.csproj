@@ -11,8 +11,9 @@
     <AssemblyName>Regira.Licensing</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.2</Version>
-    <Description>RSA-signed offline license key validation for Regira packages.</Description>
+    <Version>6.1.0</Version>
+    <RegiraLicenseEnforced>true</RegiraLicenseEnforced>
+    <Description>RSA-signed offline license key validation for Regira packages. Free tier included — a license key removes the free-tier limits.</Description>
     <PackageTags>regira;licensing;validation</PackageTags>
   </PropertyGroup>
   <ItemGroup>

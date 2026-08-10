@@ -12,8 +12,8 @@
     <Description>Shared Regira setup guides and AI instruction extraction support for consumer projects.</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.0.3</Version>
-    <PackageTags>regira;setup;ai;guides</PackageTags>
+    <Version>6.1.0</Version>
+    <PackageTags>regira;setup;ai;guides;mcp;ai-agents</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <None Include="build\Regira.Setup.props" Pack="true" PackagePath="buildTransitive\" />

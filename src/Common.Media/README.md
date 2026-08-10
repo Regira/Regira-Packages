@@ -304,3 +304,7 @@ A live demo is available at [services.regira.com/office](https://services.regira
 1. **[Index](https://regira.github.io/Regira-Packages/src/Common.Media/)** — Overview, models, and API reference
 1. [Examples](https://regira.github.io/Regira-Packages/src/Common.Media/docs/examples.html) — Thumbnail, watermark, badge builder, and API service pattern
 1. [Video processing](https://regira.github.io/Regira-Packages/src/Common.Media/docs/video.html) — Video compression and snapshot extraction via FFMpeg
+
+## License
+
+Apache License 2.0 — this package contains no license validation and no runtime limits. See [LICENSE](https://github.com/Regira/Regira-Packages/blob/main/LICENSE). A few companion packages are commercially licensed with a free tier; see the [licensing overview](https://regira.github.io/Regira-Packages/licensing.html).

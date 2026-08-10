@@ -5,6 +5,15 @@ adds one bullet under **Unreleased** in the same change (format: `` `PackageId` 
 and leaves that package's `<Version>` higher than its last published version. At publish time the
 Unreleased block becomes a dated release heading.
 
+## Unreleased
+
+- All packages — licensing made explicit per package: the ~68 packages without license validation are now Apache-2.0 (SPDX `PackageLicenseExpression`; repo root `LICENSE` is the Apache-2.0 text, plus a `NOTICE` file); the six license-validating packages (`Regira.Licensing`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Web`, `Regira.Entities.Mapping.Mapster`, `Regira.Entities.Mapping.AutoMapper`, `Regira.Office.Clients`) ship the Regira Commercial License as `REGIRA-COMMERCIAL-LICENSE.md` (source: `legal/`) and say so in their descriptions. The commercial license text now grants redistribution in compiled form, defines simple/complex entity registrations, covers `regira.mcp` (30 req/60 s), states free-tier perpetuity per released version, and aligns tier naming with regira.com/licensing.
+- All packages — every package README (committed and generated) now carries an accurate `## License` section; generated stubs state per package whether any key validation exists.
+- All packages — SourceLink enabled (`PublishRepositoryUrl` + `EmbedUntrackedSources`); snupkg symbols now resolve sources from the public GitHub repo.
+- `Regira.Licensing` 6.1.0 — the embedded license public key is rotated from the dev/test key to the production key.
+- NuGet metadata tuning for discoverability: the four Excel packages name spreadsheet import/export (and, for NpoiMapper, mapping) in their descriptions and tags; the barcode packages add `qr-code`/`barcode`/`scanner`/`generator` tags; `Regira.IO.Storage` adds `file-storage`; the hub packages (`Regira.Entities`, `Regira.Office`, `Regira.Setup`) are tagged `mcp`/`ai-agents`; generated package READMEs link the hosted MCP server, and the `Regira.Entities` README documents AI-assisted setup.
+- Version aligned at 6.1.0 for a whole-family publish — a minor bump because this release changes license terms and rotates the license-signing key.
+
 ## 6.0.2 — 2026-08-08
 
 - All packages — version aligned at 6.0.2 for a whole-family publish.

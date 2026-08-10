@@ -1,8 +1,14 @@
 # Regira Packages
 
-This is the **public, source-available** repository for the Regira NuGet packages, published on [nuget.org](https://www.nuget.org) under the [Regira Commercial License](LICENSE) (free tier included). Homepage: [regira.com](https://regira.com).
+[![NuGet](https://img.shields.io/nuget/v/Regira.Entities?logo=nuget&label=nuget)](https://www.nuget.org/packages?q=Regira.)
+[![Downloads](https://img.shields.io/nuget/dt/Regira.Entities?label=downloads)](https://www.nuget.org/packages/Regira.Entities)
+[![License](https://img.shields.io/badge/license-Apache--2.0%20%2B%20commercial-green)](licensing.md)
+[![Docs](https://img.shields.io/badge/docs-regira.github.io-blue)](https://regira.github.io/Regira-Packages/)
+[![MCP server](https://img.shields.io/badge/MCP-mcp.regira.com-8A2BE2)](https://mcp.regira.com/mcp)
 
-Regira is a collection of .NET libraries providing unified abstractions for common application concerns. All packages follow the same pattern: a shared interface in a `Common.*` project, with one or more backend implementations as separate packages.
+This is the **public, source-available** repository for the Regira NuGet packages, published on [nuget.org](https://www.nuget.org/profiles/regira-bbv). Most packages are [Apache-2.0](LICENSE); the six license-validating packages ship the [Regira Commercial License](legal/REGIRA-COMMERCIAL-LICENSE.md) with a free tier — see [Licensing](#licensing). Homepage: [regira.com](https://regira.com) · Documentation: [regira.github.io/Regira-Packages](https://regira.github.io/Regira-Packages/).
+
+Regira is a collection of .NET libraries providing unified abstractions for common application concerns. All packages follow the same pattern: a shared interface in a `Common.*` project, with one or more backend implementations as separate packages. This repository supersedes the former private Regira-Codebase: public history starts at the 6.0.0 release (2026-08-05), but the libraries were extracted from a longer-running private codebase that powers production systems such as the [live demos](#samples--demos) below.
 
 ---
 
@@ -81,6 +87,20 @@ Regira is a collection of .NET libraries providing unified abstractions for comm
 
 ---
 
+## Install
+
+It's just NuGet — every package installs straight from nuget.org, no custom feed:
+
+```sh
+dotnet add package Regira.Entities.Web      # entity CRUD/REST over EF Core
+dotnet add package Regira.IO.Storage        # unified file storage
+dotnet add package Regira.Office            # PDF/Excel/Word/mail contracts
+```
+
+All packages target `net8.0` and `net10.0`. See [docs/quickstart.md](docs/quickstart.md) for an end-to-end first project.
+
+---
+
 ## Using Regira in your project
 
 AI assistance for Regira centers on a hosted MCP server. **Connecting it is usually all you need** — the agent can both discover packages and fetch the same bootstrap guidance an `AGENTS.md` file provides, without installing anything first.
@@ -148,9 +168,26 @@ Install `Regira.Setup` to also extract the shared setup guides `project.setup.md
 
 ---
 
+## Samples & demos
+
+- **[Regira-Samples](https://github.com/Regira/Regira-Samples)** — three self-contained ASP.NET Core sample APIs built on Regira Entities, generated end-to-end with the MCP server.
+- **Runnable in this repo** — [`tests/Entities.TestApi`](tests/Entities.TestApi) is a complete Entities Web API (Sqlite, attachments, OpenAPI): `dotnet run --project tests/Entities.TestApi`, then open the Scalar UI it logs at startup.
+- **Live demos** — [Fleet Manager](https://fleet-demo.regira.com/) and [PIM Manager](https://pim.regira.com/manager/) run on these packages, demo logins included. Sources: [Regira/RegiraFleet-Backend](https://github.com/Regira/RegiraFleet-Backend), [Regira/Regira-PIM-Backend](https://github.com/Regira/Regira-PIM-Backend).
+
+---
+
 ## Licensing
 
-Some Regira packages require a license key at startup. Validation is fully offline using an RSA-signed token. Obtain a license at [https://regira.com/licensing](https://regira.com/licensing).
+At a glance:
+
+| Packages | License | Key needed? |
+|----------|---------|-------------|
+| Everything except the six below | [Apache-2.0](LICENSE) | Never — no license validation |
+| `Regira.Licensing`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Web`, `Regira.Entities.Mapping.Mapster`, `Regira.Entities.Mapping.AutoMapper`, `Regira.Office.Clients` | [Regira Commercial](legal/REGIRA-COMMERCIAL-LICENSE.md) — free tier included | Only beyond the free tier |
+
+Full limits, definitions, and prices: [licensing.md](licensing.md).
+
+The commercial packages validate an optional license key at startup. Validation is fully offline using an RSA-signed token. Obtain a license at [https://regira.com/licensing](https://regira.com/licensing).
 
 Register each license **once**, before the corresponding module setup. Without a key the **free tier** applies automatically; a single key can cover multiple products.
 

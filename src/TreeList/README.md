@@ -143,3 +143,7 @@ var invalidNode = tree.AddValue(ancestor, descendantNode); // returns null
 
 1. **[Index](https://regira.github.io/Regira-Packages/src/TreeList/)** — Overview and basic usage
 1. [Examples](https://regira.github.io/Regira-Packages/src/TreeList/docs/examples.html) — FamilyTree (one-to-many) & CookbookTree (many-to-many)
+
+## License
+
+Apache License 2.0 — this package contains no license validation and no runtime limits. See [LICENSE](https://github.com/Regira/Regira-Packages/blob/main/LICENSE). A few companion packages are commercially licensed with a free tier; see the [licensing overview](https://regira.github.io/Regira-Packages/licensing.html).

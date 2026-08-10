@@ -382,3 +382,7 @@ FileNameUtility.GetUncShareRoot(@"\\server\share\sub")   // → @"\\server\share
 1. **[Index](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/)** — Overview, interface, and implementation reference
 1. [Examples](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/docs/examples.html) — Backend swap, transform & re-upload, GitHub→Azure mirror, ZIP export, safe upload
 1. [Compression](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/docs/compression.html) — Password-protected ZIP via SharpZipLib
+
+## License
+
+Apache License 2.0 — this package contains no license validation and no runtime limits. See [LICENSE](https://github.com/Regira/Regira-Packages/blob/main/LICENSE). A few companion packages are commercially licensed with a free tier; see the [licensing overview](https://regira.github.io/Regira-Packages/licensing.html).

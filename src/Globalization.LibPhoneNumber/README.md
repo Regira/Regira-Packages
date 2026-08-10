@@ -50,3 +50,7 @@ string name   = be!.GetName("fr");                  // "Belgique"
 Country? found = CountryUtility.GetCountries()
     .FirstOrDefault(c => c.GetName("fr") == "Belgique");
 ```
+
+## License
+
+Apache License 2.0 — this package contains no license validation and no runtime limits. See [LICENSE](https://github.com/Regira/Regira-Packages/blob/main/LICENSE). A few companion packages are commercially licensed with a free tier; see the [licensing overview](https://regira.github.io/Regira-Packages/licensing.html).

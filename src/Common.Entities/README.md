@@ -120,9 +120,11 @@ public class ProductController : EntityControllerBase<Product, int, ProductSearc
 public class OrderController : EntityControllerBase<Order, int, OrderSearchObject, OrderSortBy, OrderIncludes, OrderDto, OrderInputDto>;
 ```
 
-> **Free tier available:** `Regira.Entities.DependencyInjection` includes a free tier for small projects. A license key is required once your project grows beyond the free tier limits. Register it with `services.UseRegira(configuration)` (reads `Regira:LicenseKeys`) **before** calling `UseEntities()`. Without a key the free tier applies automatically. Obtain a key at [https://regira.com/licensing](https://regira.com/licensing).
+> **Free tier available:** this package (`Regira.Entities`) is Apache-2.0 and performs no license validation. The registration package `Regira.Entities.DependencyInjection` (pulled in by `Regira.Entities.Web`) is the one that validates keys: it includes a free tier of 5 simple + 2 complex entity registrations per application, and a license key is required beyond that. Register the key with `services.UseRegira(configuration)` (reads `Regira:LicenseKeys`) **before** calling `UseEntities()`. Without a key the free tier applies automatically. Obtain a key at [https://regira.com/licensing](https://regira.com/licensing).
 
 > **Paging defaults:** set `options.DefaultPageSize` / `options.MaxPageSize` in the `UseEntities()` callback (or per entity with `e.SetPageSize(...)`) so List/Search endpoints page automatically instead of returning the full set. See [Web Endpoints → Paging](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/web-endpoints.html#paging).
+
+> **AI-assisted setup:** connect the hosted Regira MCP server (`https://mcp.regira.com/mcp`) and your coding agent can search these docs, fetch examples, and scaffold entities end-to-end — see the [setup guide](https://regira.github.io/Regira-Packages/#using-regira-in-your-project).
 
 ## Overview
 
@@ -136,3 +138,7 @@ public class OrderController : EntityControllerBase<Order, int, OrderSearchObjec
 1. [Built-in Features](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/built-in-features.html) — Ready to use components
 1. [Checklist](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/checklist.html) — Step-by-step guide for common tasks
 1. [Practical Examples](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/examples.html) — Complete implementation examples
+
+## License
+
+Apache License 2.0 — this package contains no license validation and no runtime limits. See [LICENSE](https://github.com/Regira/Regira-Packages/blob/main/LICENSE). A few companion packages are commercially licensed with a free tier; see the [licensing overview](https://regira.github.io/Regira-Packages/licensing.html).
