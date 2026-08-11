@@ -5,7 +5,7 @@ adds one bullet under **Unreleased** in the same change (format: `` `PackageId` 
 and leaves that package's `<Version>` higher than its last published version. At publish time the
 Unreleased block becomes a dated release heading.
 
-## Unreleased
+## 6.1.0 — 2026-08-11
 
 - All packages — licensing made explicit per package: the ~68 packages without license validation are now Apache-2.0 (SPDX `PackageLicenseExpression`; repo root `LICENSE` is the Apache-2.0 text, plus a `NOTICE` file); the six license-validating packages (`Regira.Licensing`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Web`, `Regira.Entities.Mapping.Mapster`, `Regira.Entities.Mapping.AutoMapper`, `Regira.Office.Clients`) ship the Regira Commercial License as `REGIRA-COMMERCIAL-LICENSE.md` (source: `legal/`) and say so in their descriptions. The commercial license text now grants redistribution in compiled form, defines simple/complex entity registrations, covers `regira.mcp` (30 req/60 s), states free-tier perpetuity per released version, and aligns tier naming with regira.com/licensing.
 - All packages — every package README (committed and generated) now carries an accurate `## License` section; generated stubs state per package whether any key validation exists.
