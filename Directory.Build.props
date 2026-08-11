@@ -88,7 +88,7 @@
     <Target Name="RegiraGenerateReadme" BeforeTargets="GenerateNuspec"
             Condition="'$(RegiraLocalReadme)' == '' and '$(IsPackable)' != 'false'">
         <PropertyGroup>
-            <RegiraLicenseParagraph Condition="'$(RegiraLicenseEnforced)' == 'true'">Regira Commercial License. A free tier is included%3B this package validates an optional license key at startup, and a key is required beyond the free-tier limits. See the bundled REGIRA-COMMERCIAL-LICENSE.md, https://regira.com/licensing, or contact b2b@regira.com.</RegiraLicenseParagraph>
+            <RegiraLicenseParagraph Condition="'$(RegiraLicenseEnforced)' == 'true'">Regira Commercial License. A free tier is included%3B a license key is required beyond the free-tier limits and is validated offline at startup. See the bundled REGIRA-COMMERCIAL-LICENSE.md, https://regira.com/licensing, or contact b2b@regira.com.</RegiraLicenseParagraph>
             <RegiraLicenseParagraph Condition="'$(RegiraLicenseEnforced)' != 'true'">Apache License 2.0. This package contains no license validation and no runtime limits. A few companion packages are commercially licensed with a free tier — see https://regira.github.io/Regira-Packages/licensing.html.</RegiraLicenseParagraph>
             <RegiraReadmeText># $(PackageId)%0A%0A$(Description)%0A%0A## Installation%0A%0A```sh%0Adotnet add package $(PackageId)%0A```%0A%0A## Links%0A%0A- Documentation: https://regira.github.io/Regira-Packages/%0A- Homepage: https://regira.com%0A- Source: https://github.com/Regira/Regira-Packages%0A- AI agents: connect the Regira MCP server at https://mcp.regira.com/mcp for docs search, examples and scaffolding guidance%0A%0A## License%0A%0A$(RegiraLicenseParagraph)</RegiraReadmeText>
         </PropertyGroup>

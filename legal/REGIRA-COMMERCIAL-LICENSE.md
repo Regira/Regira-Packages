@@ -2,12 +2,13 @@ Copyright (c) 2026 Regira bv. All rights reserved.
 
 REGIRA COMMERCIAL LICENSE
 
-This license applies to the Regira packages that perform license validation:
-Regira.Licensing, Regira.Entities.DependencyInjection, Regira.Entities.Web,
-Regira.Entities.Mapping.Mapster, Regira.Entities.Mapping.AutoMapper, and
-Regira.Office.Clients (together with the hosted Regira services and MCP
-server). All other Regira packages are licensed under the Apache License,
-Version 2.0 — see the LICENSE file in the repository root.
+This license applies to the commercially licensed Regira packages:
+Regira.Licensing, Regira.Entities.EFcore, Regira.Entities.DependencyInjection,
+Regira.Entities.Web, Regira.Entities.Mapping.Mapster,
+Regira.Entities.Mapping.AutoMapper, and Regira.Office.Clients (together with
+the hosted Regira services and MCP server). All other Regira packages are
+licensed under the Apache License, Version 2.0 — see the LICENSE file in the
+repository root.
 
 The covered software and associated documentation files (the "Software") are
 the proprietary property of Regira bv ("Regira"). Use of this Software is
