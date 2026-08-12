@@ -12,7 +12,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.0</Version>
+    <Version>6.1.1</Version>
     <Description>Word document generation using MiniWord for Regira Office.</Description>
     <PackageTags>regira;office;word;miniword;docx</PackageTags>
   </PropertyGroup>

@@ -11,7 +11,7 @@
     <AssemblyName>Regira.IO.Compression.SharpZipLib</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.0</Version>
+    <Version>6.1.1</Version>
     <Description>ZIP and archive compression support using SharpZipLib for Regira.</Description>
     <PackageTags>regira;io;compression;zip;sharpziplib</PackageTags>
   </PropertyGroup>
