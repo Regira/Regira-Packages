@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Web.HTML.RazorEngineCore</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.1</Version>
+    <Version>6.1.2</Version>
     <Description>Razor-based HTML template rendering using RazorEngineCore for Regira.</Description>
     <PackageTags>regira;web;html;razor;templates</PackageTags>
   </PropertyGroup>

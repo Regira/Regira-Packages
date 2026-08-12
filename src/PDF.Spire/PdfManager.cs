@@ -45,6 +45,8 @@ public class PdfManager : IPdfMerger, IPdfSplitter, IPdfToImageService, IPdfText
         var merged = PdfDocument.MergeFiles(pdfPaths.ToArray());
         var ms = new MemoryStream();
         merged.Save(ms);
+        // rewind, otherwise consumers read from the end of the stream
+        ms.Position = 0;
         return ms.ToMemoryFile(ContentTypes.PDF);
     }
     public Task<IMemoryFile?> Merge(IEnumerable<IMemoryFile> items, CancellationToken cancellationToken = default)
@@ -100,6 +102,8 @@ public class PdfManager : IPdfMerger, IPdfSplitter, IPdfToImageService, IPdfText
     {
         var ms = new MemoryStream();
         doc.SaveToStream(ms);
+        // rewind, otherwise consumers read from the end of the stream
+        ms.Position = 0;
         return ms.ToMemoryFile(ContentTypes.PDF);
     }
 }

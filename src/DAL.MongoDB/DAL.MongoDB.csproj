@@ -11,12 +11,12 @@
     <AssemblyName>Regira.DAL.MongoDB</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.1</Version>
+    <Version>6.1.2</Version>
     <Description>MongoDB data access layer for Regira using the official MongoDB driver.</Description>
     <PackageTags>regira;dal;mongodb;nosql</PackageTags>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="MongoDB.Driver" Version="3.10.0" />
+    <PackageReference Include="MongoDB.Driver" Version="3.11.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.System\Common.System.csproj" />

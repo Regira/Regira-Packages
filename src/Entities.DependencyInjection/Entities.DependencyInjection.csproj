@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Entities.DependencyInjection</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.1</Version>
+    <Version>6.1.2</Version>
     <RegiraLicenseEnforced>true</RegiraLicenseEnforced>
     <Description>Dependency injection extensions for Regira's entity library. Free tier included — a license key removes the free-tier limits.</Description>
     <PackageTags>regira;entities;dependency-injection;di;registration;service-collection;crud;console;worker</PackageTags>
@@ -20,7 +20,7 @@
     <None Include="$(OutputPath)$(AssemblyName).xml" Pack="true" PackagePath="lib\$(TargetFramework)\" Visible="false" Condition="Exists('$(OutputPath)$(AssemblyName).xml')" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.11" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.Licensing\Common.Licensing.csproj" />

@@ -16,6 +16,8 @@ public class PdfManager : IHtmlToPdfService
         var ms = new MemoryStream();
         doc.Save(ms);
         doc.Close();
+        // rewind, otherwise consumers read from the end of the stream
+        ms.Position = 0;
         var pdf = ms.ToMemoryFile(ContentTypes.PDF);
         return Task.FromResult(pdf);
     }

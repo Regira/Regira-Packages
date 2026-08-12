@@ -11,12 +11,12 @@
     <AssemblyName>Regira.Drawing.SkiaSharp</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.1</Version>
+    <Version>6.1.2</Version>
     <Description>SkiaSharp-based image processing and drawing utilities for Regira.</Description>
     <PackageTags>regira;drawing;skiasharp;images</PackageTags>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="SkiaSharp" Version="4.151.0" />
+    <PackageReference Include="SkiaSharp" Version="4.151.1" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.Media\Common.Media.csproj" />

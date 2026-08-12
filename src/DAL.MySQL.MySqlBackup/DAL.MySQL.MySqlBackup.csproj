@@ -11,7 +11,7 @@
     <AssemblyName>Regira.DAL.MySQL.MySqlBackup</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.1</Version>
+    <Version>6.1.2</Version>
     <Description>MySQL database backup support for Regira using MySqlBackup.NET.</Description>
     <PackageTags>regira;dal;mysql;backup</PackageTags>
   </PropertyGroup>
