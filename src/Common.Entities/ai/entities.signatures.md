@@ -104,6 +104,21 @@ public interface IArchivable
 }
 ```
 
+### Period / Slug / Uri Interfaces
+
+```csharp
+using Regira.Entities.Models.Abstractions;
+
+// ⚠️ members are nullable — implementing them with non-nullable DateTime fails with CS0738.
+// UTC instants by default; prefer a DateOnly property of your own for pure calendar semantics.
+public interface IHasStartDate { DateTime? StartDate { get; set; } }
+public interface IHasEndDate   { DateTime? EndDate { get; set; } }
+public interface IHasStartEndDate : IHasStartDate, IHasEndDate;
+
+public interface IHasSlug { string? Slug { get; set; } }
+public interface IHasUri  { string? Uri { get; set; } }
+```
+
 ### Attachment Interfaces
 
 ```csharp
@@ -1479,8 +1494,8 @@ public class EntityServiceCollectionOptions(IServiceCollection services)
     public EntityServiceCollectionOptions AddDefaultInterceptors();
 
     // Startup validation (arity mismatches, unwired interceptors, ignored ?q=, competing write authorities,
-    // null attachment Uri, out-of-scope global filters, missing archived query filter). Development-only
-    // by default.
+    // null attachment Uri, out-of-scope global filters, missing archived query filter, archivable reference
+    // data behind a required FK, attachments the input DTO cannot carry). Development-only by default.
     public EntityServiceCollectionOptions ConfigureValidation(Action<EntityValidationOptions> configure);
 }
 

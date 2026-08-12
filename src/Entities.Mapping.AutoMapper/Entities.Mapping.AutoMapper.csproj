@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Entities.Mapping.AutoMapper</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.0</Version>
+    <Version>6.1.1</Version>
     <RegiraLicenseEnforced>true</RegiraLicenseEnforced>
     <Description>AutoMapper integration for Regira entity mapping. Free tier included — a license key removes the free-tier limits.</Description>
     <PackageTags>regira;entities;mapping;automapper</PackageTags>

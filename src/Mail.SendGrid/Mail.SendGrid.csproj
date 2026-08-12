@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Office.Mail.SendGrid</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.0</Version>
+    <Version>6.1.1</Version>
     <Description>Mail sending via the SendGrid API for Regira Office.</Description>
     <PackageTags>regira;office;mail;sendgrid;email</PackageTags>
   </PropertyGroup>

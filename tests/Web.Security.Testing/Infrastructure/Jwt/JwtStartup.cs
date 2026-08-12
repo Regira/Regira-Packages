@@ -1,7 +1,6 @@
 ﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.AspNetCore.Authorization;
 using Regira.Security.Authentication.Jwt.Extensions;
 using Regira.Security.Authentication.Web.OpenApi.Transformers;
 

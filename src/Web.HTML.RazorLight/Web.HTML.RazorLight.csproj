@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Web.HTML.RazorLight</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.0</Version>
+    <Version>6.1.1</Version>
     <Description>Razor-based HTML template rendering using RazorLight for Regira.</Description>
     <PackageTags>regira;web;html;razor;razorlight;templates</PackageTags>
   </PropertyGroup>

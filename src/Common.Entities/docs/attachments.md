@@ -180,6 +180,13 @@ builder.Services
     .For<Product>(e => e.HasAttachments<MyDbContext, Product, ProductAttachment>(x => x.Attachments));
 ```
 
+> **Mapped owner (`UseMapping`)?** Declare the collection on the owner's input DTO —
+> `public ICollection<EntityAttachmentInputDto>? Attachments { get; set; }` — and mirror it on the read DTO
+> with `ICollection<EntityAttachmentDto>?`. Without the input property, the convention map yields a `null`
+> collection on every parent save, which the sync reads as "attachments not sent": adds, removes and
+> reorders through the parent are silently ignored while the `/{objectId}/attachments` sub-routes keep
+> working. Startup validation warns about this shape.
+
 > **File-service factory.** `WithAttachments` takes an `IFileService` factory
 > (`Func<IServiceProvider, IFileService>`), not a registered `IFileService` — so your app can still register
 > its own store(s) elsewhere. Build one inline (`WithAttachments(_ => new BinaryFileService(...))`) or reuse

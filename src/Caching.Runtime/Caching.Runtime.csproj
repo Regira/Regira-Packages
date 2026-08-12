@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Caching.Runtime</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.0</Version>
+    <Version>6.1.1</Version>
     <Description>In-memory caching utilities using System.Runtime.Caching for Regira.</Description>
     <PackageTags>regira;caching;runtime;memory</PackageTags>
   </PropertyGroup>

@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Web.Swagger</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.0</Version>
+    <Version>6.1.1</Version>
     <Description>Swagger/OpenAPI documentation extensions using Swashbuckle for Regira.</Description>
     <PackageTags>regira;web;swagger;openapi;swashbuckle</PackageTags>
   </PropertyGroup>
@@ -19,7 +19,11 @@
     <PackageReference Include="Swashbuckle.AspNetCore" Version="10.2.3" />
   </ItemGroup>
   <ItemGroup Condition="$(TargetFramework) == 'net10.0'">
-    <PackageReference Include="Microsoft.OpenApi" Version="3.9.0" />
+    <!-- Swashbuckle 10.2.3 floors Microsoft.OpenApi at 2.7.5 and this project uses only 2.x APIs. Pin the
+         same 2.x as Regira.Security.Authentication.Web so an app referencing both packages resolves one
+         version instead of a 2.x/3.x conflict: AspNetCore.OpenApi 10.0.10's XmlCommentGenerator emits
+         assignments to IOpenApiMediaType.Example, which is read-only in Microsoft.OpenApi 3.x (CS0200). -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.11.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.Web\Common.Web.csproj" />

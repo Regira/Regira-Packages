@@ -126,8 +126,8 @@ Fast but weaker. Use for non-password data only (e.g. cache keys, checksums).
 
 ## Choosing a scheme
 
-`SelfHostingApiWithAuth` scaffolds **any** authenticated app — the scheme is a registration call on top of it,
-not a different template. Pick by what the caller presents:
+`SelfHostingApiWithAuth` is the usual starting point for an authenticated app — the scheme is a registration call
+on top of it, so every scheme fits the same scaffold. Pick by what the caller presents:
 
 | The caller is | Register | Read |
 |---|---|---|
@@ -846,6 +846,44 @@ Users in the same DB, no roles — the happy path (details in the sections below
 7. Seed the first user via `UserManager<AppUser>`.
 8. **Front-end:** install `authPlugin` after router + axios and pass `clientApp: "<your audience>"` — the SPA's `login()` appends it as `?clientApp=`, so it must equal the API's `Jwt:Audience`. Leave `loginUrl` unset unless the login endpoint isn't `auth`.
 9. **Dev cross-origin:** either proxy the SPA's `/api` through Vite (no CORS needed) or point the SPA straight at the API origin and add a CORS policy allowing that origin. The full recipe (proxy config, URL alignment, HTTPS-redirect trap) is in the front-end guide: `regira_modules.vue.entities` → `entities.setup` → *Calling the API in dev* / *The URL contract*.
+
+## Roles end-to-end: Identity → JWT → SPA
+
+<!-- how_to: key=roles-end-to-end aliases=roles,hasrole,role-claims,admin-role -->
+
+The wiring recipe above emits **no role claims** — `AddIdentityCore` alone registers the role-less claims
+factory. To carry an Identity role into the token and through every gate:
+
+1. **Store + emit.** Chain `.AddRoles<IdentityRole>()` (before `AddEntityFrameworkStores`, so the role store
+   registers) and align the claim spelling with the JWT scheme:
+
+   ```csharp
+   services.AddIdentityCore<AppUser>(o =>
+       {
+           // Identity's default RoleClaimType is the ClaimTypes.Role URI. The JWT scheme validates roles
+           // against "role" (JwtTokenOptions.RoleClaimType) and runs no claims normalizer — without this
+           // line, [Authorize(Roles=…)] answers 403 for every Identity-issued token.
+           o.ClaimsIdentity.RoleClaimType = RegiraClaimTypes.Role; // "role"
+       })
+       .AddRoles<IdentityRole>()
+       .AddEntityFrameworkStores<AppDbContext>()
+       .AddSignInManager().AddDefaultTokenProviders();
+   ```
+
+   Seed roles with `RoleManager<IdentityRole>.CreateAsync(new IdentityRole("Manager"))` and assign with
+   `userManager.AddToRoleAsync(user, "Manager")`.
+2. **Token.** Nothing else to do: `AccountControllerBase` mints from the factory's claims, and the outbound
+   map renames only `sub`/`name`/`email` — the roles land in the payload under `"role"` (one string, or an
+   array for a multi-role user).
+3. **Server-side gates.** `[Authorize(Roles = "Manager")]` and `User.IsInRole(...)` now work on the local JWT
+   scheme. A handler that must also admit API-key callers (`ClaimTypes.Role`) or external bearer tokens
+   (`roles`) reads roles with `principal.FindRoles()`, which probes all three spellings.
+4. **SPA.** The front-end decodes the **raw** token, so it sees the payload spelling. Use
+   `authStore.hasRole("Manager")` (`regira_modules.vue.auth`) — it probes `role`, `roles` and the
+   `ClaimTypes.Role` URI, mirroring `FindRoles()`. ⚠️ `hasPermission(...)` reads a `permissions` claim this
+   recipe never mints — it is not a role check.
+5. **Mid-session role changes** reach the SPA on the next `POST auth/refresh` (still-valid bearer): the token
+   is re-minted from a fresh claims-factory run.
 
 ## Pre-built Auth Controllers (`Security.Authentication.Web`)
 

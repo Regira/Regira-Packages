@@ -182,8 +182,8 @@ At a glance:
 
 | Packages | License | Key needed? |
 |----------|---------|-------------|
-| Everything except the six below | [Apache-2.0](LICENSE) | Never — no license validation |
-| `Regira.Licensing`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Web`, `Regira.Entities.Mapping.Mapster`, `Regira.Entities.Mapping.AutoMapper`, `Regira.Office.Clients` | [Regira Commercial](legal/REGIRA-COMMERCIAL-LICENSE.md) — free tier included | Only beyond the free tier |
+| Everything except the seven below | [Apache-2.0](LICENSE) | Never — no license validation |
+| `Regira.Licensing`, `Regira.Entities.EFcore`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Web`, `Regira.Entities.Mapping.Mapster`, `Regira.Entities.Mapping.AutoMapper`, `Regira.Office.Clients` | [Regira Commercial](legal/REGIRA-COMMERCIAL-LICENSE.md) — free tier included | Only beyond the free tier |
 
 Full limits, definitions, and prices: [licensing.md](licensing.md).
 

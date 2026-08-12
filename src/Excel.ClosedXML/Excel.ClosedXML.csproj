@@ -10,7 +10,7 @@
     <AssemblyName>Regira.Office.Excel.ClosedXML</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.0</Version>
+    <Version>6.1.1</Version>
     <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
     <Description>Excel spreadsheet reading and writing (import/export) using ClosedXML for Regira Office.</Description>
     <PackageTags>regira;office;excel;spreadsheet;import;export;closedxml</PackageTags>

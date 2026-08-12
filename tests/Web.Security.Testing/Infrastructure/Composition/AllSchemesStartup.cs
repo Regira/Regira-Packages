@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Regira.Security.Authentication.ApiKey.Extensions;
-using Regira.Security.Authentication.Cookie.Extensions;
 using Regira.Security.Authentication.Core.Extensions;
 using Regira.Security.Authentication.Jwt.Extensions;
 using Regira.Security.Authentication.OpenIdConnect.Extensions;

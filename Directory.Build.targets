@@ -4,9 +4,11 @@
         project body) so it can see the RegiraLicenseEnforced flag a csproj sets; Directory.Build.props
         is imported before the project body and would read it as empty.
 
-        - Enforcing packages (Common.Licensing, Entities.DependencyInjection, Entities.Web,
-          Entities.Mapping.Mapster, Entities.Mapping.AutoMapper, Common.Office.Clients) ship the
-          Regira Commercial License file (packed from legal\ by Directory.Build.props).
+        - Commercially licensed packages (Common.Licensing, Entities.EFcore,
+          Entities.DependencyInjection, Entities.Web, Entities.Mapping.Mapster,
+          Entities.Mapping.AutoMapper, Common.Office.Clients) ship the Regira Commercial License
+          file (packed from legal\ by Directory.Build.props). The boundary is the paid product
+          line, not the presence of validation code — Entities.EFcore validates nothing itself.
         - Every other package is Apache-2.0 via SPDX expression (no packed license file needed).
 
         PackageLicenseExpression and PackageLicenseFile are mutually exclusive per package; pack

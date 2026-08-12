@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Entities.Web</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.0</Version>
+    <Version>6.1.1</Version>
     <RegiraLicenseEnforced>true</RegiraLicenseEnforced>
     <Description>REST/CRUD Web API for Regira entities: EntityControllerBase controllers with list, search, filter, sort and paging endpoints. Top-level web entry point — brings the DependencyInjection and EF Core packages transitively. Free tier included — a license key removes the free-tier limits.</Description>
     <PackageTags>regira;entities;web;aspnetcore;api;rest;endpoints;controllers;http;crud-api;web-api;openapi</PackageTags>

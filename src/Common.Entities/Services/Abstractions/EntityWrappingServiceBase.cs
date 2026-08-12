@@ -48,6 +48,14 @@ public abstract class EntityWrappingServiceBase<TEntity, TKey, TSearchObject>(
 
     public virtual Task Add(TEntity item, CancellationToken token = default)
         => Service.Add(item, token);
+    /// <summary>
+    /// Tracks the change; nothing is written until <see cref="SaveChanges"/>. The returned entity is the
+    /// <b>detached pre-modification original</b> (the write service detaches it to attach <paramref name="item"/>
+    /// in its place) — read it for old values, but mutating it persists nothing. In an override, side effects on
+    /// <em>other</em> rows must target entities tracked by the DbContext (framework reads are no-tracking) or
+    /// flush themselves; only <paramref name="item"/> is guaranteed to be written by the caller's
+    /// <see cref="SaveChanges"/>.
+    /// </summary>
     public virtual Task<TEntity?> Modify(TEntity item, CancellationToken token = default)
         => Service.Modify(item, token);
     // Dispatch to this service's (possibly overridden) Add/Modify so wrapping logic runs on the Save path
@@ -56,6 +64,10 @@ public abstract class EntityWrappingServiceBase<TEntity, TKey, TSearchObject>(
     public virtual Task Remove(TEntity item, CancellationToken token = default)
         => Service.Remove(item, token);
 
+    /// <summary>
+    /// Flushes and, on success, <b>clears the change tracker</b> — entities from an earlier flush are detached,
+    /// so anything staged after this call needs a fresh read (or its own flush) to be persisted.
+    /// </summary>
     public virtual Task<int> SaveChanges(CancellationToken token = default)
         => Service.SaveChanges(token);
 }
@@ -104,6 +116,14 @@ public abstract class EntityWrappingServiceBase<TEntity, TKey, TSearchObject, TS
 
     public virtual Task Add(TEntity item, CancellationToken token = default)
         => service.Add(item, token);
+    /// <summary>
+    /// Tracks the change; nothing is written until <see cref="SaveChanges"/>. The returned entity is the
+    /// <b>detached pre-modification original</b> (the write service detaches it to attach <paramref name="item"/>
+    /// in its place) — read it for old values, but mutating it persists nothing. In an override, side effects on
+    /// <em>other</em> rows must target entities tracked by the DbContext (framework reads are no-tracking) or
+    /// flush themselves; only <paramref name="item"/> is guaranteed to be written by the caller's
+    /// <see cref="SaveChanges"/>.
+    /// </summary>
     public virtual Task<TEntity?> Modify(TEntity item, CancellationToken token = default)
         => service.Modify(item, token);
     // Dispatch to this service's (possibly overridden) Add/Modify so wrapping logic runs on the Save path
@@ -112,6 +132,10 @@ public abstract class EntityWrappingServiceBase<TEntity, TKey, TSearchObject, TS
     public virtual Task Remove(TEntity item, CancellationToken token = default)
         => service.Remove(item, token);
 
+    /// <summary>
+    /// Flushes and, on success, <b>clears the change tracker</b> — entities from an earlier flush are detached,
+    /// so anything staged after this call needs a fresh read (or its own flush) to be persisted.
+    /// </summary>
     public virtual Task<int> SaveChanges(CancellationToken token = default)
         => service.SaveChanges(token);
 

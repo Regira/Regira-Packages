@@ -109,7 +109,7 @@ Primary guides (`project.setup.md`, `shared.setup.md`, matching `*.instructions.
 
 ## Project template selection
 
-Choose `projectTemplate` before selecting modules when the user is creating a new project or requesting major scaffolding changes.
+Pick a `projectTemplate` as the starting point before selecting modules when the user is creating a new project or requesting major scaffolding changes. The table maps common shapes to their nearest template; mix elements from several templates, or deviate, when the app's requirements call for it.
 
 | Requirement | `projectTemplate` |
 |-------------|-------------------|
@@ -124,10 +124,15 @@ Choose `projectTemplate` before selecting modules when the user is creating a ne
 | API called with tokens Entra ID (or Auth0 / Keycloak / Okta) issued | `SelfHostingApiWithAuth` + `AddEntraIdBearer` / `AddBearerAuthentication` |
 | Browser session rather than a bearer token (server-rendered, Blazor Server, same-site SPA) | `SelfHostingApiWithAuth` + `AddCookieAuthentication` |
 
-`SelfHostingApiWithAuth` is the scaffold for **any** authenticated app; the scheme is a registration choice on top of
-it, not a different template. Read `Regira.Security` → `security.instructions` → *Choosing a scheme* before wiring one.
+`SelfHostingApiWithAuth` is the usual starting point for an authenticated app — the scheme is a registration choice
+on top of it, so every scheme fits the same scaffold. Read `Regira.Security` → `security.instructions` →
+*Choosing a scheme* before wiring one.
+Role-gated features (admin screens, approval workflows) follow *Roles end-to-end: Identity → JWT → SPA* in the same
+guide (`how_to` key `roles-end-to-end`) — the default Identity wiring emits **no** role claims.
 
-For a new project, choose the template before creating files. For an existing project, infer the nearest matching template from the current app structure and stay consistent with it.
+For a new project, start from the nearest template before creating files. For an existing project, infer the nearest
+matching template from the current app structure and stay consistent with it. Note a deliberate deviation briefly so
+a reviewer can follow the choice.
 
 ## You are the .NET expert
 
