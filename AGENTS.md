@@ -86,6 +86,13 @@ Every package owns its own `<Version>` in its `.csproj` (SemVer). Published vers
 
 ---
 
+## Git
+
+Commit or push only when the user explicitly asks. Leave finished work in the working tree and report
+what is ready — a review verdict ("ready to commit") or a checklist step is not that ask.
+
+---
+
 ## Slash commands
 
 Source lives in `src/Common.Setup/ai/commands/`.
