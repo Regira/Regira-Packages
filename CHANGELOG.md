@@ -5,8 +5,9 @@ adds one bullet under **Unreleased** in the same change (format: `` `PackageId` 
 and leaves that package's `<Version>` higher than its last published version. At publish time the
 Unreleased block becomes a dated release heading.
 
-## Unreleased
+## 6.1.1 — 2026-08-12
 
+- All packages — version aligned at 6.1.1 for a whole-family publish.
 - `Regira.Web.Swagger` 6.1.1 — `Microsoft.OpenApi` pinned back to 2.11.0 on net10, matching the floor `Regira.Security.Authentication.Web` sets, so an app referencing both resolves one version instead of a 2.x/3.x conflict.
 - `Regira.Entities.DependencyInjection` 6.1.1 — startup validation warns when an attachments owner's registered input DTO cannot carry the `Attachments` collection (adds/removes/reorders through the parent are otherwise dropped silently, 200 OK).
 - `Regira.Entities` 6.1.1 — packed guides: mapped attachment owners must declare the collection on the input DTO; role-gated server-owned state pattern; who-flushes-what on wrapping services; `HasAttachment` is never populated; period/slug/uri interfaces documented; `Microsoft.OpenApi` pin 2.11.0; startup-validation catalogue lists all nine checks.
