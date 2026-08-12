@@ -143,7 +143,8 @@ public static class ServiceCollectionExtensions
     /// <summary>
     /// Registers the startup validation of entity registrations: the hosted service, the built-in
     /// validators (interceptor wiring, ignored <c>?q=</c> input, competing write authorities, out-of-scope
-    /// global filters, missing archived query filter, archivable reference data behind a required FK) and the
+    /// global filters, missing archived query filter, archivable reference data behind a required FK,
+    /// attachments owners whose input DTO cannot carry the collection) and the
     /// <see cref="EntityValidationOptions"/>.
     /// Runs in Development by default; see <see cref="EntityServiceCollectionOptions.ConfigureValidation"/>.
     /// </summary>
@@ -157,6 +158,7 @@ public static class ServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, GlobalFilterScopeValidator>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, ArchivedQueryFilterValidator>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, ArchivableReferenceDataValidator>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, AttachmentsInputDtoValidator>());
 
         // The controller validator lives in Regira.Entities.Web (it needs MVC types), which this project
         // cannot reference — bind it late so validation is enabled by UseEntities() itself rather than by

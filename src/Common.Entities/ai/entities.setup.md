@@ -154,7 +154,7 @@ Regira.Entities.Mapping.Mapster           ← add separately — DTO mapping (NO
 | Package | Version |
 |---|---|
 | `Regira.Entities.*` | pin **6.0.0** |
-| `Microsoft.OpenApi` (direct reference; also transitive via `Microsoft.AspNetCore.OpenApi`) | pin **2.9.0** — clears the advisory on 2.0.0. **Stay on 2.x**: 3.x breaks the .NET 10 OpenAPI source generator |
+| `Microsoft.OpenApi` (direct reference; also transitive via `Microsoft.AspNetCore.OpenApi`) | pin **2.11.0** — clears the advisory on 2.0.0 and matches the floor `Regira.Security.Authentication.Web` sets (a lower pin fails restore with NU1605 when that package is referenced). **Stay on 2.x**: 3.x breaks the .NET 10 OpenAPI source generator |
 | `SQLitePCLRaw.bundle_e_sqlite3` | pin **3.0.3** |
 | `Microsoft.EntityFrameworkCore.*` (+ provider) | major must equal the TFM's EF Core major (`net10.0` → **10.x**, see Checklist 0.5); resolve the patch at add time |
 | `Microsoft.AspNetCore.OpenApi` | major must equal your TFM (`net10.0` → **10.x**); resolve the patch at add time |
@@ -174,7 +174,7 @@ dotnet add package Serilog.Settings.Configuration
 ```
 ```xml
 <!-- the two rows that are pinned rather than resolved -->
-<PackageReference Include="Microsoft.OpenApi" Version="2.9.0" />
+<PackageReference Include="Microsoft.OpenApi" Version="2.11.0" />
 <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
 ```
 

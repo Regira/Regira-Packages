@@ -452,12 +452,57 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
   if a prepper is the one guarding.
 - **Write through `IEntityService`** — keeps preppers, primers and row security in play, so the action and the
   CRUD route cannot diverge.
-- ⚠️ **Keep the transitioned fields on `TInputDto`.** Excluding them makes every ordinary PATCH reset them to
-  `null`/default (§Server-owned / immutable fields on update). Leave `Status`/`DecidedOn` on the DTO and let
-  this controller be their real writer; take off only fields nothing outside the entity pipeline writes
-  (`Code`, computed totals).
+- ⚠️ **Where the transitioned fields live depends on who may write them.** *May anyone with PATCH rights set
+  the state?* Keep `Status`/`DecidedOn` on `TInputDto` and let this controller be their real writer —
+  excluding them without a restore makes every ordinary PATCH reset them to `null`/default (§Server-owned /
+  immutable fields on update). *Only the gated action?* Take them off the DTO and follow §Role-gated
+  transitions below. Fields nothing outside the entity pipeline writes (`Code`, computed totals) come off in
+  both modes.
 - Distinct route templates mean no collision — ASP.NET resolves `POST /credit-requests/{id}/approve` and the
   base controller's `PATCH /credit-requests/{id}` independently.
+
+### Role-gated transitions (server-owned state)
+
+When transitions are privileged — approve/reject for managers while any employee may edit their own request —
+keeping `Status` on `TInputDto` hands every PATCH caller a state pen. Invert the pattern:
+
+1. **Take the workflow fields off `TInputDto`** (`Status`, `DecidedOn`, decider ids). The role-gated action is
+   now the only writer.
+2. **Restore them in a prepper** so ordinary PUT/PATCH round-trips them untouched instead of resetting them —
+   guarded by a scoped flag the trusted writer flips, or the restore would also undo the action's own write:
+
+```csharp no-compile
+public sealed class WorkflowContext { public bool IsTrustedWriter { get; set; } }    // services.AddScoped
+
+// registered via e.AddPrepper<CreditRequestGuard>(); original is the framework's archived-inclusive re-read
+public class CreditRequestGuard(WorkflowContext workflow) : EntityPrepperBase<CreditRequest>
+{
+    public override Task Prepare(CreditRequest modified, CreditRequest? original, CancellationToken token = default)
+    {
+        if (original != null && !workflow.IsTrustedWriter)
+        {
+            modified.Status = original.Status;
+            modified.DecidedOn = original.DecidedOn;
+        }
+        return Task.CompletedTask;
+    }
+}
+```
+
+3. **Gate the action controller** (`[Authorize(Roles = "Manager")]` or a policy — spellings and policies in
+   `Regira.Security` → security.instructions → *Roles end-to-end*) and flip the flag before writing:
+
+```csharp no-compile
+workflowContext.IsTrustedWriter = true;
+item.Status = RequestStatus.Approved;
+item.DecidedOn = DateTime.UtcNow;
+await service.Modify(item);
+await service.SaveChanges();
+```
+
+A seeder that stamps historical states is a trusted writer too — flip the same flag in its scope. The guard
+stays in the prepper (not the controller) so *every* write path — CRUD PUT/PATCH, other services, future
+endpoints — passes through it.
 
 ## Owned children that are both sortable and individually togglable
 
@@ -656,7 +701,7 @@ deletes, and the attachment CRUD stay guarded:
 
 ```csharp no-compile
 [Authorize]
-[Route("articles")] // the owner base path — the base declares no class route (§Attachments step 3)
+[Route("articles")] // the owner base path — the base declares no class route (§Attachments step 4)
 public class ArticleAttachmentController : EntityAttachmentControllerBase<ArticleAttachment>
 {
     // UseAttachmentUris() DTO Uris target THIS overload whenever the attachment has a FileName

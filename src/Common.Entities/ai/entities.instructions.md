@@ -652,6 +652,9 @@ IEntityService<Order, int, OrderSearchObject, OrderSortBy, OrderIncludes>       
 > computed `Total` zeroes. Restore them in a **primer** branching on `EntityState` (the Step 5 recipe; full
 > version, plus when a prepper is the right choice instead, in
 > [`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update).
+> **Synced collections invert the failure:** an `Attachments` (or `Related()`) collection the DTO never
+> declares maps as `null`, which the sync reads as "not sent" — edits are *ignored*, not reset. Silent
+> either way; declare the collection on the DTO (§Attachments step 3).
 
 ### Step 14: Setup and add Entity services to DI
 
@@ -710,6 +713,7 @@ Seed through the services, not the DbContext (no controller, so the usual gotcha
 - **Reference earlier waves by foreign key, not by navigation object.** Those rows are detached once the tracker clears, so `item.Shopper = shopper` re-adds that instance as a *new* graph member and the wave dies on `UNIQUE constraint failed: Shoppers.Id`. Read the keys you need (`.AsNoTracking()`, select the id) and assign `item.ShopperId = id`. Reserve navigation objects for children genuinely created in the same wave.
 - **Owned/join rows have no service of their own** — a collection managed by `e.Related()` (m2m join, hierarchy join) can't be seeded through the service loop. Seed it through the owning parent's navigation, or via the `DbContext` for a standalone join — see [`entities.patterns.md`](./entities.patterns.md) → *Seeding owned / join rows*.
 - **Uniqueness checks within one wave must be in-memory.** Rows still queued in the change tracker are invisible to a database query — an `AnyAsync(...)` dedupe check passes and the wave then dies on a `UNIQUE` constraint at `SaveChanges()`. Dedupe a wave with a `HashSet` of keys instead.
+- **Counts within one wave too** (capacity caps, quota fills): a service `Count()` cannot see queued rows either, and `DbSet.Local` with an `Id == 0` filter miscounts once earlier flushes assigned ids. Count pending rows with `dbContext.ChangeTracker.Entries<T>().Count(e => e.State == EntityState.Added)` plus the persisted count.
 - **The tracker clears on success only.** A **failed** `SaveChanges()` (e.g. `EntityConstraintException`) leaves every entry tracked — stock EF Core semantics — so you can fix or remove the offending entity and retry the same call; entities from the failed wave are **not** silently dropped. Only a successful save clears the tracker (the deliberate deviation from stock EF Core).
 
 ---
@@ -722,6 +726,12 @@ Seed through the services, not the DbContext (no controller, so the usual gotcha
 - Register via `e.UseEntityService<MyCustomEntityService>()` to replace the default repository
 - ⚠️ Prevent circular dependencies when injecting the parent `EntityService`
 - `Save(item)` routes to this service's own `Add`/`Modify` (based on `IEntity.IsNew()`), so put create/update wrapping logic in `Add`/`Modify` — the controller write path calls `Save()`, not `Add()` directly
+
+**Who flushes what, when.** `Add`/`Modify`/`Save` only **track** changes; the controller flushes once, calling `service.Save(item)` then `service.SaveChanges()` (PUT, PATCH and POST all end in that same pair). Inside an override:
+
+- ⚠️ **`base.Modify(item)` returns the *detached pre-modification original*** (the write service detaches it to attach `item` in its place). Read it for old values; mutating it persists nothing. Mutate `item` instead — it is the tracked instance.
+- **Side effects on other rows need tracked entities.** Every framework read (`Details`, `List`) is no-tracking, so "load a sibling via the service, change it, rely on the controller's flush" silently persists nothing. Query the injected `DbContext` directly (tracked), or call `await SaveChanges()` yourself after staging the extra change.
+- `SaveChanges()` flushes **and clears the tracker** (success only) — anything staged after a flush needs its own flush.
 
 Examples:
 - Caching: Wrap the default `EntityRepository` with `IMemoryCache`.
@@ -784,8 +794,16 @@ in the Development environment by default. It catches, with actionable messages:
 - **Two write paths** (warning) — an entity synced by a parent's `Related()` that also has its own `.For<>()`.
   Supported when the parent's input DTO omits the collection; the validator can't see DTO shapes, so it always
   reports the pairing. Detects top-level `Related()` calls, not ones nested inside a `configure` builder.
+- **Attachments the input DTO cannot carry** (warning) — an `IHasAttachments` entity whose `UseMapping`
+  input DTO declares no `Attachments` collection. Every parent write then maps the collection to `null`
+  ("not sent"), so attachment adds/removes/reorders through the entity controller are silently ignored
+  (§Attachments step 3).
 - **Null attachment `Uri`** (warning) — an attachment controller is mapped while the null resolver is in
   place, i.e. `UseAttachmentUris()` was omitted or set on a different options instance.
+- **Archivable reference data behind a required FK** (warning, net10) — an `IArchivable` principal that
+  separately registered entities reference through a required FK. Archiving such a row drops the dependents
+  from list results while `/search` keeps counting them; the message works the mirrored-filter remedy
+  ([`entities.patterns.md`](./entities.patterns.md) → Soft Delete).
 - **Out-of-scope global filter** (warning) — a registered global filter whose `TEntity` no registered entity
   satisfies, so it never runs. Usually a scope that names an interface the entity does not implement; when the
   filter guards row access, the rows it was meant to hide are being returned. The built-in defaults are
@@ -956,10 +974,11 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 1. Create a class inheriting the **`EntityAttachment`** base and set `ObjectType` in the constructor:
    `public class ProductAttachment : EntityAttachment { public ProductAttachment() => ObjectType = nameof(Product); }`.
 2. Implement `IHasAttachments` and `IHasAttachments<TAttachment>` on the owning entity (`Attachments` property needs explicit interface implementation)
-3. Create a controller inheriting `EntityAttachmentControllerBase<TAttachment>` — **name it after the attachment type** (`ProductAttachmentController` or `ProductAttachmentsController` for a `ProductAttachment`; any other name makes `Uri` unresolvable, see 6) and set the class route to the **owner base path**, e.g. `[Route("products")]` (resource-relative — see the route-prefix note in §Step 13). The base controller appends the sub-routes `{objectId}/attachments`, `attachments/{id}`, `{objectId}/files`, ….
-4. Add `DbSet<Attachment>` and `DbSet<TAttachment>` to DbContext; configure relationship in `OnModelCreating`
-5. Register **two** things: `.WithAttachments(_ => new BinaryFileService(...))` for the shared `Attachment` entity + file store + bytes→file primer, **and** `.For<Product>(e => e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments))` for the typed per-owner services + link prepper + DTO mapping. `HasAttachments` is an extension on the **base** `EntityServiceBuilder`, so it chains on every `For<>()` tier — a complex owner registers it exactly like the simple one shown here.
-6. *(web apps)* Call `options.UseAttachmentUris()` (before registering entities, on the **same** `UseEntities` options instance) and register `AddHttpContextAccessor()` so attachment DTOs resolve a `Uri` linking to the attachment controller's `GetFile` action.
+3. **Mapped owner (`UseMapping`)? Declare the collection on the input DTO:** `public ICollection<EntityAttachmentInputDto>? Attachments { get; set; }` (or your derived attachment input DTO). Without it the convention map drops the incoming collection on every save and the sync reads that as "attachments not sent" — adds, removes and reorders through the parent are silently ignored (200 OK, no error; the `/{objectId}/attachments` sub-routes still work, which masks it). Startup validation warns. Mirror on the read DTO with `ICollection<EntityAttachmentDto>?`.
+4. Create a controller inheriting `EntityAttachmentControllerBase<TAttachment>` — **name it after the attachment type** (`ProductAttachmentController` or `ProductAttachmentsController` for a `ProductAttachment`; any other name makes `Uri` unresolvable, see 7) and set the class route to the **owner base path**, e.g. `[Route("products")]` (resource-relative — see the route-prefix note in §Step 13). The base controller appends the sub-routes `{objectId}/attachments`, `attachments/{id}`, `{objectId}/files`, ….
+5. Add `DbSet<Attachment>` and `DbSet<TAttachment>` to DbContext; configure relationship in `OnModelCreating`
+6. Register **two** things: `.WithAttachments(_ => new BinaryFileService(...))` for the shared `Attachment` entity + file store + bytes→file primer, **and** `.For<Product>(e => e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments))` for the typed per-owner services + link prepper + DTO mapping. `HasAttachments` is an extension on the **base** `EntityServiceBuilder`, so it chains on every `For<>()` tier — a complex owner registers it exactly like the simple one shown here.
+7. *(web apps)* Call `options.UseAttachmentUris()` (before registering entities, on the **same** `UseEntities` options instance) and register `AddHttpContextAccessor()` so attachment DTOs resolve a `Uri` linking to the attachment controller's `GetFile` action.
 
 > ⚠️ **Owner is `IArchivable`?** The link entity is separately registered and has no navigation back to its owner, so archiving the owner leaves its attachments visible to `/{ownerId}/attachments`. Startup validation flags the shape; the working model configuration is in [`entities.patterns.md`](./entities.patterns.md) → Soft Delete > *Attachments on an archivable owner*.
 
@@ -975,6 +994,10 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 > the same two hops, plus the `OrderBy`. `HasAttachments` assigns `SortOrder` from the incoming array position
 > on every parent save, so this is what makes the saved order survive a reload:
 > `e.Includes((q, _) => q.Include(x => x.Attachments!.OrderBy(a => a.SortOrder)).ThenInclude(a => a.Attachment))`.
+
+> ⚠️ **`HasAttachment` serializes `null` — nothing populates it.** The `?hasAttachment=` filter queries
+> `Attachments.Any()`, not the property. Set it yourself (a primer, or a mapped projection) or leave it off
+> the DTO; a UI indicator bound to it (a paperclip icon) is otherwise always empty.
 
 > **The `Uri` is `null`, never an error.** All four causes: the option was omitted, or set on a different
 > `UseEntities` options instance than the one the entity was registered on (both leave the

@@ -1,0 +1,67 @@
+using System.Collections;
+using Regira.Entities.Attachments.Abstractions;
+using Regira.Entities.DependencyInjection.Mapping;
+
+namespace Regira.Entities.DependencyInjection.Validation;
+
+/// <summary>
+/// Reports an attachments owner whose registered input DTO cannot carry the <c>Attachments</c> collection.
+/// <para>
+/// The attachments sync on the parent write path diffs the <em>incoming</em> collection against the stored
+/// one and treats <c>null</c> as "collection not sent" — the correct contract for a client that omits it.
+/// But when the owner's input DTO has no <c>Attachments</c> property at all, the convention map drops the
+/// collection on every request, so "sent" is impossible: attachment adds, removes and reorders in the entity
+/// payload are ignored with a 200 OK, no error and no log. The <c>/{id}/attachments</c> sub-routes still
+/// work, which masks the gap until a user notices a removed file resurrecting after save.
+/// </para>
+/// <para>
+/// Detected statically: the entity implements <see cref="IHasAttachments"/> (or a typed variant) and a
+/// <c>UseMapping&lt;TDto, TInputDto&gt;()</c> registration exists whose input DTO lacks a public
+/// <c>Attachments</c> collection property. An unmapped owner writes through the entity itself, where the
+/// collection is always present, so it is not reported.
+/// </para>
+/// </summary>
+internal sealed class AttachmentsInputDtoValidator : IEntityRegistrationValidator
+{
+    public IEnumerable<EntityValidationIssue> Validate(EntityValidationContext context)
+    {
+        var mappings = context.Services
+            .Where(d => d.ServiceType == typeof(EntityMappingRegistration))
+            .Select(d => d.ImplementationInstance)
+            .OfType<EntityMappingRegistration>()
+            .ToArray();
+
+        foreach (var entityType in context.Registrations.Entities.Select(e => e.EntityType).Distinct().OrderBy(t => t.Name))
+        {
+            if (!IsAttachmentsOwner(entityType))
+            {
+                continue;
+            }
+
+            var mapping = mappings.FirstOrDefault(m => m.EntityType == entityType);
+            if (mapping == null || mapping.InputDtoType == entityType || HasAttachmentsCollection(mapping.InputDtoType))
+            {
+                continue;
+            }
+
+            yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
+                $"{entityType.Name} implements IHasAttachments but its input DTO {mapping.InputDtoType.Name} has no Attachments collection. " +
+                "Every PUT/PATCH through the entity controller maps the collection to null, and the attachments sync treats null as 'collection not sent': " +
+                "attachment adds, removes and reorders in the entity payload are silently ignored — 200 OK, no error, no log. " +
+                "The /{id}/attachments sub-routes still work, which masks it. " +
+                $"ACTION: add `public ICollection<EntityAttachmentInputDto>? Attachments {{ get; set; }}` (or your derived attachment input DTO) to {mapping.InputDtoType.Name}. " +
+                "See entities.instructions → Attachments.");
+        }
+    }
+
+    /// <summary>The typed interfaces do not extend the non-generic marker, so both shapes are probed.</summary>
+    private static bool IsAttachmentsOwner(Type entityType)
+        => typeof(IHasAttachments).IsAssignableFrom(entityType)
+           || entityType.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IHasAttachments<,,,,>));
+
+    private static bool HasAttachmentsCollection(Type inputDtoType)
+        => inputDtoType.GetProperties().Any(p =>
+            p.Name.Equals(nameof(IHasAttachments.Attachments), StringComparison.OrdinalIgnoreCase)
+            && p.PropertyType != typeof(string)
+            && typeof(IEnumerable).IsAssignableFrom(p.PropertyType));
+}

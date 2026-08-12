@@ -5,6 +5,15 @@ adds one bullet under **Unreleased** in the same change (format: `` `PackageId` 
 and leaves that package's `<Version>` higher than its last published version. At publish time the
 Unreleased block becomes a dated release heading.
 
+## Unreleased
+
+- `Regira.Web.Swagger` 6.1.1 — `Microsoft.OpenApi` pinned back to 2.11.0 on net10, matching the floor `Regira.Security.Authentication.Web` sets, so an app referencing both resolves one version instead of a 2.x/3.x conflict.
+- `Regira.Entities.DependencyInjection` 6.1.1 — startup validation warns when an attachments owner's registered input DTO cannot carry the `Attachments` collection (adds/removes/reorders through the parent are otherwise dropped silently, 200 OK).
+- `Regira.Entities` 6.1.1 — packed guides: mapped attachment owners must declare the collection on the input DTO; role-gated server-owned state pattern; who-flushes-what on wrapping services; `HasAttachment` is never populated; period/slug/uri interfaces documented; `Microsoft.OpenApi` pin 2.11.0; startup-validation catalogue lists all nine checks.
+- `Regira.Security` 6.1.1 — packed guides: *Roles end-to-end* recipe (Identity → JWT → SPA — `AddRoles` plus `ClaimsIdentity.RoleClaimType = "role"`, without which Identity tokens carry no gate-satisfying role claims) and a new package index card.
+- `Regira.Setup` 6.1.1 / `Regira.Security.Authentication.Web` 6.1.1 — packed guide corrections: template-selection wording, `Microsoft.OpenApi` pin 2.11.*, the version-floor bullet now names 2.11.0 and staying on 2.x.
+- `Regira.Entities.EFcore` 6.1.1 — licensing corrected: the package belongs to the commercial Entities product line (6.1.0 shipped it Apache-2.0 by mistake); it now ships the Regira Commercial License and the free-tier description suffix. The other six commercial packages republish at 6.1.1 with the corrected packed license scope; `Regira.Entities` updates the licensing matrices and README wording.
+
 ## 6.1.0 — 2026-08-11
 
 - All packages — licensing made explicit per package: the ~68 packages without license validation are now Apache-2.0 (SPDX `PackageLicenseExpression`; repo root `LICENSE` is the Apache-2.0 text, plus a `NOTICE` file); the six license-validating packages (`Regira.Licensing`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Web`, `Regira.Entities.Mapping.Mapster`, `Regira.Entities.Mapping.AutoMapper`, `Regira.Office.Clients`) ship the Regira Commercial License as `REGIRA-COMMERCIAL-LICENSE.md` (source: `legal/`) and say so in their descriptions. The commercial license text now grants redistribution in compiled form, defines simple/complex entity registrations, covers `regira.mcp` (30 req/60 s), states free-tier perpetuity per released version, and aligns tier naming with regira.com/licensing.

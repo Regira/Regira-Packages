@@ -12,6 +12,8 @@ This file owns the reusable starter templates. Choose the matching template firs
 
 ## Template Selection Guide
 
+The nearest default per app shape; mix elements from several templates, or deviate, when the app's requirements call for it.
+
 | Requirement | Template |
 |---|---|
 | Script, batch job, or CLI utility | `ConsoleWithLogging` |
@@ -25,8 +27,8 @@ This file owns the reusable starter templates. Choose the matching template firs
 | API called with tokens Entra ID (or Auth0 / Keycloak / Okta) issued | `SelfHostingApiWithAuth` + `AddEntraIdBearer` / `AddBearerAuthentication` |
 | Browser session rather than a bearer token (server-rendered, Blazor Server, same-site SPA) | `SelfHostingApiWithAuth` + `AddCookieAuthentication` |
 
-`SelfHostingApiWithAuth` is the scaffold for **any** authenticated app — the scheme is a registration choice on top
-of it, not a different template. See *Authentication conventions* → *Picking a scheme* below.
+`SelfHostingApiWithAuth` is the usual starting point for an authenticated app — the scheme is a registration choice
+on top of it, so every scheme fits the same scaffold. See *Authentication conventions* → *Picking a scheme* below.
 
 ---
 
@@ -203,8 +205,10 @@ app.MapScalarApiReference(options =>
 
 > **⚠️ On the native `Microsoft.AspNetCore.OpenApi`/Scalar path, `Microsoft.OpenApi` must stay on 2.x** _(while on .NET 10 — remove once the OpenAPI source generator supports 3.x)_. It comes in transitively via `Microsoft.AspNetCore.OpenApi`. (This does **not** apply to a Swashbuckle setup, which supports 3.x.)
 > When pinning it directly (e.g. to clear the security advisory on 2.0.0), add the reference **by hand**:
-> `<PackageReference Include="Microsoft.OpenApi" Version="2.9.*" />`. Never `dotnet add package
-> Microsoft.OpenApi` — that resolves the latest 3.x, which breaks the .NET 10 OpenAPI source generator.
+> `<PackageReference Include="Microsoft.OpenApi" Version="2.11.*" />` — 2.11 is also the floor
+> `Regira.Security.Authentication.Web` sets, so a lower pin fails restore with NU1605 when that package is
+> referenced. Never `dotnet add package Microsoft.OpenApi` — that resolves the latest 3.x, which breaks the
+> .NET 10 OpenAPI source generator.
 
 ### Launch API
 
