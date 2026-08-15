@@ -46,7 +46,10 @@ public static class PdfTestHelper
 
         Assert.That(bytes.Length, Is.EqualTo(advertisedLength),
             $"Stream was not rewound: a sequential reader gets {bytes.Length} bytes while Length advertises {advertisedLength}. Over HTTP this truncates the response body.");
-        Assert.That(Encoding.ASCII.GetString(bytes, 0, 5), Is.EqualTo("%PDF-"), "Content does not start with a PDF header.");
+        // Take at most what is there: a regressed backend returning 1-4 bytes would otherwise throw out of
+        // GetString with a framework stack trace instead of failing on the header assertion below.
+        var header = Encoding.ASCII.GetString(bytes, 0, Math.Min(5, bytes.Length));
+        Assert.That(header, Is.EqualTo("%PDF-"), "Content does not start with a PDF header.");
 
         // GetStream() hands back a rewound copy, so it hides a producer that parked its own stream
         // at the end. Consumers reading file.Stream directly get no such protection.

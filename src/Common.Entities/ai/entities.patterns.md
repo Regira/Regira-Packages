@@ -409,7 +409,10 @@ This is the sanctioned shape, not a deviation — but keep it **read-only**, and
 - ⚠️ **Prefer a `join` over a correlated `SelectMany`.** `db.A.SelectMany(a => db.B.Where(b => b.AId == a.Id)…)`
   compiles to `CROSS APPLY`, and the SQLite provider these guides default to rejects it outright
   (*"Translating this query requires the SQL APPLY operation"*). The same shape in a **processor** that
-  aggregates children into `[NotMapped]` fields (§Step 7) hits it for the same reason.
+  aggregates children into `[NotMapped]` fields (§Step 7) hits it for the same reason. A **query filter on
+  the target entity** reaches the same end from a distance: EF inlines it into a correlated `Any(...)`, so
+  the `HasQueryFilter` §Step 11 asks for on a directly-queried dependent is itself what pulls `APPLY` in —
+  one level (`!x.Event!.IsArchived`) usually survives, two (`!x.Session!.Event!.IsArchived`) does not.
 - ⚠️ **A method of your own called on the row does not translate** — `.Where(t => IsBreached(t, now))`. Inline
   it, or hoist it to an `Expression<Func<T, bool>>` / `IQueryable<T>` extension so it stays in the tree.
 - ⚠️ **`EF.Functions.DateDiff*`/`DateAdd*` are SQL Server only** and throw on the SQLite these guides default
@@ -674,6 +677,9 @@ invoice number, source-system id).
 **Computed from the stored graph?** A `Total` diffed against the original lines needs the whole prior row —
 use a prepper instead: `EntityPrepperBase<T>.Prepare(modified, original, …)` hands you the full `original`
 entity (`null` on create); register with `e.AddPrepper<T>()`.
+
+**Another service writes the field too?** Use a prepper there as well — see *Primer vs prepper when a second
+writer exists* below.
 
 ## Aggregates over a non-owned child collection
 

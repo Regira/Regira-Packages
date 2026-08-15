@@ -16,7 +16,7 @@
 
     <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" />
 
-    <Copy SourceFiles="$(_RegiraIOStorageFilesRoot)io.storage.instructions.md;$(_RegiraIOStorageFilesRoot)io.storage.examples.md"
+    <Copy SourceFiles="$(_RegiraIOStorageFilesRoot)io.storage.instructions.md;$(_RegiraIOStorageFilesRoot)io.storage.namespaces.md;$(_RegiraIOStorageFilesRoot)io.storage.examples.md"
           DestinationFolder="$(_RegiraBaseDir).regira\instructions\"
           SkipUnchangedFiles="true" />
 

@@ -53,18 +53,29 @@ public class ShopContext(DbContextOptions<ShopContext> options) : DbContext(opti
 ## 3. Wire it up in Program.cs
 
 ```csharp
+using Microsoft.EntityFrameworkCore;
+using Regira.Entities.DependencyInjection.Extensions;
+using Regira.Licensing.DependencyInjection;
+
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 
 builder.Services
-    .AddDbContext<ShopContext>(db => db.UseSqlite("Data Source=shop.db"))
+    .AddDbContext<ShopContext>(db => db.UseSqlite("Data Source=shop.db;Foreign Keys=True"))
     .UseRegira(builder.Configuration)                  // license keys from Regira:LicenseKeys; free tier without
     .UseEntities<ShopContext>(o => o.UseDefaults())    // interceptors + conventions auto-wired
     .For<Category>()
     .For<Product>();
 
 var app = builder.Build();
+
+// create the SQLite file on first run — no migrations in a quickstart. Delete shop.db after a model change.
+using (var scope = app.Services.CreateScope())
+{
+    scope.ServiceProvider.GetRequiredService<ShopContext>().Database.EnsureCreated();
+}
+
 app.MapControllers();
 app.Run();
 ```
@@ -75,7 +86,7 @@ One line per entity — `EntityControllerBase` registers list, details, search, 
 
 ```csharp
 using Microsoft.AspNetCore.Mvc;
-using Regira.Entities.Web.Controllers;
+using Regira.Entities.Web.Controllers.Abstractions;
 
 [ApiController, Route("categories")]
 public class CategoryController : EntityControllerBase<Category>;

@@ -357,8 +357,16 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 
 > **⚠️ Exclude a server-owned field and restore it in the same edit.** A field absent from `TInputDto` maps
 > as `null`/default on every PUT *and* PATCH — 200 OK, silent corruption (a status-only PATCH zeroes a
-> computed `Total`). Protect it in a **primer**, exactly as the built-in `HasCreatedDbPrimer` protects
-> `Created` — mint on create, restore from `entry.OriginalValues` on update:
+> computed `Total`). Restore it — but **decide primer vs prepper first**, because a primer is a
+> `SaveChanges` interceptor and fires on *every* save:
+>
+> | Who writes the field | Use |
+> |---|---|
+> | Only the entity pipeline — generated codes, computed totals, `Created` | a **primer** (below) |
+> | A domain/workflow service or a seeder also writes it, through the raw `DbContext` | a **prepper** (`EntityPrepperBase<T>`; `original` is `null` on create, the stored row on update) — a primer would revert that writer's save (§Step 9) |
+>
+> For the pipeline-only case, protect it in a **primer**, exactly as the built-in `HasCreatedDbPrimer`
+> protects `Created` — mint on create, restore from `entry.OriginalValues` on update:
 > ```csharp no-compile
 > public class OrderCodePrimer : EntityPrimerBase<Order>
 > {
@@ -527,7 +535,7 @@ The **parent FK needs no stamping**. New children reach the store through the pa
 
 Run during `SaveChanges()` via EF Core interceptors; can inspect other modified entities in the same transaction. The interceptor is auto-wired by `UseDefaults()`; without it, select `e.WireDbContext(DbContextWiring.PrimerInterceptors)`.
 
-> ⚠️ **A primer runs on _every_ `SaveChanges()` (it's an EF interceptor); a prepper runs only on the `IEntityService` write path.** So a primer that restores a server-owned field from `entry.OriginalValues` also fires on — and reverts — a domain/workflow service's raw-`DbContext` write. When a second writer legitimately owns a field (a status/state machine), guard it with a **prepper** (`EntityPrepperBase<T>`; `original` is `null` on create, the stored row on update), not a primer. Full treatment: [`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update.
+> ⚠️ **A primer runs on _every_ `SaveChanges()` (it's an EF interceptor); a prepper runs only on the `IEntityService` write path.** So a primer that restores a server-owned field from `entry.OriginalValues` also fires on — and reverts — a domain/workflow service's raw-`DbContext` write. When a second writer legitimately owns a field (a status/state machine), guard it with a **prepper** (`EntityPrepperBase<T>`; `original` is `null` on create, the stored row on update), not a primer. The choice table is in [`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update; the full second-writer treatment is under → Server-generated sequential codes (*Primer vs prepper when a second writer exists*).
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — Additional Patterns > Primers
 
@@ -576,6 +584,11 @@ Add `DbSet<YourEntity>` and configure any relationships in `OnModelCreating`.
 > A dependent you also query **directly** (an aggregate over `OrderLine`, not through `Order`) needs one more thing: give it a matching `HasQueryFilter(x => !x.Order!.IsArchived)` in `OnModelCreating`. That is what keeps its own count and items in agreement — and it never collides with the named archived filter, because the archived filter only touches `IArchivable` types.
 >
 > ⚠️ That filter also hides the rows from the **parent's own** aggregate recompute, which runs while the parent is still archived — so restoring the parent zeroes a computed total, with a 200 and no error. Any prepper summing such a dependent needs `IgnoreQueryFilters()`, scoped by the parent FK: [`entities.patterns.md`](./entities.patterns.md) § Aggregates over a non-owned child collection.
+>
+> ⚠️ **Keep it one level deep.** EF inlines this filter into any correlated `Any(...)` over the dependent, so
+> a two-level filter (`!x.Session!.Event!.IsArchived`) makes such a search need `APPLY` — which SQLite lacks.
+> A dependent reached only through the parent's includes needs no filter of its own:
+> [`entities.patterns.md`](./entities.patterns.md) § Cross-entity aggregates & report endpoints.
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — DbContext
 
@@ -1054,7 +1067,9 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 
 ### EntityInputException (returns HTTP 400)
 
-Controllers automatically catch `EntityInputException` and return `BadRequest (400)`.
+`EntityControllerBase` and `EntityAttachmentControllerBase` each catch `EntityInputException` on their own
+write actions and return `BadRequest (400)`. Nothing else does — mapping it in your own controller:
+[`entities.patterns.md`](./entities.patterns.md) § Domain actions on an entity resource.
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — Order + OrderLine entities (OrderManager)
 
@@ -1149,10 +1164,9 @@ verbatim; everything around them is the wrapper:
 // POST /api/products/save  → 200
 { "item": { "id": 13, "code": "LMP-002", "title": "Floor lamp" }, "isNew": true, "affected": 1, "duration": 7 }
 
-// any save that fails validation → 400. ⚠️ The keys are whatever your EntityInputException used, echoed
-// verbatim — they go through ModelState, and the web JSON defaults camelCase properties but NOT dictionary
-// keys. nameof(Product.CategoryId) therefore surfaces as "CategoryId"; pass the DTO's camelCase spelling if
-// the client indexes the map by field name.
+// any save that fails validation → 400. ⚠️ Keys are echoed from your EntityInputException verbatim —
+// nothing camelCases them (the web JSON defaults rename properties, not dictionary keys), so pass the
+// DTO's camelCase spelling as below rather than nameof(Product.CategoryId).
 { "title": "One or more validation errors occurred.", "status": 400,
   "errors": { "categoryId": ["Category 99 does not exist"], "code": ["Code is required"] } }
 
@@ -1188,13 +1202,13 @@ own endpoint.
 | `IHasTimestamps` | `Created, LastModified` | Both timestamp services |
 | `IArchivable` | `IsArchived (bool)` | `ArchivablePrimer`, `FilterArchivablesQueryBuilder`, archived query filter (`DbContextWiring.ArchivedQueryFilter`) |
 | `ISortable` | `SortOrder (int)` | `RelatedCollectionPrepper`, `EntityExtensions.SetSortOrder` |
-| `IHasStartDate` | `StartDate (DateTime?)` | *(none — contract only)* |
-| `IHasEndDate` | `EndDate (DateTime?)` | *(none — contract only)* |
-| `IHasStartEndDate` | `StartDate, EndDate` (both `DateTime?`) | *(none — contract only)* |
+| `IHasStartDate` | `StartDate (DateTime?)` | *(contract only)* |
+| `IHasEndDate` | `EndDate (DateTime?)` | *(contract only)* |
+| `IHasStartEndDate` | `StartDate, EndDate` (both `DateTime?`) | `QueryExtensions.FilterIsActiveOn(date)` — call it yourself; no global filter |
 | `IHasObjectId<TKey>` | `ObjectId (TKey)` | Attachments |
 | `IHasAttachments` | `HasAttachment, Attachments` | Attachments module |
 
-> **The date interfaces are contracts, not query support.** `StartDate`/`EndDate` are **nullable** and no built-in `QueryExtensions` helper or global filter consumes them — implement one for the shared shape, not to get filtering. If your period is mandatory, plain non-nullable `Start`/`End` properties of your own are the better fit, and you write the range filter either way.
+> **The date interfaces are contracts, not automatic filtering.** `StartDate`/`EndDate` are **nullable** (implementing them with non-nullable `DateTime` fails `CS0738`), and **no global filter** consumes them — nothing narrows a query for you. There is one built-in helper you call yourself: `query.FilterIsActiveOn(date)` (`Regira.Entities.EFcore.Extensions.QueryExtensions`, constrained to `IHasStartEndDate`), which matches rows whose period contains `date`, treating either bound as open when null. If your period is mandatory, plain non-nullable `Start`/`End` properties of your own are the better fit — and then the range filter is yours to write.
 
 > **Nullability convention:** `IHasCode`/`IHasTitle`/`IHasDescription`/`IHasNormalizedContent` declare their strings as `string?` — a contract convention, not enforcement. Need non-null? Add `[Required]` on the implementing property; the `string?` declaration stays — ❌ `public string Code { get; set; } = null!;` narrows the interface setter and warns `CS8767`, ✅ `[Required] public string? Code { get; set; }`.
 

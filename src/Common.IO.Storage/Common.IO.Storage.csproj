@@ -26,6 +26,7 @@
   <!-- AI instruction files -->
   <ItemGroup>
     <None Include="ai\io.storage.instructions.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\io.storage.namespaces.md" Pack="true" PackagePath="ai\" />
     <None Include="ai\io.storage.examples.md" Pack="true" PackagePath="ai\" />
   </ItemGroup>
 </Project>

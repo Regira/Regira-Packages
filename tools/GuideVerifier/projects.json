@@ -2,6 +2,25 @@
   "//": "Snippet-compilation groups. Each group pairs guide files/folders with the src projects their ```csharp blocks compile against, and builds as its own throwaway project — so doc families with unrelated (or conflicting) dependency sets stay isolated. `usings` are prepended to every snippet in the group; `frameworkReferences` add e.g. ASP.NET Core. Run one group with: dotnet run --project tools/GuideVerifier -- . --group <name>",
   "groups": [
     {
+      "name": "quickstart",
+      "projects": [
+        "src/Common.Entities/Common.Entities.csproj",
+        "src/Entities.EFcore/Entities.EFcore.csproj",
+        "src/Entities.DependencyInjection/Entities.DependencyInjection.csproj",
+        "src/Entities.Web/Entities.Web.csproj"
+      ],
+      "guideFiles": [ "docs/quickstart.md" ],
+      "usings": [
+        "Microsoft.AspNetCore.Builder",
+        "Microsoft.AspNetCore.Http",
+        "Microsoft.Extensions.DependencyInjection",
+        "Microsoft.Extensions.Hosting"
+      ],
+      "frameworkReferences": [ "Microsoft.AspNetCore.App" ],
+      "packages": { "Microsoft.EntityFrameworkCore.Sqlite": "10.0.11" },
+      "sharedTypes": true
+    },
+    {
       "name": "entities",
       "projects": [
         "src/Common.Entities/Common.Entities.csproj",

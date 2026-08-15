@@ -41,21 +41,21 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 ## Backend Comparison
 
-| Package | Backend | HTML→PDF | PDF Ops | Print |
-|---|---|---|---|---|
-| `PDF.SelectPdf` | Select.HtmlToPdf | ✓ full | — | — |
-| `PDF.Puppeteer` | PuppeteerSharp | ✓ A4 | — | — |
-| `PDF.MsPlaywright` | Microsoft.Playwright | ✓ A4 | — | — |
-| `PDF.DocNET` | Docnet.Core | — | merge, split, img↔pdf, text | — |
-| `PDF.Spire` | FreeSpire.PDF | — | merge, split, img, text | ✓ |
-| `PDF.PDFtoPrinter` | PDFtoPrinter | — | — | ✓ (Win) |
-| `PDF.PockyBum522` | SimpleFreePdfPrinter | — | — | ✓ (Win) |
+| Package | Backend | HTML→PDF | PDF Ops | Print | Runtime footprint |
+|---|---|---|---|---|---|
+| `PDF.SelectPdf` | Select.HtmlToPdf | ✓ full | — | — | Pulls `System.Drawing.Common`, which throws on non-Windows from .NET 6 on — treat as **Windows** |
+| `PDF.Puppeteer` | PuppeteerSharp | ✓ A4 | — | — | **Downloads Chromium on first use** (`BrowserFetcher().DownloadAsync()`) — needs network + disk at runtime, or a pre-seeded cache |
+| `PDF.MsPlaywright` | Microsoft.Playwright | ✓ A4 | — | — | **Installs its browser on first use** — same constraint; the install is guarded by a process-wide lock, so the first request pays for it |
+| `PDF.DocNET` | Docnet.Core | — | merge, split, img↔pdf, text | — | Managed wrapper over a native library — the RID must be one `Docnet.Core` ships binaries for |
+| `PDF.Spire` | FreeSpire.PDF | — | merge, split, img, text | ✓ | The **free** edition — the vendor caps document size/pages; confirm the current terms before relying on it |
+| `PDF.PDFtoPrinter` | PDFtoPrinter | — | — | ✓ (Win) | Drives an external printing utility |
+| `PDF.PockyBum522` | SimpleFreePdfPrinter | — | — | ✓ (Win) | Targets `net*-windows` — **will not build** on a non-Windows TFM |
 
 **Recommendations:**
-- HTML → PDF: **SelectPdf** (full options, no browser required)
-- PDF operations: **DocNET** (merge, split, images, text extraction)
+- HTML → PDF: **SelectPdf** on Windows (full options, nothing to download); **Puppeteer**/**Playwright**
+  where the host is Linux or the CSS must be pixel-perfect and a first-run browser fetch is acceptable
+- PDF operations: **DocNET** (merge, split, images, text extraction) — the only cross-platform ops backend
 - Printing: **Spire** (operations + print) or **PDFtoPrinter** (print-only, Windows)
-- Pixel-perfect CSS: **Puppeteer** or **Playwright** (headless Chromium, A4 fixed)
 
 ---
 

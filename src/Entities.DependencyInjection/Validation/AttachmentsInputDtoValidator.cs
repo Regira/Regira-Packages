@@ -38,7 +38,10 @@ internal sealed class AttachmentsInputDtoValidator : IEntityRegistrationValidato
                 continue;
             }
 
-            var mapping = mappings.FirstOrDefault(m => m.EntityType == entityType);
+            // Last-wins: UseMapping appends a registration per call and DI resolves the last one, so the
+            // effective mapping is the last match. Reading the first would validate a superseded DTO —
+            // warning about one no longer in use, or passing while the live one silently drops attachments.
+            var mapping = mappings.LastOrDefault(m => m.EntityType == entityType);
             if (mapping == null || mapping.InputDtoType == entityType || HasAttachmentsCollection(mapping.InputDtoType))
             {
                 continue;

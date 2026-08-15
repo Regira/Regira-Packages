@@ -27,8 +27,9 @@ public static class ControllerExtensions
         {
             return ctrl.NotFound();
         }
-        // FileStreamResult sends Content-Length = stream.Length but copies from the current
-        // position, so a non-rewound stream yields a truncated (or empty) body
+        // Belt-and-braces: GetStream() already hands back a rewound stream. FileStreamResult sends
+        // Content-Length = stream.Length but copies from the current position, so were that ever not the
+        // case the body would be truncated (or empty) with a correct Content-Length.
         if (stream.CanSeek)
         {
             stream.Position = 0;
