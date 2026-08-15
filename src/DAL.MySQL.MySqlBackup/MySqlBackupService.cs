@@ -19,6 +19,7 @@ public class MySqlBackupService(MySqlBackupOptions options) : IDbBackupService
         var ms = new MemoryStream();
         mySqlBackup.ExportToMemoryStream(ms);
         await connection.CloseAsync();
+        ms.Position = 0;
 
         return ms.ToMemoryFile();
     }

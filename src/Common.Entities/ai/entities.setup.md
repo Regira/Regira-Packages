@@ -116,7 +116,9 @@ Regira.Entities.Mapping.Mapster           ← add separately — DTO mapping (NO
 | **Web API** (default) | `Regira.Entities.Web` + `Regira.Entities.Mapping.Mapster` |
 | **Console / worker** (no HTTP) | `Regira.Entities.DependencyInjection` + `Regira.Entities.Mapping.Mapster` |
 
-> `Regira.Entities.Mapping.AutoMapper` is an alternative to Mapster (deprecated).
+> `Regira.Entities.Mapping.AutoMapper` is an alternative to Mapster (deprecated). Its AutoMapper floor is
+> pinned to 14.0.0 — the last MIT-licensed release — which restores with a **NU1903 high-severity advisory**;
+> prefer Mapster, or accept the advisory consciously.
 
 > **EF Core provider** (e.g. `Microsoft.EntityFrameworkCore.Sqlite`): pin its major to your TFM — see **Checklist 0.5**.
 >
@@ -153,7 +155,7 @@ Regira.Entities.Mapping.Mapster           ← add separately — DTO mapping (NO
 
 | Package | Version |
 |---|---|
-| `Regira.Entities.*` | major **6**; resolve the patch at add time. The whole family ships one version at a time — keep every `Regira.*` reference on the same one, or restore reports NU1605 |
+| `Regira.Entities.*` | major **6**; resolve the patch at add time. Keep the `Regira.*` packages you reference **directly** on the same version, or restore reports NU1605 |
 | `Microsoft.OpenApi` (direct reference; also transitive via `Microsoft.AspNetCore.OpenApi`) | pin **2.11.0** — clears the advisory on 2.0.0 and matches the floor `Regira.Security.Authentication.Web` sets (a lower pin fails restore with NU1605 when that package is referenced). **Stay on 2.x**: 3.x breaks the .NET 10 OpenAPI source generator |
 | `SQLitePCLRaw.bundle_e_sqlite3` | pin **3.0.3** |
 | `Microsoft.EntityFrameworkCore.*` (+ provider) | major must equal the TFM's EF Core major (`net10.0` → **10.x**, see Checklist 0.5); resolve the patch at add time |
@@ -164,8 +166,8 @@ Regira.Entities.Mapping.Mapster           ← add separately — DTO mapping (NO
 **Add them as commands, not as hand-written XML.** Which rows you may type by hand is then structural rather than a rule to remember: only the two exact pins below are XML, and every major-constraint row resolves its own patch.
 
 ```bash
-dotnet add package Regira.Entities.Web --version "6.*"            # newest 6.x; keep both Regira rows on the same version
-dotnet add package Regira.Entities.Mapping.Mapster --version "6.*"
+dotnet add package Regira.Entities.Web            # resolves the newest stable as a concrete pin; check it's a 6.x
+dotnet add package Regira.Entities.Mapping.Mapster    # same version as the row above
 dotnet add package Microsoft.EntityFrameworkCore.Sqlite     # patch resolved at add time; check the major against your TFM
 dotnet add package Microsoft.AspNetCore.OpenApi
 dotnet add package Scalar.AspNetCore

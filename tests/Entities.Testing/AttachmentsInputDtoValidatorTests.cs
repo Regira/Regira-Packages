@@ -69,6 +69,14 @@ public class AttachmentsInputDtoValidatorTests
         public ICollection<EntityAttachmentInputDto>? Attachments { get; set; }
     }
 
+    /// <summary>The property exists, but its elements can never map to attachment inputs.</summary>
+    public record IntCollectionInputDto
+    {
+        public int Id { get; set; }
+        public string? Title { get; set; }
+        public ICollection<int>? Attachments { get; set; }
+    }
+
     public class DocumentContext(DbContextOptions<DocumentContext> options) : DbContext(options)
     {
         public DbSet<Document> Documents => Set<Document>();
@@ -179,6 +187,22 @@ public class AttachmentsInputDtoValidatorTests
         });
 
         Assert.That(warnings, Has.Some.Contains(Hazard).And.Some.Contains(nameof(Report)));
+    }
+
+    [Test]
+    public async Task An_Input_Dto_Whose_Attachments_Elements_Cannot_Map_Is_Reported()
+    {
+        // ICollection<int> satisfies a name-and-IEnumerable probe, but the convention map still cannot
+        // materialize attachment inputs from ints — the same silent drop as having no property at all.
+        var warnings = await Warnings(services =>
+        {
+            services.AddDbContext<DocumentContext>(db => db.UseSqlite(_connection));
+            services.UseEntities<DocumentContext>(o => { o.UseDefaults(); Logging()(o); })
+                .For<Document>();
+            services.AddSingleton(new EntityMappingRegistration(typeof(Document), typeof(DocumentDto), typeof(IntCollectionInputDto)));
+        });
+
+        Assert.That(warnings, Has.Some.Contains(Hazard).And.Some.Contains(nameof(IntCollectionInputDto)));
     }
 
     // ── false-positive guards ──────────────────────────────────────────────────

@@ -1130,7 +1130,8 @@ Load that file when implementing one of these:
 
 Ready-to-copy **feature slices** (complete models + DbContext config + registration + DTOs), proven in the Regira reference apps. Load that file when the task matches one of these:
 
-- **Stakeholders** — parties (person/organization TPH) with contact data, addresses and typed party-to-party relations; polymorphic DTOs; optional user-account link.
+- **Contact data & addresses** — phone/email rows and address lists as owned collections on any entity; interface + abstract base per shape, thin per-owner subclasses, folded into the owner's `Q`.
+- **Stakeholders** — parties (person/organization TPH) with contact data, addresses and typed party-to-party relations; polymorphic DTOs; optional user-account link. Includes *When you don't need the full party model* — child collections on an existing entity, or one flat `Contact` table.
 - **EntityLabels** — free-form label/tag rows on any entity (per-owner subclass tables), searchable via the owner's `Q`.
 - **Multi-tenancy** — `IHasTenantId` marker + one global filter (scope every read) + one primer (stamp every write); tenant claim in the JWT.
 - **Recursive entities** — whole-subtree filters (`AncestorId`/`OffspringId`) via mapped recursive-CTE table-valued functions, plus tree endpoints with `Regira.TreeList`.
@@ -1332,6 +1333,6 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 
 - [Entities Examples](./entities.examples.md) - Code examples and patterns (incl. query-extensions reference)
 - [Entities Patterns](./entities.patterns.md) - Feature recipes (soft delete, audit, hierarchy, bulk, interceptors, auto-truncate)
-- [Entities Blueprints](./entities.blueprints.md) - Domain blueprints (stakeholders, entity labels, multi-tenancy, recursive entities, identity users, virtual entities)
+- [Entities Blueprints](./entities.blueprints.md) - Domain blueprints (contact data & addresses, stakeholders, entity labels, multi-tenancy, recursive entities, identity users, virtual entities)
 - [Entities Namespaces](./entities.namespaces.md) - Namespace reference
 - [Entities Signatures](./entities.signatures.md) - Exact method signatures for all interfaces and classes

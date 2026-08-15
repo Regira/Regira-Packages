@@ -84,6 +84,7 @@ public class ZipUtilityTests
 
         // create zip
         using var zipFile = ZipUtility.Zip(files);
+        StreamAssert.AssertReadableWithoutRewind(zipFile);
 
         // unzip
         ZipUtility.Unzip(zipFile.ToBinaryFile(), targetDir);

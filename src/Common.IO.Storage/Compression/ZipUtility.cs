@@ -146,6 +146,7 @@ public static class ZipUtility
         var ms = new MemoryStream();
         using var entryStream = entry.Open();
         entryStream.CopyTo(ms);
+        ms.Position = 0;
         var item = new BinaryFileItem
         {
             Identifier = entry.FullName,

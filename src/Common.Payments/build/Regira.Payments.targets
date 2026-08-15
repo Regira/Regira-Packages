@@ -8,17 +8,24 @@
 
   <!--
     Copies Payments AI instruction files into the consuming project's
-    .regira/instructions/ folder on first build.
+    .regira/instructions/ folder. Existing files are left untouched; missing ones are copied on the next build.
   -->
   <Target Name="RegiraPaymentsExtractAiFiles"
-          BeforeTargets="BeforeBuild"
-          Condition="!Exists('$(_RegiraBaseDir).regira\instructions\payments.instructions.md')">
+          BeforeTargets="BeforeBuild">
 
-    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" />
+    <!-- Per-file gating: a file the consumer already has is never overwritten, and a guide
+         added by a package upgrade still lands — a single already-extracted sentinel would
+         skip the whole copy and new guides would never reach an existing solution. -->
+    <ItemGroup>
+      <_RegiraPaymentsExtractAiFilesFile Include="$(_RegiraPaymentsFilesRoot)*.md" />
+      <_RegiraPaymentsExtractAiFilesFileMissing Include="@(_RegiraPaymentsExtractAiFilesFile)" Condition="!Exists('$(_RegiraBaseDir).regira\instructions\%(Filename)%(Extension)')" />
+    </ItemGroup>
 
-    <Copy SourceFiles="$(_RegiraPaymentsFilesRoot)payments.instructions.md;$(_RegiraPaymentsFilesRoot)payments.examples.md"
+    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" Condition="'@(_RegiraPaymentsExtractAiFilesFileMissing)' != ''" />
+
+    <Copy SourceFiles="@(_RegiraPaymentsExtractAiFilesFileMissing)"
           DestinationFolder="$(_RegiraBaseDir).regira\instructions\"
-          SkipUnchangedFiles="true" />
+          Condition="'@(_RegiraPaymentsExtractAiFilesFileMissing)' != ''" />
 
   </Target>
 

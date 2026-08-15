@@ -12,17 +12,29 @@
 
   <!--
     Copies shared Regira setup guides into the consuming project's
-    .regira/instructions/ folder on first build.
+    .regira/instructions/ folder. Existing files are left untouched; missing ones are copied on the next build.
   -->
   <Target Name="RegiraSetupExtractAiFiles"
           BeforeTargets="BeforeBuild"
-          Condition="'$(_RegiraBaseDir)' != '' And (!Exists('$(_RegiraBaseDir).regira\instructions\project.setup.md') Or !Exists('$(_RegiraBaseDir).regira\instructions\shared.setup.md'))">
+          Condition="'$(_RegiraBaseDir)' != ''">
 
-    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" />
+    <!-- Per-file gating: a file the consumer already has is never overwritten, and a guide
+         added by a package upgrade still lands — a single already-extracted sentinel would
+         skip the whole copy and new guides would never reach an existing solution. -->
+    <ItemGroup>
+      <!-- This ai\ folder is the one heterogeneous one: copilot-instructions.md has its own target
+           (.github\instructions\, below) and CLAUDE.md only functions at a solution root — neither
+           belongs in .regira\instructions\, so they are excluded from the glob rather than duplicated. -->
+      <_RegiraSetupExtractAiFilesFile Include="$(_RegiraSetupFilesRoot)*.md"
+                                      Exclude="$(_RegiraSetupFilesRoot)CLAUDE.md;$(_RegiraSetupFilesRoot)copilot-instructions.md" />
+      <_RegiraSetupExtractAiFilesFileMissing Include="@(_RegiraSetupExtractAiFilesFile)" Condition="!Exists('$(_RegiraBaseDir).regira\instructions\%(Filename)%(Extension)')" />
+    </ItemGroup>
 
-    <Copy SourceFiles="$(_RegiraSetupFilesRoot)project.setup.md;$(_RegiraSetupFilesRoot)shared.setup.md"
+    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" Condition="'@(_RegiraSetupExtractAiFilesFileMissing)' != ''" />
+
+    <Copy SourceFiles="@(_RegiraSetupExtractAiFilesFileMissing)"
           DestinationFolder="$(_RegiraBaseDir).regira\instructions\"
-          SkipUnchangedFiles="true" />
+          Condition="'@(_RegiraSetupExtractAiFilesFileMissing)' != ''" />
 
   </Target>
 
@@ -33,29 +45,45 @@
   -->
   <Target Name="RegiraSetupExtractCopilotInstructions"
           BeforeTargets="BeforeBuild"
-          Condition="'$(_RegiraBaseDir)' != '' And !Exists('$(_RegiraBaseDir).github\instructions\copilot-instructions.md')">
+          Condition="'$(_RegiraBaseDir)' != ''">
 
-    <MakeDir Directories="$(_RegiraBaseDir).github\instructions" />
+    <!-- Per-file gating: a file the consumer already has is never overwritten, and a guide
+         added by a package upgrade still lands — a single already-extracted sentinel would
+         skip the whole copy and new guides would never reach an existing solution. -->
+    <ItemGroup>
+      <_RegiraSetupExtractCopilotInstructionsFile Include="$(_RegiraSetupFilesRoot)copilot-instructions.md" />
+      <_RegiraSetupExtractCopilotInstructionsFileMissing Include="@(_RegiraSetupExtractCopilotInstructionsFile)" Condition="!Exists('$(_RegiraBaseDir).github\instructions\%(Filename)%(Extension)')" />
+    </ItemGroup>
 
-    <Copy SourceFiles="$(_RegiraSetupFilesRoot)copilot-instructions.md"
+    <MakeDir Directories="$(_RegiraBaseDir).github\instructions" Condition="'@(_RegiraSetupExtractCopilotInstructionsFileMissing)' != ''" />
+
+    <Copy SourceFiles="@(_RegiraSetupExtractCopilotInstructionsFileMissing)"
           DestinationFolder="$(_RegiraBaseDir).github\instructions\"
-          SkipUnchangedFiles="true" />
+          Condition="'@(_RegiraSetupExtractCopilotInstructionsFileMissing)' != ''" />
 
   </Target>
 
   <!--
     Copies Regira slash commands into the consuming project's
-    .claude/commands/ folder on first build.
+    .claude/commands/ folder. Existing files are left untouched; missing ones are copied on the next build.
   -->
   <Target Name="RegiraSetupExtractCommandFiles"
           BeforeTargets="BeforeBuild"
-          Condition="'$(_RegiraBaseDir)' != '' And !Exists('$(_RegiraBaseDir).claude\commands\new-project.md')">
+          Condition="'$(_RegiraBaseDir)' != ''">
 
-    <MakeDir Directories="$(_RegiraBaseDir).claude\commands" />
+    <!-- Per-file gating: a file the consumer already has is never overwritten, and a guide
+         added by a package upgrade still lands — a single already-extracted sentinel would
+         skip the whole copy and new guides would never reach an existing solution. -->
+    <ItemGroup>
+      <_RegiraSetupExtractCommandFilesFile Include="$(_RegiraSetupFilesRoot)commands\*.md" />
+      <_RegiraSetupExtractCommandFilesFileMissing Include="@(_RegiraSetupExtractCommandFilesFile)" Condition="!Exists('$(_RegiraBaseDir).claude\commands\%(Filename)%(Extension)')" />
+    </ItemGroup>
 
-    <Copy SourceFiles="$(_RegiraSetupFilesRoot)commands\new-project.md;$(_RegiraSetupFilesRoot)commands\new-entity.md;$(_RegiraSetupFilesRoot)commands\sync-guides.md;$(_RegiraSetupFilesRoot)commands\evaluate.md"
+    <MakeDir Directories="$(_RegiraBaseDir).claude\commands" Condition="'@(_RegiraSetupExtractCommandFilesFileMissing)' != ''" />
+
+    <Copy SourceFiles="@(_RegiraSetupExtractCommandFilesFileMissing)"
           DestinationFolder="$(_RegiraBaseDir).claude\commands\"
-          SkipUnchangedFiles="true" />
+          Condition="'@(_RegiraSetupExtractCommandFilesFileMissing)' != ''" />
 
   </Target>
 

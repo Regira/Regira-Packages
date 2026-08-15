@@ -30,16 +30,22 @@ public class ZipBuilder
         if (_zipStream != null)
         {
             ZipUtility.AddFiles(_zipStream, _files);
+            _zipStream.Position = 0;
             return Task.FromResult(_zipStream.ToMemoryFile());
         }
 
         var zipStream = new MemoryStream();
-        using var zipArchive = new ZipArchive(zipStream, ZipArchiveMode.Update, true);
-        foreach (var file in _files)
+        // ZipArchive in Update mode only flushes to the backing stream on Dispose; the archive
+        // must be disposed before ToMemoryFile, which captures Length at call time
+        using (var zipArchive = new ZipArchive(zipStream, ZipArchiveMode.Update, true))
         {
-            zipArchive.AddFile(file);
+            foreach (var file in _files)
+            {
+                zipArchive.AddFile(file);
+            }
         }
-        
+        zipStream.Position = 0;
+
         return Task.FromResult(zipStream.ToMemoryFile());
     }
 }

@@ -61,6 +61,7 @@ public class ExcelManager(ExcelManager.Options? options = null) : IExcelService
 
         var ms = new MemoryStream();
         workbook.Write(ms, true);
+        ms.Position = 0;
         return Task.FromResult<IMemoryFile>(ms.ToMemoryFile(ContentTypes.XLSX));
     }
 
@@ -165,6 +166,7 @@ public class ExcelManager<T> : IExcelService<T>
             mapper.Put(sheet.Data, sheetName);
         }
         mapper.Save(ms, true);
+        ms.Position = 0;
         return Task.FromResult<IMemoryFile>(ms.ToMemoryFile(ContentTypes.XLSX));
     }
 }

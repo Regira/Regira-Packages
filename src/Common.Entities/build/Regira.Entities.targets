@@ -12,17 +12,25 @@
 
   <!--
     Copies Entities AI instruction files into the consuming project's
-    .regira/instructions/ folder on first build.
+    .regira/instructions/ folder. Existing files are left untouched; missing ones are copied on the next build.
   -->
   <Target Name="RegiraEntitiesExtractAiFiles"
           BeforeTargets="BeforeBuild"
-          Condition="'$(_RegiraBaseDir)' != '' And !Exists('$(_RegiraBaseDir).regira\instructions\entities.instructions.md')">
+          Condition="'$(_RegiraBaseDir)' != ''">
 
-    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" />
+    <!-- Per-file gating: a file the consumer already has is never overwritten, and a guide
+         added by a package upgrade still lands — a single already-extracted sentinel would
+         skip the whole copy and new guides would never reach an existing solution. -->
+    <ItemGroup>
+      <_RegiraEntitiesExtractAiFilesFile Include="$(_RegiraEntitiesFilesRoot)*.md" />
+      <_RegiraEntitiesExtractAiFilesFileMissing Include="@(_RegiraEntitiesExtractAiFilesFile)" Condition="!Exists('$(_RegiraBaseDir).regira\instructions\%(Filename)%(Extension)')" />
+    </ItemGroup>
 
-    <Copy SourceFiles="$(_RegiraEntitiesFilesRoot)entities.instructions.md;$(_RegiraEntitiesFilesRoot)entities.setup.md;$(_RegiraEntitiesFilesRoot)entities.examples.md;$(_RegiraEntitiesFilesRoot)entities.patterns.md;$(_RegiraEntitiesFilesRoot)entities.signatures.md;$(_RegiraEntitiesFilesRoot)entities.namespaces.md;$(_RegiraEntitiesFilesRoot)entities.advanced.example.md"
+    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" Condition="'@(_RegiraEntitiesExtractAiFilesFileMissing)' != ''" />
+
+    <Copy SourceFiles="@(_RegiraEntitiesExtractAiFilesFileMissing)"
           DestinationFolder="$(_RegiraBaseDir).regira\instructions\"
-          SkipUnchangedFiles="true" />
+          Condition="'@(_RegiraEntitiesExtractAiFilesFileMissing)' != ''" />
 
   </Target>
 

@@ -4,6 +4,7 @@ Ready-to-copy **feature slices** proven in the Regira reference applications. Ea
 
 | Blueprint | Use when |
 |---|---|
+| [Contact data & addresses](#contact-data--addresses-on-any-entity) | Phone/email rows or an address list on any entity — no party model required |
 | [Stakeholders](#stakeholders--parties-contactdata-addresses) | People/organizations with contact data, addresses and typed relations (CRM-style) |
 | [EntityLabels](#entitylabels--free-form-labels-on-any-entity) | User-defined key/value tags on arbitrary entities, searchable via `Q` |
 | [Multi-tenancy](#multi-tenancy--ihastenantid--global-filter--primer) | Row-level tenant isolation: every query scoped, every write stamped |
@@ -17,6 +18,149 @@ Every blueprint is split into `###` parts (*Model*, *Registration*, *DTOs*, *Got
 
 ---
 
+## Contact data & addresses on any entity
+
+Phone/email/website rows and postal addresses as **owned collections on any entity** — a supplier, a
+location, a warehouse. The full party model below is *not* a prerequisite: these child shapes attach to
+whatever entity already owns the data. (The Fleet reference app hangs both, plus labels, off a plain
+`Operator` entity.)
+
+**Budget:** 0 slots — owned `Related()` children of entities you already registered.
+
+### Child contracts
+
+Define each child shape once as an interface + abstract base; every owner gets a thin concrete subclass
+with its own table — no `ObjectType` discriminator, no cross-owner queries to guard, cheap FKs:
+
+```csharp no-compile
+[Flags] public enum ContactDataTypes { Other = 0, Phone = 1 << 0, Email = 1 << 1, Website = 1 << 2 }
+
+public interface IContactDetails : IEntity<int>, IHasTitle, ISortable, IHasDescription, IHasTimestamps
+{
+    string Value { get; set; }
+    string? NormalizedValue { get; set; }
+    ContactDataTypes DataType { get; set; }
+}
+public interface IHasContactData { ICollection<IContactDetails>? ContactData { get; set; } }
+public interface IHasContactData<T> where T : class, IContactDetails, new() { ICollection<T>? ContactData { get; set; } }
+
+public abstract class ContactDetailsBase : IContactDetails, IEntityWithSerial
+{
+    public int Id { get; set; }
+    [MaxLength(64)] public string? Title { get; set; }        // e.g. "work", "mobile"
+    [MaxLength(256)] public string Value { get; set; } = null!;
+    [MaxLength(256)] public string? NormalizedValue { get; set; }
+    public ContactDataTypes DataType { get; set; }
+    [MaxLength(512)] public string? Description { get; set; }
+    public int SortOrder { get; set; }
+    public DateTime Created { get; set; }
+    public DateTime? LastModified { get; set; }
+}
+
+public abstract class AddressBase : IEntityWithSerial, IHasTitle, IHasNormalizedContent, ISortable
+{
+    public int Id { get; set; }
+    [MaxLength(64)] public string? Title { get; set; }
+    [MaxLength(128)] public string? Street { get; set; }
+    [MaxLength(16)] public string? HouseNumber { get; set; }
+    [MaxLength(16)] public string? PostalCode { get; set; }
+    [MaxLength(128)] public string? City { get; set; }
+    [StringLength(2)] public string? CountryCode { get; set; }
+    public int SortOrder { get; set; }
+    [MaxLength(2048)] public string? NormalizedContent { get; set; }
+}
+```
+
+The generic + non-generic `IHasContactData` pair (with the explicit-interface cast bridge on the owner,
+below) lets one normalizer/service handle *any* owner's contact rows through `IContactDetails` while EF
+maps the typed navigation. Addresses deliberately get **no** contract interface — nothing cross-owner binds
+to them, so the base class alone carries the shape. Adapt the fields freely (a `HouseNumber`/`Box` split, a
+`Region`, …) — the shape is a starting point, not a schema.
+
+### Owner wiring
+
+```csharp no-compile
+public class SupplierContactData : ContactDetailsBase;                       // one thin subclass per owner
+public class SupplierAddress : AddressBase { public int SupplierId { get; set; } }
+
+public class Supplier : IEntityWithSerial, IHasNormalizedContent,
+    IHasContactData, IHasContactData<SupplierContactData> /* … */
+{
+    // …
+    public ICollection<SupplierContactData>? ContactData { get; set; }
+    ICollection<IContactDetails>? IHasContactData.ContactData              // non-generic bridge
+    {
+        get => ContactData?.Cast<IContactDetails>().ToList();
+        set => ContactData = value?.Cast<SupplierContactData>().ToList();
+    }
+    public ICollection<SupplierAddress>? Addresses { get; set; }
+}
+```
+
+Relationship mapping (plus a `DbSet` per subclass) — contact rows use a shadow FK, addresses an explicit one:
+
+```csharp no-compile
+modelBuilder.Entity<Supplier>(entity =>
+{
+    entity.HasMany(e => e.ContactData).WithOne().OnDelete(DeleteBehavior.Cascade);
+    entity.HasMany(e => e.Addresses).WithOne().HasForeignKey(a => a.SupplierId).OnDelete(DeleteBehavior.Cascade);
+});
+```
+
+### Registration + search
+
+```csharp no-compile
+services.For<Supplier, SupplierSearchObject, EntitySortBy, SupplierIncludes>(e =>
+{
+    e.Related(item => item.ContactData, item => item.ContactData?.Prepare());   // owned: no For<>, no controller, no slot
+    e.Related(item => item.Addresses, item => item.Addresses?.Prepare());
+    e.AddNormalizer<SupplierNormalizer>();
+});
+```
+
+(`Prepare()` is the two-line app helper shown under Stakeholders § Registration — id reset + sort order.)
+
+Contact values and address text become searchable by folding them into the **owner's** `NormalizedContent`,
+so the one global `Q` filter finds a supplier by phone number or city:
+
+```csharp no-compile
+public class SupplierNormalizer(INormalizer normalizer, ContactDataNormalizer contactDataNormalizer, AddressNormalizer addressNormalizer)
+    : EntityNormalizerBase<Supplier>(normalizer)
+{
+    public override async Task HandleNormalize(Supplier item, CancellationToken token = default)
+    {
+        await base.HandleNormalize(item, token);
+        var entries = new List<string?> { item.NormalizedContent };
+        if (item.ContactData?.Any() == true)
+        {
+            await contactDataNormalizer.HandleNormalizeMany(item.ContactData, token);
+            entries.AddRange(item.ContactData.Select(c => c.NormalizedValue));
+        }
+        if (item.Addresses?.Any() == true)
+        {
+            await addressNormalizer.HandleNormalizeMany(item.Addresses, token);
+            entries.AddRange(item.Addresses.Select(a => a.NormalizedContent));
+        }
+        item.NormalizedContent = string.Join(' ', entries.Where(x => !string.IsNullOrWhiteSpace(x)));
+    }
+}
+```
+
+Normalize phone numbers with `Regira.Globalization.LibPhoneNumber`'s `PhoneNumberFormatter` inside the
+contact-data normalizer, so `0475…` and `+32 475…` match the same search.
+
+### DTOs
+
+One shared pair per child shape serves every owner — `ContactDetailsDto`/`ContactDetailsInputDto` and
+`AddressDto`/`AddressInputDto` mirroring the base's fields. Mapster maps `SupplierAddress ↔ AddressDto` by
+name convention; no configuration needed. Owner DTOs expose the collections
+(`ICollection<AddressDto>? Addresses`; input: `AddressInputDto`).
+
+Same shape, same reasons as [EntityLabels](#entitylabels--free-form-labels-on-any-entity) — one abstract
+base, one thin subclass and table per owner, folded into the owner's search text.
+
+---
+
 ## Stakeholders — Parties, ContactData, Addresses
 
 One aggregate models every person/organization the app deals with (customers, suppliers, employees), instead of a table per role. Three ideas carry the blueprint:
@@ -26,6 +170,41 @@ One aggregate models every person/organization the app deals with (customers, su
 3. **Typed self-relations** — parties link to parties through a join entity carrying a `RelationshipType` (employee-of, subsidiary-of, …).
 
 **Budget:** 1 complex slot (`Party` — the TPH base counts once, however many leaf types) + 1 simple slot (`RelationshipType`).
+
+### When you don't need the full party model
+
+The TPH party is one option, not the required shape for "people and organizations". Three sizes, smallest
+first — pick by what the app actually queries, and mix freely:
+
+1. **Child collections on an existing entity** — the app already has the aggregate (a `Supplier`, an
+   `Operator`) and only needs phone numbers or an address list on it. Use
+   [Contact data & addresses on any entity](#contact-data--addresses-on-any-entity); no new registration.
+2. **A single flat `Contact` entity** — one contacts table, no subtypes, no polymorphic DTOs. 1 slot:
+
+   ```csharp no-compile
+   public class Contact : IEntityWithSerial, IHasNormalizedTitle, IHasNormalizedContent, IArchivable,
+       IHasContactData, IHasContactData<ContactContactDetails>
+   {
+       public int Id { get; set; }
+       [Required, MaxLength(256)] public string Name { get; set; } = null!;    // person or organization — one field
+       [MaxLength(128)] public string? Organization { get; set; }              // optional affiliation, plain text
+       public string Title => Name;
+       [MaxLength(256), Normalized(SourceProperty = nameof(Name))] public string? NormalizedTitle { get; set; }
+       [MaxLength(2048)] public string? NormalizedContent { get; set; }
+       public bool IsArchived { get; set; }
+       public ICollection<ContactContactDetails>? ContactData { get; set; }    // + cast bridge, as above
+       public ICollection<ContactAddress>? Addresses { get; set; }
+   }
+   ```
+
+   Registration, normalizer folding and DTOs are the plain single-entity versions — convention Mapster
+   mapping, no `MapWith`. Choose this when nothing branches on person-vs-organization: no subtype-specific
+   fields, no typed relations, no per-subtype search.
+3. **The full TPH party (this blueprint)** — when subtypes carry different fields, parties relate to
+   parties, or one role-discriminated party consolidates an over-budget `Customer` + `Supplier` +
+   `Employee` domain.
+
+Moving up later is ordinary schema evolution, not a rewrite — the child collections carry over unchanged.
 
 ### Model
 
@@ -86,54 +265,18 @@ public class Organization() : Party(PartyTypes.Organization)
 
 ### Child contracts — contact data & addresses
 
-Define the child shape once as an interface + abstract base; each owner gets a thin concrete subclass (own table):
+The party reuses the owner-agnostic child shapes from
+[Contact data & addresses on any entity](#contact-data--addresses-on-any-entity) — `ContactDetailsBase`,
+`AddressBase`, and the `IHasContactData` pair with the cast bridge. Its concrete subclasses:
 
 ```csharp no-compile
-[Flags] public enum ContactDataTypes { Other = 0, Phone = 1 << 0, Email = 1 << 1, Website = 1 << 2 }
-
-public interface IContactDetails : IEntity<int>, IHasTitle, ISortable, IHasDescription, IHasTimestamps
-{
-    string Value { get; set; }
-    string? NormalizedValue { get; set; }
-    ContactDataTypes DataType { get; set; }
-}
-public interface IHasContactData { ICollection<IContactDetails>? ContactData { get; set; } }
-public interface IHasContactData<T> where T : class, IContactDetails, new() { ICollection<T>? ContactData { get; set; } }
-
-public abstract class ContactDetailsBase : IContactDetails, IEntityWithSerial
-{
-    public int Id { get; set; }
-    [MaxLength(64)] public string? Title { get; set; }        // e.g. "work", "mobile"
-    [MaxLength(256)] public string Value { get; set; } = null!;
-    [MaxLength(256)] public string? NormalizedValue { get; set; }
-    public ContactDataTypes DataType { get; set; }
-    [MaxLength(512)] public string? Description { get; set; }
-    public int SortOrder { get; set; }
-    public DateTime Created { get; set; }
-    public DateTime? LastModified { get; set; }
-}
 public class PartyContactDetails : ContactDetailsBase;                 // FK to Party is a shadow FK
 public class PartyRelationshipContactDetails : ContactDetailsBase      // contact data on a relation itself
 {
     public int PartyRelationshipId { get; set; }
 }
-
-public abstract class AddressBase : IEntityWithSerial, IHasTitle, IHasNormalizedContent, ISortable
-{
-    public int Id { get; set; }
-    [MaxLength(64)] public string? Title { get; set; }
-    [MaxLength(128)] public string? Street { get; set; }
-    [MaxLength(16)] public string? HouseNumber { get; set; }
-    [MaxLength(16)] public string? PostalCode { get; set; }
-    [MaxLength(128)] public string? City { get; set; }
-    [StringLength(2)] public string? CountryCode { get; set; }
-    public int SortOrder { get; set; }
-    [MaxLength(2048)] public string? NormalizedContent { get; set; }
-}
 public class PartyAddress : AddressBase { public int PartyId { get; set; } }
 ```
-
-The generic + non-generic `IHasContactData` pair (with the explicit-interface cast bridge on the owner) lets one normalizer/service handle *any* owner's contact rows through `IContactDetails` while EF maps the typed navigation.
 
 ### Typed relations between parties
 
@@ -298,7 +441,7 @@ public class PartyController(IPartyService service)
 
 ### Linking a party to a user account
 
-Keep the identity link **off** the `Party` itself — a 1:1 join entity keeps the stakeholder domain independent from the identity store:
+Prefer a 1:1 join entity over a user field on `Party` — it keeps the stakeholder domain independent from the identity store:
 
 ```csharp no-compile
 public class PartyUser : IEntityWithSerial
@@ -323,7 +466,7 @@ public class PartyUser : IEntityWithSerial
 
 ## EntityLabels — free-form labels on any entity
 
-User-defined `Title`/`Value` pairs ("IP address = 10.0.0.5", "serial = X-123") attached to an entity, editable inside the owner's form, orderable, and searchable through the owner's `Q`. **Not** a polymorphic single-table design: each owner gets its own thin label subclass and table — no `ObjectType` discriminator, no cross-owner queries to guard, cheap FKs.
+User-defined `Title`/`Value` pairs ("IP address = 10.0.0.5", "serial = X-123") attached to an entity, editable inside the owner's form, orderable, and searchable through the owner's `Q`. **Not** a polymorphic single-table design: each owner gets its own thin label subclass and table — no `ObjectType` discriminator, no cross-owner queries to guard, cheap FKs. (The same abstract-base + per-owner-subclass shape as [Contact data & addresses](#contact-data--addresses-on-any-entity) — the three compose freely on one owner.)
 
 **Budget:** 0 slots — labels are owned `Related()` children of entities you already registered.
 
@@ -914,13 +1057,27 @@ public class CountryController : EntityControllerBase<Country, string, SearchObj
 
 Task-oriented entries served by the MCP `how_to` tool (same marker convention as [`entities.patterns.md`](./entities.patterns.md)).
 
+### Add contact data or addresses to an entity
+<!-- how_to: key=addresses aliases=address,contact,contactdata,contact-data,phone,email,website -->
+Copy the **Contact data & addresses blueprint**: an interface + abstract base per child shape
+(`ContactDetailsBase`, `AddressBase`), a thin subclass and table per owner, wired as owned collections —
+`e.Related(x => x.ContactData, x => x.ContactData?.Prepare())` — and folded into the owner's
+`NormalizedContent` so the global `Q` filter finds owners by phone number or city. No party model
+required, one shared DTO pair per shape (Mapster convention mapping), 0 budget slots. For a full
+person/organization model on top, see the `stakeholders` recipe; for a lighter single contacts table,
+the Stakeholders blueprint's *When you don't need the full party model*.
+
+**See:** `get_package(id: "Regira.Entities", section: "blueprints", heading: "Contact data & addresses on any entity")`.
+
 ### Model parties with contact data and addresses (stakeholders)
-<!-- how_to: key=stakeholders aliases=party,parties,stakeholder,contact,contactdata,address,addresses,crm,person,organization,relation,relations -->
+<!-- how_to: key=stakeholders aliases=party,parties,stakeholder,crm,person,organization,relation,relations -->
 Copy the **Stakeholders blueprint**: a TPH `Party` base (`Person`/`Organization` leaves, string
 discriminator, 1 budget slot total) with `ContactData`, `Addresses` and typed `PartyRelationship`
 collections managed as owned children via nested `e.Related(...)` — no own registrations. DTOs are
 polymorphic (`[JsonPolymorphic]` + Mapster `MapWith` branching on the runtime type). Link users via a
-1:1 `PartyUser { UserId, PartyId }` join, not a field on `Party`.
+1:1 `PartyUser { UserId, PartyId }` join, not a field on `Party`. Lighter needs — an address on an
+existing entity, or one flat contacts table — are covered by the `addresses` recipe and the blueprint's
+*When you don't need the full party model*.
 
 **See:** `get_package(id: "Regira.Entities", section: "blueprints", heading: "Stakeholders")`.
 

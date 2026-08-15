@@ -8,17 +8,24 @@
 
   <!--
     Copies TreeList AI instruction files into the consuming project's
-    .regira/instructions/ folder on first build.
+    .regira/instructions/ folder. Existing files are left untouched; missing ones are copied on the next build.
   -->
   <Target Name="RegiraTreeListExtractAiFiles"
-          BeforeTargets="BeforeBuild"
-          Condition="!Exists('$(_RegiraBaseDir).regira\instructions\treelist.instructions.md')">
+          BeforeTargets="BeforeBuild">
 
-    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" />
+    <!-- Per-file gating: a file the consumer already has is never overwritten, and a guide
+         added by a package upgrade still lands — a single already-extracted sentinel would
+         skip the whole copy and new guides would never reach an existing solution. -->
+    <ItemGroup>
+      <_RegiraTreeListExtractAiFilesFile Include="$(_RegiraTreeListFilesRoot)*.md" />
+      <_RegiraTreeListExtractAiFilesFileMissing Include="@(_RegiraTreeListExtractAiFilesFile)" Condition="!Exists('$(_RegiraBaseDir).regira\instructions\%(Filename)%(Extension)')" />
+    </ItemGroup>
 
-    <Copy SourceFiles="$(_RegiraTreeListFilesRoot)treelist.instructions.md;$(_RegiraTreeListFilesRoot)treelist.examples.md"
+    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" Condition="'@(_RegiraTreeListExtractAiFilesFileMissing)' != ''" />
+
+    <Copy SourceFiles="@(_RegiraTreeListExtractAiFilesFileMissing)"
           DestinationFolder="$(_RegiraBaseDir).regira\instructions\"
-          SkipUnchangedFiles="true" />
+          Condition="'@(_RegiraTreeListExtractAiFilesFileMissing)' != ''" />
 
   </Target>
 
