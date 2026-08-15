@@ -5,6 +5,13 @@ adds one bullet under **Unreleased** in the same change (format: `` `PackageId` 
 and leaves that package's `<Version>` higher than its last published version. At publish time the
 Unreleased block becomes a dated release heading.
 
+## Unreleased
+
+- `Regira.Common` 6.1.3 — `MemoryFileExtensions.GetStream()` no longer leaves the backing stream at EOF: it restored neither the source position nor the copy's, so a second `GetStream()` on the same file handed a sequential reader zero bytes (an empty attachment download over HTTP, with a correct `Content-Length`).
+- `Regira.Entities` 6.1.2 — packed guides: worked *Role-gated write authorization filter* recipe (allow-list keyed on the controller, with the `POST search`/`POST list` read overloads and the separate attachment controller called out); the response-shape section now carries populated JSON for the search/save/400 envelopes and the attachment link DTO, whose file metadata nests under `attachment`; the *Feature recipes* index now lists every recipe in the patterns guide; EF translation hazards extended with method calls in projections and provider-specific `EF.Functions`; one `EntityAttachment` subclass per owner stated explicitly; version guidance changed from a `6.0.0` pin to a major-6 constraint resolved at add time.
+- `Regira.Setup` 6.1.2 — packed guides: *Standard hosted API with auth* added to the template-selection tables (`BasicApi` plus `SelfHostingApiWithAuth`'s auth registrations), the shape an authenticated Entities API actually takes.
+- `Regira.Web` 6.1.2 — packed guide: `UseCentralRoutePrefix` now names its package and namespace at the call site.
+
 ## 6.1.1 — 2026-08-12
 
 - All packages — version aligned at 6.1.1 for a whole-family publish.

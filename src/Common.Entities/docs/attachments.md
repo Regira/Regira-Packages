@@ -84,6 +84,10 @@ public class ProductAttachment : EntityAttachment
 }
 ```
 
+Each owning entity gets its own subclass: the class is the join table and its constructor pins one
+`ObjectType`, so attaching files to a second entity means a second subclass, `DbSet`, controller and
+registration.
+
 ### Owning Entity
 
 After defining the model of the EntityAttachment, 2 interfaces have to be implemented on the Owning Entity:
@@ -97,6 +101,9 @@ public class OwningEntity: IHasAttachments, IHasAttachments<MyEntityAttachment>
     // ...
 
     // Add these 3 properties
+    // HasAttachment is yours to fill: nothing populates it, so it serializes as null even for a row that
+    // has attachments. Filtering on it is also yours to wire — Regira.Entities.EFcore ships the
+    // FilterHasAttachment(bool?) query extension, but no query builder calls it for you.
     public bool? HasAttachment { get; set; }
     public ICollection<MyEntityAttachment>? Attachments { get; set; }
     // implicit interface implementation

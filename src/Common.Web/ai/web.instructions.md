@@ -118,6 +118,11 @@ app.UseRequestCulture();
 
 ### Central Route Prefix
 
+Extension on `MvcOptions` from **`Regira.Web`** (`using Regira.Web.Routing;`). It prepends the prefix to
+**every** controller: an attribute-routed selector is combined with it (`[Route("products")]` →
+`api/v1/products`), and a selector with no route model of its own takes the prefix as its route. It
+registers at the head of `opts.Conventions` so it runs before conventions that read the finished route.
+
 ```csharp
 services.AddControllers(options =>
     options.UseCentralRoutePrefix(new RouteAttribute("api/v1")));
