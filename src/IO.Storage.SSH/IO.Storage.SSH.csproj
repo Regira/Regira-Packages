@@ -19,7 +19,7 @@
     <ProjectReference Include="..\Common.IO.Storage\Common.IO.Storage.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="SSH.NET" Version="2025.1.0" />
+    <PackageReference Include="SSH.NET" Version="2026.0.0" />
   </ItemGroup>
   <ItemGroup>
     <!-- Upgraded for vulnerabilities -->
