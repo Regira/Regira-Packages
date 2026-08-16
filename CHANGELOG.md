@@ -5,7 +5,7 @@ adds one bullet under **Unreleased** in the same change (format: `` `PackageId` 
 and leaves that package's `<Version>` higher than its last published version. At publish time the
 Unreleased block becomes a dated release heading.
 
-## Unreleased
+## 6.1.2 — 2026-08-16
 
 - All guide-shipping packages — the build-time guide extraction is gated **per file** instead of on one already-extracted sentinel, so a guide added by a package upgrade now reaches existing solutions (previously only brand-new solutions got new files, and `entities.blueprints.md`/`entities.card.md` were in no Copy list at all); the file set is now the packed `ai\*.md` glob, so newly packed guides extract without a targets edit; files with a destination of their own (`Regira.Setup`'s `copilot-instructions.md`, `CLAUDE.md`) are excluded and keep it. Files the consumer already has are never overwritten.
 - All Apache-2.0 packages — the packed copyright drops "All rights reserved" (contradicted the Apache-2.0 grant beside it on nuget.org), and the repository `NOTICE` file is packed per Apache-2.0 §4(d); commercial packages keep the reserved-rights copyright and ship no NOTICE.
