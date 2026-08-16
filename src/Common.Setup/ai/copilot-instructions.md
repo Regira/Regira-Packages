@@ -46,14 +46,15 @@ Choose one template before creating any files. For an existing project, infer th
 |---|---|
 | Script, batch job, or CLI utility | `ConsoleWithLogging` |
 | Standard hosted API, no auth | `BasicApi` |
+| Standard hosted API **with** auth (incl. an authenticated Entities API) | `BasicApi` + the auth registrations from `SelfHostingApiWithAuth` |
 | Lightweight internal API, no auth | `SelfHostingApi` |
 | Must be deployable as a Windows Service | `SelfHostingApi` |
-| API protected by API key and/or JWT Bearer | `SelfHostingApiWithAuth` |
-| Controller-based routing with enforced authorization | `SelfHostingApiWithAuth` |
+| Self-hosted API protected by API key and/or JWT Bearer | `SelfHostingApiWithAuth` |
+| Self-hosted, controller-based routing with enforced authorization | `SelfHostingApiWithAuth` |
 
 Template consequences:
 - `ConsoleWithLogging`: host-based console setup with configuration and structured logging
-- `BasicApi`: ASP.NET Core Web API without authentication
+- `BasicApi`: ASP.NET Core Web API, hosted on IIS/Azure/Docker; no auth by default, and the auth registrations from `SelfHostingApiWithAuth` layer onto it unchanged
 - `SelfHostingApi`: self-hosted baseline, compatible with Windows Service deployment
 - `SelfHostingApiWithAuth`: self-hosted with API key and/or JWT Bearer; keep endpoints protected by default
 

@@ -1,4 +1,3 @@
-using System.Collections;
 using Regira.Entities.Attachments.Abstractions;
 using Regira.Entities.DependencyInjection.Mapping;
 
@@ -38,14 +37,17 @@ internal sealed class AttachmentsInputDtoValidator : IEntityRegistrationValidato
                 continue;
             }
 
-            var mapping = mappings.FirstOrDefault(m => m.EntityType == entityType);
+            // Last-wins: UseMapping appends a registration per call and DI resolves the last one, so the
+            // effective mapping is the last match. Reading the first would validate a superseded DTO —
+            // warning about one no longer in use, or passing while the live one silently drops attachments.
+            var mapping = mappings.LastOrDefault(m => m.EntityType == entityType);
             if (mapping == null || mapping.InputDtoType == entityType || HasAttachmentsCollection(mapping.InputDtoType))
             {
                 continue;
             }
 
             yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
-                $"{entityType.Name} implements IHasAttachments but its input DTO {mapping.InputDtoType.Name} has no Attachments collection. " +
+                $"{entityType.Name} implements IHasAttachments but its input DTO {mapping.InputDtoType.Name} has no Attachments collection the convention map can materialize. " +
                 "Every PUT/PATCH through the entity controller maps the collection to null, and the attachments sync treats null as 'collection not sent': " +
                 "attachment adds, removes and reorders in the entity payload are silently ignored — 200 OK, no error, no log. " +
                 "The /{id}/attachments sub-routes still work, which masks it. " +
@@ -62,6 +64,20 @@ internal sealed class AttachmentsInputDtoValidator : IEntityRegistrationValidato
     private static bool HasAttachmentsCollection(Type inputDtoType)
         => inputDtoType.GetProperties().Any(p =>
             p.Name.Equals(nameof(IHasAttachments.Attachments), StringComparison.OrdinalIgnoreCase)
-            && p.PropertyType != typeof(string)
-            && typeof(IEnumerable).IsAssignableFrom(p.PropertyType));
+            && IsMaterializableAttachmentCollection(p.PropertyType));
+
+    /// <summary>
+    /// The property must be a generic enumerable whose element type the convention map can materialize as an
+    /// attachment input: a non-primitive class (<c>EntityAttachmentInputDto</c> or a derived DTO). A name-only
+    /// probe let <c>ICollection&lt;int&gt;? Attachments</c> pass while the map still dropped the collection on
+    /// every request — the exact silent failure this check exists to catch.
+    /// </summary>
+    private static bool IsMaterializableAttachmentCollection(Type propertyType)
+    {
+        var elementType = new[] { propertyType }.Concat(propertyType.GetInterfaces())
+            .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            .Select(i => i.GetGenericArguments()[0])
+            .FirstOrDefault();
+        return elementType is { IsClass: true } && elementType != typeof(string);
+    }
 }

@@ -33,7 +33,7 @@ var manifest = JsonSerializer.Deserialize<Manifest>(File.ReadAllText(manifestPat
 // Legacy single-group manifests (top-level projects/guideDirs) still work, as the one group "default".
 var groups = manifest.Groups is { Count: > 0 }
     ? manifest.Groups
-    : [new GroupManifest("default", manifest.Projects ?? [], manifest.GuideDirs, null, null, null)];
+    : [new GroupManifest("default", manifest.Projects ?? [], manifest.GuideDirs, null, null, null, null, null)];
 
 if (groupFilter is not null)
 {
@@ -102,7 +102,8 @@ foreach (var group in groups)
     var work = Path.Combine(Path.GetTempPath(), $"regira-guide-verify-{Sanitize(group.Name)}-" + Guid.NewGuid().ToString("N"));
     try
     {
-        var csproj = GeneratedProject.Write(work, snippets, projectRefs, group.Usings ?? [], group.FrameworkReferences ?? []);
+        var csproj = GeneratedProject.Write(work, snippets, projectRefs, group.Usings ?? [], group.FrameworkReferences ?? [], group.Packages,
+            group.SharedTypes == true ? $"GuideSnippets.{new string(group.Name.Where(char.IsLetterOrDigit).ToArray())}" : null);
         Console.WriteLine($"Generated snippet project: {csproj}");
         Console.WriteLine("Building…");
 
@@ -194,6 +195,12 @@ internal record GroupManifest(
     List<string>? GuideDirs,
     List<string>? GuideFiles,
     List<string>? Usings,
-    List<string>? FrameworkReferences);
+    List<string>? FrameworkReferences,
+    /// <summary>True for a narrative guide whose blocks build on each other (a quickstart): every snippet
+    /// in the group compiles into one namespace instead of its own, so later blocks see earlier types.</summary>
+    bool? SharedTypes,
+    /// <summary>NuGet packages the group's snippets need, as id → version. Project references cover the
+    /// Regira surface; this covers what a consumer installs alongside it (an EF Core provider, say).</summary>
+    Dictionary<string, string>? Packages);
 
 internal record Manifest(List<GroupManifest>? Groups, List<string>? Projects, List<string>? GuideDirs);

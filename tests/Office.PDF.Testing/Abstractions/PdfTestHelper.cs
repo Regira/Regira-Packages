@@ -1,10 +1,12 @@
 ﻿using Regira.Collections;
+using Regira.IO.Abstractions;
 using Regira.IO.Extensions;
 using Regira.IO.Storage.FileSystem;
 using Regira.Media.Drawing.Dimensions;
 using Regira.Office.PDF.Abstractions;
 using Regira.Office.PDF.Models;
 using Regira.Utilities;
+using System.Text;
 
 [assembly: Parallelizable(ParallelScope.Fixtures)]
 
@@ -16,6 +18,47 @@ public static class PdfTestHelper
     static readonly string AssetsDir = Path.Combine(AssemblyDir, "../../../", "Assets");
     private static string InputDir => Path.Combine(AssetsDir, "Input");
     static string OutputDir(object service) => Path.Combine(AssetsDir, "Output", service.GetType().Assembly.GetName().Name!.Split('.').Last());
+
+    /// <summary>
+    /// Asserts the file hands out a stream a sequential reader can actually consume.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately does NOT rewind before reading. That mirrors how FileStreamResult writes a
+    /// response body: it advertises Content-Length from Stream.Length but copies from the current
+    /// position, so a producer that leaves its stream at the end sends a truncated (usually empty)
+    /// body while every Length-based assertion still passes.
+    /// <br />Asserting on <c>GetLength()</c> or <c>GetBytes()</c> cannot catch this, because Length
+    /// is position-independent and <see cref="FileUtility.GetBytes(Stream?)"/> rewinds internally.
+    /// </remarks>
+    public static void AssertReadableWithoutRewind(IMemoryFile? file)
+    {
+        Assert.That(file, Is.Not.Null);
+
+        using var stream = file!.GetStream();
+        Assert.That(stream, Is.Not.Null);
+
+        var advertisedLength = stream!.Length;
+        Assert.That(advertisedLength, Is.GreaterThan(0), "Stream advertises no content.");
+
+        using var ms = new MemoryStream();
+        stream.CopyTo(ms);
+        var bytes = ms.ToArray();
+
+        Assert.That(bytes.Length, Is.EqualTo(advertisedLength),
+            $"Stream was not rewound: a sequential reader gets {bytes.Length} bytes while Length advertises {advertisedLength}. Over HTTP this truncates the response body.");
+        // Take at most what is there: a regressed backend returning 1-4 bytes would otherwise throw out of
+        // GetString with a framework stack trace instead of failing on the header assertion below.
+        var header = Encoding.ASCII.GetString(bytes, 0, Math.Min(5, bytes.Length));
+        Assert.That(header, Is.EqualTo("%PDF-"), "Content does not start with a PDF header.");
+
+        // GetStream() hands back a rewound copy, so it hides a producer that parked its own stream
+        // at the end. Consumers reading file.Stream directly get no such protection.
+        if (file.HasStream())
+        {
+            Assert.That(file.Stream!.Position, Is.Zero,
+                "Backing stream is not rewound: anything reading file.Stream directly gets a truncated result.");
+        }
+    }
 
     public static async Task Split_Documents(IPdfSplitter pdfSplitter, string inputFileName = "lorem-24-pages.pdf")
     {
@@ -37,6 +80,7 @@ public static class PdfTestHelper
             var splitPdf = splidPdfs[i];
             var splitPageCount = await pdfSplitter.GetPageCount(splitPdf.ToBinaryFile());
             Assert.That(splitPageCount, Is.EqualTo(ranges[i].End - ranges[i].Start + 1));
+            AssertReadableWithoutRewind(splitPdf);
             await FileSystemUtility.SaveStream(Path.Combine(outputDir, $"split-{i + 1}.pdf"), splitPdf.GetStream()!);
         }
         // clean up
@@ -75,6 +119,7 @@ public static class PdfTestHelper
 
         await FileSystemUtility.SaveStream(Path.Combine(outputDir, "split-merged.pdf"), merged!.GetStream()!);
         Assert.That(mergedPageCount, Is.EqualTo(expectedPageCount));
+        AssertReadableWithoutRewind(merged);
         // clean up
         splitPdfs.Dispose();
     }

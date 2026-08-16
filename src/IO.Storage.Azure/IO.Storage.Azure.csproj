@@ -11,7 +11,7 @@
     <AssemblyName>Regira.IO.Storage.Azure</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.1</Version>
+    <Version>6.1.2</Version>
     <Description>Azure Blob Storage implementation of Regira's IO storage abstractions.</Description>
     <PackageTags>regira;io;storage;azure;blobs</PackageTags>
   </PropertyGroup>

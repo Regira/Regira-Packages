@@ -116,7 +116,9 @@ Regira.Entities.Mapping.Mapster           ← add separately — DTO mapping (NO
 | **Web API** (default) | `Regira.Entities.Web` + `Regira.Entities.Mapping.Mapster` |
 | **Console / worker** (no HTTP) | `Regira.Entities.DependencyInjection` + `Regira.Entities.Mapping.Mapster` |
 
-> `Regira.Entities.Mapping.AutoMapper` is an alternative to Mapster (deprecated).
+> `Regira.Entities.Mapping.AutoMapper` is an alternative to Mapster (deprecated). Its AutoMapper floor is
+> pinned to 14.0.0 — the last MIT-licensed release — which restores with a **NU1903 high-severity advisory**;
+> prefer Mapster, or accept the advisory consciously.
 
 > **EF Core provider** (e.g. `Microsoft.EntityFrameworkCore.Sqlite`): pin its major to your TFM — see **Checklist 0.5**.
 >
@@ -153,7 +155,7 @@ Regira.Entities.Mapping.Mapster           ← add separately — DTO mapping (NO
 
 | Package | Version |
 |---|---|
-| `Regira.Entities.*` | pin **6.0.0** |
+| `Regira.Entities.*` | major **6**; resolve the patch at add time. Keep the `Regira.*` packages you reference **directly** on the same version, or restore reports NU1605 |
 | `Microsoft.OpenApi` (direct reference; also transitive via `Microsoft.AspNetCore.OpenApi`) | pin **2.11.0** — clears the advisory on 2.0.0 and matches the floor `Regira.Security.Authentication.Web` sets (a lower pin fails restore with NU1605 when that package is referenced). **Stay on 2.x**: 3.x breaks the .NET 10 OpenAPI source generator |
 | `SQLitePCLRaw.bundle_e_sqlite3` | pin **3.0.3** |
 | `Microsoft.EntityFrameworkCore.*` (+ provider) | major must equal the TFM's EF Core major (`net10.0` → **10.x**, see Checklist 0.5); resolve the patch at add time |
@@ -164,8 +166,8 @@ Regira.Entities.Mapping.Mapster           ← add separately — DTO mapping (NO
 **Add them as commands, not as hand-written XML.** Which rows you may type by hand is then structural rather than a rule to remember: only the two exact pins below are XML, and every major-constraint row resolves its own patch.
 
 ```bash
-dotnet add package Regira.Entities.Web --version 6.0.0
-dotnet add package Regira.Entities.Mapping.Mapster --version 6.0.0
+dotnet add package Regira.Entities.Web            # resolves the newest stable as a concrete pin; check it's a 6.x
+dotnet add package Regira.Entities.Mapping.Mapster    # same version as the row above
 dotnet add package Microsoft.EntityFrameworkCore.Sqlite     # patch resolved at add time; check the major against your TFM
 dotnet add package Microsoft.AspNetCore.OpenApi
 dotnet add package Scalar.AspNetCore
@@ -185,6 +187,9 @@ dotnet add package Serilog.Settings.Configuration
 ## P1: Project Files
 
 > Start from the **`BasicApi`** template in the shared project setup guide and apply the Entities-specific additions below.
+> **Needs sign-in?** Stay on `BasicApi` and layer `SelfHostingApiWithAuth`'s auth registrations onto it — the
+> selection guide's *Standard hosted API with auth* row spells out which parts to take. Hosting and auth are
+> separate choices; this combination is ordinary, not a deviation.
 > - **Via MCP:** call `get_package(id: "Regira.Setup", section: "project.setup")` to read the template.
 > - **Via local extraction:** read `.regira/instructions/project.setup.md` if it exists.
 > - **Fallback (if neither is available):** ASP.NET Core Web API project, thin `Program.cs`, DI via extension methods, `app.MapOpenApi()` (requires `Microsoft.AspNetCore.OpenApi`), `app.MapScalarApiReference()` (requires `Scalar.AspNetCore` + `using Scalar.AspNetCore;`), and no `UseSwaggerUI()`.
@@ -346,7 +351,7 @@ using (var scope = app.Services.CreateScope())
 
 ### API route prefix
 
-Keep controller routes resource-relative — `[Route("[controller]")]` (or the resource name, e.g. `[Route("products")]`) — and apply a shared `api` base **once** at the host/app level so it stays configurable. Either host under that path (IIS virtual directory / reverse proxy, or `app.UsePathBase("/api")`), or register a global route-prefix convention:
+Keep controller routes resource-relative — `[Route("[controller]")]` (or the resource name, e.g. `[Route("products")]`) — and apply a shared `api` base **once** at the host/app level so it stays configurable. Either host under that path (IIS virtual directory / reverse proxy, or `app.UsePathBase("/api")`), or register a global route-prefix convention. `Regira.Entities.Web` already brings `Regira.Web` transitively, so `options.UseCentralRoutePrefix(new RouteAttribute("api"))` (`Regira.Web.Routing`) is available without another reference; the self-contained equivalent below is here for a host that does not reference it:
 
 ```csharp no-compile
 // namespace Microsoft.AspNetCore.Mvc.ApplicationModels (RouteAttribute is in Microsoft.AspNetCore.Mvc)

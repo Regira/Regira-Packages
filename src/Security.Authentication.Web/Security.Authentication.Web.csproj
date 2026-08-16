@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Security.Authentication.Web</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.1</Version>
+    <Version>6.1.2</Version>
     <Description>ASP.NET Core authentication middleware and OpenAPI integration for Regira.</Description>
     <PackageTags>regira;security;authentication;web;aspnetcore;openapi</PackageTags>
   </PropertyGroup>
@@ -21,7 +21,7 @@
     <ProjectReference Include="..\Security.Authentication\Security.Authentication.csproj" />
   </ItemGroup>
   <ItemGroup Condition="$(TargetFramework) == 'net10.0'">
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.11" />
     <!-- AspNetCore.OpenApi declares Microsoft.OpenApi 2.0.0, which carries GHSA-v5pm-xwqc-g5wc. Float it to
          the 2.x the rest of the solution already runs on: projects that also reference Swashbuckle resolve
          2.11.0 and serve the document fine against this same AspNetCore.OpenApi, so the override is proven

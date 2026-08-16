@@ -8,17 +8,24 @@
 
   <!--
     Copies Web AI instruction files into the consuming project's
-    .regira/instructions/ folder on first build.
+    .regira/instructions/ folder. Existing files are left untouched; missing ones are copied on the next build.
   -->
   <Target Name="RegiraWebExtractAiFiles"
-          BeforeTargets="BeforeBuild"
-          Condition="!Exists('$(_RegiraBaseDir).regira\instructions\web.instructions.md')">
+          BeforeTargets="BeforeBuild">
 
-    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" />
+    <!-- Per-file gating: a file the consumer already has is never overwritten, and a guide
+         added by a package upgrade still lands — a single already-extracted sentinel would
+         skip the whole copy and new guides would never reach an existing solution. -->
+    <ItemGroup>
+      <_RegiraWebExtractAiFilesFile Include="$(_RegiraWebFilesRoot)*.md" />
+      <_RegiraWebExtractAiFilesFileMissing Include="@(_RegiraWebExtractAiFilesFile)" Condition="!Exists('$(_RegiraBaseDir).regira\instructions\%(Filename)%(Extension)')" />
+    </ItemGroup>
 
-    <Copy SourceFiles="$(_RegiraWebFilesRoot)web.instructions.md;$(_RegiraWebFilesRoot)web.examples.md"
+    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" Condition="'@(_RegiraWebExtractAiFilesFileMissing)' != ''" />
+
+    <Copy SourceFiles="@(_RegiraWebExtractAiFilesFileMissing)"
           DestinationFolder="$(_RegiraBaseDir).regira\instructions\"
-          SkipUnchangedFiles="true" />
+          Condition="'@(_RegiraWebExtractAiFilesFileMissing)' != ''" />
 
   </Target>
 

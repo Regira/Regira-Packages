@@ -75,8 +75,15 @@ public static class MemoryFileExtensions
             => file.Bytes ?? (file.HasStream() ? GetStream(file).GetBytes() : null);
 
         /// <summary>
-        /// Always creates a new stream for this file
+        /// Always creates a new stream for this file, rewound and ready to read.
         /// </summary>
+        /// <remarks>
+        /// The returned stream is positioned at 0, matching the byte-backed branch below
+        /// (<see cref="FileUtility.GetStream(byte[])"/>). Handing back a stream parked at some other
+        /// offset silently truncates any sequential reader - notably FileStreamResult, which reports
+        /// Content-Length from Stream.Length but copies from the current position.
+        /// <br />The source stream's position is left exactly as it was found.
+        /// </remarks>
         /// <returns></returns>
         public Stream? GetStream()
         {
@@ -87,7 +94,9 @@ public static class MemoryFileExtensions
                 file.Stream!.Position = 0;
                 var ms = new MemoryStream();
                 file.Stream.CopyTo(ms);
-                ms.Position = currentPos;
+                // CopyTo drains the source: restore it, so reading a file never mutates it
+                file.Stream.Position = currentPos;
+                ms.Position = 0;
                 return ms;
             }
             return file.Bytes?.GetStream();

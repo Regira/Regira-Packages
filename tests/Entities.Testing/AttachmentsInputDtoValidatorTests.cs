@@ -69,6 +69,14 @@ public class AttachmentsInputDtoValidatorTests
         public ICollection<EntityAttachmentInputDto>? Attachments { get; set; }
     }
 
+    /// <summary>The property exists, but its elements can never map to attachment inputs.</summary>
+    public record IntCollectionInputDto
+    {
+        public int Id { get; set; }
+        public string? Title { get; set; }
+        public ICollection<int>? Attachments { get; set; }
+    }
+
     public class DocumentContext(DbContextOptions<DocumentContext> options) : DbContext(options)
     {
         public DbSet<Document> Documents => Set<Document>();
@@ -181,6 +189,22 @@ public class AttachmentsInputDtoValidatorTests
         Assert.That(warnings, Has.Some.Contains(Hazard).And.Some.Contains(nameof(Report)));
     }
 
+    [Test]
+    public async Task An_Input_Dto_Whose_Attachments_Elements_Cannot_Map_Is_Reported()
+    {
+        // ICollection<int> satisfies a name-and-IEnumerable probe, but the convention map still cannot
+        // materialize attachment inputs from ints — the same silent drop as having no property at all.
+        var warnings = await Warnings(services =>
+        {
+            services.AddDbContext<DocumentContext>(db => db.UseSqlite(_connection));
+            services.UseEntities<DocumentContext>(o => { o.UseDefaults(); Logging()(o); })
+                .For<Document>();
+            services.AddSingleton(new EntityMappingRegistration(typeof(Document), typeof(DocumentDto), typeof(IntCollectionInputDto)));
+        });
+
+        Assert.That(warnings, Has.Some.Contains(Hazard).And.Some.Contains(nameof(IntCollectionInputDto)));
+    }
+
     // ── false-positive guards ──────────────────────────────────────────────────
 
     [Test]
@@ -223,5 +247,41 @@ public class AttachmentsInputDtoValidatorTests
         });
 
         Assert.That(warnings, Has.None.Contains(Hazard));
+    }
+
+    // ── re-registration: the validator must read the mapping DI actually resolves ───────────────
+
+    [Test]
+    public async Task A_Re_Registered_Mapping_Is_Judged_By_Its_Last_Registration()
+    {
+        // UseMapping appends a registration per call and DI resolves last-wins, so the effective input DTO
+        // here is the complete one. Reading the first would warn about a DTO no longer in use.
+        var warnings = await Warnings(services =>
+        {
+            services.AddDbContext<DocumentContext>(db => db.UseSqlite(_connection));
+            services.UseEntities<DocumentContext>(o => { o.UseDefaults(); Logging()(o); })
+                .For<Document>();
+            services.AddSingleton(new EntityMappingRegistration(typeof(Document), typeof(DocumentDto), typeof(BareInputDto)));
+            services.AddSingleton(new EntityMappingRegistration(typeof(Document), typeof(DocumentDto), typeof(CompleteInputDto)));
+        });
+
+        Assert.That(warnings, Has.None.Contains(Hazard));
+    }
+
+    [Test]
+    public async Task A_Re_Registration_That_Drops_The_Collection_Is_Still_Reported()
+    {
+        // The reverse order — the effective DTO is the bare one, which is the silent-attachment-loss case
+        // this validator exists to catch. Reading the first registration would let it through.
+        var warnings = await Warnings(services =>
+        {
+            services.AddDbContext<DocumentContext>(db => db.UseSqlite(_connection));
+            services.UseEntities<DocumentContext>(o => { o.UseDefaults(); Logging()(o); })
+                .For<Document>();
+            services.AddSingleton(new EntityMappingRegistration(typeof(Document), typeof(DocumentDto), typeof(CompleteInputDto)));
+            services.AddSingleton(new EntityMappingRegistration(typeof(Document), typeof(DocumentDto), typeof(BareInputDto)));
+        });
+
+        Assert.That(warnings, Has.Some.Contains(Hazard).And.Some.Contains(nameof(BareInputDto)));
     }
 }

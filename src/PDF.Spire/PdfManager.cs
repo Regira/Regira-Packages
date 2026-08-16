@@ -28,7 +28,7 @@ public class PdfManager : IPdfMerger, IPdfSplitter, IPdfToImageService, IPdfText
         using var doc = new PdfDocument(pdf.GetStream());
         foreach (var range in ranges)
         {
-            var split = new PdfDocument();
+            using var split = new PdfDocument();
             for (var i = range.Start - 1; i < (range.End ?? doc.Pages.Count); i++)
             {
                 var page = split.Pages.Add(doc.Pages[i].Size, new PdfMargins(0));
@@ -42,29 +42,44 @@ public class PdfManager : IPdfMerger, IPdfSplitter, IPdfToImageService, IPdfText
 
     public IMemoryFile Merge(IEnumerable<string> pdfPaths)
     {
-        var merged = PdfDocument.MergeFiles(pdfPaths.ToArray());
+        using var merged = PdfDocument.MergeFiles(pdfPaths.ToArray());
         var ms = new MemoryStream();
         merged.Save(ms);
+        // rewind, otherwise consumers read from the end of the stream
+        ms.Position = 0;
         return ms.ToMemoryFile(ContentTypes.PDF);
     }
     public Task<IMemoryFile?> Merge(IEnumerable<IMemoryFile> items, CancellationToken cancellationToken = default)
     {
-        var merged = new PdfDocument();
-        foreach (var pdfStream in items)
+        using var merged = new PdfDocument();
+        // inserted pages draw from their source document, so every source stays open until the save in ToMemoryFile
+        var docs = new List<PdfDocument>();
+        try
         {
-            var doc = new PdfDocument(pdfStream.GetStream());
-            for (var i = 0; i < doc.Pages.Count; i++)
+            foreach (var pdfStream in items)
             {
-                merged.InsertPage(doc, i);
+                var doc = new PdfDocument(pdfStream.GetStream());
+                docs.Add(doc);
+                for (var i = 0; i < doc.Pages.Count; i++)
+                {
+                    merged.InsertPage(doc, i);
+                }
+            }
+
+            return Task.FromResult<IMemoryFile?>(ToMemoryFile(merged));
+        }
+        finally
+        {
+            foreach (var doc in docs)
+            {
+                doc.Dispose();
             }
         }
-
-        return Task.FromResult<IMemoryFile?>(ToMemoryFile(merged));
     }
 
     public Task<string> GetText(IMemoryFile pdf, CancellationToken cancellationToken = default)
     {
-        var doc = new PdfDocument(pdf.GetStream());
+        using var doc = new PdfDocument(pdf.GetStream());
         var text = new StringBuilder(doc.Pages.Count);
         foreach (PdfPageBase page in doc.Pages)
         {
@@ -100,6 +115,8 @@ public class PdfManager : IPdfMerger, IPdfSplitter, IPdfToImageService, IPdfText
     {
         var ms = new MemoryStream();
         doc.SaveToStream(ms);
+        // rewind, otherwise consumers read from the end of the stream
+        ms.Position = 0;
         return ms.ToMemoryFile(ContentTypes.PDF);
     }
 }

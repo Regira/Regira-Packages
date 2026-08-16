@@ -495,6 +495,10 @@ public static class QueryExtensions
     public static IQueryable<TEntity> FilterIds<TEntity, TKey>(this IQueryable<TEntity> query, ICollection<TKey>? ids);
     public static IQueryable<TEntity> FilterExclude<TEntity, TKey>(this IQueryable<TEntity> query, ICollection<TKey>? ids);
 
+    // Requires IHasStartEndDate — rows whose period contains `date`; a null bound is treated as open.
+    // The only built-in helper for the date interfaces, and you call it yourself (no global filter).
+    public static IQueryable<TEntity> FilterIsActiveOn<TEntity>(this IQueryable<TEntity> query, DateTime? date);
+
     // Requires IHasCode
     public static IQueryable<TEntity> FilterCode<TEntity>(this IQueryable<TEntity> query, string? code);
 

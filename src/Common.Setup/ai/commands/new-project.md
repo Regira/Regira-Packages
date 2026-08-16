@@ -30,9 +30,12 @@ Select exactly one template. Confirm the choice with the user before proceeding.
 | Standard hosted API, no auth | `BasicApi` |
 | Lightweight internal API, no auth | `SelfHostingApi` |
 | Must run as a Windows Service | `SelfHostingApi` |
-| API or app with any authentication (API key, JWT, cookie, Entra ID, OpenID Connect) | `SelfHostingApiWithAuth` |
+| Self-hosted API or app with any authentication (API key, JWT, cookie, Entra ID, OpenID Connect) | `SelfHostingApiWithAuth` |
+| Standard hosted API (IIS / Azure / Docker) with authentication | `BasicApi` + the auth registrations from `SelfHostingApiWithAuth` |
 
-The scheme is a registration choice on top of `SelfHostingApiWithAuth`, not a separate template.
+The scheme is a registration choice on top of `SelfHostingApiWithAuth`, not a separate template. Auth and
+hosting are independent: take the host template that matches the deployment and layer the auth registrations
+on it.
 
 ## Step 3 — Select the minimum Regira package set
 

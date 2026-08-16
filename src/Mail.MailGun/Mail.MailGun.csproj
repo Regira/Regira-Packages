@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Office.Mail.MailGun</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.1</Version>
+    <Version>6.1.2</Version>
     <Description>Mail sending via the Mailgun API for Regira Office.</Description>
     <PackageTags>regira;office;mail;mailgun;email</PackageTags>
   </PropertyGroup>
@@ -19,7 +19,7 @@
     <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.11" />
     <PackageReference Include="RestSharp" Version="114.0.0" />
   </ItemGroup>
 </Project>

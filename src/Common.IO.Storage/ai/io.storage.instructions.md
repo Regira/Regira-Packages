@@ -1,5 +1,8 @@
 # Regira IO.Storage AI Agent Instructions
 
+> **Exact `using` directives: [`io.storage.namespaces.md`](./io.storage.namespaces.md)** — including which
+> types come from `Regira.Common` rather than a storage package.
+
 ---
 
 ## IO Abstractions (from `Regira.Common`)

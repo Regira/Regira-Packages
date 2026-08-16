@@ -12,17 +12,25 @@
 
   <!--
     Copies Office AI instruction files into the consuming project's
-    .regira/instructions/ folder on first build.
+    .regira/instructions/ folder. Existing files are left untouched; missing ones are copied on the next build.
   -->
   <Target Name="RegiraOfficeExtractAiFiles"
           BeforeTargets="BeforeBuild"
-          Condition="'$(_RegiraBaseDir)' != '' And !Exists('$(_RegiraBaseDir).regira\instructions\office.instructions.md')">
+          Condition="'$(_RegiraBaseDir)' != ''">
 
-    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" />
+    <!-- Per-file gating: a file the consumer already has is never overwritten, and a guide
+         added by a package upgrade still lands — a single already-extracted sentinel would
+         skip the whole copy and new guides would never reach an existing solution. -->
+    <ItemGroup>
+      <_RegiraOfficeExtractAiFilesFile Include="$(_RegiraOfficeFilesRoot)*.md" />
+      <_RegiraOfficeExtractAiFilesFileMissing Include="@(_RegiraOfficeExtractAiFilesFile)" Condition="!Exists('$(_RegiraBaseDir).regira\instructions\%(Filename)%(Extension)')" />
+    </ItemGroup>
 
-    <Copy SourceFiles="$(_RegiraOfficeFilesRoot)office.instructions.md;$(_RegiraOfficeFilesRoot)office.pdf.instructions.md;$(_RegiraOfficeFilesRoot)office.pdf.examples.md;$(_RegiraOfficeFilesRoot)office.excel.instructions.md;$(_RegiraOfficeFilesRoot)office.excel.examples.md;$(_RegiraOfficeFilesRoot)office.word.instructions.md;$(_RegiraOfficeFilesRoot)office.word.examples.md;$(_RegiraOfficeFilesRoot)office.mail.instructions.md;$(_RegiraOfficeFilesRoot)office.mail.examples.md;$(_RegiraOfficeFilesRoot)office.csv.instructions.md;$(_RegiraOfficeFilesRoot)office.csv.examples.md;$(_RegiraOfficeFilesRoot)office.barcodes.instructions.md;$(_RegiraOfficeFilesRoot)office.barcodes.examples.md;$(_RegiraOfficeFilesRoot)office.ocr.instructions.md;$(_RegiraOfficeFilesRoot)office.ocr.examples.md;$(_RegiraOfficeFilesRoot)office.vcards.instructions.md;$(_RegiraOfficeFilesRoot)office.vcards.examples.md"
+    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" Condition="'@(_RegiraOfficeExtractAiFilesFileMissing)' != ''" />
+
+    <Copy SourceFiles="@(_RegiraOfficeExtractAiFilesFileMissing)"
           DestinationFolder="$(_RegiraBaseDir).regira\instructions\"
-          SkipUnchangedFiles="true" />
+          Condition="'@(_RegiraOfficeExtractAiFilesFileMissing)' != ''" />
 
   </Target>
 

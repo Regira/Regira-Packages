@@ -11,12 +11,12 @@
     <AssemblyName>Regira.Caching.Runtime</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.1</Version>
+    <Version>6.1.2</Version>
     <Description>In-memory caching utilities using System.Runtime.Caching for Regira.</Description>
     <PackageTags>regira;caching;runtime;memory</PackageTags>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="System.Runtime.Caching" Version="10.0.10" />
+    <PackageReference Include="System.Runtime.Caching" Version="10.0.11" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common\Common.csproj" />

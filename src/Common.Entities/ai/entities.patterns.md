@@ -149,6 +149,19 @@ await service.Add(new Ticket { /* … */ Created = new DateTime(2024, 3, 1) });
 await service.SaveChanges(); // the pre-set Created is kept; the primer does not overwrite it
 ```
 
+⚠️ **Your own preppers and primers must follow the same convention** — stamp only when the value is absent
+(`default`/`DateTime.MinValue`/`null`). The built-ins protect `Created`/`LastModified` only; an
+unconditional `SubmittedAt = DateTime.UtcNow` on create silently flattens the seeded timeline to seed time.
+
+```csharp no-compile
+// SubmittedAt is set once, when the record is created — so stamp on create, restore on update.
+if (original == null && modified.SubmittedAt == default) modified.SubmittedAt = DateTime.UtcNow;
+if (original != null) modified.SubmittedAt = original.SubmittedAt;
+```
+
+A field set by a later *event* (`ClosedAt`, `ApprovedAt`) is not this shape — it stays `null` until the
+transition writes it, so guard it on the transition instead of on create (§Role-gated transitions).
+
 **See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "Bulk insert / update")`.
 
 ### Which service is registered for an entity (incl. attachments)
@@ -396,7 +409,14 @@ This is the sanctioned shape, not a deviation — but keep it **read-only**, and
 - ⚠️ **Prefer a `join` over a correlated `SelectMany`.** `db.A.SelectMany(a => db.B.Where(b => b.AId == a.Id)…)`
   compiles to `CROSS APPLY`, and the SQLite provider these guides default to rejects it outright
   (*"Translating this query requires the SQL APPLY operation"*). The same shape in a **processor** that
-  aggregates children into `[NotMapped]` fields (§Step 7) hits it for the same reason.
+  aggregates children into `[NotMapped]` fields (§Step 7) hits it for the same reason. A **query filter on
+  the target entity** reaches the same end from a distance: EF inlines it into a correlated `Any(...)`, so
+  the `HasQueryFilter` §Step 11 asks for on a directly-queried dependent is itself what pulls `APPLY` in —
+  one level (`!x.Event!.IsArchived`) usually survives, two (`!x.Session!.Event!.IsArchived`) does not.
+- ⚠️ **A method of your own called on the row does not translate** — `.Where(t => IsBreached(t, now))`. Inline
+  it, or hoist it to an `Expression<Func<T, bool>>` / `IQueryable<T>` extension so it stays in the tree.
+- ⚠️ **`EF.Functions.DateDiff*`/`DateAdd*` are SQL Server only** and throw on the SQLite these guides default
+  to; `Like` is the portable one. Compute the bound in C# first (`var cutoff = now.AddHours(-4);`) instead.
 - On the client this is a plain `useAxios()` call with its own `useFeedback()` — not a slice, not a pooled
   store. See the front-end `entities.patterns` → *Custom endpoints on a service* and *Feedback for custom
   saves*.
@@ -504,6 +524,71 @@ A seeder that stamps historical states is a trusted writer too — flip the same
 stays in the prepper (not the controller) so *every* write path — CRUD PUT/PATCH, other services, future
 endpoints — passes through it.
 
+## Role-gated write authorization filter
+
+<!-- how_to: key=write-authorization-filter aliases=write-authorization,role-gated-writes,action-filter,readonly-role -->
+
+*Everyone signed in may read; only some roles may write.* `[Authorize(Roles = …)]` cannot express it — it
+gates a controller's reads too — so the tier goes in one global filter, declared once so a new controller
+cannot silently miss it:
+
+```csharp no-compile
+// builder.Services.AddControllers(o => o.Filters.Add<WriteAuthorizationFilter>());
+public class WriteAuthorizationFilter : IAsyncActionFilter
+{
+    // The route value — your controller's class name minus the suffix, so ProductsController is "Products".
+    // Attachment controllers are separate controllers and need their own entry.
+    private static readonly Dictionary<string, string[]> WriteRoles = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Products"] = ["Administrator", "Editor"],
+        ["ProductAttachments"] = ["Administrator", "Editor"],
+    };
+
+    public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
+    {
+        var controller = context.RouteData.Values["controller"]?.ToString() ?? "";
+        // ControllerActionDescriptor: Microsoft.AspNetCore.Mvc.Controllers
+        var route = (context.ActionDescriptor as ControllerActionDescriptor)?.AttributeRouteInfo?.Template ?? "";
+
+        // Reads: every GET, plus the two POST query overloads. Everything else writes — including the
+        // attachment controller's upload/replace and any custom action, which is the safe default.
+        var isRead = HttpMethods.IsGet(context.HttpContext.Request.Method)
+            || route.EndsWith("/search", StringComparison.OrdinalIgnoreCase)
+            || route.EndsWith("/list", StringComparison.OrdinalIgnoreCase);
+
+        // FindRoles(): package Regira.Security.Authentication, namespace …Authentication.Jwt.Extensions —
+        // reads all three role-claim spellings.
+        // User.IsInRole reads only the principal's RoleClaimType, which is the quiet 403 when an inbound claim
+        // map rewrites `role` to the WS-2008 URI (security.instructions → Claim normalization).
+        var userRoles = context.HttpContext.User.FindRoles();
+
+        if (!isRead
+            && !context.ActionDescriptor.EndpointMetadata.Any(m => m is IAllowAnonymous)
+            && WriteRoles.TryGetValue(controller, out var roles)
+            && !roles.Intersect(userRoles, StringComparer.OrdinalIgnoreCase).Any())
+        {
+            context.Result = new ForbidResult();
+            return;
+        }
+
+        await next();
+    }
+}
+```
+
+⚠️ **`POST` is not a reliable "write" signal here** — `POST /{entity}/search` and `POST /{entity}/list` are
+the array-of-search-objects **read** overloads, so a bare method test 403s the reader's own list screen.
+Hence the two route exclusions above.
+
+⚠️ **An allow-list keyed on the controller, not a deny-list.** Only the controllers you name are gated;
+everything else keeps its own `[Authorize]`. That is what keeps the account controllers out of it —
+`auth/validate` and `auth/refresh` are guarded `POST`s that every identity must reach whatever its role, and
+a filter that reached them would 403 ordinary users out of their own session.
+
+⚠️ **Attachment controllers do not share the entity controller's entry.** `ProductAttachmentController` is
+its own controller with its own route value, so an entry for `Products` alone leaves file upload
+(`POST {objectId}/files`) and replace (`PUT {objectId}/attachments/{id}`) open to any signed-in user.
+
 ## Owned children that are both sortable and individually togglable
 
 **Let write cardinality decide who owns each field.** A field only meaningful relative to its siblings is a *collection-level* write and rides the parent's `TInputDto`; a field that changes one row in isolation is a *per-row* write and gets its own endpoint.
@@ -592,6 +677,9 @@ invoice number, source-system id).
 **Computed from the stored graph?** A `Total` diffed against the original lines needs the whole prior row —
 use a prepper instead: `EntityPrepperBase<T>.Prepare(modified, original, …)` hands you the full `original`
 entity (`null` on create); register with `e.AddPrepper<T>()`.
+
+**Another service writes the field too?** Use a prepper there as well — see *Primer vs prepper when a second
+writer exists* below.
 
 ## Aggregates over a non-owned child collection
 

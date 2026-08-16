@@ -1,4 +1,5 @@
 using NUnit.Framework.Legacy;
+using Office.PDF.Testing.Abstractions;
 using Regira.IO.Extensions;
 using Regira.IO.Utilities;
 using Regira.Office.PDF.Models;
@@ -47,6 +48,7 @@ public class SelectPdfTests
             Margins = marginPoints
         };
         using var pdf = await pdfPrinter.Create(template);
+        PdfTestHelper.AssertReadableWithoutRewind(pdf);
         using var stream = pdf.GetStream()!;
         ClassicAssert.IsNotNull(stream);
         Assert.That(stream.Length > 0, Is.True);
@@ -76,6 +78,7 @@ public class SelectPdfTests
 
         var pdfPrinter = new PdfManager();
         using var pdf = await pdfPrinter.Create(template);
+        PdfTestHelper.AssertReadableWithoutRewind(pdf);
         using var stream = pdf.GetStream()!;
         ClassicAssert.IsNotNull(stream);
         Assert.That(stream.Length > 0, Is.True);
@@ -108,6 +111,7 @@ public class SelectPdfTests
 
         var pdfPrinter = new PdfManager();
         using var pdf = await pdfPrinter.Create(template);
+        PdfTestHelper.AssertReadableWithoutRewind(pdf);
         using var stream = pdf.GetStream()!;
         ClassicAssert.IsNotNull(stream);
         Assert.That(stream.Length > 0, Is.True);

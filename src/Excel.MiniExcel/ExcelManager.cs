@@ -99,6 +99,7 @@ public class ExcelManager(ExcelManager.Options? options = null) : IExcelService
             IgnoreTemplateParameterMissing = true
         };
         ms.SaveAs(miniSheets, configuration: config);
+        ms.Position = 0;
 
         return Task.FromResult<IMemoryFile>(ms.ToMemoryFile(ContentTypes.XLSX));
     }
@@ -139,6 +140,7 @@ public class ExcelManager<T> : IExcelService<T>
         }
 
         ms.SaveAs(miniSheets);
+        ms.Position = 0;
 
         return Task.FromResult<IMemoryFile>(ms.ToMemoryFile(ContentTypes.XLSX));
     }

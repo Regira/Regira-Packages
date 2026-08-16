@@ -4,6 +4,10 @@
 
 **When a user's request targets a specific Office sub-module, load its dedicated instruction file for the exact API.**
 
+> **Exact `using` directives: [`office.namespaces.md`](./office.namespaces.md).** One table per module —
+> the abstraction you inject, the models you construct, and the provider namespace you name only at
+> registration. Read it instead of resolving Office types one `get_type` call at a time.
+
 ---
 
 ## Sub-Modules

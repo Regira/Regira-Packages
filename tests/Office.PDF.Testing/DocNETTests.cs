@@ -67,6 +67,7 @@ Simple PDF File 2
         var mergedPageCount = await _pdfService.GetPageCount(merged.ToBinaryFile());
 
         Assert.That(mergedPageCount, Is.EqualTo(inputPageCount));
+        PdfTestHelper.AssertReadableWithoutRewind(merged);
 
         var outputPath = Path.Combine(_outputDir, "merged-by-path.pdf");
         await File.WriteAllBytesAsync(outputPath, merged.GetBytes()!);
@@ -85,6 +86,7 @@ Simple PDF File 2
         var mergedPageCount = await _pdfService.GetPageCount(merged.ToBinaryFile());
 
         Assert.That(mergedPageCount, Is.EqualTo(inputPageCount));
+        PdfTestHelper.AssertReadableWithoutRewind(merged);
 
         var outputPath = Path.Combine(_outputDir, "merged-by-stream.pdf");
         await File.WriteAllBytesAsync(outputPath, merged.GetBytes()!);
@@ -107,6 +109,7 @@ Simple PDF File 2
         var bf = (await FileSystemUtility.Parse(Path.Combine(_inputDir, "has-empty-pages.pdf")))!;
         var textsWithEmptyPages = await _pdfService.GetTextPerPage(bf);
         using var resultPdf = await _pdfService.RemoveEmptyPages(bf);
+        PdfTestHelper.AssertReadableWithoutRewind(resultPdf);
         var texts = await _pdfService.GetTextPerPage(resultPdf!.ToBinaryFile());
         Assert.That(texts, Is.Not.Empty);
         Assert.That(textsWithEmptyPages.Where(string.IsNullOrWhiteSpace), Is.Not.Empty);
@@ -128,6 +131,7 @@ Simple PDF File 2
 
         var input = new ImagesInput { Images = images };
         using var pdf = await _pdfService.ImagesToPdf(input);
+        PdfTestHelper.AssertReadableWithoutRewind(pdf);
 
         var outputPath = Path.Combine(_outputDir, "jpg-images.pdf");
         await FileSystemUtility.SaveStream(outputPath, pdf.GetStream()!);
@@ -142,6 +146,7 @@ Simple PDF File 2
 
         var input = new ImagesInput { Images = images };
         using var pdf = await _pdfService.ImagesToPdf(input);
+        PdfTestHelper.AssertReadableWithoutRewind(pdf);
 
         var outputPath = Path.Combine(_outputDir, "png-images.pdf");
         await FileSystemUtility.SaveStream(outputPath, pdf.GetStream()!);

@@ -18,10 +18,11 @@ The nearest default per app shape; mix elements from several templates, or devia
 |---|---|
 | Script, batch job, or CLI utility | `ConsoleWithLogging` |
 | Standard hosted API, Minimal API and Controllers, no auth | `BasicApi` |
+| Standard hosted API (IIS / Azure / Docker) **with** auth — incl. an authenticated Entities API | `BasicApi` + the auth registrations from `SelfHostingApiWithAuth` |
 | Lightweight self-hosted internal API, no auth | `SelfHostingApi` |
-| API protected by API key and/or JWT Bearer | `SelfHostingApiWithAuth` |
+| Self-hosted API protected by API key and/or JWT Bearer | `SelfHostingApiWithAuth` |
 | Must be deployable as a Windows Service | `SelfHostingApi` |
-| Controller-based routing with enforced authorization | `SelfHostingApiWithAuth` |
+| Self-hosted, controller-based routing with enforced authorization | `SelfHostingApiWithAuth` |
 | Minimal API endpoints with authentication | `SelfHostingApiWithAuth` |
 | Users sign in with a work Microsoft account (Entra ID), or any OpenID Connect provider | `SelfHostingApiWithAuth` + `AddEntraIdSignIn` / `AddOidcAuthentication` |
 | API called with tokens Entra ID (or Auth0 / Keycloak / Okta) issued | `SelfHostingApiWithAuth` + `AddEntraIdBearer` / `AddBearerAuthentication` |
@@ -29,6 +30,15 @@ The nearest default per app shape; mix elements from several templates, or devia
 
 `SelfHostingApiWithAuth` is the usual starting point for an authenticated app — the scheme is a registration choice
 on top of it, so every scheme fits the same scaffold. See *Authentication conventions* → *Picking a scheme* below.
+
+**Authenticated app that is not self-hosted?** Auth and hosting are independent choices, and the two templates
+differ in both — so take `BasicApi` as the host and layer Template 4's auth on top rather than stripping
+Template 4 down. From `SelfHostingApiWithAuth` you want the scheme registrations closed by
+`.AddSchemeSelector()` (⚠️ last — see *Authentication conventions*), `UseAuthentication()`/`UseAuthorization()`
+in that order, `.RequireAuthorization()` on `MapControllers()`, and `.AllowAnonymous()` on the OpenAPI/Scalar
+endpoints. You do **not** want its Kestrel-from-configuration block or the Windows-Service hosting, which is
+what makes it the wrong base for an IIS/Azure/Docker app. This combination — a hosted, authenticated,
+controller-based API — is the ordinary shape for an Entities app, not a deviation worth declaring.
 
 ---
 

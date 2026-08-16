@@ -8,17 +8,24 @@
 
   <!--
     Copies IO.Storage AI instruction files into the consuming project's
-    .regira/instructions/ folder on first build.
+    .regira/instructions/ folder. Existing files are left untouched; missing ones are copied on the next build.
   -->
   <Target Name="RegiraIOStorageExtractAiFiles"
-          BeforeTargets="BeforeBuild"
-          Condition="!Exists('$(_RegiraBaseDir).regira\instructions\io.storage.instructions.md')">
+          BeforeTargets="BeforeBuild">
 
-    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" />
+    <!-- Per-file gating: a file the consumer already has is never overwritten, and a guide
+         added by a package upgrade still lands — a single already-extracted sentinel would
+         skip the whole copy and new guides would never reach an existing solution. -->
+    <ItemGroup>
+      <_RegiraIOStorageExtractAiFilesFile Include="$(_RegiraIOStorageFilesRoot)*.md" />
+      <_RegiraIOStorageExtractAiFilesFileMissing Include="@(_RegiraIOStorageExtractAiFilesFile)" Condition="!Exists('$(_RegiraBaseDir).regira\instructions\%(Filename)%(Extension)')" />
+    </ItemGroup>
 
-    <Copy SourceFiles="$(_RegiraIOStorageFilesRoot)io.storage.instructions.md;$(_RegiraIOStorageFilesRoot)io.storage.examples.md"
+    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" Condition="'@(_RegiraIOStorageExtractAiFilesFileMissing)' != ''" />
+
+    <Copy SourceFiles="@(_RegiraIOStorageExtractAiFilesFileMissing)"
           DestinationFolder="$(_RegiraBaseDir).regira\instructions\"
-          SkipUnchangedFiles="true" />
+          Condition="'@(_RegiraIOStorageExtractAiFilesFileMissing)' != ''" />
 
   </Target>
 

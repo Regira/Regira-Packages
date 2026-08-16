@@ -115,10 +115,11 @@ Pick a `projectTemplate` as the starting point before selecting modules when the
 |-------------|-------------------|
 | Script, batch job, or CLI utility | `ConsoleWithLogging` |
 | Standard hosted API, Minimal API and Controllers, no auth | `BasicApi` |
+| Standard hosted API (IIS / Azure / Docker) **with** auth — incl. an authenticated Entities API | `BasicApi` + the auth registrations from `SelfHostingApiWithAuth` |
 | Lightweight self-hosted internal API, no auth | `SelfHostingApi` |
 | Must be deployable as a Windows Service | `SelfHostingApi` |
-| API protected by API key and/or JWT Bearer | `SelfHostingApiWithAuth` |
-| Controller-based routing with enforced authorization | `SelfHostingApiWithAuth` |
+| Self-hosted API protected by API key and/or JWT Bearer | `SelfHostingApiWithAuth` |
+| Self-hosted, controller-based routing with enforced authorization | `SelfHostingApiWithAuth` |
 | Minimal API endpoints with authentication | `SelfHostingApiWithAuth` |
 | Users sign in with a work Microsoft account (Entra ID), or any OpenID Connect provider | `SelfHostingApiWithAuth` + `AddEntraIdSignIn` / `AddOidcAuthentication` |
 | API called with tokens Entra ID (or Auth0 / Keycloak / Okta) issued | `SelfHostingApiWithAuth` + `AddEntraIdBearer` / `AddBearerAuthentication` |

@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Office</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.1</Version>
+    <Version>6.1.2</Version>
     <Description>Abstractions for office document operations including PDF, Excel, Word, Mail, CSV, OCR, barcodes, and vCards.</Description>
     <PackageTags>regira;office;pdf;excel;word;mail;csv;ocr;barcodes;vcards;mcp;ai-agents</PackageTags>
   </PropertyGroup>
@@ -27,6 +27,7 @@
   <!-- AI instruction files -->
   <ItemGroup>
     <None Include="ai\office.instructions.md" Pack="true" PackagePath="ai\" />
+    <None Include="ai\office.namespaces.md" Pack="true" PackagePath="ai\" />
     <None Include="ai\office.pdf.instructions.md" Pack="true" PackagePath="ai\" />
     <None Include="ai\office.pdf.examples.md" Pack="true" PackagePath="ai\" />
     <None Include="ai\office.excel.instructions.md" Pack="true" PackagePath="ai\" />

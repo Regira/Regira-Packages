@@ -11,13 +11,13 @@
     <AssemblyName>Regira.Office.Excel.NpoiMapper</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.1</Version>
+    <Version>6.1.2</Version>
     <Description>Excel-to-object mapping and spreadsheet import/export using NpoiMapper (NPOI) for Regira Office.</Description>
     <PackageTags>regira;office;excel;mapping;import;export;spreadsheet;npoi;npoiMapper</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
-    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.10" />
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.11" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
@@ -31,7 +31,7 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Upgraded for vulnerabilities -->
-    <PackageReference Include="System.Drawing.Common" Version="10.0.10" />
-    <PackageReference Include="System.Formats.Asn1" Version="10.0.10" />
+    <PackageReference Include="System.Drawing.Common" Version="10.0.11" />
+    <PackageReference Include="System.Formats.Asn1" Version="10.0.11" />
   </ItemGroup>
 </Project>

@@ -13,6 +13,50 @@ namespace Office.Excel.Testing;
 
 public static class ExcelTestExtensions
 {
+    // "PK\3\4" - xlsx is a zip container, so created files must start with the zip local-file header
+    private static readonly byte[] ZipHeader = [0x50, 0x4B, 0x03, 0x04];
+
+    /// <summary>
+    /// Asserts the file hands out a stream a sequential reader can actually consume.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately does NOT rewind before reading. That mirrors how FileStreamResult writes a
+    /// response body: it advertises Content-Length from Stream.Length but copies from the current
+    /// position, so a producer that leaves its stream at the end sends a truncated (usually empty)
+    /// body while every Length-based assertion still passes.
+    /// <br />Asserting on <c>GetLength()</c> or <c>GetBytes()</c> cannot catch this, because Length
+    /// is position-independent and <see cref="Regira.IO.Utilities.FileUtility.GetBytes(Stream?)"/> rewinds internally.
+    /// </remarks>
+    public static void AssertReadableWithoutRewind(IMemoryFile? file)
+    {
+        Assert.That(file, Is.Not.Null);
+
+        using var stream = file!.GetStream();
+        Assert.That(stream, Is.Not.Null);
+
+        var advertisedLength = stream!.Length;
+        Assert.That(advertisedLength, Is.GreaterThan(0), "Stream advertises no content.");
+
+        using var ms = new MemoryStream();
+        stream.CopyTo(ms);
+        var bytes = ms.ToArray();
+
+        Assert.That(bytes.Length, Is.EqualTo(advertisedLength),
+            $"Stream was not rewound: a sequential reader gets {bytes.Length} bytes while Length advertises {advertisedLength}. Over HTTP this truncates the response body.");
+        // Take at most what is there: a regressed producer returning a few bytes should fail on
+        // the header assertion, not throw out of the slice.
+        var header = bytes.Take(ZipHeader.Length).ToArray();
+        Assert.That(header, Is.EqualTo(ZipHeader).AsCollection, "Content does not start with a zip (xlsx) header.");
+
+        // GetStream() hands back a rewound copy, so it hides a producer that parked its own stream
+        // at the end. Consumers reading file.Stream directly get no such protection.
+        if (file.HasStream())
+        {
+            Assert.That(file.Stream!.Position, Is.Zero,
+                "Backing stream is not rewound: anything reading file.Stream directly gets a truncated result.");
+        }
+    }
+
     public static async Task Run_List_To_Excel<TService>(this TService service)
         where TService : IExcelService<ExcelCountry>
     {
@@ -27,6 +71,7 @@ public static class ExcelTestExtensions
             Assert.That(excelFile.GetBytes(), Is.Not.Null);
             Assert.That(excelFile.GetLength(), Is.GreaterThan(0));
         });
+        AssertReadableWithoutRewind(excelFile);
         var outputPath = Path.Combine(assetsDir, "Output", "TestData.xlsx");
         var file = await excelFile.SaveAs(outputPath);
 
@@ -39,6 +84,7 @@ public static class ExcelTestExtensions
         var dicList = testData.Select(x => DictionaryUtility.ToDictionary(x)).ToList();
         using var excelFile = (await service.CreateExcel(dicList))
             .ToBinaryFile();
+        AssertReadableWithoutRewind(excelFile);
         _ = await service.SaveExcel(excelFile, "DicList.xlsx");
 
         var sheets = (await service.Read(excelFile)).ToList();
@@ -62,6 +108,7 @@ public static class ExcelTestExtensions
         var testData = CreateTestData();
         using var excelFile = (await service.CreateExcel(testData))
             .ToBinaryFile();
+        AssertReadableWithoutRewind(excelFile);
         var sheets = (await service.Read(excelFile)).ToList();
         var data = sheets[0].Data!.ToList();
         for (var i = 0; i < testData.Length; i++)
@@ -83,6 +130,7 @@ public static class ExcelTestExtensions
         var testData = CreateTestData();
         using var excelFile = (await service.CreateExcel(testData))
             .ToBinaryFile();
+        AssertReadableWithoutRewind(excelFile);
 
         var sheets = await service.Read(excelFile);
         var data = sheets.First().Data;
@@ -125,6 +173,7 @@ public static class ExcelTestExtensions
             Assert.That(excelFile.GetBytes(), Is.Not.Null);
             Assert.That(excelFile.GetLength() > 0, Is.True);
         });
+        AssertReadableWithoutRewind(excelFile);
 
         var file = await service.SaveExcel(excelFile, "countries-output.xlsx");
         Assert.That(file.Exists, Is.True);
@@ -142,6 +191,7 @@ public static class ExcelTestExtensions
             Assert.That(excelFile.GetBytes(), Is.Not.Null);
             Assert.That(excelFile.GetLength() > 0, Is.True);
         });
+        AssertReadableWithoutRewind(excelFile);
 
         var file = await service.SaveExcel(excelFile, "countries-output.xlsx");
         Assert.That(file.Exists, Is.True);
@@ -163,6 +213,7 @@ public static class ExcelTestExtensions
             Assert.That(excelFile.GetBytes(), Is.Not.Null);
             Assert.That(excelFile.GetLength() > 0, Is.True);
         });
+        AssertReadableWithoutRewind(excelFile);
 
         var file = await service.SaveExcel(excelFile, "countries-as-sheet-output.xlsx");
         Assert.That(file.Exists, Is.True);
@@ -186,7 +237,8 @@ public static class ExcelTestExtensions
             Assert.That(excelFile.GetBytes(), Is.Not.Null);
             Assert.That(excelFile.GetLength() > 0, Is.True);
         });
-        
+        AssertReadableWithoutRewind(excelFile);
+
         var file = await service.SaveExcel(excelFile, "from_json.xlsx");
         Assert.That(file.Exists, Is.True);
     }

@@ -19,5 +19,15 @@
     </PropertyGroup>
     <PropertyGroup Condition="'$(RegiraLicenseEnforced)' != 'true'">
         <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+        <!-- The props default says "All rights reserved" — accurate for the commercial packages, a
+             contradiction beside an Apache-2.0 grant (and license scanners flag the pair). -->
+        <Copyright>Copyright (c) 2026 Regira bv</Copyright>
     </PropertyGroup>
+    <!-- Apache-2.0 §4(d): a redistributor propagates NOTICE. The SPDX expression covers the license
+         text for nuget.org, but NOTICE has no metadata slot — it has to travel as a packed file.
+         Deliberately no Exists() guard: a missing NOTICE must fail the pack (NU5019), not silently
+         ship an Apache package without its attribution file. -->
+    <ItemGroup Condition="'$(RegiraLicenseEnforced)' != 'true' And '$(IsPackable)' != 'false'">
+        <None Include="$(MSBuildThisFileDirectory)NOTICE" Pack="true" PackagePath="" Visible="false" />
+    </ItemGroup>
 </Project>

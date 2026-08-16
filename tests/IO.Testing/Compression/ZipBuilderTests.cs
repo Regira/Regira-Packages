@@ -39,6 +39,7 @@ public class ZipBuilderTests
             .Build();
         Assert.That(zipFile.GetBytes()!, Is.Not.Empty);
         Assert.That(zipFile.GetLength() > 0, Is.True);
+        StreamAssert.AssertReadableWithoutRewind(zipFile);
     }
     [Test]
     public async Task Can_Add_Files_To_Existing_Zip()
@@ -52,10 +53,11 @@ public class ZipBuilderTests
         Assert.That(ZipUtility.Unzip(zipFile.ToBinaryFile()).Count, Is.EqualTo(files1.Length));
         var zipStream1Length = zipFile.Stream?.Length;
         var zipBuilder2 = new ZipBuilder();
-        await zipBuilder2
+        var updatedZipFile = await zipBuilder2
             .For(zipFile.Stream)
             .For(files2)
             .Build();
+        StreamAssert.AssertReadableWithoutRewind(updatedZipFile);
         Assert.That(zipFile.Stream?.Length > zipStream1Length, Is.True);
         Assert.That(ZipUtility.Unzip(zipFile.ToBinaryFile()).Count, Is.EqualTo(_sourceFiles.Length));
     }
@@ -67,8 +69,14 @@ public class ZipBuilderTests
         using var zipFile = await zipBuilder
             .For(_sourceFiles)
             .Build();
+        StreamAssert.AssertReadableWithoutRewind(zipFile);
         //FileSystemUtility.SaveStream("zipped.zip", zipStream);
         var unzippedFiles = ZipUtility.Unzip(zipFile.ToBinaryFile());
+        // entry payloads are arbitrary bytes, so only the rewind behavior is asserted (no header)
+        foreach (var unzippedFile in unzippedFiles)
+        {
+            StreamAssert.AssertReadableWithoutRewind(unzippedFile, expectedHeader: null);
+        }
         // compare count
         Assert.That(unzippedFiles.Count, Is.EqualTo(_sourceFiles.Length));
         // compare bytes

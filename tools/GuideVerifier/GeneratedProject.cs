@@ -1,4 +1,5 @@
 using System.Text;
+using Microsoft.CodeAnalysis.CSharp;
 
 namespace Regira.GuideVerifier;
 
@@ -28,20 +29,28 @@ public static class GeneratedProject
         IReadOnlyList<Snippet> snippets,
         IReadOnlyList<string> projectReferences,
         IReadOnlyList<string> groupUsings,
-        IReadOnlyList<string> frameworkReferences)
+        IReadOnlyList<string> frameworkReferences,
+        IReadOnlyDictionary<string, string>? packages = null,
+        string? sharedNamespace = null)
     {
         Directory.CreateDirectory(dir);
 
         var usings = BaseUsings.Concat(groupUsings).Distinct().ToList();
         foreach (var snippet in snippets)
-            File.WriteAllText(Path.Combine(dir, $"{snippet.Id}.cs"), Emit(snippet, usings));
+            File.WriteAllText(Path.Combine(dir, $"{snippet.Id}.cs"), Emit(snippet, usings, sharedNamespace));
 
         var csprojPath = Path.Combine(dir, "GuideSnippets.csproj");
-        File.WriteAllText(csprojPath, Csproj(projectReferences, frameworkReferences));
+        File.WriteAllText(csprojPath, Csproj(projectReferences, frameworkReferences, packages));
         return csprojPath;
     }
 
-    private static string Emit(Snippet snippet, IReadOnlyList<string> allUsings)
+    /// <param name="sharedNamespace">
+    /// Set for a **narrative** guide, where later blocks use types the earlier ones declare (a quickstart:
+    /// §2 defines the entities, §3 registers them, §4 writes their controllers). Every snippet in the group
+    /// then lands in this one namespace instead of its own, so the blocks compile as the walkthrough reads.
+    /// Leave null for reference guides, where per-snippet isolation is what keeps two files' `Product` apart.
+    /// </param>
+    private static string Emit(Snippet snippet, IReadOnlyList<string> allUsings, string? sharedNamespace = null)
     {
         var usings = string.Join("\n", allUsings.Select(u => $"using {u};"));
         var provenance = $"// {snippet.Location} (line {snippet.FenceLine} of {snippet.RelativeFile})";
@@ -54,7 +63,7 @@ public static class GeneratedProject
         {
             // Declarations live at namespace scope. Give each snippet its own namespace to avoid type-name
             // collisions between guides. The snippet may carry its own usings/namespace declarations.
-            sb.Append("namespace GuideSnippets.").Append(snippet.Id).Append('\n');
+            sb.Append("namespace ").Append(sharedNamespace ?? $"GuideSnippets.{snippet.Id}").Append('\n');
             sb.Append("{\n");
             sb.Append(Indent(snippet.Code, "    ")).Append('\n');
             sb.Append("}\n");
@@ -62,14 +71,33 @@ public static class GeneratedProject
         }
 
         // Statements/expressions: wrap in an async method body inside a unique class. `sp`/`scope` mirror
-        // the service-provider variables the guides use to resolve services.
-        sb.Append("namespace GuideSnippets\n{\n");
+        // the service-provider variables the guides use to resolve services, and `args` the parameter a
+        // top-level `Program.cs` receives. A statement block may still open with its own usings (a host
+        // snippet does) — those belong at file scope, above the namespace.
+        // Roslyn, not a line prefix: `using var stream = File.OpenRead(…)` and `using (var scope = …)` both
+        // start with "using " and are STATEMENTS. Only a real UsingDirectiveSyntax may be hoisted.
+        var root = CSharpSyntaxTree.ParseText(snippet.Code).GetCompilationUnitRoot();
+        var body = snippet.Code;
+        if (root.Usings.Count > 0)
+        {
+            foreach (var directive in root.Usings)
+                sb.Append(directive.ToString().Trim()).Append('\n');
+            body = snippet.Code[root.Usings.Last().FullSpan.End..];
+        }
+
+        sb.Append("namespace ").Append(sharedNamespace ?? "GuideSnippets").Append("\n{\n");
         sb.Append("    internal static class ").Append(snippet.Id).Append('\n');
         sb.Append("    {\n");
-        sb.Append("        internal static async System.Threading.Tasks.Task Run(System.IServiceProvider sp, System.IServiceProvider scope)\n");
+        // Ambient as FIELDS, not parameters: a snippet is free to declare its own `scope` (a host block
+        // writes `using (var scope = app.Services.CreateScope())`), and a local may legally shadow a field
+        // where shadowing a parameter is CS0136.
+        sb.Append("        private static System.IServiceProvider sp = null!;\n");
+        sb.Append("        private static System.IServiceProvider scope = null!;\n");
+        sb.Append("        private static string[] args = [];\n");
+        sb.Append("        internal static async System.Threading.Tasks.Task Run()\n");
         sb.Append("        {\n");
         sb.Append("            await System.Threading.Tasks.Task.CompletedTask;\n");
-        sb.Append(Indent(snippet.Code, "            ")).Append('\n');
+        sb.Append(Indent(body, "            ")).Append('\n');
         sb.Append("        }\n");
         sb.Append("    }\n");
         sb.Append("}\n");
@@ -79,11 +107,14 @@ public static class GeneratedProject
     private static string Indent(string code, string indent) =>
         string.Join("\n", code.Replace("\r\n", "\n").Split('\n').Select(l => l.Length == 0 ? l : indent + l));
 
-    private static string Csproj(IReadOnlyList<string> projectReferences, IReadOnlyList<string> frameworkReferences)
+    private static string Csproj(IReadOnlyList<string> projectReferences, IReadOnlyList<string> frameworkReferences,
+        IReadOnlyDictionary<string, string>? packages = null)
     {
         var refs = new StringBuilder();
         foreach (var f in frameworkReferences)
             refs.AppendLine($"    <FrameworkReference Include=\"{f}\" />");
+        foreach (var (id, version) in packages ?? new Dictionary<string, string>())
+            refs.AppendLine($"    <PackageReference Include=\"{id}\" Version=\"{version}\" />");
         foreach (var p in projectReferences)
             refs.AppendLine($"    <ProjectReference Include=\"{p}\" />");
 

@@ -101,6 +101,7 @@ public class ExcelManager : IExcelService
 
         var ms = new MemoryStream();
         wb.SaveAs(ms);
+        ms.Position = 0;
         return Task.FromResult<IMemoryFile>(ms.ToMemoryFile());
     }
 
