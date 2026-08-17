@@ -159,28 +159,35 @@ Regira.Entities.Mapping.Mapster           ← add separately — DTO mapping (NO
 | `Microsoft.OpenApi` (direct reference; also transitive via `Microsoft.AspNetCore.OpenApi`) | pin **2.11.0** — clears the advisory on 2.0.0 and matches the floor `Regira.Security.Authentication.Web` sets (a lower pin fails restore with NU1605 when that package is referenced). **Stay on 2.x**: 3.x breaks the .NET 10 OpenAPI source generator |
 | `SQLitePCLRaw.bundle_e_sqlite3` | pin **3.0.3** |
 | `Microsoft.EntityFrameworkCore.*` (+ provider) | major must equal the TFM's EF Core major (`net10.0` → **10.x**, see Checklist 0.5); resolve the patch at add time |
-| `Microsoft.AspNetCore.OpenApi` | major must equal your TFM (`net10.0` → **10.x**); resolve the patch at add time |
+| `Microsoft.AspNetCore.OpenApi` | major must equal your TFM (`net10.0` → **10.x**); resolve the patch at add time. ⚠️ `dotnet new webapi` already pins it below the floor **`Regira.Security.Authentication.Web`** sets (`10.0.10` vs `10.0.11`) — adding sign-in trips NU1605 until you raise the pin yourself |
 | `Scalar.AspNetCore` | major **2**; resolve the patch at add time |
 | `Serilog.AspNetCore`, `Serilog.Settings.Configuration`, `Serilog.Sinks.Console` | latest **stable** major — never a preview; resolve the patch at add time. The console/file sinks arrive transitively with `Serilog.AspNetCore`, so add them explicitly only if you pin them |
 
 **Add them as commands, not as hand-written XML.** Which rows you may type by hand is then structural rather than a rule to remember: only the two exact pins below are XML, and every major-constraint row resolves its own patch.
 
 ```bash
+dotnet add package Microsoft.AspNetCore.OpenApi   # first — lifts the template's pin, so adding auth later can't downgrade (see below)
 dotnet add package Regira.Entities.Web            # resolves the newest stable as a concrete pin; check it's a 6.x
 dotnet add package Regira.Entities.Mapping.Mapster    # same version as the row above
 dotnet add package Microsoft.EntityFrameworkCore.Sqlite     # patch resolved at add time; check the major against your TFM
-dotnet add package Microsoft.AspNetCore.OpenApi
 dotnet add package Scalar.AspNetCore
 dotnet add package Serilog.AspNetCore
 dotnet add package Serilog.Settings.Configuration
 ```
+
+> **⚠️ Adding sign-in later?** `Regira.Security.Authentication.Web` is the only `Regira.*` package that
+> floors `Microsoft.AspNetCore.OpenApi`, so referencing it while `dotnet new webapi`'s stale pin is still in
+> place fails restore with **NU1605**. Raising the pin first (above) avoids it. If you hit it anyway,
+> `dotnet add package Microsoft.AspNetCore.OpenApi` clears it — that command still lands while the downgrade
+> is live, and no hand-editing is needed.
+
 ```xml
 <!-- the two rows that are pinned rather than resolved -->
 <PackageReference Include="Microsoft.OpenApi" Version="2.11.0" />
 <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
 ```
 
-⚠️ A patch number you invent restores with **NU1603** ("*x.y.z was not found; x.y.z+n was resolved instead*") — or **NU1605** when a sibling package pulls a higher version of the same dependency. Both are warnings, so a hand-authored `.csproj` can carry a package version that does not exist and still build.
+⚠️ A patch number you invent restores with **NU1603** ("*x.y.z was not found; x.y.z+n was resolved instead*") — or **NU1605** when a sibling package pulls a higher version of the same dependency. NU1603 is a warning, so a hand-authored `.csproj` can carry a version that does not exist and still build; **NU1605 is an error by default** and stops the restore dead.
 
 ---
 

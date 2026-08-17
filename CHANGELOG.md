@@ -5,6 +5,12 @@ adds one bullet under **Unreleased** in the same change (format: `` `PackageId` 
 and leaves that package's `<Version>` higher than its last published version. At publish time the
 Unreleased block becomes a dated release heading.
 
+## Unreleased
+
+- `Regira.Entities` 6.1.3 — `entities.setup` names the `Microsoft.AspNetCore.OpenApi` floor `Regira.Security.Authentication.Web` sets (`10.0.11`) and the `dotnet new webapi` pin below it (`10.0.10`), and adds that package before the `Regira.*` ones so adding sign-in later cannot downgrade it. Also corrects the severities: NU1603 warns, **NU1605 is an error** and fails every restore and build until cleared.
+- `Regira.Setup` 6.1.3 — `project.setup`'s *Key auth model types* listed the types under the **package** name `Regira.Security.Authentication`, a prefix of but not equal to any real namespace, so following it produced CS0234; the five namespaces now ship as copyable `using` lines pointing at `security.instructions` → *Namespace Quick Reference*. The NU1605 note gains the `dotnet new webapi` interaction and its recovery.
+- `Regira.Security.Authentication.Web` 6.1.3 — the card's version-floor bullet adds the `Microsoft.AspNetCore.OpenApi` **10.0.11** floor beside the existing `Microsoft.OpenApi` one, since the template pin below it is what breaks the first authenticated build.
+
 ## 6.1.2 — 2026-08-16
 
 - All guide-shipping packages — the build-time guide extraction is gated **per file** instead of on one already-extracted sentinel, so a guide added by a package upgrade now reaches existing solutions (previously only brand-new solutions got new files, and `entities.blueprints.md`/`entities.card.md` were in no Copy list at all); the file set is now the packed `ai\*.md` glob, so newly packed guides extract without a targets edit; files with a destination of their own (`Regira.Setup`'s `copilot-instructions.md`, `CLAUDE.md`) are excluded and keep it. Files the consumer already has are never overwritten.

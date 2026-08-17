@@ -330,8 +330,14 @@ authentication middleware.
 ```
 
 > `Regira.Security.Authentication.Web` references `Microsoft.AspNetCore.OpenApi` and thereby **floors** it
-> (and, through it, `Microsoft.OpenApi`). Pinning either lower than the floor fails restore with
-> **NU1605 (package downgrade)** — resolve them to the latest stable patch instead of an older pin.
+> (and, through it, `Microsoft.OpenApi`) — 6.1.2+ floors them at `10.0.11` and `2.11.0`. Pinning either
+> lower than the floor fails restore with **NU1605 (package downgrade)** — resolve them to the latest
+> stable patch instead of an older pin.
+>
+> ⚠️ `dotnet new webapi` leaves a pin below that floor (`10.0.10`), so **raise
+> `Microsoft.AspNetCore.OpenApi` before adding the auth packages**. Hit it anyway and nothing restores or
+> builds until it is cleared — but `dotnet add package` edits still land, so
+> `dotnet add package Microsoft.AspNetCore.OpenApi` fixes it in place; no hand-editing needed.
 
 **appsettings.json — Authentication block**
 ```json
@@ -349,7 +355,8 @@ authentication middleware.
 }
 ```
 
-Section names are constants on `AuthenticationSections`: `Jwt`, `Bearer`, `ApiKeys`, `Cookie`, `Oidc`, `EntraId`.
+Section names are constants on `AuthenticationSections` (`using Regira.Security.Authentication.Core.Models;`):
+`Jwt`, `Bearer`, `ApiKeys`, `Cookie`, `Oidc`, `EntraId`.
 Only add the blocks the app registers a scheme for:
 
 ```json
@@ -385,7 +392,17 @@ Only add the blocks the app registers a scheme for:
 
 **Key auth model types**
 
-Provided by `Regira.Security.Authentication`:
+⚠️ `Regira.Security.Authentication` is the **package**, not a namespace — `using` it fails with CS0234.
+Never guess one; these are the namespaces, and `security.instructions` → *Namespace Quick Reference* has
+the rest (extension methods sit in the matching `.Extensions` namespace).
+
+```csharp
+using Regira.Security.Authentication.Core.Models;          // AuthenticationSections, RegiraClaimTypes, SchemeSelectorOptions, SchemeForwardRules
+using Regira.Security.Authentication.Jwt.Models;           // JwtTokenOptions, BearerValidationOptions, EntraIdOptions/Defaults, RefreshTokenOptions, TokenPair, RefreshTokenRecord
+using Regira.Security.Authentication.ApiKey.Models;        // ApiKeyOwner, ApiKeyDefaults
+using Regira.Security.Authentication.Cookie.Models;        // CookieAuthOptions, CookieAuthDefaults
+using Regira.Security.Authentication.OpenIdConnect.Models; // OidcAuthOptions, EntraIdSignInOptions
+```
 
 - **`ApiKeyOwner`** — `{ OwnerId, Key, Roles, Claims }` — registered caller identity
 - **`ApiKeyDefaults`** — `AuthenticationScheme` + `HeaderName` constants

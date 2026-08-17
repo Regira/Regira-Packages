@@ -18,9 +18,12 @@
   `AddJwtAuthentication(…)` (for `ITokenHelper`), and an `IEmailSender` (recover/confirm email).
   **`IEmailSender` is `Microsoft.AspNetCore.Identity.UI.Services.IEmailSender`** (a Microsoft type, not
   Regira — package `Microsoft.AspNetCore.Identity.UI`); implement it or use Regira's `IdentityMailer`.
-- **Version floor:** this package floors `Microsoft.OpenApi` at **2.11.0** on net10 — a lower pin fails
-  restore with NU1605. Pin **2.11.0** and **stay on 2.x**: the latest (3.x) breaks the .NET 10 OpenAPI
-  source generator.
+- **Version floor:** floors `Microsoft.OpenApi` at **2.11.0** and `Microsoft.AspNetCore.OpenApi` at
+  **10.0.11** on net10 — a lower pin of either fails restore with NU1605, and nothing restores or builds
+  until it is cleared. Pin `Microsoft.OpenApi` **2.11.0** and **stay on 2.x**: 3.x breaks the .NET 10
+  OpenAPI source generator. ⚠️ `dotnet new webapi` pins `Microsoft.AspNetCore.OpenApi` at `10.0.10` — raise
+  it **before** referencing this package, or afterwards with
+  `dotnet add package Microsoft.AspNetCore.OpenApi`, which lands even while the downgrade is live.
 - **`clientApp` = JWT audience.** Login is `POST auth?clientApp=…` (required query); set the API's
   `Authentication:Jwt:Audience` to the SPA's `clientApp` or authenticated calls 401 (`audience invalid`).
 - **Guarded only if you enforce it:** the bases carry no `[Authorize]` — `MapControllers().RequireAuthorization()`.
