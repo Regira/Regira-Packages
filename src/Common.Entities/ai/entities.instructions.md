@@ -613,7 +613,7 @@ table below rather than reasoning it out.
 > child namespace and the controller won't resolve (CS0246) without it. See
 > [`entities.web.namespaces.md`](../../Entities.Web/ai/entities.web.namespaces.md) for the exact `using` set.
 
-> **Keep controller routes resource-relative** — `[Route("[controller]")]` or the resource name (e.g. `[Route("products")]`) — and apply a shared `api` base **once** at host/app level so it stays configurable (`app.UsePathBase`, reverse proxy, or a global route-prefix convention). See [`entities.setup.md`](./entities.setup.md) — API route prefix.
+> **Keep controller routes resource-relative and spell the resource** — `[Route("products")]` — then apply a shared `api` base **once** at host/app level so it stays configurable (`app.UsePathBase`, reverse proxy, or a global route-prefix convention). Avoid the `[controller]` token: it expands to the class-name stem, so a `SupplierController` serves `/Supplier`, not the kebab-case plural `/suppliers` the SPA calls — a 404 on every request for that entity. See [`entities.setup.md`](./entities.setup.md) — API route prefix.
 
 | `.For<>()` registration | Required controller base | Inject as (outside a controller) |
 |---|---|---|

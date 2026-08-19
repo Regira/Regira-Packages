@@ -21,13 +21,14 @@ public class AttachmentFilteredQueryBuilder<TAttachment, TKey, TAttachmentSearch
         {
             var kw = QHelper.ParseKeyword(so.FileName);
             query = kw.HasWildcard
-                ? query.Where(x => EF.Functions.Like(x.FileName!, kw.Q!))
+                ? query.Where(x => EF.Functions.Like(x.FileName!, kw.TrimmedQ!))
                 : query.Where(x => x.FileName == so.FileName);
         }
 
         if (!string.IsNullOrWhiteSpace(so?.Extension))
         {
-            query = query.Where(x => EF.Functions.Like(x.FileName!, $"*{so.Extension}"));
+            var qExtension = QHelper.ParseKeyword(so.Extension);
+            query = query.Where(x => EF.Functions.Like(x.FileName!, qExtension.EndsWith!));
         }
 
         if (so?.MinSize.HasValue == true)

@@ -390,7 +390,7 @@ public static EntityServiceCollection<AppDbContext> AddSuppliers(this IEntitySer
     });
 
 // Controllers/SupplierController.cs — N type args on For<> → N+2 on the controller base
-[ApiController, Route("[controller]")]
+[ApiController, Route("suppliers")]                                    // spell the resource; see below
 public class SupplierController(/* no constructor params needed */)
     : EntityControllerBase<Supplier, int, SupplierSearchObject, SupplierDto, SupplierInputDto>;
 

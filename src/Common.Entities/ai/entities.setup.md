@@ -358,7 +358,7 @@ using (var scope = app.Services.CreateScope())
 
 ### API route prefix
 
-Keep controller routes resource-relative — `[Route("[controller]")]` (or the resource name, e.g. `[Route("products")]`) — and apply a shared `api` base **once** at the host/app level so it stays configurable. Either host under that path (IIS virtual directory / reverse proxy, or `app.UsePathBase("/api")`), or register a global route-prefix convention. `Regira.Entities.Web` already brings `Regira.Web` transitively, so `options.UseCentralRoutePrefix(new RouteAttribute("api"))` (`Regira.Web.Routing`) is available without another reference; the self-contained equivalent below is here for a host that does not reference it:
+Keep controller routes resource-relative and **spell the resource** — `[Route("products")]` — then apply a shared `api` base **once** at the host/app level so it stays configurable. Avoid the `[controller]` token: it expands to the class-name stem, so a `SupplierController` serves `/Supplier` instead of the `/suppliers` the SPA calls. Either host under that base path (IIS virtual directory / reverse proxy, or `app.UsePathBase("/api")`), or register a global route-prefix convention. `Regira.Entities.Web` already brings `Regira.Web` transitively, so `Regira.Web.Routing`'s `UseCentralRoutePrefix` is available without another reference — it configures `MvcOptions`, so call it where those are built: `builder.Services.AddControllers(o => o.UseCentralRoutePrefix(new RouteAttribute("api")));`. The self-contained equivalent below is here for a host that does not reference it:
 
 ```csharp no-compile
 // namespace Microsoft.AspNetCore.Mvc.ApplicationModels (RouteAttribute is in Microsoft.AspNetCore.Mvc)
