@@ -1,12 +1,12 @@
 ﻿namespace Regira.Entities.Keywords;
 
 /// <remarks>
-/// Every keyword comes in two families: raw (<see cref="Trimmed"/>, <see cref="StartsWith"/>,
-/// <see cref="EndsWith"/>, <see cref="TrimmedQ"/>, <see cref="TrimmedQW"/>) and normalized
-/// (<see cref="Normalized"/>, <see cref="NormalizedStartsWith"/>, <see cref="NormalizedEndsWith"/>,
-/// <see cref="Q"/>, <see cref="QW"/>). Match a raw column against the raw family and a normalized column
-/// against the normalized one — pairing them the other way compiles and silently matches nothing.
-/// <see cref="Q"/> and <see cref="QW"/> are normalized despite carrying no <c>Normalized</c> prefix.
+/// Every keyword comes in two families, told apart by the <c>Trimmed</c> prefix: raw
+/// (<see cref="Trimmed"/>, <see cref="TrimmedStartsWith"/>, <see cref="TrimmedEndsWith"/>,
+/// <see cref="TrimmedQ"/>, <see cref="TrimmedQW"/>) and normalized (<see cref="Normalized"/>,
+/// <see cref="StartsWith"/>, <see cref="EndsWith"/>, <see cref="Q"/>, <see cref="QW"/>).
+/// Match a raw column against the raw family and a normalized column against the normalized one —
+/// pairing them the other way compiles and silently matches nothing.
 /// </remarks>
 public class QKeyword
 {
@@ -29,11 +29,11 @@ public class QKeyword
     /// <summary>
     /// Trimmed keyword with wildcard at the end
     /// </summary>
-    public string? StartsWith { get; set; }
+    public string? TrimmedStartsWith { get; set; }
     /// <summary>
     /// Trimmed keyword with wildcard at the beginning
     /// </summary>
-    public string? EndsWith { get; set; }
+    public string? TrimmedEndsWith { get; set; }
     /// <summary>
     /// Trimmed keyword with wildcards if given
     /// </summary>
@@ -49,11 +49,11 @@ public class QKeyword
     /// <summary>
     /// Normalized keyword with wildcard at the end
     /// </summary>
-    public string? NormalizedStartsWith { get; set; }
+    public string? StartsWith { get; set; }
     /// <summary>
     /// Normalized keyword with wildcard at the beginning
     /// </summary>
-    public string? NormalizedEndsWith { get; set; }
+    public string? EndsWith { get; set; }
     /// <summary>
     /// Normalized keyword with wildcards if given
     /// </summary>

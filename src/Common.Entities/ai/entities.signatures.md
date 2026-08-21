@@ -1356,6 +1356,48 @@ public interface IEntityNormalizer<in T> : IEntityNormalizer
 }
 ```
 
+### Keyword Parsing
+
+```csharp no-compile
+using Regira.Entities.Keywords;
+using Regira.Entities.Keywords.Abstractions;
+
+public interface IQKeywordHelper
+{
+    ParsedKeywordCollection Parse(string? input);   // splits on spaces — one QKeyword per term
+    QKeyword ParseKeyword(string? input);           // a single term
+}
+
+public class QKeyword
+{
+    public string? Keyword { get; set; }            // unmodified input, wildcards included
+    public bool HasWildcardAtStart { get; set; }
+    public bool HasWildcardAtEnd { get; set; }
+    public bool HasWildcard { get; }
+
+    // RAW family — the input minus its wildcards, untouched otherwise
+    public string? Trimmed { get; set; }
+    public string? TrimmedStartsWith { get; set; }  // "term%"
+    public string? TrimmedEndsWith { get; set; }    // "%term"
+    public string? TrimmedQ { get; set; }           // wildcards the INPUT carried, e.g. "*term" → "%term"
+    public string? TrimmedQW { get; set; }          // "%term%", always both ends
+
+    // NORMALIZED family — same shapes, built from the normalized keyword
+    public string? Normalized { get; set; }
+    public string? StartsWith { get; set; }
+    public string? EndsWith { get; set; }
+    public string? Q { get; set; }
+    public string? QW { get; set; }
+}
+```
+
+**Match the family to the column.** Everything carrying the `Trimmed` prefix holds the raw keyword;
+everything without it holds the normalized one (`Q`/`QW` included). Pair a normalized column
+(`NormalizedContent`, `NormalizedLastName`) with the unprefixed members, and a column that stores the
+client's value verbatim (`FileName`, a reference code) with the `Trimmed*` ones. Crossing them compiles
+and silently matches nothing — `QKeywordHelper.ApplyNormalize` defaults to `true`, and the default
+normalizer upper-cases, drops `.` and turns `-` into a space, so no real file name survives it.
+
 ---
 
 ## Response Types

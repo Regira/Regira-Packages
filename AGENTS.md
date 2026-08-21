@@ -83,6 +83,11 @@ Every package owns its own `<Version>` in its `.csproj` (SemVer). Published vers
 - **Any change that ships** — source, the packed `ai/` guides, `build/` props/targets — must leave the changed package's `<Version>` **higher than its last published version**: patch for fixes and guide-only changes, minor for backward-compatible features, major for breaking changes. If the version was already bumped since the last publish, several edits may share that bump.
 - Do not bump packages you did not change. Dependent packages are re-versioned by the release tooling (ProjectFilesProcessor in the private Regira-Tools repo) when it publishes to nuget.org.
 - **Record every shipped change in [CHANGELOG.md](CHANGELOG.md) in the same change**: one bullet under the `## Unreleased` heading — `` `PackageId` x.y.z — one-line summary``. At publish time the Unreleased block becomes a dated release heading.
+- **The number you write is provisional; the deploy phase settles the final one.** The rules above are what
+  keep a changed package publishable at any moment — write them as stated. At release time the tooling
+  re-versions dependents on top of that, and only then does the `## Unreleased` block become a dated
+  heading, so do not date it yourself. Deploy mechanics live in `DEPLOY.md` in the private **Regira-Tools**
+  repo — outside this repository.
 
 ---
 

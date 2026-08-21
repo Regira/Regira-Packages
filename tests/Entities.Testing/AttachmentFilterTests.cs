@@ -9,10 +9,11 @@ using Testing.Library.Data;
 namespace Entities.Testing;
 
 // The FileName column stores the client's own value verbatim — dots, hyphens and virtual folders included —
-// so its LIKE patterns must be built from the RAW keyword: QKeyword.TrimmedQ/StartsWith/EndsWith. The
-// Q/QW and Normalized* members carry the NORMALIZED pattern (the default normalizer drops '.' and turns
-// '-' into a space), which no real file name can ever match. The helper is constructed exactly as DI
-// registers it (normalizing), so these cases pin the wiring, not a convenient non-normalizing stand-in.
+// so its LIKE patterns must be built from the RAW keyword: the Trimmed* family (QKeyword.TrimmedQ,
+// TrimmedStartsWith, TrimmedEndsWith). The unprefixed members — Q/QW, StartsWith/EndsWith — carry the
+// NORMALIZED pattern (the default normalizer drops '.' and turns '-' into a space), which no real file
+// name can ever match. The helper is constructed exactly as DI registers it (normalizing), so these cases
+// pin the wiring, not a convenient non-normalizing stand-in.
 [TestFixture]
 public class AttachmentFilterTests
 {
@@ -33,7 +34,10 @@ public class AttachmentFilterTests
             new Attachment { FileName = "my-report.pdf", Length = 200 },
             new Attachment { FileName = "archive/2026/scan.pdf", Length = 300 },
             new Attachment { FileName = "mypicture.jpg", Length = 400 },
-            new Attachment { FileName = "notes.txt", Length = 500 });
+            new Attachment { FileName = "notes.txt", Length = 500 },
+            // no dot before "pdf": the counter-example for an extension filter that anchors on the
+            // separator rather than matching any suffix
+            new Attachment { FileName = "handbook-nopdf", Length = 600 });
         await _db.SaveChangesAsync();
         _db.ChangeTracker.Clear();
     }
@@ -54,7 +58,7 @@ public class AttachmentFilterTests
 
     [TestCase(".pdf")]
     [TestCase("pdf")]
-    public async Task Extension_Matches_Every_File_Ending_With_It(string extension)
+    public async Task Extension_Matches_Every_File_With_That_Extension(string extension)
     {
         var results = await Filter(new AttachmentSearchObject { Extension = extension });
 
@@ -62,6 +66,16 @@ public class AttachmentFilterTests
         {
             "my-report-v2.pdf", "my-report.pdf", "archive/2026/scan.pdf"
         }));
+    }
+
+    [TestCase(".pdf")]
+    [TestCase("pdf")]
+    public async Task Extension_Does_Not_Match_A_Name_That_Merely_Ends_With_It(string extension)
+    {
+        // "%pdf" would take "handbook-nopdf" as well — "%.pdf" is what makes this an extension filter
+        var results = await Filter(new AttachmentSearchObject { Extension = extension });
+
+        Assert.That(results.Select(x => x.FileName), Has.No.Member("handbook-nopdf"));
     }
 
     [Test]
@@ -79,6 +93,17 @@ public class AttachmentFilterTests
         var results = await Filter(new AttachmentSearchObject { Extension = "*.txt" });
 
         Assert.That(results.Select(x => x.FileName), Is.EqualTo(new[] { "notes.txt" }));
+    }
+
+    [Test]
+    public async Task Extension_Of_Only_Wildcards_Filters_Nothing()
+    {
+        // "*" trims to the empty string, which would anchor on a bare "%." and match every dotted name
+        // for no stated intent. Skipping the clause instead leaves the other filters to do the work —
+        // the same result a caller gets by omitting the parameter.
+        var results = await Filter(new AttachmentSearchObject { Extension = "*" });
+
+        Assert.That(results, Has.Count.EqualTo(6));
     }
 
     // --- FileName, wildcard branch ---
@@ -136,7 +161,7 @@ public class AttachmentFilterTests
         // "*%*" becomes the pattern "%%%" — every row, though nothing is named with a percent sign
         var results = await Filter(new AttachmentSearchObject { FileName = "*%*" });
 
-        Assert.That(results, Has.Count.EqualTo(5));
+        Assert.That(results, Has.Count.EqualTo(6));
     }
 
     // --- FileName, exact branch (unchanged) ---

@@ -939,6 +939,15 @@ falls off is silently unsearchable. Widen `[MaxLength]` if you genuinely need mo
 
 Use `IQKeywordHelper.Parse(q)` to parse `Q` into keywords with wildcard support (e.g. `"blue*"` → `"blue%"`). Use `keyword.QW` with `EF.Functions.Like`.
 
+> **⚠️ Match the keyword family to the column.** Every `QKeyword` carries the term twice: the `Trimmed*`
+> members (`Trimmed`, `TrimmedStartsWith`, `TrimmedEndsWith`, `TrimmedQ`, `TrimmedQW`) hold the **raw**
+> input, everything without that prefix (`Normalized`, `StartsWith`, `EndsWith`, `Q`, `QW`) holds the
+> **normalized** one. Use the unprefixed members against a normalized column — `NormalizedContent`,
+> `NormalizedLastName` — and the `Trimmed*` ones against a column that stores the client's value verbatim,
+> such as an attachment `FileName` or a reference code. Crossing them compiles and returns nothing, with no
+> error: the default normalizer upper-cases, drops `.` and turns `-` into a space, so `my-report.pdf` is
+> looked up as `MY REPORTPDF`.
+
 **Searching a few explicit columns** — for an entity that is *not* `IHasNormalizedContent`, `FilterQ` takes the field selectors and builds the predicate (each keyword must match at least one field, so `"acme 2024"` matches a row whose code carries one term and whose related shopper carries the other). Without this or a custom filter, `?q=` is silently ignored — startup says so.
 
 `IQKeywordHelper` is injected, so this is a **registered builder class**, not an inline `e.Filter(...)` lambda (a lambda has no DI — see §Step 6):
