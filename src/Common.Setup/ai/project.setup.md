@@ -115,7 +115,7 @@ All templates use Serilog with console + rolling file sinks configured from `app
 
 Wrap the entire `Program.cs` body in a bootstrap logger + try/catch/finally:
 
-```csharp
+```csharp no-compile
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -185,7 +185,7 @@ Use this as the default API documentation surface for Regira projects. Do not ad
 
 ⚠️ **Adding authentication to any template? The plain `AddOpenApi()` / `MapScalarApiReference()` pair above is then incomplete** — Scalar renders every endpoint but offers no way to authenticate, so `/scalar` cannot exercise a guarded API. This applies to Templates 2–4 alike; it is not specific to `SelfHostingApiWithAuth`. Declare the schemes, and mark the operations that require one — a declared scheme only produces the auth prompt; without the operation transformer the document says nothing about which endpoints are guarded, and a generated client cannot tell:
 
-```csharp
+```csharp no-compile
 using Regira.Security.Authentication.Web.OpenApi.Transformers;
 
 builder.Services.AddOpenApi(options =>
@@ -268,7 +268,7 @@ Enrich console apps with appsettings, user secrets and environment variables.
 ```
 
 **HostExtensions**
-```csharp
+```csharp no-compile
 public static IHostBuilder AddConfiguration(this IHostBuilder builder)
 {
     return builder.ConfigureAppConfiguration((_, config) =>
@@ -484,7 +484,7 @@ Standalone console application for a task, script, or batch job — with structu
 
 ### `Program.cs`
 
-```csharp
+```csharp no-compile
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -526,7 +526,7 @@ finally
 
 ### `Infrastructure/HostingExtensions.cs`
 
-```csharp
+```csharp no-compile
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Serilog;
@@ -573,7 +573,7 @@ Standard ASP.NET Core API hosted on IIS, Azure, or Docker. No authentication. Su
 
 ### `Program.cs`
 
-```csharp
+```csharp no-compile
 using Scalar.AspNetCore;
 using Serilog;
 
@@ -635,7 +635,7 @@ Lightweight self-hosted HTTP API, optionally deployable as a Windows Service. No
 
 ### `Program.cs`
 
-```csharp
+```csharp no-compile
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Regira.System.Hosting.WindowsService;
 using Scalar.AspNetCore;
@@ -697,7 +697,7 @@ same scaffold — see *Authentication conventions* → *Picking a scheme*. Deplo
 
 ### `Program.cs`
 
-```csharp
+```csharp no-compile
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Regira.Security.Authentication.ApiKey.Extensions;
