@@ -937,7 +937,7 @@ falls off is silently unsearchable. Widen `[MaxLength]` if you genuinely need mo
 
 ### Filtering with Normalized Content and IQKeywordHelper
 
-Use `IQKeywordHelper.Parse(q)` to parse `Q` into keywords with wildcard support (e.g. `"blue*"` → `"blue%"`). Use `keyword.QW` with `EF.Functions.Like`.
+Use `IQKeywordHelper.Parse(q)` to parse `Q` into keywords with wildcard support (e.g. `"blue*"` → `"blue%"`). For normalized columns, use `keyword.QW` with `EF.Functions.Like` (for raw columns, use `keyword.TrimmedQW`).
 
 > **⚠️ Match the keyword family to the column.** Every `QKeyword` carries the term twice: the `Trimmed*`
 > members (`Trimmed`, `TrimmedStartsWith`, `TrimmedEndsWith`, `TrimmedQ`, `TrimmedQW`) hold the **raw**
