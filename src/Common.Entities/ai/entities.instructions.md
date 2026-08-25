@@ -937,7 +937,7 @@ falls off is silently unsearchable. Widen `[MaxLength]` if you genuinely need mo
 
 ### Filtering with Normalized Content and IQKeywordHelper
 
-Use `IQKeywordHelper.Parse(q)` to parse `Q` into keywords with wildcard support (e.g. `"blue*"` → `"blue%"`). Use `keyword.QW` with `EF.Functions.Like`.
+Use `IQKeywordHelper.Parse(q)` to parse `Q` into keywords with wildcard support (e.g. `"blue*"` → `"blue%"`). For normalized columns, use `keyword.QW` with `EF.Functions.Like` (for raw columns, use `keyword.TrimmedQW`).
 
 > **⚠️ Match the keyword family to the column.** Every `QKeyword` carries the term twice: the `Trimmed*`
 > members (`Trimmed`, `TrimmedStartsWith`, `TrimmedEndsWith`, `TrimmedQ`, `TrimmedQW`) hold the **raw**
@@ -945,8 +945,16 @@ Use `IQKeywordHelper.Parse(q)` to parse `Q` into keywords with wildcard support 
 > **normalized** one. Use the unprefixed members against a normalized column — `NormalizedContent`,
 > `NormalizedLastName` — and the `Trimmed*` ones against a column that stores the client's value verbatim,
 > such as an attachment `FileName` or a reference code. Crossing them compiles and returns nothing, with no
-> error: the default normalizer upper-cases, drops `.` and turns `-` into a space, so `my-report.pdf` is
-> looked up as `MY REPORTPDF`.
+> error: the default normalizer drops `.` and turns `-` into a space, and **preserves case** — `Transform`
+> defaults to `NoChanges` — so `my-report.pdf` is looked up as `my reportpdf`.
+>
+> ⚠️ **The `Trimmed*` members hold the raw input, so a `%` or `_` the client typed keeps its SQL `LIKE`
+> meaning.** On the attachments endpoint — the `Trimmed*` caller — `?fileName=my_report*` also matches
+> `my-report.pdf`, and `?fileName=50%*` matches every name starting `50`. That over-matches, never
+> under-matches, and is not injection — the term still travels as a parameter — but escape `%` and `_`
+> before building the pattern if exact punctuation has to match.
+>
+> `?q=` is unaffected: it filters `NormalizedContent` through `QW`, and the normalizer deletes `%` outright.
 
 **Searching a few explicit columns** — for an entity that is *not* `IHasNormalizedContent`, `FilterQ` takes the field selectors and builds the predicate (each keyword must match at least one field, so `"acme 2024"` matches a row whose code carries one term and whose related shopper carries the other). Without this or a custom filter, `?q=` is silently ignored — startup says so.
 

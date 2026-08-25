@@ -160,7 +160,8 @@
         "src/Security.Authentication/Security.Authentication.csproj"
       ],
       "guideFiles": [
-        "src/Common.Security/README.md"
+        "src/Common.Security/README.md",
+        "src/Common.Setup/ai/project.setup.md"
       ],
       "usings": [
         "System.Security.Claims",

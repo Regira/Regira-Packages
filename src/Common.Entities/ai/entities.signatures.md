@@ -1396,7 +1396,10 @@ everything without it holds the normalized one (`Q`/`QW` included). Pair a norma
 (`NormalizedContent`, `NormalizedLastName`) with the unprefixed members, and a column that stores the
 client's value verbatim (`FileName`, a reference code) with the `Trimmed*` ones. Crossing them compiles
 and silently matches nothing — `QKeywordHelper.ApplyNormalize` defaults to `true`, and the default
-normalizer upper-cases, drops `.` and turns `-` into a space, so no real file name survives it.
+normalizer drops `.` and turns `-` into a space (case is preserved: `Transform` defaults to
+`NoChanges`), so no real file name survives it — `my-report.pdf` normalizes to `my reportpdf`.
+Note the flip side: because the `Trimmed*` members are raw, a `%` or `_` the client typed keeps its
+SQL `LIKE` meaning and over-matches. Escape them if exact punctuation has to match.
 
 ---
 

@@ -8,8 +8,9 @@ namespace Entities.Testing;
 [TestFixture]
 public class QKeywordFamilyTests
 {
-    // normalizing, exactly as DI registers it: the default normalizer upper-cases, drops '.' and turns
-    // '-' into a space, so raw and normalized are visibly different for this input
+    // normalizing, exactly as DI registers it: the default normalizer drops '.' and turns '-' into a
+    // space (case is preserved — Transform defaults to NoChanges), so raw and normalized are visibly
+    // different for this input: 'my-report.pdf' -> 'my reportpdf'
     private readonly QKeywordHelper _qHelper = new();
 
     [Test]
