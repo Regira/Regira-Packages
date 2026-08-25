@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Regira.Entities.Attachments.Models;
 using Regira.Entities.EFcore.Attachments;
@@ -209,5 +209,62 @@ public class AttachmentFilterTests
             .ToListAsync();
 
         Assert.That(results.Select(x => x.Attachment!.FileName), Is.EqualTo(new[] { "my-report-v2.pdf" }));
+    }
+
+    // --- ...and on the EntityAttachmentQueryExtensions.Filter extension ---
+    // The static extension has no DI, so it builds its own QKeywordHelper. It must still reach the same
+    // meaning of Extension as the builders: anchored on the dot, input wildcards stripped.
+
+    private async Task<List<CourseAttachment>> SeedCourseAttachments(params string[] fileNames)
+    {
+        var course = new Course { Title = "Chemistry", Credits = 3 };
+        _db.Set<Course>().Add(course);
+        await _db.SaveChangesAsync();
+        _db.Set<CourseAttachment>().AddRange(fileNames.Select(fileName =>
+            new CourseAttachment { ObjectId = course.Id, Attachment = new Attachment { FileName = fileName } }));
+        await _db.SaveChangesAsync();
+        _db.ChangeTracker.Clear();
+
+        return await _db.Set<CourseAttachment>().Include(x => x.Attachment).ToListAsync();
+    }
+
+    private Task<List<CourseAttachment>> FilterViaExtension(EntityAttachmentSearchObject aso)
+        => _db.Set<CourseAttachment>().Include(x => x.Attachment).Filter(aso).ToListAsync();
+
+    [TestCase(".pdf")]
+    [TestCase("pdf")]
+    [TestCase("*.pdf")]
+    public async Task Extension_Via_The_Query_Extension_Anchors_On_The_Dot(string extension)
+    {
+        // before: "%pdf" took "handbook-nopdf" too, and "*.pdf" reached the pattern as "%*.pdf" — matching nothing
+        await SeedCourseAttachments("my-report.pdf", "handbook-nopdf", "notes.txt");
+
+        var results = await FilterViaExtension(new EntityAttachmentSearchObject { Extension = extension });
+
+        Assert.That(results.Select(x => x.Attachment!.FileName), Is.EqualTo(new[] { "my-report.pdf" }));
+    }
+
+    [Test]
+    public async Task Extension_Via_The_Query_Extension_Of_Only_Wildcards_Filters_Nothing()
+    {
+        await SeedCourseAttachments("my-report.pdf", "handbook-nopdf", "notes.txt");
+
+        var results = await FilterViaExtension(new EntityAttachmentSearchObject { Extension = "*" });
+
+        Assert.That(results, Has.Count.EqualTo(3));
+    }
+
+    [Test]
+    public async Task Extension_Via_The_Query_Extension_Combines_With_ObjectId()
+    {
+        var seeded = await SeedCourseAttachments("my-report.pdf", "handbook-nopdf");
+
+        var results = await FilterViaExtension(new EntityAttachmentSearchObject
+        {
+            ObjectId = [seeded[0].ObjectId],
+            Extension = "pdf"
+        });
+
+        Assert.That(results.Select(x => x.Attachment!.FileName), Is.EqualTo(new[] { "my-report.pdf" }));
     }
 }

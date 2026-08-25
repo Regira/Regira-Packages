@@ -954,9 +954,15 @@ Use `IQKeywordHelper.Parse(q)` to parse `Q` into keywords with wildcard support 
 > under-matches, and is not injection — the term still travels as a parameter — but escape `%` and `_`
 > before building the pattern if exact punctuation has to match.
 >
-> `?q=` is unaffected: it filters `NormalizedContent` through `QW`, and the normalizer deletes `%` outright.
+> `?q=` is narrower, not exempt. On the `IHasNormalizedContent` path the term reaches `QW` through the
+> normalizer, whose allow-list (`[^a-z0-9\s\-_,!;&']`) deletes a typed `%` — but `_` is **in** that set
+> and survives, so `?q=my_report` still searches `%my_report%` and the underscore keeps its
+> single-character `LIKE` meaning. On the explicit-fields `FilterQ` path nothing is deleted: it matches
+> `TrimmedQW`, so both `%` and `_` arrive intact, exactly as on the attachments endpoint.
 
 **Searching a few explicit columns** — for an entity that is *not* `IHasNormalizedContent`, `FilterQ` takes the field selectors and builds the predicate (each keyword must match at least one field, so `"acme 2024"` matches a row whose code carries one term and whose related shopper carries the other). Without this or a custom filter, `?q=` is silently ignored — startup says so.
+
+This overload matches the **raw** family (`TrimmedQW`), because the columns you name here hold the client's value verbatim — a code, a name. `?q=ORD-2024-001` therefore searches `%ORD-2024-001%` and finds the stored `ORD-2024-001`. The one thing not to pass it is a *normalized* column (`NormalizedLastName` and the like): build that predicate with `QW` yourself, per the callout above.
 
 `IQKeywordHelper` is injected, so this is a **registered builder class**, not an inline `e.Filter(...)` lambda (a lambda has no DI — see §Step 6):
 

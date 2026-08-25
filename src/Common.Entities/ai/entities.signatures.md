@@ -511,7 +511,9 @@ public static class QueryExtensions
     // Requires IHasNormalizedContent
     public static IQueryable<TEntity> FilterQ<TEntity>(this IQueryable<TEntity> query, ParsedKeywordCollection? keywords);
 
-    // No constraint — keyword search over explicit fields (each keyword must match at least one)
+    // No constraint — keyword search over explicit fields (each keyword must match at least one).
+    // Matches the RAW family (TrimmedQW): the fields you name are ordinary columns holding the client's
+    // value verbatim. Do not pass a normalized column here — build that predicate with QW yourself.
     public static IQueryable<TEntity> FilterQ<TEntity>(this IQueryable<TEntity> query, ParsedKeywordCollection? keywords,
         Expression<Func<TEntity, string?>> field, params Expression<Func<TEntity, string?>>[] moreFields);
 
@@ -1399,7 +1401,9 @@ and silently matches nothing — `QKeywordHelper.ApplyNormalize` defaults to `tr
 normalizer drops `.` and turns `-` into a space (case is preserved: `Transform` defaults to
 `NoChanges`), so no real file name survives it — `my-report.pdf` normalizes to `my reportpdf`.
 Note the flip side: because the `Trimmed*` members are raw, a `%` or `_` the client typed keeps its
-SQL `LIKE` meaning and over-matches. Escape them if exact punctuation has to match.
+SQL `LIKE` meaning and over-matches. The normalized family is narrower here, not exempt: the default
+normalizer's allow-list (`[^a-z0-9\s\-_,!;&']`) deletes `%` but keeps `_`, so `_` reaches `Q`/`QW`
+as a single-character wildcard too. Escape them if exact punctuation has to match.
 
 ---
 

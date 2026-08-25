@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Regira.Entities.Attachments.Abstractions;
 using Regira.Entities.Attachments.Models;
+using Regira.Entities.Keywords;
 using Regira.Entities.Models.Abstractions;
 
 namespace Regira.Entities.EFcore.Attachments;
@@ -23,7 +24,25 @@ public static class EntityAttachmentQueryExtensions
             }
             if (!string.IsNullOrWhiteSpace(aso.Extension))
             {
-                query = query.Where(x => EF.Functions.Like(x.Attachment!.FileName!, $"%{aso.Extension}"));
+                // Same meaning as AttachmentFilteredQueryBuilder: an extension, not a suffix. The pattern is
+                // anchored on the separating dot, so "pdf" cannot also match a file named "handbook-nopdf",
+                // and the dot is supplied when the caller omits it, so "pdf", ".pdf" and "*.pdf" all mean the
+                // same thing. Parsing strips the input wildcards first; re-parsing the dotted form is what
+                // puts the store's wildcard into the pattern instead of hard-coding '%' here.
+                // No DI here (a static extension), so the wildcards are QKeywordHelperOptions' defaults:
+                // '*' in, '%' out. A consumer that configured different ones has to build this predicate
+                // itself — EntityAttachmentFilteredQueryBuilder does take an IQKeywordHelper, but it
+                // implements ObjectId and FileName only, so it is no substitute for this method.
+                var qHelper = new QKeywordHelper();
+                var extension = qHelper.ParseKeyword(aso.Extension).Trimmed;
+                // A value of only wildcards trims to empty: anchoring that would match every dotted name for
+                // no stated intent, so the clause is skipped and the remaining filters stand on their own.
+                if (!string.IsNullOrEmpty(extension))
+                {
+                    var dotted = extension.StartsWith('.') ? extension : $".{extension}";
+                    var pattern = qHelper.ParseKeyword(dotted).TrimmedEndsWith!;
+                    query = query.Where(x => EF.Functions.Like(x.Attachment!.FileName!, pattern));
+                }
             }
 
             if (aso.MinSize.HasValue)
