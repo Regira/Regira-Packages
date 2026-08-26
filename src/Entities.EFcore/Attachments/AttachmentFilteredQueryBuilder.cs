@@ -21,13 +21,26 @@ public class AttachmentFilteredQueryBuilder<TAttachment, TKey, TAttachmentSearch
         {
             var kw = QHelper.ParseKeyword(so.FileName);
             query = kw.HasWildcard
-                ? query.Where(x => EF.Functions.Like(x.FileName!, kw.Q!))
+                ? query.Where(x => EF.Functions.Like(x.FileName!, kw.TrimmedQ!))
                 : query.Where(x => x.FileName == so.FileName);
         }
 
         if (!string.IsNullOrWhiteSpace(so?.Extension))
         {
-            query = query.Where(x => EF.Functions.Like(x.FileName!, $"*{so.Extension}"));
+            // An extension, not a suffix: the pattern is anchored on the separating dot, so "pdf" cannot also
+            // match a file named "handbook-nopdf". The dot is supplied when the caller omits it, so "pdf",
+            // ".pdf" and the wildcard spelling "*.pdf" all mean the same thing. Parsing first strips the
+            // input wildcards; re-parsing the dotted form is what builds the pattern with the configured
+            // wildcard output rather than a hard-coded '%'.
+            var extension = QHelper.ParseKeyword(so.Extension).Trimmed;
+            // A value of only wildcards trims to empty: anchoring that would match every dotted name for no
+            // stated intent, so the clause is skipped and the remaining filters stand on their own.
+            if (!string.IsNullOrEmpty(extension))
+            {
+                var dotted = extension.StartsWith('.') ? extension : $".{extension}";
+                var pattern = QHelper.ParseKeyword(dotted).TrimmedEndsWith!;
+                query = query.Where(x => EF.Functions.Like(x.FileName!, pattern));
+            }
         }
 
         if (so?.MinSize.HasValue == true)

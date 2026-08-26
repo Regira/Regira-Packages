@@ -17,7 +17,7 @@ public interface IAttachment : IBinaryFile, IHasTimestamps;
 public interface IAttachment<TKey> : IAttachment, IEntity<TKey>;
 ```
 
-The Attachment is based on `IBinaryFile` (Part of [Regira.IO](../../../Common.IO.Storage/README.md) module):
+The Attachment is based on `IBinaryFile` (Part of [Regira.IO](../../Common.IO.Storage/README.md) module):
 - `string? FileName` - The name of a file (not full path)
 - `string? Identifier` - Identifier in a specific context (Prefix + Filename)
 - `string? Prefix` - The folder structure, except the root folder

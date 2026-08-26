@@ -18,7 +18,7 @@
   <ItemGroup>
     <!-- Roslyn: classify each ```csharp block (type declarations vs. statements) so we know whether to
          emit it at namespace scope or wrap it in an async method body. Syntax-only parsing. -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.6.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
   </ItemGroup>
 
   <ItemGroup>

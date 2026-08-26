@@ -1,10 +1,10 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Regira.Entities.Attachments.Abstractions;
 using Regira.Entities.Attachments.Models;
-using Regira.Entities.QueryBuilders.Abstractions;
 using Regira.Entities.Keywords;
 using Regira.Entities.Keywords.Abstractions;
 using Regira.Entities.Models.Abstractions;
+using Regira.Entities.QueryBuilders.Abstractions;
 
 namespace Regira.Entities.EFcore.Attachments;
 
@@ -33,7 +33,7 @@ public class EntityAttachmentFilteredQueryBuilder<TObjectKey, TEntityAttachment,
             {
                 var kw = QHelper.ParseKeyword(so.FileName);
                 query = kw.HasWildcard
-                    ? query.Where(x => EF.Functions.Like(x.Attachment!.FileName!, kw.Q!))
+                    ? query.Where(x => EF.Functions.Like(x.Attachment!.FileName!, kw.TrimmedQ!))
                     : query.Where(x => x.Attachment!.FileName == so.FileName);
             }
         }

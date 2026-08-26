@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Office.Excel.NpoiMapper</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.2</Version>
+    <Version>6.1.3</Version>
     <Description>Excel-to-object mapping and spreadsheet import/export using NpoiMapper (NPOI) for Regira Office.</Description>
     <PackageTags>regira;office;excel;mapping;import;export;spreadsheet;npoi;npoiMapper</PackageTags>
   </PropertyGroup>

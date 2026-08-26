@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Regira.Entities.EFcore.Extensions;
 using Regira.Entities.Keywords;
@@ -10,6 +10,11 @@ namespace Entities.Testing;
 // FilterQ over explicit fields is what makes ?q= functional for entities that do not implement
 // IHasNormalizedContent. The predicate is composed as an expression tree, so every case here also pins
 // that EF translates it to SQL rather than falling back to client evaluation.
+//
+// The overload matches the RAW family (QKeyword.TrimmedQW): the fields a caller names are ordinary
+// columns holding the client's value verbatim — a code, a name. Against the normalized family a term
+// carrying punctuation would be looked up in a shape the raw column never stores, so it would match
+// nothing at all; the last case here pins the reverse pairing as the one that does not work.
 [TestFixture]
 public class MultiFieldKeywordSearchTests
 {
@@ -31,7 +36,14 @@ public class MultiFieldKeywordSearchTests
             new Student { GivenName = "Jane", NormalizedGivenName = "JANE", LastName = "Smith", NormalizedLastName = "SMITH" },
             // "Doe" as a given name, so a term can match either column; the last name deliberately shares no
             // substring with the other rows' terms
-            new Student { GivenName = "Doe", NormalizedGivenName = "DOE", LastName = "Baker", NormalizedLastName = "BAKER" });
+            new Student { GivenName = "Doe", NormalizedGivenName = "DOE", LastName = "Baker", NormalizedLastName = "BAKER" },
+            // punctuation is what tells the two families apart: the normalizer turns '-' into a space, so
+            // the normalized lookup value for this row is "Ann Marie" / "Van Der Berg"
+            new Student
+            {
+                GivenName = "Ann-Marie", NormalizedGivenName = "Ann Marie",
+                LastName = "Van-Der-Berg", NormalizedLastName = "Van Der Berg"
+            });
         await _db.SaveChangesAsync();
         _db.ChangeTracker.Clear();
     }
@@ -43,9 +55,10 @@ public class MultiFieldKeywordSearchTests
         _connection.Close();
     }
 
+    // the raw columns — what this overload is for
     private Task<List<Student>> Search(string q)
         => _db.Set<Student>()
-            .FilterQ(_qHelper.Parse(q), x => x.NormalizedGivenName, x => x.NormalizedLastName)
+            .FilterQ(_qHelper.Parse(q), x => x.GivenName, x => x.LastName)
             .ToListAsync();
 
     [Test]
@@ -74,18 +87,50 @@ public class MultiFieldKeywordSearchTests
     [Test]
     public async Task Blank_Query_Leaves_The_Query_Untouched()
     {
-        Assert.That(await Search(null!), Has.Count.EqualTo(3));
-        Assert.That(await Search(" "), Has.Count.EqualTo(3));
+        Assert.That(await Search(null!), Has.Count.EqualTo(4));
+        Assert.That(await Search(" "), Has.Count.EqualTo(4));
     }
 
     [Test]
     public async Task Single_Field_Search_Is_Supported()
     {
         var results = await _db.Set<Student>()
-            .FilterQ(_qHelper.Parse("doe"), x => x.NormalizedLastName)
+            .FilterQ(_qHelper.Parse("doe"), x => x.LastName)
             .ToListAsync();
 
         Assert.That(results, Has.Count.EqualTo(1));
         Assert.That(results[0].GivenName, Is.EqualTo("John"));
+    }
+
+    // --- the raw family is what reaches a raw column ---
+
+    [TestCase("Ann-Marie")]
+    [TestCase("Van-Der-Berg")]
+    public async Task A_Punctuated_Term_Matches_The_Raw_Column(string q)
+    {
+        // through the normalized family this searched "%Ann Marie%" against a column storing "Ann-Marie"
+        // and returned nothing — the silent no-match the two families exist to prevent
+        var results = await Search(q);
+
+        Assert.That(results.Select(x => x.GivenName), Is.EqualTo(new[] { "Ann-Marie" }));
+    }
+
+    [Test]
+    public async Task Both_Terms_Of_A_Punctuated_Name_Must_Still_Match()
+    {
+        Assert.That(await Search("Ann-Marie Van-Der-Berg"), Has.Count.EqualTo(1));
+        Assert.That(await Search("Ann-Marie Smith"), Is.Empty);
+    }
+
+    [Test]
+    public async Task A_Normalized_Column_Is_The_Pairing_That_Does_Not_Work()
+    {
+        // the documented caveat, pinned: "Van-Der-Berg" reaches the pattern raw, and NormalizedLastName
+        // stores "Van Der Berg" — build such a predicate with QKeyword.QW instead of using this overload
+        var results = await _db.Set<Student>()
+            .FilterQ(_qHelper.Parse("Van-Der-Berg"), x => x.NormalizedLastName)
+            .ToListAsync();
+
+        Assert.That(results, Is.Empty);
     }
 }

@@ -613,7 +613,7 @@ table below rather than reasoning it out.
 > child namespace and the controller won't resolve (CS0246) without it. See
 > [`entities.web.namespaces.md`](../../Entities.Web/ai/entities.web.namespaces.md) for the exact `using` set.
 
-> **Keep controller routes resource-relative** — `[Route("[controller]")]` or the resource name (e.g. `[Route("products")]`) — and apply a shared `api` base **once** at host/app level so it stays configurable (`app.UsePathBase`, reverse proxy, or a global route-prefix convention). See [`entities.setup.md`](./entities.setup.md) — API route prefix.
+> **Keep controller routes resource-relative and spell the resource** — `[Route("products")]` — then apply a shared `api` base **once** at host/app level so it stays configurable (`app.UsePathBase`, reverse proxy, or a global route-prefix convention). Avoid the `[controller]` token: it expands to the class-name stem, so a `SupplierController` serves `/Supplier`, not the kebab-case plural `/suppliers` the SPA calls — a 404 on every request for that entity. See [`entities.setup.md`](./entities.setup.md) — API route prefix.
 
 | `.For<>()` registration | Required controller base | Inject as (outside a controller) |
 |---|---|---|
@@ -937,9 +937,32 @@ falls off is silently unsearchable. Widen `[MaxLength]` if you genuinely need mo
 
 ### Filtering with Normalized Content and IQKeywordHelper
 
-Use `IQKeywordHelper.Parse(q)` to parse `Q` into keywords with wildcard support (e.g. `"blue*"` → `"blue%"`). Use `keyword.QW` with `EF.Functions.Like`.
+Use `IQKeywordHelper.Parse(q)` to parse `Q` into keywords with wildcard support (e.g. `"blue*"` → `"blue%"`). For normalized columns, use `keyword.QW` with `EF.Functions.Like` (for raw columns, use `keyword.TrimmedQW`).
+
+> **⚠️ Match the keyword family to the column.** Every `QKeyword` carries the term twice: the `Trimmed*`
+> members (`Trimmed`, `TrimmedStartsWith`, `TrimmedEndsWith`, `TrimmedQ`, `TrimmedQW`) hold the **raw**
+> input, everything without that prefix (`Normalized`, `StartsWith`, `EndsWith`, `Q`, `QW`) holds the
+> **normalized** one. Use the unprefixed members against a normalized column — `NormalizedContent`,
+> `NormalizedLastName` — and the `Trimmed*` ones against a column that stores the client's value verbatim,
+> such as an attachment `FileName` or a reference code. Crossing them compiles and returns nothing, with no
+> error: the default normalizer drops `.` and turns `-` into a space, and **preserves case** — `Transform`
+> defaults to `NoChanges` — so `my-report.pdf` is looked up as `my reportpdf`.
+>
+> ⚠️ **The `Trimmed*` members hold the raw input, so a `%` or `_` the client typed keeps its SQL `LIKE`
+> meaning.** On the attachments endpoint — the `Trimmed*` caller — `?fileName=my_report*` also matches
+> `my-report.pdf`, and `?fileName=50%*` matches every name starting `50`. That over-matches, never
+> under-matches, and is not injection — the term still travels as a parameter — but escape `%` and `_`
+> before building the pattern if exact punctuation has to match.
+>
+> `?q=` is narrower, not exempt. On the `IHasNormalizedContent` path the term reaches `QW` through the
+> normalizer, whose allow-list (`[^a-z0-9\s\-_,!;&']`) deletes a typed `%` — but `_` is **in** that set
+> and survives, so `?q=my_report` still searches `%my_report%` and the underscore keeps its
+> single-character `LIKE` meaning. On the explicit-fields `FilterQ` path nothing is deleted: it matches
+> `TrimmedQW`, so both `%` and `_` arrive intact, exactly as on the attachments endpoint.
 
 **Searching a few explicit columns** — for an entity that is *not* `IHasNormalizedContent`, `FilterQ` takes the field selectors and builds the predicate (each keyword must match at least one field, so `"acme 2024"` matches a row whose code carries one term and whose related shopper carries the other). Without this or a custom filter, `?q=` is silently ignored — startup says so.
+
+This overload matches the **raw** family (`TrimmedQW`), because the columns you name here hold the client's value verbatim — a code, a name. `?q=ORD-2024-001` therefore searches `%ORD-2024-001%` and finds the stored `ORD-2024-001`. The one thing not to pass it is a *normalized* column (`NormalizedLastName` and the like): build that predicate with `QW` yourself, per the callout above.
 
 `IQKeywordHelper` is injected, so this is a **registered builder class**, not an inline `e.Filter(...)` lambda (a lambda has no DI — see §Step 6):
 

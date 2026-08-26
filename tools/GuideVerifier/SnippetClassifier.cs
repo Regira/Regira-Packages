@@ -21,6 +21,13 @@ public static class SnippetClassifier
         // A `Program.cs` block opens with usings and then runs statements — the shape every host guide
         // shows. Its usings belong at file scope, but the body is still statements, so global statements
         // win over the usings when both are present.
+        //
+        // Known limitation: a block carrying global statements AND a type declaration — the shape a
+        // quickstart takes as soon as it appends a record or class after `app.Run()` — is classified
+        // Statements and wrapped in a method body, where the type declaration is illegal. It fails as a
+        // compiler error naming the snippet rather than passing silently, so it is a trap and not a hole,
+        // but supporting that shape means splitting the tree (declarations to namespace scope, statements
+        // to the method) rather than picking one kind for the whole block. No guide hits it today.
         if (root.Members.Any(m => m is GlobalStatementSyntax))
         {
             return SnippetKind.Statements;

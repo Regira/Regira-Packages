@@ -10,7 +10,10 @@ public static class ControllerExtensions
 {
     public static IActionResult File(this ControllerBase ctrl, INamedFile file, bool inline = true)
     {
-        // stream instead of buffering the whole file in memory
+        // Resolved before any header is written: a missing blob must return a clean 404, not one advertising
+        // a Content-Disposition for a file that is not there.
+        // (GetStream() copies a stream-backed file into a MemoryStream, so this does buffer — it is a
+        // fresh, rewound, independently disposable stream, not a zero-copy handover.)
         var stream = file.GetStream();
         if (stream == null)
         {

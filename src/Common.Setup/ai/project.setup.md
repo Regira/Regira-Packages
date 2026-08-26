@@ -115,7 +115,7 @@ All templates use Serilog with console + rolling file sinks configured from `app
 
 Wrap the entire `Program.cs` body in a bootstrap logger + try/catch/finally:
 
-```csharp
+```csharp no-compile
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -185,7 +185,7 @@ Use this as the default API documentation surface for Regira projects. Do not ad
 
 ⚠️ **Adding authentication to any template? The plain `AddOpenApi()` / `MapScalarApiReference()` pair above is then incomplete** — Scalar renders every endpoint but offers no way to authenticate, so `/scalar` cannot exercise a guarded API. This applies to Templates 2–4 alike; it is not specific to `SelfHostingApiWithAuth`. Declare the schemes, and mark the operations that require one — a declared scheme only produces the auth prompt; without the operation transformer the document says nothing about which endpoints are guarded, and a generated client cannot tell:
 
-```csharp
+```csharp no-compile
 using Regira.Security.Authentication.Web.OpenApi.Transformers;
 
 builder.Services.AddOpenApi(options =>
@@ -268,7 +268,7 @@ Enrich console apps with appsettings, user secrets and environment variables.
 ```
 
 **HostExtensions**
-```csharp
+```csharp no-compile
 public static IHostBuilder AddConfiguration(this IHostBuilder builder)
 {
     return builder.ConfigureAppConfiguration((_, config) =>
@@ -330,8 +330,14 @@ authentication middleware.
 ```
 
 > `Regira.Security.Authentication.Web` references `Microsoft.AspNetCore.OpenApi` and thereby **floors** it
-> (and, through it, `Microsoft.OpenApi`). Pinning either lower than the floor fails restore with
-> **NU1605 (package downgrade)** — resolve them to the latest stable patch instead of an older pin.
+> (and, through it, `Microsoft.OpenApi`) — 6.1.2+ floors them at `10.0.11` and `2.11.0`. Pinning either
+> lower than the floor fails restore with **NU1605 (package downgrade)** — resolve them to the latest
+> stable patch instead of an older pin.
+>
+> ⚠️ `dotnet new webapi` leaves a pin below that floor (`10.0.10`), so **raise
+> `Microsoft.AspNetCore.OpenApi` before adding the auth packages**. Hit it anyway and nothing restores or
+> builds until it is cleared — but `dotnet add package` edits still land, so
+> `dotnet add package Microsoft.AspNetCore.OpenApi` fixes it in place; no hand-editing needed.
 
 **appsettings.json — Authentication block**
 ```json
@@ -349,7 +355,8 @@ authentication middleware.
 }
 ```
 
-Section names are constants on `AuthenticationSections`: `Jwt`, `Bearer`, `ApiKeys`, `Cookie`, `Oidc`, `EntraId`.
+Section names are constants on `AuthenticationSections` (`using Regira.Security.Authentication.Core.Models;`):
+`Jwt`, `Bearer`, `ApiKeys`, `Cookie`, `Oidc`, `EntraId`.
 Only add the blocks the app registers a scheme for:
 
 ```json
@@ -385,7 +392,17 @@ Only add the blocks the app registers a scheme for:
 
 **Key auth model types**
 
-Provided by `Regira.Security.Authentication`:
+⚠️ `Regira.Security.Authentication` is the **package**, not a namespace — `using` it fails with CS0234.
+Never guess one; these are the namespaces, and `security.instructions` → *Namespace Quick Reference* has
+the rest (extension methods sit in the matching `.Extensions` namespace).
+
+```csharp
+using Regira.Security.Authentication.Core.Models;          // AuthenticationSections, RegiraClaimTypes, SchemeSelectorOptions, SchemeForwardRules
+using Regira.Security.Authentication.Jwt.Models;           // JwtTokenOptions, BearerValidationOptions, EntraIdOptions/Defaults, RefreshTokenOptions, TokenPair, RefreshTokenRecord
+using Regira.Security.Authentication.ApiKey.Models;        // ApiKeyOwner, ApiKeyDefaults
+using Regira.Security.Authentication.Cookie.Models;        // CookieAuthOptions, CookieAuthDefaults
+using Regira.Security.Authentication.OpenIdConnect.Models; // OidcAuthOptions, EntraIdSignInOptions
+```
 
 - **`ApiKeyOwner`** — `{ OwnerId, Key, Roles, Claims }` — registered caller identity
 - **`ApiKeyDefaults`** — `AuthenticationScheme` + `HeaderName` constants
@@ -467,7 +484,7 @@ Standalone console application for a task, script, or batch job — with structu
 
 ### `Program.cs`
 
-```csharp
+```csharp no-compile
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -509,7 +526,7 @@ finally
 
 ### `Infrastructure/HostingExtensions.cs`
 
-```csharp
+```csharp no-compile
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Serilog;
@@ -556,7 +573,7 @@ Standard ASP.NET Core API hosted on IIS, Azure, or Docker. No authentication. Su
 
 ### `Program.cs`
 
-```csharp
+```csharp no-compile
 using Scalar.AspNetCore;
 using Serilog;
 
@@ -618,7 +635,7 @@ Lightweight self-hosted HTTP API, optionally deployable as a Windows Service. No
 
 ### `Program.cs`
 
-```csharp
+```csharp no-compile
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Regira.System.Hosting.WindowsService;
 using Scalar.AspNetCore;
@@ -680,7 +697,7 @@ same scaffold — see *Authentication conventions* → *Picking a scheme*. Deplo
 
 ### `Program.cs`
 
-```csharp
+```csharp no-compile
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Regira.Security.Authentication.ApiKey.Extensions;

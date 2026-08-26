@@ -165,9 +165,16 @@ public static class QueryExtensions
     /// <para>
     /// Use inside an <c>IFilteredQueryBuilder</c> (or a <c>Filter(...)</c> callback) to make <c>?q=</c> functional —
     /// without one of those, <c>q</c> is silently ignored for such entities. Matching uses
-    /// <see cref="QKeyword.QW"/> (wildcards at both ends) against the raw column, so prefer normalized columns
-    /// where the entity has them; for a single searchable blob, implement <see cref="IHasNormalizedContent"/>
-    /// and use the <c>ParsedKeywordCollection</c> overload instead.
+    /// <see cref="QKeyword.TrimmedQW"/> (the <b>raw</b> keyword, wildcards at both ends), because the fields
+    /// named here are ordinary columns storing the client's value verbatim — a code, a name. For a single
+    /// searchable blob, implement <see cref="IHasNormalizedContent"/> and use the
+    /// <c>ParsedKeywordCollection</c> overload instead, which matches <see cref="QKeyword.QW"/> against
+    /// <c>NormalizedContent</c>.
+    /// </para>
+    /// <para>
+    /// If a field you name here is itself a <em>normalized</em> column (<c>NormalizedLastName</c> and the
+    /// like), this will not match it once the term carries punctuation — build that predicate with
+    /// <see cref="QKeyword.QW"/> yourself rather than passing the column to this overload.
     /// </para>
     /// <para>
     /// The keywords come from <c>IQKeywordHelper</c>, which is a registered service — hence the builder class
@@ -197,7 +204,7 @@ public static class QueryExtensions
         Expression<Func<TEntity, string?>>[] fields = [field, .. moreFields];
         foreach (var keyword in keywords)
         {
-            query = query.Where(AnyFieldLike(fields, keyword.QW!));
+            query = query.Where(AnyFieldLike(fields, keyword.TrimmedQW!));
         }
 
         return query;

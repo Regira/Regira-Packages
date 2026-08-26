@@ -6,7 +6,7 @@
 [![Docs](https://img.shields.io/badge/docs-regira.github.io-blue)](https://regira.github.io/Regira-Packages/)
 [![MCP server](https://img.shields.io/badge/MCP-mcp.regira.com-8A2BE2)](https://mcp.regira.com/mcp)
 
-This is the **public, source-available** repository for the Regira NuGet packages, published on [nuget.org](https://www.nuget.org/profiles/regira-bbv). Most packages are [Apache-2.0](LICENSE); the seven license-validating packages ship the [Regira Commercial License](legal/REGIRA-COMMERCIAL-LICENSE.md) with a free tier — see [Licensing](#licensing). Homepage: [regira.com](https://regira.com) · Documentation: [regira.github.io/Regira-Packages](https://regira.github.io/Regira-Packages/).
+This is the **public, source-available** repository for the Regira NuGet packages, published on [nuget.org](https://www.nuget.org/profiles/regira-bbv). Most packages are [Apache-2.0](LICENSE); the seven commercially licensed packages ship the [Regira Commercial License](legal/REGIRA-COMMERCIAL-LICENSE.md) with a free tier — see [Licensing](#licensing). Homepage: [regira.com](https://regira.com) · Documentation: [regira.github.io/Regira-Packages](https://regira.github.io/Regira-Packages/).
 
 Regira is a collection of .NET libraries providing unified abstractions for common application concerns. All packages follow the same pattern: a shared interface in a `Common.*` project, with one or more backend implementations as separate packages. This repository supersedes the former private Regira-Codebase: public history starts at the 6.0.0 release (2026-08-05), but the libraries were extracted from a longer-running private codebase that powers production systems such as the [live demos](#samples--demos) below.
 

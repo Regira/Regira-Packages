@@ -38,8 +38,13 @@ public class QKeywordHelper(QKeywordHelperOptions? options = null, INormalizer? 
         var isStartingWith = input?.StartsWith(Options.WildcardInput) == true;
         var isEndingWith = input?.EndsWith(Options.WildcardInput) == true;
         var trimmed = input?.Trim(Options.WildcardInput.ToCharArray());
-        var normalized = Options.ApplyNormalize ? Normalizer.Normalize(trimmed) : trimmed;
 
+        var trimmedStartsWith = $"{trimmed}{Options.WildcardOutput}";
+        var trimmedEndsWith = $"{Options.WildcardOutput}{trimmed}";
+        var trimmedQ = $"{(isStartingWith ? Options.WildcardOutput : "")}{trimmed}{(isEndingWith ? Options.WildcardOutput : "")}";
+        var trimmedQW = $"{Options.WildcardOutput}{trimmed}{Options.WildcardOutput}";
+
+        var normalized = Options.ApplyNormalize ? Normalizer.Normalize(trimmed) : trimmed;
         var startsWith = $"{normalized}{Options.WildcardOutput}";
         var endsWith = $"{Options.WildcardOutput}{normalized}";
         var q = $"{(isStartingWith ? Options.WildcardOutput : "")}{normalized}{(isEndingWith ? Options.WildcardOutput : "")}";
@@ -50,6 +55,10 @@ public class QKeywordHelper(QKeywordHelperOptions? options = null, INormalizer? 
             HasWildcardAtStart = isStartingWith,
             HasWildcardAtEnd = isEndingWith,
             Trimmed = trimmed,
+            TrimmedStartsWith = trimmedStartsWith,
+            TrimmedEndsWith = trimmedEndsWith,
+            TrimmedQ = trimmedQ,
+            TrimmedQW = trimmedQW,
             Normalized = normalized,
             StartsWith = startsWith,
             EndsWith = endsWith,
