@@ -192,9 +192,10 @@ Both extension methods register `IMailService` as a transient service.
 
 ### MailException
 
-Thrown by the shared `MailerBase` for invalid attachments (missing file name or empty content), and by
-**SendGrid** when the provider returns a non-success response. The **Mailgun** backend throws a plain
-`Exception` on failure instead — a `catch (MailException)` block will not catch Mailgun send failures.
+Thrown by the shared `MailerBase` for invalid attachments (missing file name or empty content), and by the
+**SendGrid** and **Mailgun** backends when the provider returns a non-success response. The provider's own
+error body is on `ResponseContent` — the status code alone rarely says why a send was refused. An
+unauthorized response is the exception: both backends throw a plain `Exception("Not authorized")` for it.
 
 | Property | Type | Description |
 |----------|------|-------------|

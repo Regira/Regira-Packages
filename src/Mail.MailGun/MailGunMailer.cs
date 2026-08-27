@@ -2,6 +2,7 @@ using System.Net;
 using Regira.IO.Extensions;
 using Regira.IO.Utilities;
 using Regira.Office.Mail.Abstractions;
+using Regira.Office.Mail.Exceptions;
 using Regira.Office.Mail.Models;
 using RestSharp;
 using RestSharp.Authenticators;
@@ -73,7 +74,13 @@ public class MailGunMailer(MailgunConfig config) : MailerBase
         }
         if (!mailerResponse.IsSuccessful)
         {
-            throw new Exception("Failed. Status: " + mailerResponse.StatusCode, mailerResponse.ErrorException);
+            // Mailgun describes the refusal in the response body ({"message": "..."}); without it the status
+            // code alone leaves a caller with nothing to act on.
+            throw new MailException($"Sending message failed. Status: {mailerResponse.StatusCode}", mailerResponse.ErrorException)
+            {
+                MessageObject = message,
+                ResponseContent = mailerResponse.Content
+            };
         }
 
         // result
