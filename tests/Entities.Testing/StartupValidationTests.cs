@@ -496,4 +496,61 @@ public class StartupValidationTests
 
         Assert.That(capture.Warnings, Has.None.Contains("Includes()"));
     }
+
+    public class Invoice : Regira.Entities.Models.Abstractions.IEntity<int>, Regira.Entities.Models.Abstractions.IArchivable
+    {
+        public int Id { get; set; }
+        [Regira.Entities.Attributes.ServerOwned] public string? Code { get; set; }
+        [Regira.Entities.Attributes.ServerOwned] public bool IsArchived { get; set; }
+        [Regira.Entities.Attributes.ServerOwned] public ICollection<Note>? Notes { get; set; }
+    }
+    public class InvoiceContext(DbContextOptions<InvoiceContext> options) : DbContext(options)
+    {
+        public DbSet<Invoice> Invoices => Set<Invoice>();
+        public DbSet<Note> Notes => Set<Note>();
+    }
+
+    [Test]
+    public void ServerOwned_On_The_Archived_Flag_And_On_A_Navigation_Fail_Startup()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddDbContext<InvoiceContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<InvoiceContext>(o =>
+            {
+                o.UseDefaults();
+                o.ConfigureValidation(v => v.Enabled = true);
+            })
+            .For<Invoice>();
+
+        using var sp = services.BuildServiceProvider();
+        var ex = Assert.ThrowsAsync<InvalidOperationException>(() => RunHostedServices(sp));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex!.Message, Does.Contain("Invoice.IsArchived"));
+            Assert.That(ex.Message, Does.Contain("Invoice.Notes"));
+            Assert.That(ex.Message, Does.Not.Contain("Invoice.Code"));
+        });
+    }
+
+    [Test]
+    public async Task ServerOwned_Without_Enforcement_Warns()
+    {
+        var capture = new CaptureLoggerProvider();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(capture));
+        services.AddDbContext<InvoiceContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<InvoiceContext>(o => o.ConfigureValidation(v =>
+            {
+                v.Enabled = true;
+                v.ThrowOnError = false;
+            }))
+            .For<Invoice>();
+
+        using var sp = services.BuildServiceProvider();
+        await RunHostedServices(sp);
+
+        Assert.That(capture.Warnings, Has.Some.Contains("no AutoServerOwnedPrepper is registered"));
+    }
 }

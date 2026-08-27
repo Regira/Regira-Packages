@@ -651,9 +651,45 @@ per Step 5.) It compiles, returns 200, and corrupts data: a computed `Total` bec
 save. This applies to PATCH too — the merge patch is applied through `TInputDto`, so a field the DTO does
 not declare cannot survive it.
 
-After Step 5, list every field you excluded from `TInputDto`; each needs restoring on update. The idiomatic
-way is a **primer** — the same mechanism the built-in `HasCreatedDbPrimer` uses to protect `Created`: on a
-`Modified` entry, copy the stored value back from `entry.OriginalValues`. Stamp on create, restore on update:
+After Step 5, list every field you excluded from `TInputDto`; each needs restoring on update. Declare it and
+the framework does the restoring — `[ServerOwned]` (namespace `Regira.Entities.Attributes`) to protect,
+`e.ServerOwned(x => x.Code, mint)` to protect *and* mint on create:
+
+```csharp no-compile
+public class Order : IEntity<int>
+{
+    public int Id { get; set; }
+    [ServerOwned] public string? Code { get; set; }
+    [ServerOwned] public decimal Total { get; set; }
+    public string? Status { get; set; }
+}
+
+// registration — the attribute alone needs none; this adds the create-time mint
+services.UseEntities<AppDbContext>(o => o.UseDefaults())
+    .For<Order>(e => e
+        .ServerOwned(x => x.Code, _ => $"ORD-{Guid.NewGuid():N}"[..16])
+        .Related(x => x.Lines, r => r.ServerOwned(x => x.UnitPrice)));   // owned children too
+```
+
+- **Create** mints only when the property is unset, so seeded and imported values survive. The attribute on
+  its own never mints — an attribute cannot carry a lambda.
+- **Update** copies the stored value over whatever arrived, so the field is immutable through the entity
+  service. Registration order is execution order: a `Prepare()` registered afterwards can still set it.
+- Enforced by a **prepper** (`AutoServerOwnedPrepper`, registered by `UseDefaults()`), so a domain/workflow
+  service saving through the raw `DbContext` keeps its write — see *Primer vs prepper when a second writer
+  exists* below.
+- **Scalars and FKs only.** A navigation, a property without both accessors, and `IArchivable.IsArchived`
+  cannot be server-owned: the fluent form throws at registration, the attribute is skipped and reported as a
+  startup validation error. Owned child *collections* are governed by `Related()`.
+
+Two cases the declaration does not cover, and what to use instead:
+
+| What you need | Use |
+|---|---|
+| Mint from an injected service (a code generator, `IHttpContextAccessor`), or re-derive on every save | a **prepper** — `EntityPrepperBase<T>.Prepare(modified, original, …)`, registered with `e.AddPrepper<T>()` |
+| Stamp the field even when a raw-`DbContext` writer creates the row (what `HasCreatedDbPrimer` does for `Created`) | a **primer** — accepting that it reverts such a writer's updates too |
+
+The primer form, for that second case — stamp on create, restore on update:
 
 ```csharp no-compile
 public class ShoppingListOwnerPrimer(IHttpContextAccessor httpContextAccessor) : EntityPrimerBase<ShoppingList>
@@ -678,8 +714,9 @@ invoice number, source-system id).
 use a prepper instead: `EntityPrepperBase<T>.Prepare(modified, original, …)` hands you the full `original`
 entity (`null` on create); register with `e.AddPrepper<T>()`.
 
-**Another service writes the field too?** Use a prepper there as well — see *Primer vs prepper when a second
-writer exists* below.
+**Another service writes the field too?** `[ServerOwned]`/`e.ServerOwned(…)` already handles it — it is a
+prepper, so it never runs on that writer's save. Only the primer form above needs the warning; see *Primer vs
+prepper when a second writer exists* below.
 
 ## Aggregates over a non-owned child collection
 

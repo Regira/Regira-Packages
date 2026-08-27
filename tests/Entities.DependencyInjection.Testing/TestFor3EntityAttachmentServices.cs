@@ -7,6 +7,7 @@ using Regira.Entities.EFcore.Attachments;
 using Regira.Entities.EFcore.Normalizing;
 using Regira.Entities.Normalizing.Abstractions;
 using Regira.Entities.EFcore.Preppers;
+using Regira.Entities.Preppers;
 using Regira.Entities.Preppers.Abstractions;
 using Regira.Entities.EFcore.Primers;
 using Regira.Entities.EFcore.Primers.Abstractions;
@@ -133,7 +134,8 @@ public class TestFor3EntityAttachmentServices
         Assert.That(queryBuilder, Is.TypeOf<QueryBuilder<CourseAttachment, int, EntityAttachmentSearchObject>>());
         Assert.That(entityReadService2, Is.TypeOf<EntityReadService<ContosoContext, CourseAttachment, int, EntityAttachmentSearchObject>>());
         Assert.That(entityReadService3, Is.TypeOf<EntityReadService<ContosoContext, CourseAttachment, int, EntityAttachmentSearchObject>>());
-        Assert.That(entityPreppers.Length, Is.EqualTo(3));
+        Assert.That(entityPreppers.Length, Is.EqualTo(4));
+        Assert.That(entityPreppers.OfType<AutoServerOwnedPrepper>().Count(), Is.EqualTo(1));
         Assert.That(entityPreppers.OfType<EntityPrepper<Course>>().Count(), Is.EqualTo(1));
         Assert.That(entityPreppers.OfType<RelatedAttachmentsPrepper<ContosoContext, Course, CourseAttachment, int, int, int, Attachment>>().Count(), Is.EqualTo(1));
         Assert.That(entityPreppers.OfType<EntityAttachmentPrepper<ContosoContext, CourseAttachment, int, int, int, Attachment>>().Count(), Is.EqualTo(1));

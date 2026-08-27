@@ -51,7 +51,9 @@
 | Namespace | Types |
 |---|---|
 | `Regira.Entities.Preppers.Abstractions` | `IEntityPrepper<>`, `EntityPrepperBase<>` |
+| `Regira.Entities.Preppers` | `ServerOwnedPrepper<,>`, `AutoServerOwnedPrepper` |
 | `Regira.Entities.EFcore.Preppers` | `EntityPrepper<>`, `RelatedCollectionPrepper<>` |
+| `Regira.Entities.Attributes` | `ServerOwnedAttribute` (`[ServerOwned]`) |
 
 ---
 
@@ -238,6 +240,11 @@ Regira.Entities.Processing.Abstractions   → IEntityProcessor<TEntity, TInclude
 ### Creating a prepper
 ```
 Regira.Entities.Preppers.Abstractions   → EntityPrepperBase<TEntity>, IEntityPrepper<TEntity>
+```
+
+### Marking a field server-owned
+```
+Regira.Entities.Attributes   → ServerOwnedAttribute   // [ServerOwned] on the entity property
 ```
 
 ### Creating a primer

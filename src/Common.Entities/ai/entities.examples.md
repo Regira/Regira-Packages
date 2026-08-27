@@ -845,6 +845,8 @@ public class ProductPrepper : EntityPrepperBase<Product>
 ```csharp no-compile
 // Entity-specific primer — mint a server-owned field on create, and protect it on update.
 // Same mechanism as the built-in HasCreatedDbPrimer, which restores Created from OriginalValues this way.
+// For this exact case the one-liner is e.ServerOwned(x => x.Code, _ => …) (or [ServerOwned] to protect
+// only); write it out as a primer when the value must also be stamped for a raw-DbContext writer.
 public class ProductPrimer : EntityPrimerBase<Product>
 {
     public override Task PrepareAsync(Product entity, EntityEntry entry, CancellationToken token = default)

@@ -345,7 +345,7 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 - Exclude auto-generated fields (`Created`, `LastModified`, `NormalizedContent`) from `InputDto`
 - Exclude secured fields (e.g. `Password`) from DTOs
 - ⚠️ **`IsArchived` is the exception — keep it on `TInputDto`.** It reads like an auto-generated *and* server-owned flag, so it gets excluded by reflex. The write path stays archived-inclusive either way, but a DTO that cannot express the flag can never clear it, so **restore becomes impossible** — and the row is invisible meanwhile (lists hide it, `GET /{id}` 404s). Generated forms hide the field; they don't drop it. Round-trip: [`entities.patterns.md`](./entities.patterns.md) → Soft Delete
-- Server-owned fields (generated codes like `Order.Code`, computed totals, and **per-line prices** — an order/invoice line's `UnitPrice` is a textbook price-tampering vector) belong in the manager/prepper — exclude them from `InputDto` and set them server-side (`item.Code ??= …` on create, resolve `line.UnitPrice` from `Product.Price`, restore from `entry.OriginalValues` in a primer on update — recipe below)
+- Server-owned fields (generated codes like `Order.Code`, computed totals, and **per-line prices** — an order/invoice line's `UnitPrice` is a textbook price-tampering vector) stay off `InputDto` and are set server-side. Declare each one `[ServerOwned]` (or `e.ServerOwned(x => x.Code, mint)` to mint on create as well) and the write path restores it from the stored row on every update — recipe below
 - When using Attachments, exclude full File paths, since the FileService accepts relative paths (identifiers)
 - Try to facilitate mapping by keeping DTO structure similar to the entity (e.g. nested related entities instead of flattening)
 - Use navigation properties in DTOs instead of flattening related entity data: this preserves structure and enables richer client-side handling (e.g. avoid `CategoryTitle`, but use `Category`=>`Title`)
@@ -357,30 +357,31 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 
 > **⚠️ Exclude a server-owned field and restore it in the same edit.** A field absent from `TInputDto` maps
 > as `null`/default on every PUT *and* PATCH — 200 OK, silent corruption (a status-only PATCH zeroes a
-> computed `Total`). Restore it — but **decide primer vs prepper first**, because a primer is a
-> `SaveChanges` interceptor and fires on *every* save:
->
-> | Who writes the field | Use |
-> |---|---|
-> | Only the entity pipeline — generated codes, computed totals, `Created` | a **primer** (below) |
-> | A domain/workflow service or a seeder also writes it, through the raw `DbContext` | a **prepper** (`EntityPrepperBase<T>`; `original` is `null` on create, the stored row on update) — a primer would revert that writer's save (§Step 9) |
->
-> For the pipeline-only case, protect it in a **primer**, exactly as the built-in `HasCreatedDbPrimer`
-> protects `Created` — mint on create, restore from `entry.OriginalValues` on update:
+> computed `Total`). Declare it server-owned:
 > ```csharp no-compile
-> public class OrderCodePrimer : EntityPrimerBase<Order>
+> public class Order : IEntity<int>
 > {
->     public override Task PrepareAsync(Order entity, EntityEntry entry, CancellationToken token = default)
->     {
->         if (entry.State == EntityState.Added) entity.Code ??= GenerateCode();          // create: stamp once
->         else if (entry.State == EntityState.Modified)                                  // update: keep stored value
->             entity.Code = (string?)entry.OriginalValues[nameof(entity.Code)];
->         return Task.CompletedTask;
->     }
+>     public int Id { get; set; }
+>     [ServerOwned] public string? Code { get; set; }        // restored from the stored row on update
+>     [ServerOwned] public decimal Total { get; set; }
+>     public string? Status { get; set; }                    // client-writable
 > }
-> // e.AddPrimer<OrderCodePrimer>();
+> // mint on create too (the attribute carries no lambda), and on an owned child:
+> e.ServerOwned(x => x.Code, _ => GenerateCode())
+>  .Related(x => x.Lines, r => r.ServerOwned(x => x.UnitPrice));
 > ```
-> Owner-stamp from the claim, and computed totals (prepper variant with the full `original`):
+> `[ServerOwned]` (namespace `Regira.Entities.Attributes`) is enforced by a prepper `UseDefaults()`
+> registers, so it guards the `IEntityService` write path and leaves a workflow service's raw-`DbContext`
+> write alone. Scalars and FKs only — a navigation and `IArchivable.IsArchived` are rejected (a restore has
+> to be able to clear that flag).
+>
+> | What you need | Use |
+> |---|---|
+> | Protect on update; optionally mint on create from the entity itself | `[ServerOwned]` / `e.ServerOwned(…)` |
+> | Mint from an injected service, or re-derive the value on every save | a **prepper** (`EntityPrepperBase<T>`; `original` is `null` on create, the stored row on update) |
+> | Stamp the field even when a raw-`DbContext` writer creates the row (`Created`) | a **primer** — but it also *reverts* such a writer's updates (§Step 9) |
+>
+> Owner-stamp from the claim, computed totals, and the primer form:
 > [`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update.
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — Category entity
@@ -535,7 +536,7 @@ The **parent FK needs no stamping**. New children reach the store through the pa
 
 Run during `SaveChanges()` via EF Core interceptors; can inspect other modified entities in the same transaction. The interceptor is auto-wired by `UseDefaults()`; without it, select `e.WireDbContext(DbContextWiring.PrimerInterceptors)`.
 
-> ⚠️ **A primer runs on _every_ `SaveChanges()` (it's an EF interceptor); a prepper runs only on the `IEntityService` write path.** So a primer that restores a server-owned field from `entry.OriginalValues` also fires on — and reverts — a domain/workflow service's raw-`DbContext` write. When a second writer legitimately owns a field (a status/state machine), guard it with a **prepper** (`EntityPrepperBase<T>`; `original` is `null` on create, the stored row on update), not a primer. The choice table is in [`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update; the full second-writer treatment is under → Server-generated sequential codes (*Primer vs prepper when a second writer exists*).
+> ⚠️ **A primer runs on _every_ `SaveChanges()` (it's an EF interceptor); a prepper runs only on the `IEntityService` write path.** So a primer that restores a server-owned field from `entry.OriginalValues` also fires on — and reverts — a domain/workflow service's raw-`DbContext` write. When a second writer legitimately owns a field (a status/state machine), guard it with a **prepper** — `[ServerOwned]`/`e.ServerOwned(…)` is that prepper in declarative form (§Step 5), or `EntityPrepperBase<T>` when you need the full stored row — not a primer. The choice table is in [`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update; the full second-writer treatment is under → Server-generated sequential codes (*Primer vs prepper when a second writer exists*).
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — Additional Patterns > Primers
 
@@ -671,8 +672,8 @@ IEntityService<Order, int, OrderSearchObject, OrderSortBy, OrderIncludes>       
 
 > **⚠️ A field absent from `TInputDto` maps as `null`/default on PATCH *and* PUT.** Server-owned/immutable
 > values (`OwnerId` FKs, generated codes, computed totals) silently reset — a `[Required]` column 500s, a
-> computed `Total` zeroes. Restore them in a **primer** branching on `EntityState` (the Step 5 recipe; full
-> version, plus when a prepper is the right choice instead, in
+> computed `Total` zeroes. Mark each one `[ServerOwned]` (the Step 5 recipe; the cases needing a prepper or
+> a primer instead are in
 > [`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update).
 > **Synced collections invert the failure:** an `Attachments` (or `Related()`) collection the DTO never
 > declares maps as `null`, which the sync reads as "not sent" — edits are *ignored*, not reset. Silent
@@ -709,7 +710,7 @@ curl -s -X PATCH $BASE/1 -H 'Content-Type: application/json' -d '{"status":"Ship
 curl -s $BASE/1
 ```
 
-Expected: `Code` and `Total` are unchanged from step 1 (not `null`/`0`) and `status` is now `Shipped` — if either reset, a server-owned field is missing its restore primer (Step 5). Verify seeded data **through the API** (`GET /{entity}/search`), never by the `.db` file size.
+Expected: `Code` and `Total` are unchanged from step 1 (not `null`/`0`) and `status` is now `Shipped` — if either reset, a server-owned field is missing its `[ServerOwned]` declaration (Step 5). Verify seeded data **through the API** (`GET /{entity}/search`), never by the `.db` file size.
 
 **Assert your seed data's domain invariants with a query, not by eyeballing a page.** Name each rule the data must satisfy ("every asset whose status is *In use* has a holder"; "every event has at least one session"), then prove it with a search that must return `count: 0` — `GET /assets/search?statusId=3&isAssigned=false`. This is the one class of bug a green build, a green type-check *and* a passing round-trip all miss: the generator loop that skips a case leaves data that is individually valid and collectively wrong, and it only shows up as something looking odd on a page nobody scrolled to.
 
@@ -1134,7 +1135,7 @@ Load that file when implementing one of these:
 
 - **Bulk insert / update** — batch many rows through a single `SaveChanges()`; includes **multi-wave seeding** (Id/change-tracker timing).
 - **Single-field PATCH / state toggle** — flip `IsActive` (or any one field) via `PATCH /{id}`; covers toggling owned join rows.
-- **Server-owned / immutable fields on update** — restore `OwnerId`/codes from `entry.OriginalValues` in a primer (or from a prepper's `original` when a second writer owns the field) so PUT/PATCH can't null or re-mint them.
+- **Server-owned / immutable fields on update** — `[ServerOwned]`/`e.ServerOwned(…)` so PUT/PATCH can't null or re-mint a code, total or owner FK; plus the prepper and primer forms for what a declaration cannot cover.
 - **Server-generated sequential codes** — mint `REQ-2026-00001` from a primer on `Added` and restore it on `Modified`; includes when that primer has to be a prepper instead, and why the counter is primed from the highest code.
 - **Cross-entity aggregates & report endpoints** — a dashboard controller belongs to no entity, so it **bypasses the pipeline**: global filter row security does not apply unless you repeat the predicate. Also **domain actions on an entity resource** (`POST /{id}/approve`) and **role-gated transitions**.
 - **Aggregates over a non-owned child collection** — a parent total rolled up from children that own their own FK. Eventually consistent, seeding needs a second pass, and a child query filter can zero it on restore.

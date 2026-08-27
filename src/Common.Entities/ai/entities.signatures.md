@@ -935,6 +935,13 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
     EntityServiceBuilder<TContext, TEntity, TKey> AddPrepper<TPrepper>()
         where TPrepper : class, IEntityPrepper<TEntity>;
 
+    // Server-owned scalar/FK: restored from the stored row on update, minted on create when
+    // mintOnCreate is supplied and the property is unset. [ServerOwned] is the protect-only
+    // attribute form (no registration needed once UseDefaults() has run).
+    EntityServiceBuilder<TContext, TEntity, TKey> ServerOwned<TProp>(
+        Expression<Func<TEntity, TProp>> selector,
+        Func<TEntity, TProp>? mintOnCreate = null);
+
     // Primers
     // inline shortcuts:
     EntityServiceBuilder<TContext, TEntity, TKey> Prime(Action<TEntity> primeFunc);
@@ -984,6 +991,11 @@ public class RelatedEntityBuilder<TContext, TRelated, TRelatedKey>
 
     // Add a prepare action applied to each item in the collection
     RelatedEntityBuilder<TContext, TRelated, TRelatedKey> Prepare(Action<TRelated> prepareFunc);
+
+    // Server-owned scalar/FK on the child (a line's UnitPrice) - same semantics as the parent's
+    RelatedEntityBuilder<TContext, TRelated, TRelatedKey> ServerOwned<TProp>(
+        Expression<Func<TRelated, TProp>> selector,
+        Func<TRelated, TProp>? mintOnCreate = null);
 }
 ```
 

@@ -1,4 +1,5 @@
 ﻿using Regira.Entities.DependencyInjection.Normalizers;
+using Regira.Entities.DependencyInjection.Preppers;
 using Regira.Entities.DependencyInjection.Primers;
 using Regira.Entities.DependencyInjection.QueryBuilders;
 using Regira.Entities.DependencyInjection.ServiceCollections.Models;
@@ -11,6 +12,7 @@ public static class EntityServiceCollectionExtensions
 {
     /// <summary>
     /// <inheritdoc cref="ServiceCollectionPrimerExtensions.AddDefaultPrimers"/>
+    /// <inheritdoc cref="ServiceCollectionPrepperExtensions.AddDefaultPreppers"/>
     /// <inheritdoc cref="ServiceCollectionNormalizerExtensions.AddDefaultEntityNormalizer(EntityServiceCollectionOptions,Action{NormalizeOptions})"/>
     /// <inheritdoc cref="ServiceCollectionQueryFilterExtensions.AddDefaultGlobalQueryFilters"/>
     /// Also calls <see cref="EntityServiceCollectionOptions.AddDefaultInterceptors"/>, so
@@ -35,6 +37,7 @@ public static class EntityServiceCollectionExtensions
         configure?.Invoke(entityDefaultOptions);
 
         options.AddDefaultPrimers();
+        options.AddDefaultPreppers();
         if (entityDefaultOptions.ConfigureNormalizingFunc != null)
         {
             options.AddDefaultEntityNormalizer(entityDefaultOptions.ConfigureNormalizingFunc);

@@ -181,7 +181,7 @@ public class EntityIntServiceBuilder<TContext, TEntity>(EntityServiceCollectionO
         where TRelated : class, IEntity<int>
     {
         EntityRegistrationLog.TrackRelated(Services, typeof(TContext), typeof(TEntity), typeof(TRelated));
-        Services.AddPrepper(p => new RelatedCollectionPrepper<TContext, TEntity, TRelated, int, int>(p.GetRequiredService<TContext>(), navigationExpression));
+        Services.AddPrepper(p => new RelatedCollectionPrepper<TContext, TEntity, TRelated, int, int>(p.GetRequiredService<TContext>(), navigationExpression, NestedPreppers.WithServerOwned<TRelated>()));
 
         return this;
     }
@@ -198,7 +198,7 @@ public class EntityIntServiceBuilder<TContext, TEntity>(EntityServiceCollectionO
             configure(relatedBuilder);
             var nestedPreppers = relatedBuilder.PrepperFactories.Select(f => f(p));
             return new RelatedCollectionPrepper<TContext, TEntity, TRelated, int, int>(
-                p.GetRequiredService<TContext>(), navigationExpression, nestedPreppers);
+                p.GetRequiredService<TContext>(), navigationExpression, NestedPreppers.WithServerOwned(nestedPreppers));
         });
 
         return this;
