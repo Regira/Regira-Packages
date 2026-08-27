@@ -60,7 +60,7 @@ Concrete node class. Inherits `ITreeNode<T>` and adds:
 | Member | Signature | Description |
 |---|---|---|
 | `Tree` | `TreeList<T>` | The `TreeList<T>` this node belongs to |
-| `AddChild` | `TreeNode<T> AddChild(T value)` | Adds a single child node and returns it |
+| `AddChild` | `TreeNode<T>? AddChild(T value)` | Adds a single child node and returns it; `null` when the value was rejected (circular reference + `ThrowOnError = false`) |
 | `AddChildren` | `IEnumerable<TreeNode<T>> AddChildren(IEnumerable<T> values)` | Adds multiple children; skips (or throws) on circular reference |
 | `RemoveChild` | `bool RemoveChild(TreeNode<T> child)` | Removes a direct child node (and all its descendants) from the tree |
 
@@ -96,8 +96,8 @@ new TreeList<T>(IEnumerable<TreeNode<T>> collection, TreeOptions? options = null
 |---|---|
 | `TreeNode<T>? AddValue(T value, TreeNode<T>? parent = null)` | Adds a value as a child of `parent`, or as a new root when `parent` is `null`. Returns `null` if the add is rejected (circular reference + `ThrowOnError = false`). |
 | `IEnumerable<TreeNode<T>> AddValues(IEnumerable<T> values, TreeNode<T>? parent = null)` | Adds multiple values under an optional parent. |
-| `void Fill(IEnumerable<T> values, Func<T, T> getParent)` | Populates the tree from a flat list using a single-parent selector per item. Items whose `getParent` returns `null` become roots. |
-| `void Fill(IEnumerable<T> values, Func<T, IEnumerable<T>> getParents)` | Populates using a multi-parent selector. **Lesser performance** — prefer the children-selector overload when possible. |
+| `void Fill(IEnumerable<T> values, Func<T, T> getParent)` | Populates the tree from a flat list using a single-parent selector per item. Items whose `getParent` returns `null` become roots. Throws `InvalidChildException<T>` when values remain that no root can reach. |
+| `void Fill(IEnumerable<T> values, Func<T, IEnumerable<T>> getParents)` | Populates using a multi-parent selector. **Lesser performance** — prefer the children-selector overload when possible. Throws `InvalidChildException<T>` when values remain that no root can reach. |
 | `void Fill(IEnumerable<T> rootValues, Func<ITreeNode<T>, IEnumerable<T>> getChildren)` | Populates by starting from known roots and traversing children top-down. **Best performance** — use this when you can enumerate children for each node. Clears the list before filling. |
 | `new void RemoveAt(int index)` | Removes the node at `index`, its parent link, and all descendants. |
 | `new bool Remove(TreeNode<T> item)` | Removes a specific node (and descendants). Returns `true` when found. |
@@ -136,7 +136,10 @@ Created with `tree.ToTreeView()`. The values are ordered by `OrderByHierarchy()`
 
 ### `InvalidChildException<T>` — `using Regira.TreeList`
 
-Thrown when a node that is an ancestor of `parent` is added as a child (circular reference).
+Thrown in two situations:
+
+- a value that is an ancestor of `parent` is added as a child (circular reference) — `ParentNode` holds the parent
+- a parents-selector `Fill` ends with values no root can reach — `ParentNode` is `null` and `Child` holds the first offender
 
 | Property | Type |
 |---|---|
@@ -323,7 +326,8 @@ IEnumerable<TreeNode<T>> OrderByHierarchy<T, TKey>(this IEnumerable<TreeNode<T>>
 ```
 
 Returns nodes in depth-first order: each root is immediately followed by **all** its offspring before the next root.
-When `keySelector` is provided, siblings at each level are sorted by that key.
+When `keySelector` is provided, the roots and the children of every node are sorted by that key — level by level,
+never across levels, so a deep node never overtakes its own parent.
 
 ```csharp
 // Insertion order within siblings
@@ -357,27 +361,48 @@ var reversed = tree.ReverseTree();
 
 ## Error Handling & Circular Reference Detection
 
-By default (`EnableAutoCheck = true`, `ThrowOnError = true`), any attempt to add a value that already
-appears in a node's ancestor chain throws `InvalidChildException<T>`.
+By default (`EnableAutoCheck = true`, `ThrowOnError = true`), `InvalidChildException<T>` is thrown when
+
+1. a value that already appears in a node's ancestor chain is added as a child, or
+2. a **parents-selector** build (`Fill(values, getParent)` / `Fill(values, getParents)` and the matching
+   `ToTreeList` overloads) leaves values that no root can reach.
+
+Case 2 covers the whole cyclic input: those values all have a parent, so none of them is picked as a root,
+and the downward walk never arrives at them. It equally covers a value whose parent object is not part of
+`values`. Both used to be silently absent from the tree.
+
+The **children-selector** build takes its roots from the caller and therefore has nothing unreachable to
+report; a cycle it walks into is caught by the ancestor check on the way down (case 1).
 
 ```csharp
-// Default — throws on circular reference
+// Default — throws
 person1.Parent = person0;
 person0.Parent = person1;
-// throws InvalidChildException<Person>:
+// throws InvalidChildException<Person>: neither person is a root, so neither is reachable
 persons.ToTreeList(p => p.Parent!);
 
-// Silent — skip bad nodes, return null
-var tree = new TreeList<Person>(new TreeList<Person>.TreeOptions
+// Silent — skip bad values, return null
+var options = new TreeList<Person>.TreeOptions
 {
     EnableAutoCheck = true,
     ThrowOnError = false
-});
+};
+
+// The same build now just leaves the unreachable values out
+var partial = persons.ToTreeList(p => p.Parent!, options);
+Assert.That(partial, Is.Empty);
+
+var tree  = new TreeList<Person>(options);
 var root  = tree.AddValue(person0);
 var child = tree.AddValue(person1, root);
 var bad   = tree.AddValue(person0, child);  // person0 is an ancestor → returns null
 Assert.That(bad, Is.Null);
 ```
+
+`AddChild` follows `AddValue` here: it returns `null` for a rejected value rather than throwing.
+
+> Compare `tree.Count` against your input count only as a sanity check, never as a cycle test — a value with
+> several parents occupies one node per parent, so `Count` legitimately exceeds the number of values.
 
 Use `tree.IsValidChild(parent, candidate)` to pre-check before adding:
 

@@ -19,7 +19,10 @@ public class ProjectTree : TreeList<Project>
             foreach (var childProject in children)
             {
                 var childNode = node.AddChild(childProject);
-                Add(childNode);
+                if (childNode != null)
+                {
+                    Add(childNode);
+                }
             }
         }
 

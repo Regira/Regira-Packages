@@ -14,7 +14,7 @@ extension methods, and includes built-in protection against circular references.
 | `TreeNode<T>` | A single node holding a value and its children |
 | `TreeView<T>` | Read-only view returning values in depth-first order |
 | `ITreeNode<T>` | Interface for node access (`Value`, `Level`, `Parent`, `Children`, `Root`) |
-| `InvalidChildException<T>` | Thrown when adding an ancestor as a child (circular reference) |
+| `InvalidChildException<T>` | Thrown when a value cannot be placed: an ancestor added as a child, or a value no root can reach |
 
 ### Node Properties
 
@@ -108,7 +108,8 @@ var withSelf  = subset.WithOffspring(); // self + all descendants
 // Depth-first traversal (default)
 var ordered = tree.OrderByHierarchy();
 
-// Depth-first with a custom sort key per level
+// Depth-first with a custom sort key: roots, and the children of every node, sorted by the key.
+// A parent always precedes its own children, whatever the key says.
 var orderedByName = tree.OrderByHierarchy(n => n.Value.Name);
 
 // Read-only view — values in depth-first order
@@ -126,18 +127,30 @@ var reversed = tree.ReverseTree();
 
 ## Error Handling
 
-By default the tree throws `InvalidChildException<T>` when a circular reference is detected.  
-This behaviour can be configured:
+By default the tree throws `InvalidChildException<T>` in two situations:
+
+- **Adding an ancestor as a child** — `AddValue`, `AddChild` and `AddChildren` reject a value that already
+  appears in the parent's ancestor chain.
+- **Values no root can reach** — the parent-selector builds (`Fill(values, getParent)` /
+  `Fill(values, getParents)` and the matching `ToTreeList` overloads) derive the roots from the values
+  without a parent and then walk downwards. A value in a cycle has a parent, so it is never a root and the
+  walk never arrives at it; the same goes for a value whose parent object is missing from the collection.
+  Both are reported after the fill instead of quietly missing from the tree.
+
+`ThrowOnError` turns both into a silent skip:
 
 ```csharp no-compile
 var tree = new TreeList<Person>(new TreeList<Person>.TreeOptions
 {
     EnableAutoCheck = true,   // validate before adding (default: true)
-    ThrowOnError    = false   // return null instead of throwing (default: true)
+    ThrowOnError    = false   // return null / leave the value out instead of throwing (default: true)
 });
 
 var invalidNode = tree.AddValue(ancestor, descendantNode); // returns null
 ```
+
+The children-selector build (`Fill(rootValues, getChildren)`) takes its roots from the caller, so it has no
+unreachable values to report — a cycle it walks into is stopped by the ancestor check on the way down.
 
 ## Overview
 

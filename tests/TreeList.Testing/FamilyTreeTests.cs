@@ -524,16 +524,47 @@ public class FamilyTreeTests
     }
 
     [Test]
-    public void OrderByHierarchy_WithKeySelector_SortsOffspringByKey()
+    public void OrderByHierarchy_WithKeySelector_SortsSiblingsAtEachLevel()
     {
         var data = CreateData();
 
-        // Each root's full offspring are sorted by Id, so all descendants appear in Id order after their root
-        var orderedValues = data.Tree.OrderByHierarchy(n => n.Value.Id).Select(n => n.Value).ToArray();
+        // Descending Id, so the sorted order differs from the insertion order at every level
+        var orderedValues = data.Tree.OrderByHierarchy(n => -n.Value.Id).Select(n => n.Value).ToArray();
 
-        // Root: Grandpa(1); then all offspring sorted by Id: Father(2), Uncle(3), Child1(4), Child2(5), Cousin(6), GrandChild1(7), GrandChild2(8)
-        var expectedOrder = new[] { data.Grandpa, data.Father, data.Uncle, data.Child1, data.Child2, data.Cousin, data.GrandChild1, data.GrandChild2 };
+        // Grandpa(1); children desc: Uncle(3) with Cousin(6) -> GrandChild2(8), then Father(2) with Child2(5), Child1(4) -> GrandChild1(7)
+        var expectedOrder = new[] { data.Grandpa, data.Uncle, data.Cousin, data.GrandChild2, data.Father, data.Child2, data.Child1, data.GrandChild1 };
         Assert.That(orderedValues, Is.EqualTo(expectedOrder).AsCollection);
+    }
+
+    [Test]
+    public void OrderByHierarchy_WithKeySelector_DoesNotHoistDeepNodesAboveTheirParent()
+    {
+        var root = new FamilyMember { Id = 1, Name = "Root" };
+        var zeta = new FamilyMember { Id = 2, Name = "Zeta", Parents = [root] };
+        var alpha = new FamilyMember { Id = 3, Name = "Alpha", Parents = [zeta] };
+        var mike = new FamilyMember { Id = 4, Name = "Mike", Parents = [root] };
+        var tree = new[] { root, zeta, alpha, mike }.ToTreeList(m => m.Parents ?? []);
+
+        // Alpha sorts first by name but sits two levels down, under Zeta
+        var sorted = tree.OrderByHierarchy(n => n.Value.Name).Select(n => (n.Value.Name, n.Level)).ToArray();
+        Assert.That(sorted, Is.EqualTo(new[] { ("Root", 0), ("Mike", 1), ("Zeta", 1), ("Alpha", 2) }).AsCollection);
+
+        // Without a key the nodes keep their insertion order within each level
+        var unsorted = tree.OrderByHierarchy().Select(n => (n.Value.Name, n.Level)).ToArray();
+        Assert.That(unsorted, Is.EqualTo(new[] { ("Root", 0), ("Zeta", 1), ("Alpha", 2), ("Mike", 1) }).AsCollection);
+    }
+
+    [Test]
+    public void OrderByHierarchy_WithKeySelector_KeepsEveryParentBeforeItsChildren()
+    {
+        var data = CreateData();
+
+        var ordered = data.Tree.OrderByHierarchy(n => n.Value.Name).ToArray();
+
+        foreach (var node in ordered.Where(n => n.Parent != null))
+        {
+            Assert.That(Array.IndexOf(ordered, node), Is.GreaterThan(Array.IndexOf(ordered, node.Parent!)), $"{node.Value.Name} should come after {node.Parent!.Value.Name}");
+        }
     }
 
     // ─── ToTreeView ───────────────────────────────────────────────────────────
