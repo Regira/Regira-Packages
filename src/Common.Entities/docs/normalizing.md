@@ -5,7 +5,7 @@
     - Removes diacritics (accents)
     - Removes special characters
     - Standardizes whitespace
-    - Converts to lowercase
+    - Preserves case by default (`Transform = NoChanges`); opt into `ToLowerCase`/`ToUpperCase` via `NormalizeOptions.Transform` (recommended when your database collation is case-sensitive)
 - Customizable
     - Format phone numbers
 

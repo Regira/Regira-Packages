@@ -667,7 +667,7 @@ public class HasTenantPrimer(ITenantContext tenantContext) : EntityPrimerBase<IH
 }
 ```
 
-The generic-`TKey` base + int specialization mirrors the framework's own global filters: the query pipeline picks the key-matching variant per entity, so string-keyed tenant-owned entities are covered by registering the `<string>` variant too.
+The generic-`TKey` base + int specialization mirrors the framework's own global filters: the query pipeline prefers the key-matching variant per entity, but this predicate never reads the search object, so the int variant on its own already scopes string-keyed tenant-owned entities — a search object of a foreign key type coerces to `null` rather than dropping a security default. Registering the `<string>` variant too costs nothing and makes the intent explicit.
 
 ### Registration
 
@@ -726,8 +726,8 @@ services.For<Tenant, string, TenantSearchObject, EntitySortBy, TenantIncludes>(e
 
 - **Register the tenant filter only on the domain context.** The identity/admin context (users, tenants) must stay unscoped, or an admin can no longer list tenants.
 - **The primer stamps but does not verify** — a request whose JWT carries tenant A simply cannot see or keep rows for tenant B (filter scopes reads; primer overwrites the FK on save). Seeding with an *empty* `WritableTenantContext.TenantId` leaves explicitly-set ids intact — that's the escape hatch for cross-tenant seed data.
-- **Direct `IEntityService` reads are scoped too** (global filters run in the query pipeline, not the controller), but only when the resolved `ITenantContext` carries a tenant — background jobs without a tenant see everything. Decide per job: set `WritableTenantContext.TenantId` or accept the global view.
-- Non-int keyed tenant-owned entities need the matching key variant of the filter registered (same rule as the built-in global filters).
+- **Direct `IEntityService` reads are scoped too** (global filters run in the query pipeline, not the controller) — including when no tenant resolves: the unconditional `Where` then compares `TenantId` against `null` and returns an empty view, not an unscoped one. Fail-closed is the right default for a security filter, but it means every background job needs an explicit answer: a per-tenant job sets `WritableTenantContext.TenantId` per unit of work (loop the tenants for an all-tenants sweep); a genuinely cross-tenant job must bypass the scoped pipeline deliberately — query the `DbContext` directly, or run against a registration without the tenant filter.
+- **The tenant predicate is key-agnostic** — it never reads the search object, so it applies to entities of every key type even when only the int variant is registered. Register the `<TKey>` variants for filters that *do* read typed search-object fields, and keep one foreign-tenant integration test per key type either way.
 
 ---
 
