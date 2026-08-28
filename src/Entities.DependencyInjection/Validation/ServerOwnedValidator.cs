@@ -8,19 +8,19 @@ namespace Regira.Entities.DependencyInjection.Validation;
 /// <summary>
 /// Reports <see cref="ServerOwnedAttribute"/> declarations that do not do what they read like: a property
 /// that cannot be server-owned (the soft-delete flag, a navigation, a property without both accessors), and
-/// a setup where nothing enforces the attribute at all. The enforcing prepper skips exactly what this
-/// reports, so a declaration is ignored rather than half-applied.
+/// an entity whose own write service has no enforcement registered. The enforcing prepper skips exactly
+/// what this reports, so a declaration is ignored rather than half-applied.
 /// </summary>
 internal sealed class ServerOwnedValidator : IEntityRegistrationValidator
 {
     public IEnumerable<EntityValidationIssue> Validate(EntityValidationContext context)
     {
-        var entityTypes = context.Registrations.Entities.Select(e => e.EntityType)
+        var registeredTypes = context.Registrations.Entities.Select(e => e.EntityType).Distinct().ToArray();
+        var declaringTypes = registeredTypes
             .Concat(context.Registrations.Related.Select(r => r.RelatedType))
             .Distinct()
+            .Where(t => ServerOwnedProperties.Declared(t).Count > 0)
             .ToArray();
-
-        var declaringTypes = entityTypes.Where(t => ServerOwnedProperties.Declared(t).Count > 0).ToArray();
         if (declaringTypes.Length == 0)
         {
             yield break;
@@ -48,9 +48,15 @@ internal sealed class ServerOwnedValidator : IEntityRegistrationValidator
             }
         }
 
-        if (!IsEnforcementRegistered(context.Services))
+        // Only an entity with a write service of its own depends on the global registration: a Related()
+        // child is prepped through its parent's chain, which carries the restore unconditionally, so warning
+        // about one would report an enforced field as unenforced.
+        var unenforced = declaringTypes
+            .Where(t => registeredTypes.Contains(t) && ServerOwnedProperties.Protected(t).Count > 0)
+            .ToArray();
+        if (unenforced.Length > 0 && !IsEnforcementRegistered(context.Services))
         {
-            var names = string.Join(", ", declaringTypes.Select(t => t.Name).Order());
+            var names = string.Join(", ", unenforced.Select(t => t.Name).Order());
             yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
                 $"{names} declare [ServerOwned] properties, but no AutoServerOwnedPrepper is registered, so nothing enforces them: " +
                 "a PUT/PATCH that omits one of those fields still writes it back as null/default, returns 200, and logs nothing. " +

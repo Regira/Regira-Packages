@@ -534,6 +534,38 @@ public class StartupValidationTests
         });
     }
 
+    public class InvoiceLine : Regira.Entities.Models.Abstractions.IEntity<int>
+    {
+        public int Id { get; set; }
+        public int InvoiceId { get; set; }
+        [Regira.Entities.Attributes.ServerOwned] public decimal UnitPrice { get; set; }
+    }
+    public class OrderContext(DbContextOptions<OrderContext> options) : DbContext(options)
+    {
+        public DbSet<Note> Notes => Set<Note>();
+        public DbSet<InvoiceLine> InvoiceLines => Set<InvoiceLine>();
+    }
+
+    /// <summary>
+    /// A Related() child is prepped through its parent's chain, which carries the [ServerOwned] restore
+    /// whether or not UseDefaults() ran — so reporting it as unenforced would name an enforced field.
+    /// </summary>
+    [Test]
+    public async Task ServerOwned_On_A_Related_Child_Alone_Does_Not_Warn()
+    {
+        var capture = new CaptureLoggerProvider();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(capture));
+        services.AddDbContext<OrderContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<OrderContext>(o => o.ConfigureValidation(v => v.Enabled = true))
+            .For<Note>(e => e.Related<InvoiceLine>(_ => null));
+
+        using var sp = services.BuildServiceProvider();
+        await RunHostedServices(sp);
+
+        Assert.That(capture.Warnings, Has.None.Contains("AutoServerOwnedPrepper"));
+    }
+
     [Test]
     public async Task ServerOwned_Without_Enforcement_Warns()
     {

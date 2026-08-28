@@ -174,6 +174,14 @@ public class EntityIntServiceBuilder<TContext, TEntity>(EntityServiceCollectionO
 
         return this;
     }
+    // Server-owned fields
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.ServerOwned{TProp}" />
+    public new EntityIntServiceBuilder<TContext, TEntity> ServerOwned<TProp>(Expression<Func<TEntity, TProp>> selector, Func<TEntity, TProp>? mintOnCreate = null)
+    {
+        base.ServerOwned(selector, mintOnCreate);
+        return this;
+    }
+
     // Related
     /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Related{TRelated,TRelatedKey}" />
     public EntityIntServiceBuilder<TContext, TEntity> Related<TRelated>(

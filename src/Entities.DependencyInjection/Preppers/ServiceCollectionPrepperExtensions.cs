@@ -76,8 +76,9 @@ public static class ServiceCollectionPrepperExtensions
     /// <list type="bullet">
     ///     <item><see cref="AutoServerOwnedPrepper"/> — enforces <see cref="ServerOwnedAttribute"/> on every entity</item>
     /// </list>
-    /// Inert until an entity marks a property <c>[ServerOwned]</c>, and registered first so an entity's own
-    /// prepper can still take a marked field over (registration order is execution order).
+    /// Inert until an entity marks a property <c>[ServerOwned]</c>. Preppers run in registration order, so
+    /// an entity's own prepper can take a marked field over as long as it is registered after this call —
+    /// which every <c>.For&lt;&gt;()</c> chain after <c>UseDefaults()</c> is.
     /// </summary>
     public static EntityServiceCollectionOptions AddDefaultPreppers(this EntityServiceCollectionOptions options)
     {

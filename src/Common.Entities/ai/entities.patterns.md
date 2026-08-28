@@ -674,7 +674,9 @@ services.UseEntities<AppDbContext>(o => o.UseDefaults())
 - **Create** mints only when the property is unset, so seeded and imported values survive. The attribute on
   its own never mints — an attribute cannot carry a lambda.
 - **Update** copies the stored value over whatever arrived, so the field is immutable through the entity
-  service. Registration order is execution order: a `Prepare()` registered afterwards can still set it.
+  service. Preppers run in registration order, and `UseDefaults()` registers the restore before any
+  `.For<>()` chain, so a `Prepare()` on the entity still wins. (Registering a prepper *before* calling
+  `UseDefaults()` inverts that — the restore then runs last and overwrites it.)
 - Enforced by a **prepper** (`AutoServerOwnedPrepper`, registered by `UseDefaults()`), so a domain/workflow
   service saving through the raw `DbContext` keeps its write — see *Primer vs prepper when a second writer
   exists* below.

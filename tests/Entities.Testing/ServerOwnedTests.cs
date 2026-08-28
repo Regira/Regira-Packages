@@ -7,6 +7,7 @@ using Regira.Entities.EFcore.Extensions;
 using Regira.Entities.Models;
 using Regira.Entities.Models.Abstractions;
 using Regira.Entities.Preppers;
+using Regira.Entities.Preppers.Abstractions;
 using Regira.Entities.Services.Abstractions;
 
 namespace Entities.Testing;
@@ -322,6 +323,28 @@ public class ServerOwnedTests
         await Orders().SaveChanges();
 
         Assert.That((await Orders().Details(id))!.Lines!.Single().UnitPrice, Is.EqualTo(5m));
+    }
+
+    // ── builder chaining ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The chain the guides document, in the order they document it. It compiles only while every builder
+    /// redeclares <c>ServerOwned</c> covariantly: the base return type drops the int-keyed
+    /// <c>Related&lt;TRelated&gt;</c> overload, and the remaining one cannot infer <c>TRelatedKey</c> (CS0411).
+    /// </summary>
+    [Test]
+    public void ServerOwned_Keeps_The_Builder_Type_For_Chaining()
+    {
+        var services = new ServiceCollection();
+        services.AddDbContext<ShopContext>(db => db.UseSqlite(_connection));
+
+        services.UseEntities<ShopContext>(o => o.UseDefaults())
+            .For<Order>(e => e
+                .ServerOwned(x => x.Code, _ => "ORD-1")
+                .Related(x => x.Lines, r => r.ServerOwned(x => x.UnitPrice))
+                .Includes((query, _) => query.Include(x => x.Lines)));
+
+        Assert.That(services.Any(d => d.ServiceType == typeof(IEntityPrepper)), Is.True);
     }
 
     // ── the reflection contract ────────────────────────────────────────────────

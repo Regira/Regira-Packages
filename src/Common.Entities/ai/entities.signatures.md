@@ -1066,6 +1066,12 @@ public partial class EntityIntServiceBuilder<TContext, TEntity>
     // Int-key shortcuts (no TRelatedKey / TContext parameter needed)
     EntityIntServiceBuilder<TContext, TEntity> Prepare(Func<TEntity, TContext, Task> prepareFunc);
 
+    // Re-declared to keep the builder type through a chain — without it the next call falls back to
+    // the base Related<TRelated, TRelatedKey>, whose key argument cannot be inferred (CS0411).
+    EntityIntServiceBuilder<TContext, TEntity> ServerOwned<TProp>(
+        Expression<Func<TEntity, TProp>> selector,
+        Func<TEntity, TProp>? mintOnCreate = null);
+
     // Int-key shortcuts: sync only, or with a configure callback. For a parent-level prepare use
     // the inherited Related<TRelated, int>(nav, prepareFunc) or a separate e.Prepare(...).
     EntityIntServiceBuilder<TContext, TEntity> Related<TRelated>(

@@ -446,8 +446,8 @@ public class EntityServiceBuilder<TContext, TEntity, TKey>(EntityServiceCollecti
     /// <see cref="ServerOwnedAttribute"/>, which protects without minting.
     /// <para>
     /// Enforced as a <b>prepper</b>: it guards the <c>IEntityService</c> write path and leaves a
-    /// domain/workflow service's raw <c>DbContext</c> write alone. Registration order is execution order, so
-    /// a later <c>Prepare()</c> can still set the field deliberately.
+    /// domain/workflow service's raw <c>DbContext</c> write alone. Preppers run in registration order, so a
+    /// <c>Prepare()</c> registered after this call can still set the field deliberately.
     /// </para>
     /// </summary>
     /// <param name="selector">The property to protect, e.g. <c>x =&gt; x.Code</c>. Scalars and FKs only.</param>
