@@ -49,6 +49,25 @@ public class ExpectingFailureTests
         Assert.That(persons.ToTreeList(p => p.Parent!, new TreeList<SimplePerson>.TreeOptions { ThrowOnError = false }).Select(n => n.Value), Is.EqualTo(new[] { root }).AsCollection);
     }
     [Test]
+    public void ToTreeList_With_Multiple_Parents_Still_Reports_An_Unreachable_Cycle()
+    {
+        var grandpa = new FamilyMember { Id = 1, Name = "Grandpa" };
+        var grandma = new FamilyMember { Id = 2, Name = "Grandma" };
+        var child1 = new FamilyMember { Id = 3, Name = "Child1", Parents = [grandpa, grandma] };
+        var child2 = new FamilyMember { Id = 4, Name = "Child2", Parents = [grandpa, grandma] };
+        var orphan1 = new FamilyMember { Id = 5, Name = "Orphan1" };
+        var orphan2 = new FamilyMember { Id = 6, Name = "Orphan2" };
+        orphan1.Parents = [orphan2];
+        orphan2.Parents = [orphan1];
+        // The two two-parent children take a node each per parent, so the tree holds exactly as many nodes
+        // as there are values while the cycle was never reached - node count is no evidence either way
+        var members = new[] { grandpa, grandma, child1, child2, orphan1, orphan2 };
+
+        var ex = Assert.Throws<InvalidChildException<FamilyMember>>(() => members.ToTreeList(m => m.Parents ?? []));
+
+        Assert.That(ex!.Child, Is.EqualTo(orphan1));
+    }
+    [Test]
     public void ToTreeList_With_Multiple_Parents_Does_Not_Report_Unreachable()
     {
         var members = new[]

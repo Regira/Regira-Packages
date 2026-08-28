@@ -95,18 +95,16 @@ public class TreeList<T> : List<TreeNode<T>>
         // Values in a cycle have a parent, so they are never among the roots, and they are unreachable while
         // walking down from one - the same holds for values whose parent is missing from the input. Both are
         // silently absent from the tree unless we look for them here.
-        // A value with multiple parents occupies a node per parent, so Count can legitimately exceed list.Count.
-        if (Count < list.Count)
+        // Node count says nothing about it: a value with multiple parents takes a node per parent, so the
+        // tree can hold as many nodes as there are values while some of those values were never reached.
+        var reachedValues = new HashSet<T>(this.Select(node => node.Value));
+        var unreachable = list.Where(value => !reachedValues.Contains(value)).ToList();
+        if (unreachable.Count > 0 && ThrowOnError)
         {
-            var reachedValues = new HashSet<T>(this.Select(node => node.Value));
-            var unreachable = list.Where(value => !reachedValues.Contains(value)).ToList();
-            if (unreachable.Count > 0 && ThrowOnError)
+            throw new InvalidChildException<T>($"{unreachable.Count} value(s) cannot be reached from any root (a cycle, or a parent missing from the collection)")
             {
-                throw new InvalidChildException<T>($"{unreachable.Count} value(s) cannot be reached from any root (a cycle, or a parent missing from the collection)")
-                {
-                    Child = unreachable[0]
-                };
-            }
+                Child = unreachable[0]
+            };
         }
     }
     /// <summary>
