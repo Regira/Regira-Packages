@@ -16,6 +16,35 @@ public interface IEntity<TKey> : IEntity
 }
 ```
 
+## Referencing one of your own children
+
+An owner with an optional foreign key to one of its own child rows — while the child's foreign key back is
+required, and therefore cascades — makes the two tables reference each other. Prefer marking the child instead:
+a flag or a rank column identifies the same row with no foreign key. Startup validation warns about the shape.
+
+Where the reference has to stay, two things need handling:
+
+- **The schema.** SQL Server rejects a migration with two cascade paths between the same two tables
+  ("may cause cycles or multiple cascade paths"). Map the reference `DeleteBehavior.ClientSetNull` — `NO ACTION`
+  in the database, EF nulls the reference on the tracked owner. SQLite does not enforce this.
+- **The delete.** Both rows are deleted in one save, and EF Core cannot order them: it refuses with
+  "a circular dependency was detected in the data to be saved". A primer cannot fix it — the delete order comes
+  from the **original** foreign-key values — so the reference has to be dropped in an `UPDATE` of its own.
+
+`SaveChangesBreakingDeleteCycles` / `SaveChangesBreakingDeleteCyclesAsync` (`Regira.Entities.EFcore.Extensions`)
+do that. Call them from the context's own overrides — both of them, or synchronous callers stay broken:
+
+```csharp
+public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    => this.SaveChangesBreakingDeleteCycles(() => base.SaveChanges(acceptAllChangesOnSuccess));
+
+public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken token = default)
+    => this.SaveChangesBreakingDeleteCyclesAsync(t => base.SaveChangesAsync(acceptAllChangesOnSuccess, t), token);
+```
+
+They null the optional side, save, and delete in a second save, inside one transaction. A save without such a
+pair is a single round trip and opens no transaction.
+
 ## SearchObject
 
 Use SearchObject for filtering entities.

@@ -585,4 +585,43 @@ public class StartupValidationTests
 
         Assert.That(capture.Warnings, Has.Some.Contains("no AutoServerOwnedPrepper is registered"));
     }
+
+    // An entity carrying a foreign key to one of its own children cannot be deleted once the children are
+    // loaded, and on SQL Server the migration is refused before that. Neither failure names the relationship,
+    // so the model is what has to report it.
+    [Test]
+    public async Task Entity_Referencing_Its_Own_Child_Warns()
+    {
+        var capture = new CaptureLoggerProvider();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(capture));
+        services.AddDbContext<DeleteCycleTests.ArticleContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<DeleteCycleTests.ArticleContext>(o => o.ConfigureValidation(v => v.Enabled = true))
+            .For<DeleteCycleTests.Article>();
+
+        using var sp = services.BuildServiceProvider();
+        await RunHostedServices(sp);
+
+        Assert.That(capture.Warnings, Has.Some
+            .Contains("Article.CoverImageId").And.Some
+            .Contains("ArticleImage.ArticleId").And.Some
+            .Contains("circular dependency").And.Some
+            .Contains("SaveChangesBreakingDeleteCycles"));
+    }
+
+    [Test]
+    public async Task A_Model_Without_Mutual_References_Is_Silent()
+    {
+        var capture = new CaptureLoggerProvider();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(capture));
+        services.AddDbContext<OrderContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<OrderContext>(o => o.ConfigureValidation(v => v.Enabled = true))
+            .For<Note>();
+
+        using var sp = services.BuildServiceProvider();
+        await RunHostedServices(sp);
+
+        Assert.That(capture.Warnings, Has.None.Contains("circular dependency"));
+    }
 }

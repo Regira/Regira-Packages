@@ -43,7 +43,7 @@ internal sealed class ArchivableReferenceDataValidator : IEntityRegistrationVali
         var registered = context.Registrations.Entities.Select(e => e.EntityType).ToHashSet();
         var ownedByParent = context.Registrations.Related.Select(r => r.RelatedType).ToHashSet();
 
-        foreach (var inspectType in InspectableContextTypes(context))
+        foreach (var inspectType in ValidationContextTypes.Inspectable(context))
         {
             DbContext dbContext;
             try
@@ -119,17 +119,5 @@ internal sealed class ArchivableReferenceDataValidator : IEntityRegistrationVali
         }
     }
 
-    /// <summary>
-    /// The concrete <see cref="DbContext"/> types to inspect — a recorded context type may be an abstract base,
-    /// and the model EF actually builds belongs to the registered concrete type(s) it covers.
-    /// </summary>
-    private static IEnumerable<Type> InspectableContextTypes(EntityValidationContext context)
-        => context.Registrations.ContextTypes
-            .SelectMany(contextType => context.Services
-                .Select(d => d.ServiceType)
-                .Where(t => !t.IsAbstract && typeof(DbContext).IsAssignableFrom(t) && contextType.IsAssignableFrom(t))
-                .DefaultIfEmpty(contextType))
-            .Where(t => !t.IsAbstract)
-            .Distinct();
 #endif
 }

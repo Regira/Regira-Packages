@@ -481,6 +481,28 @@ public static class DbContextOptionsBuilderExtensions
 }
 ```
 
+### DeleteCycleExtensions
+
+```csharp no-compile
+using Regira.Entities.EFcore.Extensions;
+
+public static class DeleteCycleExtensions
+{
+    // Two rows deleted together that reference each other — an entity carrying a foreign key to one of its
+    // own children — are a save EF Core refuses with "a circular dependency was detected in the data to be
+    // saved". Dropping the reference needs an UPDATE before the DELETEs, so it cannot happen inside one
+    // SaveChanges: call these FROM the DbContext's own overrides, BOTH of them, passing base.SaveChanges as
+    // the delegate. A save with no such pair calls the delegate exactly once and opens no transaction.
+    public static int SaveChangesBreakingDeleteCycles(this DbContext dbContext, Func<int> save);
+    public static Task<int> SaveChangesBreakingDeleteCyclesAsync(this DbContext dbContext,
+        Func<CancellationToken, Task<int>> save, CancellationToken token = default);
+}
+```
+
+> Direct pairs only; a longer ring (`A → B → C → A`) is left to EF's own exception. Startup validation warns
+> about the shape at registration time. Full recipe: `entities.patterns` → *An entity that references one of
+> its own children*.
+
 ### QueryExtensions
 
 > Every method

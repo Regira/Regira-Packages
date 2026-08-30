@@ -131,6 +131,12 @@ public class OwningEntity: IHasAttachments, IHasAttachments<MyEntityAttachment>
     });
 ```
 
+#### Marking one attachment as the primary one
+
+Mark the link entity — a flag, or its `SortOrder`, which is assigned from the incoming array position. A foreign
+key from the owner to one of its own attachments makes the two tables reference each other; see
+[Entity Models: Referencing one of your own children](models.md#referencing-one-of-your-own-children).
+
 ### Controllers
 
 The custom EntityAttachmentController must derive from `EntityAttachmentControllerBase`. Set the class

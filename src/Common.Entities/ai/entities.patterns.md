@@ -118,6 +118,17 @@ await links.SaveChanges(); // pipeline writes the file, fills Path/Length, assig
 **See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "Bulk insert / update")`
 and `get_package(id: "Regira.Entities", section: "examples", heading: "Attachments")`.
 
+### Mark one child as the primary / featured one
+<!-- how_to: key=primary-child aliases=featured,cover,primary,default,main,thumbnail,flag,attachment -->
+Put the marker on the **child** — a flag, or a rank column it already has (an attachment link entity's
+`SortOrder`, assigned from the incoming array position). A foreign key from the owner to one of its own child
+rows makes the two tables reference each other: SQL Server refuses the migration (Msg 1785) and every owner
+`DELETE` answers 500 with EF's *circular dependency*, which no primer can fix — EF orders deletes from the
+**original** foreign-key values. If the reference has to stay, map it `DeleteBehavior.ClientSetNull` and drop it
+in a save of its own.
+
+**See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "An entity that references one of its own children")`.
+
 ### Bulk insert / seed many rows
 <!-- how_to: key=bulk-insert aliases=bulk,seed,seeding,import,addrange,batch,many,insert,loop -->
 There is no `AddRange`. The per-item `Add`/`Modify`/`Save`/`Remove` calls only **track**
@@ -848,6 +859,97 @@ guarded — the `<img>` still 401s. (Authorization is evaluated on the *routed* 
 action's internal call into the id action is a plain method call.) Reserve this for genuinely public assets
 (product/article pictures) — the routes are guessable; sensitive documents stay on the authenticated path
 (download them through the shared axios, which sends the bearer).
+
+## An entity that references one of its own children
+
+An owner with an optional foreign key to one of its own child rows — while the child's foreign key back is
+required, and therefore cascades — makes the two tables reference each other. Two independent things break, and
+neither failure names the relationship. Startup validation warns about the shape.
+
+**Prefer marking the child over pointing at it.** A flag or a rank column on the child identifies the same row
+with no foreign key and neither failure below; an attachment link entity's `SortOrder` (assigned from the
+incoming array position) often already answers it. The rest of this section is for a reference that has to stay.
+
+### Wall 1 — SQL Server refuses the schema
+
+```
+Introducing FOREIGN KEY constraint 'FK_ArticleImages_Articles_ArticleId' on table
+'ArticleImages' may cause cycles or multiple cascade paths.  (Msg 1785)
+```
+
+The child's required foreign key cascades, so a reference mapped `SetNull` or `Cascade` is a second cascade path
+between the same two tables. Map it **`ClientSetNull`**: `NO ACTION` in the database, EF nulls the reference on
+the tracked owner. SQLite does not enforce this, so an app that develops on SQLite meets it at the migration.
+
+### Wall 2 — the owner can no longer be deleted
+
+```
+Unable to save changes because a circular dependency was detected in the data to be saved:
+'Article [Deleted] ForeignKeyConstraint { 'CoverImageId' } <-
+ ArticleImage [Deleted] ForeignKeyConstraint { 'ArticleId' } <- Article [Deleted]'
+```
+
+`IEntityService.Remove` + `SaveChanges` — the `DELETE` route of `EntityControllerBase` — answers **500** for
+every owner whose children are loaded. Two dead ends, so they are not rediscovered:
+
+- **A primer or prepper nulling the property does nothing.** They *do* run for `Deleted` entries, so they look
+  like the hook. EF builds the delete order from the entry's **original** foreign-key values, and mutating the
+  current value of a deleted entry is silently ignored — no error, no warning, the same exception.
+- **Faking the original value only moves the failure.** With the edge gone EF orders the deletes happily and the
+  database rejects them: the stored row still holds the reference while the row it points at is deleted.
+
+Dropping the reference needs an `UPDATE` before the `DELETE`s, so it cannot happen inside one `SaveChanges`.
+Override **both** save methods and delegate:
+
+```csharp
+using System.Threading;
+using Regira.Entities.EFcore.Extensions;
+
+public class Article : IEntityWithSerial
+{
+    public int Id { get; set; }
+    public int? CoverImageId { get; set; }
+    public ICollection<ArticleImage>? Images { get; set; }
+}
+public class ArticleImage : IEntityWithSerial
+{
+    public int Id { get; set; }
+    public int ArticleId { get; set; }
+}
+
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+{
+    public DbSet<Article> Articles { get; set; } = null!;
+    public DbSet<ArticleImage> ArticleImages { get; set; } = null!;
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+        => modelBuilder.Entity<Article>(entity =>
+        {
+            entity.HasMany(x => x.Images).WithOne()
+                .HasForeignKey(x => x.ArticleId).HasPrincipalKey(x => x.Id);
+            entity.HasOne<ArticleImage>().WithMany()
+                .HasForeignKey(x => x.CoverImageId)
+                .OnDelete(DeleteBehavior.ClientSetNull);   // Wall 1
+        });
+
+    // Wall 2 — both overloads: overriding only the async one leaves every synchronous caller broken
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+        => this.SaveChangesBreakingDeleteCycles(() => base.SaveChanges(acceptAllChangesOnSuccess));
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken token = default)
+        => this.SaveChangesBreakingDeleteCyclesAsync(t => base.SaveChangesAsync(acceptAllChangesOnSuccess, t), token);
+}
+```
+
+`SaveChangesBreakingDeleteCycles` (`Regira.Entities.EFcore.Extensions`) scans the change tracker for pairs of
+rows deleted together that reference each other, nulls the optional side, saves, and deletes in a second save —
+one transaction, through the context's execution strategy. Direct pairs only; a longer ring (`A → B → C → A`) is
+left to EF's own exception.
+
+> **Only the pair matters.** A save without one calls the real save exactly once and opens no transaction. An
+> owner deleted without its children loaded has no edge and takes that path — the database cascade still removes
+> the child rows. Deleting only a child is untouched too: one row, no cycle, and EF's own `ClientSetNull` fixup
+> nulls the owner's reference.
 
 ## Audit Trail with Custom Primer
 

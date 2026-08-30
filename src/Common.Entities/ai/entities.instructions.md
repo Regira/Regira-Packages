@@ -1029,6 +1029,12 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 6. Register **two** things: `.WithAttachments(_ => new BinaryFileService(...))` for the shared `Attachment` entity + file store + bytes→file primer, **and** `.For<Product>(e => e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments))` for the typed per-owner services + link prepper + DTO mapping. `HasAttachments` is an extension on the **base** `EntityServiceBuilder`, so it chains on every `For<>()` tier — a complex owner registers it exactly like the simple one shown here.
 7. *(web apps)* Call `options.UseAttachmentUris()` (before registering entities, on the **same** `UseEntities` options instance) and register `AddHttpContextAccessor()` so attachment DTOs resolve a `Uri` linking to the attachment controller's `GetFile` action.
 
+> ⚠️ **Marking one attachment as the primary one? Mark the link entity, don't point the owner at it.** An
+> owner FK to one of its own attachments makes the two tables reference each other: SQL Server refuses the
+> migration and every owner `DELETE` answers 500. Use `SortOrder` or a flag on the link entity; startup
+> validation warns, and [`entities.patterns.md`](./entities.patterns.md) → *An entity that references one of its
+> own children* covers the case where the FK has to stay.
+
 > ⚠️ **Owner is `IArchivable`?** The link entity is separately registered and has no navigation back to its owner, so archiving the owner leaves its attachments visible to `/{ownerId}/attachments`. Startup validation flags the shape; the working model configuration is in [`entities.patterns.md`](./entities.patterns.md) → Soft Delete > *Attachments on an archivable owner*.
 
 > **Reads: eager-load the owner's `Attachments`, or the file metadata comes back null.** `HasAttachments`
@@ -1143,6 +1149,7 @@ Load that file when implementing one of these:
 - **Writing to a related entity from a prepper** — the typed `e.Prepare(entity, dbContext)` overload; `EntityInputException<T>` must name the *serviced* entity or it escapes as a 500.
 - **Renamed DTO property** — wire both directions on the typed `UseMapping` chain when a DTO name differs from the entity's (Mapster maps by name only).
 - **Public (anonymous) attachment downloads** — serve images to `<img>` on a secured API (`[AllowAnonymous]` override of `GetFile`).
+- **An entity that references one of its own children** — an owner FK pointing at one of its own child rows: the SQL Server migration and every owner `DELETE` both fail. What to do instead, and the two-phase save when the reference has to stay.
 - **Soft delete** — the full `IArchivable` round-trip: `DELETE` archives instead of erasing, which routes see archived rows, and what restore requires.
 - **Owned children that are both sortable and individually togglable** — who owns `SortOrder` vs a per-row flag.
 - **Audit trail** — stamp `CreatedBy`/`ModifiedBy` via a global primer.

@@ -74,6 +74,21 @@ The documents for AI agents and the documents for developers should not refer to
 
 Write docs as if authored correctly from scratch — no correction notes or change history.
 
+### Ship the shape, not the case that reported it
+
+Work arrives concrete: a consumer report, one app's schema, a single failing endpoint. What ships is the
+general shape behind it.
+
+- **Name the mechanism, never the reporting domain.** An XML doc, a validator message or an exception that
+  says *"featured attachment"* is wrong for every other shape it covers; *"an entity referencing one of its
+  own children"* is right for all of them. Same for public API names.
+- **Prose generic and short; examples concrete.** One worked example, not three — and pick one that drags in
+  no unrelated subsystem.
+- **One home per explanation.** Everything else links to it. A second copy drifts.
+- **General rule in the general guide.** Put a short pointer in the specific place readers arrive from, not a
+  second version of the rule.
+- **Test fixtures are examples too** — reuse the guide's example names so the two read as one thing.
+
 ---
 
 ## Versioning & releases
@@ -122,6 +137,7 @@ Source lives in `src/Common.Setup/ai/commands/`.
 ## Key conventions
 
 - Guides travel with packages — every public API change that affects usage patterns needs a corresponding guide update
+- A concrete report ships as the general shape: mechanism-named APIs and messages, generic prose, concrete examples — see *Ship the shape, not the case that reported it*
 - Every shipped change bumps the changed package's version and adds a `CHANGELOG.md` bullet — see *Versioning & releases*
 - Never add consumer-scaffolding content to this file; it belongs in `ai/AGENTS.md`
 - Keep `Program.cs` thin and use `IServiceCollection` extension methods
