@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Regira.Entities.DependencyInjection.Extensions;
 using Regira.Entities.EFcore.Extensions;
@@ -58,12 +59,12 @@ public class DeleteCycleTests
 
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
             => BreakDeleteCycles
-                ? this.SaveChangesBreakingDeleteCycles(() => CountedSave(acceptAllChangesOnSuccess))
+                ? this.SaveChangesBreakingDeleteCycles(CountedSave, acceptAllChangesOnSuccess)
                 : CountedSave(acceptAllChangesOnSuccess);
 
         public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken token = default)
             => BreakDeleteCycles
-                ? this.SaveChangesBreakingDeleteCyclesAsync(t => CountedSaveAsync(acceptAllChangesOnSuccess, t), token)
+                ? this.SaveChangesBreakingDeleteCyclesAsync(CountedSaveAsync, acceptAllChangesOnSuccess, token)
                 : CountedSaveAsync(acceptAllChangesOnSuccess, token);
 
         private int CountedSave(bool acceptAllChangesOnSuccess)
@@ -79,17 +80,39 @@ public class DeleteCycleTests
     }
 
 
+    /// <summary>
+    /// What <c>EnableRetryOnFailure()</c> installs on SQL Server, which SQLite has no equivalent of. Nothing
+    /// here has to actually retry — an execution strategy that <b>might</b> is already enough for EF to refuse
+    /// to run it while a transaction is current.
+    /// </summary>
+    private sealed class RetryingStrategy(ExecutionStrategyDependencies dependencies)
+        : ExecutionStrategy(dependencies, maxRetryCount: 3, maxRetryDelay: TimeSpan.Zero)
+    {
+        protected override bool ShouldRetryOn(Exception exception) => false;
+    }
+
+
     private SqliteConnection _connection = null!;
     private ServiceProvider _serviceProvider = null!;
 
     [SetUp]
-    public void Setup()
+    public void Setup() => Setup(retryOnFailure: false);
+
+    private void Setup(bool retryOnFailure)
     {
+        _serviceProvider?.Dispose();
+        _connection?.Close();
         _connection = new SqliteConnection("Filename=:memory:");
         _connection.Open();
 
         IServiceCollection services = new ServiceCollection();
-        services.AddDbContext<ArticleContext>(db => db.UseSqlite(_connection));
+        services.AddDbContext<ArticleContext>(db => db.UseSqlite(_connection, sqlite =>
+        {
+            if (retryOnFailure)
+            {
+                sqlite.ExecutionStrategy(dependencies => new RetryingStrategy(dependencies));
+            }
+        }));
         services.UseEntities<ArticleContext>()
             // eager-loading the children is what puts them in the change tracker, and the delete cycle with them
             .For<Article>(e => e.Includes((query, _) => query.Include(x => x.Images!)));
@@ -259,6 +282,108 @@ public class DeleteCycleTests
             Assert.That(await db.ArticleImages.CountAsync(), Is.Zero);
             Assert.That((await db.Articles.AsNoTracking().FirstAsync()).CoverImageId, Is.Null);
         });
+    }
+
+
+    [Test]
+    public async Task Breaking_The_Cycle_Runs_Inside_A_Transaction_The_Caller_Owns()
+    {
+        // EnableRetryOnFailure() is the standard production setting, and EF's own recipe for combining it with
+        // an explicit transaction puts SaveChanges inside a strategy the caller already owns. Opening a second
+        // strategy in there throws before a single statement runs.
+        Setup(retryOnFailure: true);
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ArticleContext>();
+        var id = await Seed(db);
+        db.BreakDeleteCycles = true;
+
+        var article = await db.Articles.Include(x => x.Images!).FirstAsync(x => x.Id == id);
+        db.Articles.Remove(article);
+
+        await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            await db.SaveChangesAsync();
+            await transaction.CommitAsync();
+        });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(db.Articles.Count(), Is.Zero);
+            Assert.That(db.ArticleImages.Count(), Is.Zero);
+        });
+    }
+
+    [Test]
+    public async Task Breaking_The_Cycle_Runs_Inside_A_Transaction_The_Caller_Owns_On_The_Synchronous_Path()
+    {
+        Setup(retryOnFailure: true);
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ArticleContext>();
+        var id = await Seed(db);
+        db.BreakDeleteCycles = true;
+
+        var article = db.Articles.Include(x => x.Images!).First(x => x.Id == id);
+        db.Articles.Remove(article);
+
+        db.Database.CreateExecutionStrategy().Execute(() =>
+        {
+            using var transaction = db.Database.BeginTransaction();
+            db.SaveChanges();
+            transaction.Commit();
+        });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(db.Articles.Count(), Is.Zero);
+            Assert.That(db.ArticleImages.Count(), Is.Zero);
+        });
+    }
+
+    [Test]
+    public async Task Not_Accepting_Changes_Leaves_The_Deletes_Pending_And_Still_Saves_Them()
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ArticleContext>();
+        var id = await Seed(db);
+        db.BreakDeleteCycles = true;
+
+        // SaveChanges(false) + AcceptAllChanges() after the commit is EF's own pattern for an externally
+        // managed transaction. The reference-dropping UPDATE is accepted regardless — its original values are
+        // what the delete order is read from — but the deletes honour the caller's flag.
+        var article = await db.Articles.Include(x => x.Images!).FirstAsync(x => x.Id == id);
+        db.Articles.Remove(article);
+        await db.SaveChangesAsync(acceptAllChangesOnSuccess: false);
+
+        Assert.That(db.Entry(article).State, Is.EqualTo(EntityState.Deleted),
+            "the final save honoured the flag, so the caller still decides when the delete is accepted");
+        db.ChangeTracker.AcceptAllChanges();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(db.Articles.Count(), Is.Zero);
+            Assert.That(db.ArticleImages.Count(), Is.Zero);
+            Assert.That(db.ChangeTracker.Entries(), Is.Empty);
+        });
+    }
+
+    [Test]
+    public async Task Not_Accepting_Changes_Does_Not_Re_Send_The_Rest_Of_The_Save()
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ArticleContext>();
+        var id = await Seed(db);
+        db.BreakDeleteCycles = true;
+
+        // An insert riding along in the same save is the second thing an unaccepted phase one would break:
+        // still Added when phase two runs, it would be inserted a second time.
+        var article = await db.Articles.Include(x => x.Images!).FirstAsync(x => x.Id == id);
+        db.Articles.Remove(article);
+        db.Articles.Add(new Article { Title = "Survivor" });
+        await db.SaveChangesAsync(acceptAllChangesOnSuccess: false);
+        db.ChangeTracker.AcceptAllChanges();
+
+        Assert.That(await db.Articles.CountAsync(), Is.EqualTo(1));
     }
 
 

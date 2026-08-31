@@ -609,6 +609,59 @@ public class StartupValidationTests
             .Contains("SaveChangesBreakingDeleteCycles"));
     }
 
+    // The same child type reached through two different references is two cycles, each with its own answer:
+    // one may be droppable and the other required, and a warning naming only the first hides the second.
+    public class Cover : Regira.Entities.Models.Abstractions.IEntity<int>
+    {
+        public int Id { get; set; }
+        public int? CoverImageId { get; set; }
+        public int? ThumbnailImageId { get; set; }
+        public ICollection<CoverImage>? Images { get; set; }
+    }
+    public class CoverImage : Regira.Entities.Models.Abstractions.IEntity<int>
+    {
+        public int Id { get; set; }
+        public int CoverId { get; set; }
+    }
+    public class CoverContext(DbContextOptions<CoverContext> options) : DbContext(options)
+    {
+        public DbSet<Cover> Covers => Set<Cover>();
+        public DbSet<CoverImage> CoverImages => Set<CoverImage>();
+
+        protected override void OnModelCreating(ModelBuilder builder)
+            => builder.Entity<Cover>(entity =>
+            {
+                entity.HasMany(x => x.Images).WithOne()
+                    .HasForeignKey(x => x.CoverId).HasPrincipalKey(x => x.Id);
+                entity.HasOne<CoverImage>().WithMany()
+                    .HasForeignKey(x => x.CoverImageId).OnDelete(DeleteBehavior.ClientSetNull);
+                entity.HasOne<CoverImage>().WithMany()
+                    .HasForeignKey(x => x.ThumbnailImageId).OnDelete(DeleteBehavior.ClientSetNull);
+            });
+    }
+
+    [Test]
+    public async Task Two_References_To_The_Same_Child_Are_Both_Reported()
+    {
+        var capture = new CaptureLoggerProvider();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(capture));
+        services.AddDbContext<CoverContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<CoverContext>(o => o.ConfigureValidation(v => v.Enabled = true))
+            .For<Cover>();
+
+        using var sp = services.BuildServiceProvider();
+        await RunHostedServices(sp);
+
+        var cycles = capture.Warnings.Where(w => w.Contains("circular dependency")).ToArray();
+        Assert.Multiple(() =>
+        {
+            Assert.That(cycles, Has.Some.Contains("Cover.CoverImageId"));
+            Assert.That(cycles, Has.Some.Contains("Cover.ThumbnailImageId"));
+            Assert.That(cycles, Has.Length.EqualTo(2), "each reference once, and the cycle not reported from both ends");
+        });
+    }
+
     [Test]
     public async Task A_Model_Without_Mutual_References_Is_Silent()
     {

@@ -50,8 +50,10 @@ internal sealed class DeleteCycleValidator : IEntityRegistrationValidator
 
     private static IEnumerable<EntityValidationIssue> Cycles(DbContext dbContext, Type inspectType)
     {
-        // Keyed on the unordered pair: where both foreign keys cascade, the same cycle is reachable from
-        // either end and would otherwise be reported twice.
+        // Keyed on the unordered pair of foreign keys: where both cascade, the same cycle is reachable from
+        // either end and would otherwise be reported twice. The key names the two keys rather than the two
+        // types, so an owner pointing at the same child type twice (a cover and a thumbnail) still reports
+        // both references — each is a cycle of its own, and each needs its own answer.
         var reported = new HashSet<string>();
         foreach (var entityType in dbContext.Model.GetEntityTypes().Where(t => !t.IsOwned()))
         {
@@ -70,8 +72,13 @@ internal sealed class DeleteCycleValidator : IEntityRegistrationValidator
                 var owning = child.GetForeignKeys().FirstOrDefault(fk =>
                     fk.PrincipalEntityType.ClrType == entityType.ClrType
                     && fk.DeleteBehavior is DeleteBehavior.Cascade or DeleteBehavior.ClientCascade);
-                var pair = string.Join("↔", new[] { entityType.ClrType.FullName, child.ClrType.FullName }.OrderBy(n => n, StringComparer.Ordinal));
-                if (owning == null || !reported.Add(pair))
+                if (owning == null)
+                {
+                    continue;
+                }
+
+                var pair = string.Join("↔", new[] { Describe(reference), Describe(owning) }.OrderBy(n => n, StringComparer.Ordinal));
+                if (!reported.Add(pair))
                 {
                     continue;
                 }
@@ -81,6 +88,11 @@ internal sealed class DeleteCycleValidator : IEntityRegistrationValidator
             }
         }
     }
+
+    /// <summary>The declaring side of a foreign key, named so that two references between the same pair of
+    /// types stay distinguishable.</summary>
+    private static string Describe(IForeignKey foreignKey)
+        => $"{foreignKey.DeclaringEntityType.ClrType.FullName}.{string.Join("+", foreignKey.Properties.Select(p => p.Name))}";
 
     private static string Message(Type inspectType, IEntityType owner, IForeignKey reference, IEntityType child, IForeignKey owning)
     {

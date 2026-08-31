@@ -932,12 +932,14 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
                 .OnDelete(DeleteBehavior.ClientSetNull);   // Wall 1
         });
 
-    // Wall 2 — both overloads: overriding only the async one leaves every synchronous caller broken
+    // Wall 2 — both overloads: overriding only the async one leaves every synchronous caller broken.
+    // acceptAllChangesOnSuccess goes to the extension, not into the delegate.
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
-        => this.SaveChangesBreakingDeleteCycles(() => base.SaveChanges(acceptAllChangesOnSuccess));
+        => this.SaveChangesBreakingDeleteCycles(accept => base.SaveChanges(accept), acceptAllChangesOnSuccess);
 
     public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken token = default)
-        => this.SaveChangesBreakingDeleteCyclesAsync(t => base.SaveChangesAsync(acceptAllChangesOnSuccess, t), token);
+        => this.SaveChangesBreakingDeleteCyclesAsync((accept, t) => base.SaveChangesAsync(accept, t),
+            acceptAllChangesOnSuccess, token);
 }
 ```
 
@@ -945,6 +947,20 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 rows deleted together that reference each other, nulls the optional side, saves, and deletes in a second save —
 one transaction, through the context's execution strategy. Direct pairs only; a longer ring (`A → B → C → A`) is
 left to EF's own exception.
+
+> **Hand the flag to the extension, not to `base`.** Closing over `acceptAllChangesOnSuccess` inside the
+> delegate — `() => base.SaveChanges(acceptAllChangesOnSuccess)` — is the one wiring that compiles and breaks:
+> an unaccepted phase one keeps its **original** foreign-key values, so phase two sees the cycle it just broke
+> and re-raises the exact exception the extension exists to prevent, and re-sends every other change in the
+> save besides. The extension always accepts the reference-dropping `UPDATE` and honours the caller's flag on
+> the final save, which is where `SaveChanges(false)` + `AcceptAllChanges()` expects the deletes to still be
+> pending.
+
+> **Already in a transaction?** One the caller began, or an ambient `TransactionScope`, already spans both
+> saves, so the extension joins it and opens no execution strategy around it — a retrying strategy
+> (`EnableRetryOnFailure()`, the standard SQL Server setting) refuses to run at all while a transaction is
+> current, which makes EF's own recipe of `CreateExecutionStrategy().Execute(...)` around an explicit
+> transaction the shape that would otherwise throw before a statement ran.
 
 > **Only the pair matters.** A save without one calls the real save exactly once and opens no transaction. An
 > owner deleted without its children loaded has no edge and takes that path — the database cascade still removes

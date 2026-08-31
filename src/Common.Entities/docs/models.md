@@ -36,14 +36,22 @@ do that. Call them from the context's own overrides — both of them, or synchro
 
 ```csharp
 public override int SaveChanges(bool acceptAllChangesOnSuccess)
-    => this.SaveChangesBreakingDeleteCycles(() => base.SaveChanges(acceptAllChangesOnSuccess));
+    => this.SaveChangesBreakingDeleteCycles(accept => base.SaveChanges(accept), acceptAllChangesOnSuccess);
 
 public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken token = default)
-    => this.SaveChangesBreakingDeleteCyclesAsync(t => base.SaveChangesAsync(acceptAllChangesOnSuccess, t), token);
+    => this.SaveChangesBreakingDeleteCyclesAsync((accept, t) => base.SaveChangesAsync(accept, t),
+        acceptAllChangesOnSuccess, token);
 ```
 
+Pass `acceptAllChangesOnSuccess` to the extension and hand the delegate whatever it is given — the extension
+decides what each phase may accept. It always accepts the reference-dropping `UPDATE`, because EF reads the
+delete order back from those entries; your `false` is honoured on the final save, so the deletes stay pending
+until you call `AcceptAllChanges()`.
+
 They null the optional side, save, and delete in a second save, inside one transaction. A save without such a
-pair is a single round trip and opens no transaction.
+pair is a single round trip and opens no transaction. Already inside a transaction of your own — or a
+`TransactionScope` — the two saves join it and no execution strategy is opened around them, which is what lets
+the pattern work under `EnableRetryOnFailure()`.
 
 ## SearchObject
 

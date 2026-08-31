@@ -493,9 +493,15 @@ public static class DeleteCycleExtensions
     // saved". Dropping the reference needs an UPDATE before the DELETEs, so it cannot happen inside one
     // SaveChanges: call these FROM the DbContext's own overrides, BOTH of them, passing base.SaveChanges as
     // the delegate. A save with no such pair calls the delegate exactly once and opens no transaction.
-    public static int SaveChangesBreakingDeleteCycles(this DbContext dbContext, Func<int> save);
+    // Give acceptAllChangesOnSuccess to the EXTENSION and let the delegate take it as a parameter — closing
+    // over it re-raises the circular dependency, because phase one's entries stay unaccepted and EF reads the
+    // delete order from their original values. A transaction the caller owns (or a TransactionScope) is
+    // joined rather than nested, so the pattern holds under EnableRetryOnFailure().
+    public static int SaveChangesBreakingDeleteCycles(this DbContext dbContext, Func<bool, int> save,
+        bool acceptAllChangesOnSuccess = true);
     public static Task<int> SaveChangesBreakingDeleteCyclesAsync(this DbContext dbContext,
-        Func<CancellationToken, Task<int>> save, CancellationToken token = default);
+        Func<bool, CancellationToken, Task<int>> save, bool acceptAllChangesOnSuccess = true,
+        CancellationToken token = default);
 }
 ```
 
