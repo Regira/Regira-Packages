@@ -153,6 +153,34 @@
       "frameworkReferences": ["Microsoft.AspNetCore.App"]
     },
     {
+      "name": "web-analytics",
+      "projects": [
+        "src/Web.Analytics/Web.Analytics.csproj"
+      ],
+      "guideFiles": [
+        "src/Web.Analytics/README.md",
+        "src/Web.Analytics/docs/examples.md"
+      ],
+      "usings": [
+        "System.ComponentModel.DataAnnotations",
+        "System.IO",
+        "System.Net",
+        "System.Text.Json",
+        "System.Threading",
+        "Microsoft.AspNetCore.Builder",
+        "Microsoft.AspNetCore.Http",
+        "Microsoft.Extensions.DependencyInjection",
+        "Microsoft.Extensions.Hosting",
+        "Regira.Web.Analytics",
+        "Regira.Web.Analytics.Config",
+        "Regira.Web.Analytics.Endpoints",
+        "Regira.Web.Analytics.Models",
+        "Regira.Web.Analytics.Services"
+      ],
+      "frameworkReferences": [ "Microsoft.AspNetCore.App" ],
+      "sharedTypes": true
+    },
+    {
       "name": "security",
       "projects": [
         "src/Common.Security/Common.Security.csproj",

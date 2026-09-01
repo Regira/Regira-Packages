@@ -73,6 +73,7 @@ Regira is a collection of .NET libraries providing unified abstractions for comm
 | Module | Description |
 |--------|-------------|
 | [Web / HTML](src/Common.Web) | Razor template rendering, middleware, Swagger, and background tasks |
+| [Web / Analytics](src/Web.Analytics) | Abstract visitor analytics — pluggable capture, enrichment, and storage hooks |
 
 ---
 

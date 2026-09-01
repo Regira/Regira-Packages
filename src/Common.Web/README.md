@@ -7,6 +7,7 @@ Regira Web.HTML provides Razor-based HTML template rendering plus common web uti
 | Project | Package | Purpose |
 |---------|---------|---------|
 | `Common.Web` | `Regira.Web` | Core web utilities, middleware, exception handling |
+| `Web.Analytics` | `Regira.Web.Analytics` | Abstract visitor analytics — pluggable capture, enrichment, and storage hooks |
 | `Web.HTML.RazorEngineCore` | `Regira.Web.HTML.RazorEngineCore` | Razor templates via RazorEngineCore |
 | `Web.HTML.RazorLight` | `Regira.Web.HTML.RazorLight` | Razor templates via RazorLight |
 | `Web.Swagger` | `Regira.Web.Swagger` | Swagger/OpenAPI JWT & API Key support |
@@ -17,6 +18,9 @@ Regira Web.HTML provides Razor-based HTML template rendering plus common web uti
 ```xml
 <!-- Core web utilities -->
 <PackageReference Include="Regira.Web" Version="6.*" />
+
+<!-- Visitor analytics -->
+<PackageReference Include="Regira.Web.Analytics" Version="6.*" />
 
 <!-- Razor templates (pick one) -->
 <PackageReference Include="Regira.Web.HTML.RazorEngineCore" Version="6.*" />
