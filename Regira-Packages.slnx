@@ -131,6 +131,7 @@
   <Folder Name="/src/Web/">
     <Project Path="src/Common.Web/Common.Web.csproj" />
     <Project Path="src/Web.Analytics/Web.Analytics.csproj" />
+    <Project Path="src/Web.Analytics.GeoIP2/Web.Analytics.GeoIP2.csproj" />
     <Project Path="src/Web.HTML.RazorEngineCore/Web.HTML.RazorEngineCore.csproj" Id="916bbb45-e9ad-4d88-b82e-b7c754e16422" />
     <Project Path="src/Web.HTML.RazorLight/Web.HTML.RazorLight.csproj" />
     <Project Path="src/Web.Swagger/Web.Swagger.csproj" />
@@ -164,6 +165,7 @@
     <Project Path="tests/Serializing.Testing/Serializing.Testing.csproj" />
     <Project Path="tests/Testing.Library/_Testing.Library.csproj" />
     <Project Path="tests/TreeList.Testing/TreeList.Testing.csproj" />
+    <Project Path="tests/Web.Analytics.GeoIP2.Testing/Web.Analytics.GeoIP2.Testing.csproj" />
     <Project Path="tests/Web.Analytics.Testing/Web.Analytics.Testing.csproj" />
     <Project Path="tests/Web.HTML.Testing/Web.HTML.Testing.csproj" />
     <Project Path="tests/Web.Security.Testing/Web.Security.Testing.csproj" />

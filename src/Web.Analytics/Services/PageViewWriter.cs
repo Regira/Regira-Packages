@@ -16,6 +16,13 @@ public class PageViewWriter<TPageView>(PageViewQueue<TPageView> queue, Analytics
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (config.Ipv4PrefixLength is < 0 or > 32)
+            logger.LogWarning("Analytics: Ipv4PrefixLength {Value} is out of range (0-32) — masking IPv4 to the default /{Default}",
+                config.Ipv4PrefixLength, IpMasker.DefaultIpv4PrefixLength);
+        if (config.Ipv6PrefixLength is < 0 or > 128)
+            logger.LogWarning("Analytics: Ipv6PrefixLength {Value} is out of range (0-128) — masking IPv6 to the default /{Default}",
+                config.Ipv6PrefixLength, IpMasker.DefaultIpv6PrefixLength);
+
         bool hasRetentionStore;
         try
         {
@@ -120,7 +127,7 @@ public class PageViewWriter<TPageView>(PageViewQueue<TPageView> queue, Analytics
 
             // After enrichment: enrichers get the full address, the store never does (unless masking is off).
             pending.View.IpAddress = config.MaskIpAddress
-                ? IpMasker.Mask(pending.ClientIp)
+                ? IpMasker.Mask(pending.ClientIp, config.Ipv4PrefixLength, config.Ipv6PrefixLength)
                 : IpMasker.Normalize(pending.ClientIp)?.ToString();
         }
 

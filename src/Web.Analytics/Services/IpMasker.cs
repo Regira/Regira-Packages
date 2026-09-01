@@ -5,11 +5,15 @@ namespace Regira.Web.Analytics.Services;
 
 public static class IpMasker
 {
+    public const int DefaultIpv4PrefixLength = 24;
+    public const int DefaultIpv6PrefixLength = 48;
+
     /// <summary>
-    /// Truncates an address to /24 (IPv4) or /48 (IPv6). What remains is enough to tell networks apart and to
-    /// keep the country/region meaningful, but no longer points at a household or a single connection.
+    /// Keeps only the leading prefix bits (/24 IPv4, /48 IPv6 by default): enough to tell networks apart
+    /// and keep the region meaningful, no longer pointing at a household or a single connection.
     /// </summary>
-    public static string? Mask(IPAddress? ip)
+    public static string? Mask(IPAddress? ip,
+        int ipv4PrefixLength = DefaultIpv4PrefixLength, int ipv6PrefixLength = DefaultIpv6PrefixLength)
     {
         if (ip == null)
             return null;
@@ -18,10 +22,18 @@ public static class IpMasker
             ip = ip.MapToIPv4();
 
         var bytes = ip.GetAddressBytes();
-        var keep = ip.AddressFamily == AddressFamily.InterNetwork ? 3 : 6;
+        var isIpv4 = ip.AddressFamily == AddressFamily.InterNetwork;
+        var prefix = isIpv4 ? ipv4PrefixLength : ipv6PrefixLength;
 
-        for (var i = keep; i < bytes.Length; i++)
-            bytes[i] = 0;
+        // Out of range falls back to the default, not to "keep everything": a typo must not ship full addresses.
+        if (prefix < 0 || prefix > bytes.Length * 8)
+            prefix = isIpv4 ? DefaultIpv4PrefixLength : DefaultIpv6PrefixLength;
+
+        for (var i = 0; i < bytes.Length; i++)
+        {
+            var bitsKept = Math.Clamp(prefix - i * 8, 0, 8);
+            bytes[i] &= (byte)(0xFF << (8 - bitsKept));
+        }
 
         return new IPAddress(bytes).ToString();
     }

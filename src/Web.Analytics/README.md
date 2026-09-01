@@ -11,7 +11,7 @@ hook the consumer plugs in through DI.
 One row per qualifying request (`PageView`): UTC timestamp, site name, path, query string, referrer
 (raw + external host), utm source, user agent, a masked client IP, a bot flag and the status code.
 Deliberately nothing that ties two visits to the same person: no cookie, no session id, no full IP
-address (masking to /24 / /48 is on by default; enrichers see the full address in memory only).
+address (masked to a configurable prefix, /24 / /48 by default; enrichers see the full address in memory only).
 
 ## Quick start
 
@@ -65,46 +65,52 @@ there. A `WithStore(Func<IServiceProvider, ...>)` factory overload exists for co
 container cannot do; it does **not** auto-wire the stats/retention interfaces — register those
 yourself.
 
-## A custom entity — geolocation as the example
+## A custom entity — your own dimensions
 
 The pipeline is generic over the entity. Derive from `PageView`, register the subclass, and fill your
-properties from a contributor (request-bound data) or enricher (IP-bound data):
+properties from a contributor (request-bound data) or an enricher (IP-bound data, run before masking):
 
 ```csharp
-public record GeoLocation(string? CountryCode, string? Country, string? City);
-
-// Your resolver — MaxMind GeoIP2, IP2Location, a web service, ...; the dependency stays in your project.
-public interface IGeoLookup
+public class SitePageView : PageView
 {
-    Task<GeoLocation?> FindAsync(IPAddress? ip, CancellationToken cancellationToken = default);
+    [MaxLength(32)]  public string? Experiment { get; set; }   // A/B variant, from the request
+    [MaxLength(128)] public string? Network { get; set; }      // ISP / hosting provider, from the IP
 }
 
-public class GeoPageView : PageView
+// Your resolver — an IP-to-ASN database, a web service, ...; the dependency stays in your project.
+public interface INetworkLookup
 {
-    [MaxLength(2)]   public string? CountryCode { get; set; }
-    [MaxLength(128)] public string? Country { get; set; }
-    [MaxLength(128)] public string? City { get; set; }
+    Task<string?> FindAsync(IPAddress? ip, CancellationToken cancellationToken = default);
 }
 
-public class GeoEnricher(IGeoLookup lookup) : IPageViewEnricher<GeoPageView>
+public class ExperimentContributor : IVisitContributor<SitePageView>
 {
-    public async ValueTask EnrichAsync(PendingPageView<GeoPageView> pending, CancellationToken cancellationToken = default)
+    public ValueTask OnCapturedAsync(HttpContext context, SitePageView view)
     {
-        // Runs before the IP is masked — the one place the full address is available.
-        var found = await lookup.FindAsync(pending.ClientIp, cancellationToken);
-        pending.View.CountryCode = found?.CountryCode;
-        pending.View.Country = found?.Country;
-        pending.View.City = found?.City;
+        view.Experiment = context.Request.Cookies["ab-variant"];
+        return ValueTask.CompletedTask;
     }
+}
+
+public class NetworkEnricher(INetworkLookup lookup) : IPageViewEnricher<SitePageView>
+{
+    // Runs before the IP is masked — the one place the full address is available.
+    public async ValueTask EnrichAsync(PendingPageView<SitePageView> pending, CancellationToken cancellationToken = default)
+        => pending.View.Network = await lookup.FindAsync(pending.ClientIp, cancellationToken);
 }
 ```
 
 ```csharp
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddAnalytics<GeoPageView>(builder.Configuration)
+builder.Services.AddAnalytics<SitePageView>(builder.Configuration)
     .WithStore<MyPageViewStore>()   // IPageViewStore<in T>: a base-entity store serves any subclass
-    .AddEnricher<GeoEnricher>();
+    .AddContributor<ExperimentContributor>()
+    .AddEnricher<NetworkEnricher>();
 ```
+
+Geolocation is the same shape and ships ready-made as `Regira.Web.Analytics.GeoIP2` — a MaxMind
+GeoLite2 lookup behind `.AddGeoIP2(configuration)`, with `IGeoPageView` for your own entity — so it
+is not something to write yourself.
 
 One entity type per host; a second `AddAnalytics` naming a different one throws. The constraint is
 `class, IPageView, new()` — deriving from `PageView` is the convenient route, but any class
@@ -118,7 +124,8 @@ runtime type or the subclass's columns are silently lost — see the JSON-lines 
 |---|---|---|
 | `Enabled` | `true` | `false` registers nothing but the config; the builder's methods no-op |
 | `SiteName` | entry assembly name | discriminator when several hosts share one store |
-| `MaskIpAddress` | `true` | truncate to /24 (IPv4) / /48 (IPv6) before storing |
+| `MaskIpAddress` | `true` | truncate the stored client IP to the prefix lengths below |
+| `Ipv4PrefixLength` / `Ipv6PrefixLength` | `24` / `48` | leading bits kept when masking (24 = drop the last IPv4 octet) |
 | `RecordBots` | `true` | keep crawler rows (flagged `IsBot`) instead of dropping them |
 | `RetentionDays` | `365` | purge cutoff; needs an `IPageViewRetentionStore`; `0` keeps everything |
 | `ApiKey` | empty | `X-Analytics-Key` for the stats route; empty = route not mapped |

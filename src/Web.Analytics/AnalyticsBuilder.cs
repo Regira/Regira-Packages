@@ -14,6 +14,9 @@ public class AnalyticsBuilder<TPageView>(IServiceCollection services, bool enabl
 {
     public IServiceCollection Services { get; } = services;
 
+    /// <summary>False when Analytics:Enabled is off; extension packages guard their registrations on it too.</summary>
+    public bool Enabled { get; } = enabled;
+
     /// <summary>
     /// Registers the persistence hook — scoped, so a store may take scoped dependencies (a DbContext);
     /// stats and retention interfaces are registered too when <typeparamref name="TStore"/> implements
@@ -22,7 +25,7 @@ public class AnalyticsBuilder<TPageView>(IServiceCollection services, bool enabl
     public AnalyticsBuilder<TPageView> WithStore<TStore>()
         where TStore : class, IPageViewStore<TPageView>
     {
-        if (!enabled)
+        if (!Enabled)
             return this;
 
         Services.TryAddScoped<TStore>();
@@ -39,7 +42,7 @@ public class AnalyticsBuilder<TPageView>(IServiceCollection services, bool enabl
     /// <summary>Factory variant; stats/retention interfaces are not auto-wired here — register them yourself.</summary>
     public AnalyticsBuilder<TPageView> WithStore(Func<IServiceProvider, IPageViewStore<TPageView>> factory)
     {
-        if (!enabled)
+        if (!Enabled)
             return this;
 
         Services.AddScoped(factory);
@@ -50,7 +53,7 @@ public class AnalyticsBuilder<TPageView>(IServiceCollection services, bool enabl
     public AnalyticsBuilder<TPageView> WithFilter<TFilter>()
         where TFilter : class, IVisitFilter
     {
-        if (!enabled)
+        if (!Enabled)
             return this;
 
         Services.Replace(ServiceDescriptor.Singleton<IVisitFilter, TFilter>());
@@ -64,7 +67,7 @@ public class AnalyticsBuilder<TPageView>(IServiceCollection services, bool enabl
     public AnalyticsBuilder<TPageView> AddContributor<TContributor>()
         where TContributor : class, IVisitContributor<TPageView>
     {
-        if (!enabled)
+        if (!Enabled)
             return this;
 
         Services.TryAddEnumerable(ServiceDescriptor.Singleton<IVisitContributor<TPageView>, TContributor>());
@@ -75,7 +78,7 @@ public class AnalyticsBuilder<TPageView>(IServiceCollection services, bool enabl
     public AnalyticsBuilder<TPageView> AddEnricher<TEnricher>()
         where TEnricher : class, IPageViewEnricher<TPageView>
     {
-        if (!enabled)
+        if (!Enabled)
             return this;
 
         Services.TryAddEnumerable(ServiceDescriptor.Scoped<IPageViewEnricher<TPageView>, TEnricher>());

@@ -45,8 +45,9 @@ registered scoped, so a database-backed store can take a DbContext directly. A b
 serves subclasses through the contravariant `IPageViewStore<in T>` (as below) must persist by runtime
 type, the way this one does — the stats endpoint serializes its recent rows the same way.
 
-For a custom entity carrying geolocation columns filled by a background enricher, see the geolocation
-sample in the package README.
+For a custom entity with dimensions of your own — a contributor for request-bound data, an enricher
+for IP-bound data — see the README sample; geolocation ships ready-made as
+`Regira.Web.Analytics.GeoIP2`.
 
 ## Custom filter + contributor — tracking an RPC endpoint
 

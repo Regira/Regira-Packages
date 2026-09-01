@@ -8,8 +8,9 @@ using Regira.Web.Analytics.Endpoints;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.AddAnalyticsConfiguration();
+builder.Services.AddRazorPages();
 builder.Services.AddAnalytics(builder.Configuration)
-    .WithStore<FilePageViewStore>();
+    .WithStore<JsonLinesPageViewStore>();
 
 var app = builder.Build();
 app.UseForwardedHeaders();
@@ -33,7 +34,7 @@ app.Run();
 using Regira.Web.Analytics.Models;
 using Regira.Web.Analytics.Services;
 
-public class FilePageViewStore(IHostEnvironment env) : IPageViewStore<PageView>
+public class JsonLinesPageViewStore(IHostEnvironment env) : IPageViewStore<PageView>
 {
     public async Task SaveAsync(IReadOnlyList<PageView> views, CancellationToken ct = default)
     {
@@ -49,34 +50,49 @@ public class FilePageViewStore(IHostEnvironment env) : IPageViewStore<PageView>
 ```
 
 Implement `IPageViewStatsStore` / `IPageViewRetentionStore` on the same class and
-`WithStore<FilePageViewStore>()` registers all three. A base-entity store reused for a subclass via
+`WithStore<JsonLinesPageViewStore>()` registers all three. A base-entity store reused for a subclass via
 the contravariant `IPageViewStore<in T>` must persist by runtime type, as above.
 
-## Custom entity + background enricher (geolocation)
+## Custom entity + contributor + background enricher
 
 ```csharp
-public class GeoPageView : PageView
+public class SitePageView : PageView
 {
-    [MaxLength(2)]   public string? CountryCode { get; set; }
-    [MaxLength(128)] public string? Country { get; set; }
-    [MaxLength(128)] public string? City { get; set; }
+    [MaxLength(32)]  public string? Experiment { get; set; }   // A/B variant, from the request
+    [MaxLength(128)] public string? Network { get; set; }      // ISP / hosting provider, from the IP
 }
 
-public class GeoEnricher(IGeoLookup lookup) : IPageViewEnricher<GeoPageView>
+public interface INetworkLookup
 {
-    public async ValueTask EnrichAsync(PendingPageView<GeoPageView> pending, CancellationToken ct)
+    Task<string?> FindAsync(IPAddress? ip, CancellationToken ct = default);   // your resolver
+}
+
+public class ExperimentContributor : IVisitContributor<SitePageView>
+{
+    public ValueTask OnCapturedAsync(HttpContext context, SitePageView view)
     {
-        var found = await lookup.FindAsync(pending.ClientIp, ct);  // unmasked address, memory only
-        pending.View.CountryCode = found?.CountryCode;
-        pending.View.Country = found?.Country;
-        pending.View.City = found?.City;
+        view.Experiment = context.Request.Cookies["ab-variant"];
+        return ValueTask.CompletedTask;
     }
 }
 
-builder.Services.AddAnalytics<GeoPageView>(builder.Configuration)
-    .WithStore<GeoPageViewStore>()
-    .AddEnricher<GeoEnricher>();
+public class NetworkEnricher(INetworkLookup lookup) : IPageViewEnricher<SitePageView>
+{
+    public async ValueTask EnrichAsync(PendingPageView<SitePageView> pending, CancellationToken ct = default)
+        => pending.View.Network = await lookup.FindAsync(pending.ClientIp, ct);   // unmasked address, memory only
+}
 ```
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddAnalytics<SitePageView>(builder.Configuration)
+    .WithStore<JsonLinesPageViewStore>()   // IPageViewStore<in T>: the base-entity store serves the subclass
+    .AddContributor<ExperimentContributor>()
+    .AddEnricher<NetworkEnricher>();
+```
+
+Geolocation is the same shape but ships ready-made: add `Regira.Web.Analytics.GeoIP2`, implement
+`IGeoPageView` on the entity (or use its `GeoPageView`) and call `.AddGeoIP2(builder.Configuration)`.
 
 ## Non-HTML traffic: custom filter + in-request contributor
 
@@ -89,7 +105,10 @@ public class RpcVisitFilter : IVisitFilter
         => context.Response.StatusCode is 200 or 202;
 }
 
-public class RpcPageView : PageView { public string? Operation { get; set; } }
+public class RpcPageView : PageView
+{
+    [MaxLength(64)] public string? Operation { get; set; }
+}
 
 public class RpcContributor : IVisitContributor<RpcPageView>
 {
@@ -114,9 +133,12 @@ public class RpcContributor : IVisitContributor<RpcPageView>
         }
     }
 }
+```
 
+```csharp
+var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddAnalytics<RpcPageView>(builder.Configuration)
-    .WithStore<RpcStore>()
+    .WithStore<JsonLinesPageViewStore>()
     .WithFilter<RpcVisitFilter>()
     .AddContributor<RpcContributor>();
 ```
@@ -129,4 +151,5 @@ curl "https://example.com/analytics/stats?days=30&top=20&includeBots=true" -H "X
 ```
 
 Response: `{ site, since, days, stats: { humanViews, botViews, perDay, topPaths, topReferrers,
-perSite, recent, breakdowns } }` — `breakdowns` holds the store's own dimensions (`country`, `tool`, ...).
+perSite, recent, breakdowns } }` — `breakdowns` holds the store's own dimensions (`country`, `tool`, ...);
+`recent` rows serialize as their runtime type.

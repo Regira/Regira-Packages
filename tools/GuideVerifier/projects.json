@@ -181,6 +181,93 @@
       "sharedTypes": true
     },
     {
+      "name": "web-analytics-geoip2",
+      "projects": [
+        "src/Web.Analytics.GeoIP2/Web.Analytics.GeoIP2.csproj"
+      ],
+      "guideFiles": [
+        "src/Web.Analytics.GeoIP2/README.md",
+        "src/Web.Analytics.GeoIP2/docs/examples.md"
+      ],
+      "usings": [
+        "System.ComponentModel.DataAnnotations",
+        "System.IO",
+        "System.Net",
+        "System.Text.Json",
+        "System.Threading",
+        "Microsoft.AspNetCore.Builder",
+        "Microsoft.Extensions.Configuration",
+        "Microsoft.Extensions.DependencyInjection",
+        "Microsoft.Extensions.Hosting",
+        "Regira.Web.Analytics",
+        "Regira.Web.Analytics.Models",
+        "Regira.Web.Analytics.Services",
+        "Regira.Web.Analytics.GeoIP2",
+        "Regira.Web.Analytics.GeoIP2.Config",
+        "Regira.Web.Analytics.GeoIP2.Models",
+        "Regira.Web.Analytics.GeoIP2.Services"
+      ],
+      "frameworkReferences": [ "Microsoft.AspNetCore.App" ],
+      "sharedTypes": true
+    },
+    {
+      "//": "The packed AI guides redeclare the developer docs' sample types, so they compile as their own groups.",
+      "name": "web-analytics-ai",
+      "projects": [
+        "src/Web.Analytics/Web.Analytics.csproj"
+      ],
+      "guideDirs": [
+        "src/Web.Analytics/ai"
+      ],
+      "usings": [
+        "System.ComponentModel.DataAnnotations",
+        "System.IO",
+        "System.Net",
+        "System.Text.Json",
+        "System.Threading",
+        "Microsoft.AspNetCore.Builder",
+        "Microsoft.AspNetCore.Http",
+        "Microsoft.Extensions.DependencyInjection",
+        "Microsoft.Extensions.Hosting",
+        "Regira.Web.Analytics",
+        "Regira.Web.Analytics.Config",
+        "Regira.Web.Analytics.Endpoints",
+        "Regira.Web.Analytics.Models",
+        "Regira.Web.Analytics.Services"
+      ],
+      "frameworkReferences": [ "Microsoft.AspNetCore.App" ],
+      "sharedTypes": true
+    },
+    {
+      "name": "web-analytics-geoip2-ai",
+      "projects": [
+        "src/Web.Analytics.GeoIP2/Web.Analytics.GeoIP2.csproj"
+      ],
+      "guideDirs": [
+        "src/Web.Analytics.GeoIP2/ai"
+      ],
+      "usings": [
+        "System.ComponentModel.DataAnnotations",
+        "System.IO",
+        "System.Net",
+        "System.Text.Json",
+        "System.Threading",
+        "Microsoft.AspNetCore.Builder",
+        "Microsoft.Extensions.Configuration",
+        "Microsoft.Extensions.DependencyInjection",
+        "Microsoft.Extensions.Hosting",
+        "Regira.Web.Analytics",
+        "Regira.Web.Analytics.Models",
+        "Regira.Web.Analytics.Services",
+        "Regira.Web.Analytics.GeoIP2",
+        "Regira.Web.Analytics.GeoIP2.Config",
+        "Regira.Web.Analytics.GeoIP2.Models",
+        "Regira.Web.Analytics.GeoIP2.Services"
+      ],
+      "frameworkReferences": [ "Microsoft.AspNetCore.App" ],
+      "sharedTypes": true
+    },
+    {
       "name": "security",
       "projects": [
         "src/Common.Security/Common.Security.csproj",

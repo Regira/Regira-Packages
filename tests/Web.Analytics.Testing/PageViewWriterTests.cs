@@ -69,6 +69,49 @@ public class PageViewWriterTests
     }
 
     [Test]
+    public async Task ConfiguredPrefixLength_IsApplied()
+    {
+        var store = new InMemoryStore<PageView>();
+        var config = new AnalyticsConfig { FlushIntervalSeconds = 1, Ipv4PrefixLength = 16, RetentionDays = 0 };
+        var (writer, queue) = Create(config, s => s.AddSingleton<IPageViewStore<PageView>>(store));
+
+        await writer.StartAsync(CancellationToken.None);
+        queue.Enqueue(Pending());
+
+        await TestHostFactory.WaitUntilAsync(() => store.Views.Count == 1);
+        await writer.StopAsync(CancellationToken.None);
+
+        Assert.That(store.Views[0].IpAddress, Is.EqualTo("203.0.0.0"));
+    }
+
+    [Test]
+    public async Task OutOfRangePrefixLength_MasksToTheDefault_AndWarns()
+    {
+        var store = new InMemoryStore<PageView>();
+        // The obvious slip: the IPv6 value in the IPv4 slot. Must not fail open to full addresses.
+        var config = new AnalyticsConfig { FlushIntervalSeconds = 1, Ipv4PrefixLength = 48, RetentionDays = 0 };
+        var services = new ServiceCollection();
+        services.AddSingleton<IPageViewStore<PageView>>(store);
+        var provider = services.BuildServiceProvider();
+        var queue = new PageViewQueue<PageView>(config, NullLogger<PageViewQueue<PageView>>.Instance);
+        var logger = new CapturingLogger<PageViewWriter<PageView>>();
+        var writer = new PageViewWriter<PageView>(queue, config, provider.GetRequiredService<IServiceScopeFactory>(), logger);
+
+        await writer.StartAsync(CancellationToken.None);
+        queue.Enqueue(Pending());
+
+        await TestHostFactory.WaitUntilAsync(() => store.Views.Count == 1);
+        await writer.StopAsync(CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(store.Views[0].IpAddress, Is.EqualTo("203.0.113.0"));
+            Assert.That(logger.Entries.Any(e => e.Level == Microsoft.Extensions.Logging.LogLevel.Warning
+                && e.Message.Contains("out of range")), Is.True);
+        });
+    }
+
+    [Test]
     public async Task MaskingOff_StoresTheFullNormalizedAddress()
     {
         var store = new InMemoryStore<PageView>();

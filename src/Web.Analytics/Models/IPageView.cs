@@ -29,7 +29,7 @@ public interface IPageView
     string? UserAgent { get; set; }
 
     /// <summary>
-    /// Client IP, truncated to /24 (IPv4) or /48 (IPv6) unless masking is switched off. Enrichers run on the
+    /// Client IP, truncated to the configured prefix (/24 IPv4, /48 IPv6 by default) unless masking is off. Enrichers run on the
     /// full address before this is written, so the untruncated address never leaves memory.
     /// </summary>
     string? IpAddress { get; set; }

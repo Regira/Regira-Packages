@@ -89,7 +89,7 @@ Defaults or recommendations from the dedicated module guides are labeled directl
 | Office.VCards | vCard contact files | `Regira.Office.VCards.FolkerKinzel` |
 | Media | Image processing, resize, crop, FFmpeg | `Regira.Media`, `Regira.Drawing.SkiaSharp` (preferred image backend), `Regira.Drawing.GDI`, `Regira.Media.FFMpeg` |
 | Security | Hashing, cryptography, and every authentication scheme — self-issued JWT (+ refresh tokens), API keys, cookie sessions, Microsoft Entra ID, OpenID Connect sign-in, multi-scheme selection | `Regira.Security`, `Regira.Security.Hashing.BCryptNet` (preferred for passwords), `Regira.Security.Authentication`, `Regira.Security.Authentication.Web` |
-| Web | Razor rendering, middleware, visitor analytics, OpenAPI helpers | `Regira.Web`, `Regira.Web.Analytics`, `Regira.Web.HTML.RazorEngineCore`, `Regira.Web.HTML.RazorLight`, `Regira.Web.Swagger` |
+| Web | Razor rendering, middleware, visitor analytics, OpenAPI helpers | `Regira.Web`, `Regira.Web.Analytics`, `Regira.Web.Analytics.GeoIP2`, `Regira.Web.HTML.RazorEngineCore`, `Regira.Web.HTML.RazorLight`, `Regira.Web.Swagger` |
 | System | Windows Service hosting, background tasks, and `.csproj` tooling | `Regira.System`, `Regira.System.Hosting`, `Regira.System.Projects` |
 | Invoicing | Invoice models, UBL, Peppol, accounting integration, and AP gateway transmission | `Regira.Invoicing`, `Regira.Invoicing.Billit`, `Regira.Invoicing.UblSharp`, `Regira.Invoicing.ViaAdValvas` |
 | Payments | Payment providers, payment links, webhooks | `Regira.Payments`, `Regira.Payments.Mollie`, `Regira.Payments.Pom` |

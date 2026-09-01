@@ -13,7 +13,7 @@
 
 ## Registration
 
-```csharp
+```csharp no-compile
 builder.AddAnalyticsConfiguration();                       // optional: watched botdetector.json in the content root
 builder.Services.AddAnalytics(builder.Configuration)       // binds the "Analytics" section
     .WithStore<MyPageViewStore>();                         // REQUIRED for tracking — no store, no tracking (warning logged)
@@ -51,19 +51,23 @@ logged and swallowed; a store exception loses that batch but never kills the wri
 ## Custom entity
 
 Derive from `PageView` for host-specific dimensions; the pipeline fills the base properties, your
-contributors/enrichers fill the rest. Canonical example — geolocation:
+contributors/enrichers fill the rest:
 
-```csharp
-public class GeoPageView : PageView { public string? CountryCode { get; set; } /* Country, City */ }
-// IPageViewEnricher<GeoPageView> resolves them from pending.ClientIp (unmasked, pre-persist)
-builder.Services.AddAnalytics<GeoPageView>(builder.Configuration)
-    .WithStore<GeoStore>().AddEnricher<GeoEnricher>();
+```csharp no-compile
+public class SitePageView : PageView { public string? Experiment { get; set; } public string? Network { get; set; } }
+// IVisitContributor<SitePageView> fills Experiment in-request (cookie/header);
+// IPageViewEnricher<SitePageView> fills Network from pending.ClientIp (unmasked, pre-persist)
+builder.Services.AddAnalytics<SitePageView>(builder.Configuration)
+    .WithStore<MyStore>().AddContributor<ExperimentContributor>().AddEnricher<NetworkEnricher>();
 ```
+
+Geolocation ships ready-made — `Regira.Web.Analytics.GeoIP2` (MaxMind GeoLite2): `.AddGeoIP2(configuration)`
+plus `IGeoPageView` on the entity; see its own guide. Never hand-write a geo enricher.
 
 ## Configuration (`Analytics` section)
 
 `Enabled` (true) · `SiteName` (entry assembly; discriminator for shared stores) · `MaskIpAddress`
-(true; /24 / /48) · `RecordBots` (true; flagged not dropped) · `RetentionDays` (365; needs retention
+(true) · `Ipv4PrefixLength`/`Ipv6PrefixLength` (24/48 bits kept when masking) · `RecordBots` (true; flagged not dropped) · `RetentionDays` (365; needs retention
 store; 0 = keep) · `ApiKey` (empty = stats route not mapped; header `X-Analytics-Key`) · `IgnorePaths`
 ([]) · `QueueCapacity`/`BatchSize`/`FlushIntervalSeconds` (10000/200/5) ·
 `BotDetection:{MinUserAgentLength (12), IncludeDefaultMarkers (true), Markers, Exceptions}`.

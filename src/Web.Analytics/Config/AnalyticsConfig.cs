@@ -7,8 +7,14 @@ public class AnalyticsConfig
     /// <summary>Row discriminator when hosts share one store; empty resolves to the entry assembly name.</summary>
     public string SiteName { get; set; } = "";
 
-    /// <summary>Truncate the stored client IP to /24 (IPv4) or /48 (IPv6); enrichers still see the full address.</summary>
+    /// <summary>Truncate the stored client IP to the prefix lengths below; enrichers still see the full address.</summary>
     public bool MaskIpAddress { get; set; } = true;
+
+    /// <summary>Leading bits kept when masking an IPv4 address; 24 drops the last octet.</summary>
+    public int Ipv4PrefixLength { get; set; } = 24;
+
+    /// <summary>Leading bits kept when masking an IPv6 address; 48 keeps the routing prefix only.</summary>
+    public int Ipv6PrefixLength { get; set; } = 48;
 
     /// <summary>Record crawler traffic too (flagged with IsBot); false drops it before it is stored.</summary>
     public bool RecordBots { get; set; } = true;
