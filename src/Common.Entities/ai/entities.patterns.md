@@ -935,11 +935,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     // Wall 2 — both overloads: overriding only the async one leaves every synchronous caller broken.
     // acceptAllChangesOnSuccess goes to the extension, not into the delegate.
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
-        => this.SaveChangesBreakingDeleteCycles(accept => base.SaveChanges(accept), acceptAllChangesOnSuccess);
+        => this.SaveChangesBreakingDeleteCycles(base.SaveChanges, acceptAllChangesOnSuccess);
 
     public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken token = default)
-        => this.SaveChangesBreakingDeleteCyclesAsync((accept, t) => base.SaveChangesAsync(accept, t),
-            acceptAllChangesOnSuccess, token);
+        => this.SaveChangesBreakingDeleteCyclesAsync(base.SaveChangesAsync, acceptAllChangesOnSuccess, token);
 }
 ```
 
@@ -948,8 +947,9 @@ rows deleted together that reference each other, nulls the optional side, saves,
 one transaction, through the context's execution strategy. Direct pairs only; a longer ring (`A → B → C → A`) is
 left to EF's own exception.
 
-> **Hand the flag to the extension, not to `base`.** Closing over `acceptAllChangesOnSuccess` inside the
-> delegate — `() => base.SaveChanges(acceptAllChangesOnSuccess)` — is the one wiring that compiles and breaks:
+> **Hand the flag to the extension, not to `base`.** `base.SaveChanges` itself as the delegate cannot get this
+> wrong. Closing over `acceptAllChangesOnSuccess` in a lambda instead — `_ => base.SaveChanges(acceptAllChangesOnSuccess)`
+> — is the one wiring that compiles and breaks:
 > an unaccepted phase one keeps its **original** foreign-key values, so phase two sees the cycle it just broke
 > and re-raises the exact exception the extension exists to prevent, and re-sends every other change in the
 > save besides. The extension always accepts the reference-dropping `UPDATE` and honours the caller's flag on
@@ -957,10 +957,11 @@ left to EF's own exception.
 > pending.
 
 > **Already in a transaction?** One the caller began, or an ambient `TransactionScope`, already spans both
-> saves, so the extension joins it and opens no execution strategy around it — a retrying strategy
-> (`EnableRetryOnFailure()`, the standard SQL Server setting) refuses to run at all while a transaction is
-> current, which makes EF's own recipe of `CreateExecutionStrategy().Execute(...)` around an explicit
-> transaction the shape that would otherwise throw before a statement ran.
+> saves, so the extension joins it rather than opening a second one. That is what keeps the shape working under
+> `EnableRetryOnFailure()`, the standard SQL Server setting: EF's recipe for combining a retrying strategy with
+> an explicit transaction puts the save inside `CreateExecutionStrategy().Execute(...)`, and a second transaction
+> in there is a second unit of work the retry cannot replay. A bare `BeginTransaction()` with no strategy around
+> it is refused by EF's own `SaveChanges` — *does not support user-initiated transactions* — extension or not.
 
 > **Only the pair matters.** A save without one calls the real save exactly once and opens no transaction. An
 > owner deleted without its children loaded has no edge and takes that path — the database cascade still removes

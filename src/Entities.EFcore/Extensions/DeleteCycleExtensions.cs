@@ -20,34 +20,28 @@ namespace Regira.Entities.EFcore.Extensions;
 /// </summary>
 /// <example>
 /// Wire it into the <c>DbContext</c>, overriding <b>both</b> save methods — overriding only the async one
-/// leaves every synchronous caller (seeding, jobs, <c>EnsureCreated</c> tooling) broken. The
-/// <c>acceptAllChangesOnSuccess</c> flag goes to the extension, not into the delegate: the extension owns
-/// which phase is allowed to accept.
+/// leaves every synchronous caller (seeding, jobs, <c>EnsureCreated</c> tooling) broken:
 /// <code>
 /// public override int SaveChanges(bool acceptAllChangesOnSuccess)
-///     => this.SaveChangesBreakingDeleteCycles(accept => base.SaveChanges(accept), acceptAllChangesOnSuccess);
+///     => this.SaveChangesBreakingDeleteCycles(base.SaveChanges, acceptAllChangesOnSuccess);
 ///
 /// public override Task&lt;int&gt; SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken token = default)
-///     => this.SaveChangesBreakingDeleteCyclesAsync((accept, t) => base.SaveChangesAsync(accept, t),
-///         acceptAllChangesOnSuccess, token);
+///     => this.SaveChangesBreakingDeleteCyclesAsync(base.SaveChangesAsync, acceptAllChangesOnSuccess, token);
 /// </code>
 /// </example>
 public static class DeleteCycleExtensions
 {
     /// <summary>
-    /// Runs <paramref name="save"/>, first breaking any reference that would make EF Core reject the delete as
-    /// a circular dependency. Saves that contain no such cycle call <paramref name="save"/> exactly once and
-    /// open no transaction, so the common path is unchanged apart from one change-tracker scan.
+    /// Runs <paramref name="save"/>, first dropping any reference that would make EF Core reject the delete as
+    /// a circular dependency. A save with no such pair runs <paramref name="save"/> exactly once, opens no
+    /// transaction and starts no execution strategy — the common path costs one change-tracker scan.
     /// </summary>
     /// <param name="dbContext">The context whose change tracker holds the pending delete.</param>
-    /// <param name="save">The real save — <c>accept =&gt; base.SaveChanges(accept)</c> from an override. It is
-    /// invoked twice when a cycle was broken, and its return values are summed. Pass the flag straight
-    /// through: what each phase may accept is the extension's to decide.</param>
-    /// <param name="acceptAllChangesOnSuccess">The caller's own flag, honoured on the <b>final</b> save — with
-    /// <see langword="false"/> the deletes stay pending until the caller calls <c>AcceptAllChanges()</c>. The
-    /// reference-dropping <c>UPDATE</c> that precedes them is always accepted: its entries are what EF reads
-    /// the delete order from, and leaving them pending both re-raises the circular dependency and re-sends
-    /// every other change in the save.</param>
+    /// <param name="save">The real save — <c>base.SaveChanges</c> from an override. Called twice when a cycle
+    /// was broken, and its return values are summed.</param>
+    /// <param name="acceptAllChangesOnSuccess">The caller's flag, honoured on the save that carries the
+    /// deletes. The reference-dropping <c>UPDATE</c> before it is always accepted: the delete order is read
+    /// from the original values it settles, and everything else pending in the same save would be sent twice.</param>
     public static int SaveChangesBreakingDeleteCycles(this DbContext dbContext, Func<bool, int> save,
         bool acceptAllChangesOnSuccess = true)
     {
@@ -57,27 +51,16 @@ public static class DeleteCycleExtensions
             return save(acceptAllChangesOnSuccess);
         }
 
-        int TwoPhaseSave()
+        if (CallerOwnsTheTransaction(dbContext))
         {
-            DropReferences(breaks);
-            var affected = save(true);
-            Redelete(breaks);
-            return affected + save(acceptAllChangesOnSuccess);
-        }
-
-        // A transaction the caller owns — its own, or an ambient TransactionScope — already spans both saves,
-        // and a retrying execution strategy refuses to run at all while one is current. So the strategy wraps
-        // only the case this method opens the transaction for itself.
-        if (HasCallerTransaction(dbContext))
-        {
-            return TwoPhaseSave();
+            return TwoPhaseSave(breaks, save, acceptAllChangesOnSuccess);
         }
 
         return dbContext.Database.CreateExecutionStrategy().Execute(() =>
         {
-            using var owned = dbContext.Database.BeginTransaction();
-            var affected = TwoPhaseSave();
-            owned.Commit();
+            using var transaction = dbContext.Database.BeginTransaction();
+            var affected = TwoPhaseSave(breaks, save, acceptAllChangesOnSuccess);
+            transaction.Commit();
             return affected;
         });
     }
@@ -93,35 +76,66 @@ public static class DeleteCycleExtensions
             return await save(acceptAllChangesOnSuccess, token);
         }
 
-        async Task<int> TwoPhaseSaveAsync(CancellationToken ct)
+        if (CallerOwnsTheTransaction(dbContext))
         {
-            DropReferences(breaks);
-            var affected = await save(true, ct);
-            Redelete(breaks);
-            return affected + await save(acceptAllChangesOnSuccess, ct);
-        }
-
-        if (HasCallerTransaction(dbContext))
-        {
-            return await TwoPhaseSaveAsync(token);
+            return await TwoPhaseSaveAsync(breaks, save, acceptAllChangesOnSuccess, token);
         }
 
         return await dbContext.Database.CreateExecutionStrategy().ExecuteAsync(async ct =>
         {
-            await using var owned = await dbContext.Database.BeginTransactionAsync(ct);
-            var affected = await TwoPhaseSaveAsync(ct);
-            await owned.CommitAsync(ct);
+            await using var transaction = await dbContext.Database.BeginTransactionAsync(ct);
+            var affected = await TwoPhaseSaveAsync(breaks, save, acceptAllChangesOnSuccess, ct);
+            await transaction.CommitAsync(ct);
             return affected;
         }, token);
     }
 
+
     /// <summary>
-    /// Whether a transaction outside this method already spans the save: one the caller began on the context,
-    /// or the ambient <see cref="TransactionScope"/> the connection enlists in. Both make the two phases
-    /// atomic already, and both make an execution strategy that retries throw rather than run.
+    /// True when the caller already owns the transaction — one it began itself, or an ambient
+    /// <see cref="TransactionScope"/>. Either already spans both saves, so opening another is wrong: under
+    /// <c>EnableRetryOnFailure()</c> the caller's arrangement is EF's documented recipe,
+    /// <c>strategy.Execute(() =&gt; { BeginTransaction(); SaveChanges(); Commit(); })</c>, and a second
+    /// transaction inside it is a second unit of work the retry cannot replay.
+    /// <para>
+    /// The ambient half is the one that cannot be inferred: <c>Database.CurrentTransaction</c> is null inside a
+    /// <see cref="TransactionScope"/>, so without <see cref="Transaction.Current"/> this would begin a
+    /// transaction on a connection already enlisted in one, which EF refuses. It is not covered by the test
+    /// suite — SQLite rejects ambient transactions outright, whatever the code under test does.
+    /// </para>
+    /// <para>
+    /// The execution strategy is not what the check protects, in either arrangement a caller's transaction can
+    /// arrive in. Inside the caller's own strategy a nested one is suspended: it neither retries nor throws.
+    /// Under a bare <c>BeginTransaction()</c> with no strategy around it, a retrying strategy refuses to start —
+    /// and so does EF's own <c>SaveChanges</c>, so that arrangement fails identically with or without this
+    /// method. Both are pinned in the test suite. Skipping the strategy is a tidiness; skipping the transaction
+    /// is not.
+    /// </para>
     /// </summary>
-    private static bool HasCallerTransaction(DbContext dbContext)
+    private static bool CallerOwnsTheTransaction(DbContext dbContext)
         => dbContext.Database.CurrentTransaction != null || Transaction.Current != null;
+
+    /// <summary>
+    /// Drop the reference, save, delete. Phase one is saved with <c>acceptAllChangesOnSuccess: true</c>
+    /// whatever the caller asked for — see the parameter's remarks.
+    /// </summary>
+    private static int TwoPhaseSave(IReadOnlyList<CycleBreak> breaks, Func<bool, int> save, bool acceptAllChangesOnSuccess)
+    {
+        DropReferences(breaks);
+        var affected = save(true);
+        Redelete(breaks);
+        return affected + save(acceptAllChangesOnSuccess);
+    }
+
+    /// <inheritdoc cref="TwoPhaseSave"/>
+    private static async Task<int> TwoPhaseSaveAsync(IReadOnlyList<CycleBreak> breaks,
+        Func<bool, CancellationToken, Task<int>> save, bool acceptAllChangesOnSuccess, CancellationToken token)
+    {
+        DropReferences(breaks);
+        var affected = await save(true, token);
+        Redelete(breaks);
+        return affected + await save(acceptAllChangesOnSuccess, token);
+    }
 
 
     /// <summary>

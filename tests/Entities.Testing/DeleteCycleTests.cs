@@ -83,7 +83,7 @@ public class DeleteCycleTests
     /// <summary>
     /// What <c>EnableRetryOnFailure()</c> installs on SQL Server, which SQLite has no equivalent of. Nothing
     /// here has to actually retry — an execution strategy that <b>might</b> is already enough for EF to refuse
-    /// to run it while a transaction is current.
+    /// a transaction it did not start itself, unless it runs inside another strategy, which suspends the check.
     /// </summary>
     private sealed class RetryingStrategy(ExecutionStrategyDependencies dependencies)
         : ExecutionStrategy(dependencies, maxRetryCount: 3, maxRetryDelay: TimeSpan.Zero)
@@ -289,8 +289,9 @@ public class DeleteCycleTests
     public async Task Breaking_The_Cycle_Runs_Inside_A_Transaction_The_Caller_Owns()
     {
         // EnableRetryOnFailure() is the standard production setting, and EF's own recipe for combining it with
-        // an explicit transaction puts SaveChanges inside a strategy the caller already owns. Opening a second
-        // strategy in there throws before a single statement runs.
+        // an explicit transaction puts SaveChanges inside a strategy the caller already owns. The helper must
+        // not open a transaction of its own in there. (Its nested strategy would be harmless — the outer one
+        // suspends the check — but a second transaction is not.)
         Setup(retryOnFailure: true);
         using var scope = _serviceProvider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ArticleContext>();
@@ -338,6 +339,58 @@ public class DeleteCycleTests
             Assert.That(db.Articles.Count(), Is.Zero);
             Assert.That(db.ArticleImages.Count(), Is.Zero);
         });
+    }
+
+    [Test]
+    public async Task A_Bare_Transaction_Under_A_Retrying_Strategy_Is_Refused_By_EF_Itself()
+    {
+        // The other arrangement: BeginTransaction() with no strategy around it. EF's own SaveChanges refuses it
+        // before a statement runs, so the helper skipping its strategy there changes nothing — the same
+        // exception with and without a cycle to break. The arrangement is the caller's to fix, and the
+        // exception says how.
+        Setup(retryOnFailure: true);
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ArticleContext>();
+        var id = await Seed(db);
+        var article = await db.Articles.Include(x => x.Images!).FirstAsync(x => x.Id == id);
+
+        await using var transaction = await db.Database.BeginTransactionAsync();
+
+        var added = db.Articles.Add(new Article { Title = "no cycle" });
+        var plain = Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
+        added.State = EntityState.Detached;
+
+        db.BreakDeleteCycles = true;
+        db.Articles.Remove(article);
+        var broken = Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(plain!.Message, Does.Contain("does not support user-initiated transactions"));
+            Assert.That(broken!.Message, Is.EqualTo(plain.Message));
+        });
+    }
+
+    [Test]
+    public void A_Strategy_Nested_Inside_The_Callers_Is_Suspended()
+    {
+        // The premise behind joining the caller's transaction: it is the second transaction the helper must
+        // not open, not the strategy. EF refuses a retrying strategy started while a transaction it did not
+        // start is current — and suspends one started inside another, so it neither retries nor throws.
+        Setup(retryOnFailure: true);
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ArticleContext>();
+
+        var nested = db.Database.CreateExecutionStrategy().Execute(() =>
+        {
+            using var transaction = db.Database.BeginTransaction();
+            return db.Database.CreateExecutionStrategy().Execute(() => "ran");
+        });
+        Assert.That(nested, Is.EqualTo("ran"));
+
+        using var bare = db.Database.BeginTransaction();
+        var ex = Assert.Throws<InvalidOperationException>(() => db.Database.CreateExecutionStrategy().Execute(() => "ran"));
+        Assert.That(ex!.Message, Does.Contain("does not support user-initiated transactions"));
     }
 
     [Test]
