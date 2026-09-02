@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+using Regira.Licensing.DependencyInjection;
 using Regira.Licensing.Models;
 using Regira.Licensing.Services;
 using System.Security.Cryptography;
@@ -145,6 +147,70 @@ public class LicensingTests
         var key = LicenseSigner.Sign(license, _rsa);
         var ex = Assert.Throws<LicenseException>(() => LicenseValidator.Validate(key, "regira.entities"));
         Assert.That(ex!.Message, Does.Contain("expired"));
+    }
+
+    [Test]
+    public void Validate_KeyExpiredWithinGracePeriod_ReturnsLicense()
+    {
+        var key = LicenseSigner.Sign(ExpiredLicense(LicenseValidator.ExpiryGracePeriod - TimeSpan.FromDays(1)), _rsa);
+        var license = LicenseValidator.Validate(key, "regira.entities");
+        Assert.That(license.Products, Contains.Item("regira.entities"));
+    }
+
+    [Test]
+    public void Validate_KeyExpiredBeyondGracePeriod_ThrowsWithExpiredMessage()
+    {
+        var key = LicenseSigner.Sign(ExpiredLicense(LicenseValidator.ExpiryGracePeriod + TimeSpan.FromDays(1)), _rsa);
+        var ex = Assert.Throws<LicenseException>(() => LicenseValidator.Validate(key, "regira.entities"));
+        Assert.That(ex!.Message, Does.Contain("expired"));
+    }
+
+    [Test]
+    public void UseRegira_KeyExpiredWithinGracePeriod_WarnsOnConsoleError()
+    {
+        var key = LicenseSigner.Sign(ExpiredLicense(TimeSpan.FromDays(1)), _rsa);
+        var stderr = CaptureConsoleError(() => new ServiceCollection().UseRegira(key));
+        Assert.That(stderr, Does.Contain("WARNING").And.Contain("expired"));
+    }
+
+    [Test]
+    public void UseRegira_KeyExpiredBeyondGracePeriod_ReportsErrorOnConsoleError()
+    {
+        var key = LicenseSigner.Sign(ExpiredLicense(LicenseValidator.ExpiryGracePeriod + TimeSpan.FromDays(1)), _rsa);
+        var stderr = CaptureConsoleError(() => new ServiceCollection().UseRegira(key));
+        Assert.That(stderr, Does.Contain("ERROR").And.Contain("no longer accepted"));
+    }
+
+    [Test]
+    public void UseRegira_KeyExpiringWithinReminderPeriod_RemindsOnStandardOutput()
+    {
+        var key = LicenseSigner.Sign(ExpiredLicense(-(LicenseValidator.RenewalReminderPeriod - TimeSpan.FromDays(1))), _rsa);
+        var (stdout, stderr) = CaptureConsole(() => new ServiceCollection().UseRegira(key));
+        Assert.That(stdout, Does.Contain("Reminder").And.Contain("expires in 13 day(s)"));
+        Assert.That(stderr, Is.Empty, "a key that is still valid must not start the application with an error-level line");
+    }
+
+    [Test]
+    public void UseRegira_KeyExpiringAfterReminderPeriod_WritesNoReminder()
+    {
+        var key = LicenseSigner.Sign(ExpiredLicense(-(LicenseValidator.RenewalReminderPeriod + TimeSpan.FromDays(1))), _rsa);
+        var (stdout, stderr) = CaptureConsole(() => new ServiceCollection().UseRegira(key));
+        Assert.That(stdout, Does.Not.Contain("expires in"));
+        Assert.That(stderr, Is.Empty);
+    }
+
+    [Test]
+    public void IsExpiringSoon_PerpetualLicense_ReturnsFalse()
+    {
+        Assert.That(LicenseValidator.IsExpiringSoon(new License { ExpiresAtUnix = null }, DateTimeOffset.UtcNow), Is.False);
+    }
+
+    [Test]
+    public void UseRegira_ValidKey_WritesNothingToConsoleError()
+    {
+        var key = LicenseSigner.Sign(ValidLicense(), _rsa);
+        var stderr = CaptureConsoleError(() => new ServiceCollection().UseRegira(key));
+        Assert.That(stderr, Is.Empty);
     }
 
     [Test]
@@ -356,6 +422,35 @@ public class LicensingTests
         IssuedAtUnix = DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds(),
         ExpiresAtUnix = DateTimeOffset.UtcNow.AddYears(1).ToUnixTimeSeconds()
     };
+
+    /// <summary>A negative <paramref name="expiredSince"/> yields a key that expires that far in the future.</summary>
+    private static License ExpiredLicense(TimeSpan expiredSince) => new()
+    {
+        CustomerId = "test-customer",
+        Products = ["regira.entities"],
+        Version = "5",
+        IssuedAtUnix = DateTimeOffset.UtcNow.AddYears(-1).ToUnixTimeSeconds(),
+        ExpiresAtUnix = (DateTimeOffset.UtcNow - expiredSince).ToUnixTimeSeconds()
+    };
+
+    private static string CaptureConsoleError(Action action) => CaptureConsole(action).Stderr;
+
+    private static (string Stdout, string Stderr) CaptureConsole(Action action)
+    {
+        var originalOut = Console.Out;
+        var originalError = Console.Error;
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+        Console.SetOut(stdout);
+        Console.SetError(stderr);
+        try { action(); }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Console.SetError(originalError);
+        }
+        return (stdout.ToString(), stderr.ToString());
+    }
 
     private static License TrialLicense(string customer = "test-customer") => new()
     {

@@ -60,6 +60,7 @@ tool; where a package is taken, `id`, `pkg` and `package` all resolve, so a wron
 | `how_to` | `how_to(task: "seed data")`, or no argument to list recipes | Answer "how do I do X in code?" for common Regira Entities tasks — the registered service, a minimal snippet, and a doc pointer. |
 | `list_types` | `list_types(id: "Regira.Entities", nameFilter: "EntityService")` | Optional branch: inspect the public API surface from the source map without loading docs. |
 | `get_type` | `get_type(id: "Regira.Entities", typeName: "IEntityService")` | Optional branch: inspect one type and its member signatures in detail. |
+| `get_license_status` | `get_license_status()` | When calls come back rate-limited unexpectedly, or to check when a key must be renewed: reports what the server made of your `X-License-Key` (customer, products, expiry, validity, applied limit). Works without a key and with an expired one. |
 
 **Configuration snippets:**
 

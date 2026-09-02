@@ -108,8 +108,8 @@ Call another host's Office API instead of running the engine in-process.
 
 | Namespace | Types |
 |---|---|
-| `Regira.Office.Clients.Services` | `PdfClient`, `WordClient`, `ExcelClient`, `CsvClient`, `BarcodeClient`, `QRCodeClient`, `OcrClient`, `MessageParserClient` |
-| `Regira.Office.Clients.Abstractions` | `OfficeClientBase` |
+| `Regira.Office.Clients.Services` | `PdfClient`, `WordClient`, `ExcelClient`, `CsvClient`, `BarcodeClient`, `QRCodeClient`, `OcrClient`, `MessageParserClient`, `LicenseStatusClient` |
+| `Regira.Office.Clients.Abstractions` | `OfficeClientBase`, `ILicenseStatusClient` |
 | `Regira.Office.Clients.DependencyInjection` | `OfficeClientServiceCollectionExtensions`, `OfficeClientOptions` |
 
 ---

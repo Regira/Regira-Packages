@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Regira.Licensing.Models;
 using Regira.Licensing.Utilities;
 using Regira.Office.Barcodes.Abstractions;
+using Regira.Office.Clients.Abstractions;
 using Regira.Office.Clients.Services;
 using Regira.Office.Csv.Abstractions;
 using Regira.Office.Excel.Abstractions;
@@ -47,6 +48,9 @@ public static class OfficeClientServiceCollectionExtensions
         services.AddHttpClient<IOcrService, OcrClient>(ConfigureClient);
         services.AddHttpClient<ICsvService, CsvClient>(ConfigureClient);
         services.AddHttpClient<IMessageParser, MessageParserClient>(ConfigureClient);
+
+        // Asks the API what it makes of the key sent above; answers for an expired key too.
+        services.AddHttpClient<ILicenseStatusClient, LicenseStatusClient>(ConfigureClient);
 
         return services;
     }
