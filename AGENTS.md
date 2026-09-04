@@ -108,6 +108,10 @@ Every package owns its own `<Version>` in its `.csproj` (SemVer). Published vers
   re-versions dependents on top of that, and only then does the `## Unreleased` block become a dated
   heading, so do not date it yourself. Deploy mechanics live in `DEPLOY.md` in the private **Regira-Tools**
   repo — outside this repository.
+- **The tag and the GitHub release come last, from this repo.** `.github/workflows/release.yml` tags a
+  `main` commit and publishes the release page, with the notes taken from that version's `CHANGELOG.md`
+  block. It publishes nothing to nuget.org — that already happened — so it refuses a version the registry
+  does not have, an undated changelog heading, and a commit that is not on `main`.
 
 ---
 
