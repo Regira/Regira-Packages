@@ -68,6 +68,13 @@ public static class LicenseValidator
     /// Throws <see cref="LicenseException"/> if the key is missing, invalid, wrong product, or expired.
     /// </summary>
     public static License Validate(string? licenseKey, string productCode, int? requiredMajorVersion = null)
+        => Validate(licenseKey, productCode, requiredMajorVersion, DateTimeOffset.UtcNow);
+
+    /// <summary>
+    /// <see cref="Validate(string?, string, int?)"/> against an explicit clock, so tests can pin the expiry and
+    /// grace boundaries to a date instead of to the day they happen to run on.
+    /// </summary>
+    internal static License Validate(string? licenseKey, string productCode, int? requiredMajorVersion, DateTimeOffset now)
     {
         if (string.IsNullOrWhiteSpace(licenseKey))
             throw new LicenseException(BuildMissingKeyMessage(productCode));
@@ -86,7 +93,7 @@ public static class LicenseValidator
             throw new LicenseException($"The Regira license key is not valid for '{productCode}'. Verify your license at https://regira.com/licensing");
 
         // A key that only just expired still validates for a while; UseRegira warned about it at startup.
-        if (IsRefusedAsExpired(license, DateTimeOffset.UtcNow))
+        if (IsRefusedAsExpired(license, now))
             throw new LicenseException($"The Regira license key for '{productCode}' expired on {license.ExpiresAt!.Value:yyyy-MM-dd}. Renew at https://regira.com/licensing");
 
         if (requiredMajorVersion.HasValue && license.MajorVersion.HasValue && license.MajorVersion.Value != requiredMajorVersion.Value)
@@ -99,11 +106,12 @@ public static class LicenseValidator
     /// Describes what <paramref name="productCode"/> makes of <paramref name="licenseKey"/> without throwing:
     /// a missing, unreadable, foreign, expired or valid key each map to a <see cref="LicenseState"/> with a
     /// one-sentence message. Products expose this so a consumer can ask about a key that no longer works.
-    /// The message describes the key only. What a product does with a key it does not accept differs — the
+    /// <paramref name="requiredMajorVersion"/> mirrors the same argument of <see cref="Validate(string?, string, int?)"/>:
+    /// pass it where the product passes it, so the two views of one key agree. The message describes the key only. What a product does with a key it does not accept differs — the
     /// hosted services fall back to the free tier, in-process modules refuse to start — so that part is the
     /// product's to add.
     /// </summary>
-    public static LicenseStatus GetStatus(string? licenseKey, string productCode, DateTimeOffset? now = null)
+    public static LicenseStatus GetStatus(string? licenseKey, string productCode, int? requiredMajorVersion = null, DateTimeOffset? now = null)
     {
         var at = now ?? DateTimeOffset.UtcNow;
         var status = new LicenseStatus { ProductCode = productCode };
@@ -123,7 +131,7 @@ public static class LicenseValidator
         catch (LicenseException ex)
         {
             status.State = LicenseState.Invalid;
-            status.Message = $"The license key could not be read ({ex.Message.TrimEnd('.')}) and is ignored.";
+            status.Message = $"The license key could not be read ({ex.Message.TrimEnd('.')}).";
             return status;
         }
 
@@ -151,6 +159,11 @@ public static class LicenseValidator
         {
             status.State = LicenseState.Expired;
             status.Message = $"The license key expired on {expiry} and is no longer accepted. Renew at {renew}";
+        }
+        else if (requiredMajorVersion.HasValue && license.MajorVersion.HasValue && license.MajorVersion.Value != requiredMajorVersion.Value)
+        {
+            status.State = LicenseState.VersionMismatch;
+            status.Message = $"The license key is for version {license.MajorVersion.Value}.x but version {requiredMajorVersion.Value}.x is required. Renew at {renew}";
         }
         else if (IsPastExpiry(license, at))
         {

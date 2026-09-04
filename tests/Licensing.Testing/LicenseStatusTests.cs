@@ -36,7 +36,7 @@ public class LicenseStatusTests
     [Test]
     public void Missing_Key_Is_Not_Accepted()
     {
-        var status = LicenseValidator.GetStatus(null, Product, Now);
+        var status = LicenseValidator.GetStatus(null, Product, now: Now);
         Assert.That(status.State, Is.EqualTo(LicenseState.Missing));
         Assert.That(status.Accepted, Is.False);
         Assert.That(status.ProductCode, Is.EqualTo(Product));
@@ -46,7 +46,7 @@ public class LicenseStatusTests
     [Test]
     public void Unreadable_Key_Is_Invalid_And_Not_Accepted()
     {
-        var status = LicenseValidator.GetStatus("not-a-key", Product, Now);
+        var status = LicenseValidator.GetStatus("not-a-key", Product, now: Now);
         Assert.That(status.State, Is.EqualTo(LicenseState.Invalid));
         Assert.That(status.Accepted, Is.False);
         Assert.That(status.CustomerId, Is.Null);
@@ -56,7 +56,7 @@ public class LicenseStatusTests
     public void Key_Signed_By_Someone_Else_Is_Invalid()
     {
         using var other = RSA.Create(2048);
-        var status = LicenseValidator.GetStatus(LicenseSigner.Sign(Paid(Now.AddYears(1)), other), Product, Now);
+        var status = LicenseValidator.GetStatus(LicenseSigner.Sign(Paid(Now.AddYears(1)), other), Product, now: Now);
         Assert.That(status.State, Is.EqualTo(LicenseState.Invalid));
     }
 
@@ -65,7 +65,7 @@ public class LicenseStatusTests
     {
         var license = Paid(Now.AddYears(1));
         license.Products = ["regira.entities"];
-        var status = LicenseValidator.GetStatus(LicenseSigner.Sign(license, _rsa), Product, Now);
+        var status = LicenseValidator.GetStatus(LicenseSigner.Sign(license, _rsa), Product, now: Now);
         Assert.That(status.State, Is.EqualTo(LicenseState.NotAccepted));
         Assert.That(status.Accepted, Is.False);
         Assert.That(status.CustomerId, Is.EqualTo("acme"));
@@ -76,7 +76,7 @@ public class LicenseStatusTests
     [Test]
     public void Valid_Key_Reports_Dates_And_Days_Left()
     {
-        var status = LicenseValidator.GetStatus(LicenseSigner.Sign(Paid(Now.AddDays(100)), _rsa), Product, Now);
+        var status = LicenseValidator.GetStatus(LicenseSigner.Sign(Paid(Now.AddDays(100)), _rsa), Product, now: Now);
         Assert.That(status.State, Is.EqualTo(LicenseState.Valid));
         Assert.That(status.Accepted, Is.True);
         Assert.That(status.DaysUntilExpiry, Is.EqualTo(100));
@@ -89,7 +89,7 @@ public class LicenseStatusTests
     [Test]
     public void Perpetual_Key_Has_No_Expiry()
     {
-        var status = LicenseValidator.GetStatus(LicenseSigner.Sign(Paid(null), _rsa), Product, Now);
+        var status = LicenseValidator.GetStatus(LicenseSigner.Sign(Paid(null), _rsa), Product, now: Now);
         Assert.That(status.State, Is.EqualTo(LicenseState.Valid));
         Assert.That(status.ExpiresAt, Is.Null);
         Assert.That(status.DaysUntilExpiry, Is.Null);
@@ -99,7 +99,7 @@ public class LicenseStatusTests
     [Test]
     public void Key_Inside_Reminder_Period_Is_Expiring_Soon()
     {
-        var status = LicenseValidator.GetStatus(LicenseSigner.Sign(Paid(Now.AddDays(5)), _rsa), Product, Now);
+        var status = LicenseValidator.GetStatus(LicenseSigner.Sign(Paid(Now.AddDays(5)), _rsa), Product, now: Now);
         Assert.That(status.State, Is.EqualTo(LicenseState.ExpiringSoon));
         Assert.That(status.Accepted, Is.True);
         Assert.That(status.Message, Does.Contain("expires in 5 days").And.Contain("Renew now"));
@@ -108,7 +108,7 @@ public class LicenseStatusTests
     [Test]
     public void Key_Expiring_In_One_Day_Uses_Singular()
     {
-        var status = LicenseValidator.GetStatus(LicenseSigner.Sign(Paid(Now.AddHours(20)), _rsa), Product, Now);
+        var status = LicenseValidator.GetStatus(LicenseSigner.Sign(Paid(Now.AddHours(20)), _rsa), Product, now: Now);
         Assert.That(status.DaysUntilExpiry, Is.EqualTo(1));
         Assert.That(status.Message, Does.Contain("expires in 1 day,"));
     }
@@ -116,7 +116,7 @@ public class LicenseStatusTests
     [Test]
     public void Key_Just_Past_Expiry_Is_Still_Accepted()
     {
-        var status = LicenseValidator.GetStatus(LicenseSigner.Sign(Paid(Now.AddDays(-3)), _rsa), Product, Now);
+        var status = LicenseValidator.GetStatus(LicenseSigner.Sign(Paid(Now.AddDays(-3)), _rsa), Product, now: Now);
         Assert.That(status.State, Is.EqualTo(LicenseState.ExpiredInGrace));
         Assert.That(status.Accepted, Is.True);
         Assert.That(status.DaysUntilExpiry, Is.EqualTo(-3));
@@ -127,7 +127,7 @@ public class LicenseStatusTests
     [Test]
     public void Key_Past_The_Grace_Period_Is_Refused()
     {
-        var status = LicenseValidator.GetStatus(LicenseSigner.Sign(Paid(Now - LicenseValidator.ExpiryGracePeriod - TimeSpan.FromDays(1)), _rsa), Product, Now);
+        var status = LicenseValidator.GetStatus(LicenseSigner.Sign(Paid(Now - LicenseValidator.ExpiryGracePeriod - TimeSpan.FromDays(1)), _rsa), Product, now: Now);
         Assert.That(status.State, Is.EqualTo(LicenseState.Expired));
         Assert.That(status.Accepted, Is.False);
         Assert.That(status.Message, Does.Contain("no longer accepted"));
@@ -140,12 +140,12 @@ public class LicenseStatusTests
         // in-process), so the shared message must not promise either.
         var otherProduct = Paid(Now.AddYears(1));
         otherProduct.Products = ["regira.entities"];
-        var keys = new[] { null, "not-a-key", LicenseSigner.Sign(Paid(Now.AddDays(-60)), _rsa), LicenseSigner.Sign(otherProduct, _rsa) };
+        var keys = new[] { null, "not-a-key", LicenseSigner.Sign(Paid(Now.AddDays(-60)), _rsa), LicenseSigner.Sign(otherProduct, _rsa), LicenseSigner.Sign(Paid(Now.AddYears(1)), _rsa) };
         foreach (var key in keys)
         {
-            var status = LicenseValidator.GetStatus(key, Product, Now);
+            var status = LicenseValidator.GetStatus(key, Product, 7, Now);
             Assert.That(status.Accepted, Is.False, "every key in this set is one the product rejects");
-            Assert.That(status.Message, Does.Not.Contain("free tier"), status.State.ToString());
+            Assert.That(status.Message, Does.Not.Contain("free tier").And.Not.Contain("ignored"), status.State.ToString());
             Assert.That(status.Applied, Is.Null, "the package never fills in the host's line");
         }
     }
@@ -154,14 +154,34 @@ public class LicenseStatusTests
     public void Status_Agrees_With_Validate()
     {
         // Accepted must mean exactly "Validate does not throw", or the two views of one key could disagree.
+        // Both sides read the same frozen clock: with a live one this test would start failing the day the
+        // 3-days-expired key leaves the grace period in real time.
         foreach (var expiresAt in new DateTimeOffset?[] { null, Now.AddYears(1), Now.AddDays(3), Now.AddDays(-3), Now.AddDays(-60) })
+        foreach (var requiredMajorVersion in new int?[] { null, 6, 7 })
         {
-            var key = LicenseSigner.Sign(Paid(expiresAt), _rsa);
-            var accepted = LicenseValidator.GetStatus(key, Product, Now).Accepted;
+            var key = LicenseSigner.Sign(Paid(expiresAt), _rsa); // Version = "6"
+            var accepted = LicenseValidator.GetStatus(key, Product, requiredMajorVersion, Now).Accepted;
             var validates = true;
-            try { LicenseValidator.Validate(key, Product); } catch (LicenseException) { validates = false; }
-            Assert.That(accepted, Is.EqualTo(validates), $"expiry {expiresAt}");
+            try { LicenseValidator.Validate(key, Product, requiredMajorVersion, Now); } catch (LicenseException) { validates = false; }
+            Assert.That(accepted, Is.EqualTo(validates), $"expiry {expiresAt}, required version {requiredMajorVersion}");
         }
+    }
+
+    [Test]
+    public void Key_For_Another_Major_Version_Is_A_Version_Mismatch()
+    {
+        var status = LicenseValidator.GetStatus(LicenseSigner.Sign(Paid(Now.AddYears(1)), _rsa), Product, 7, Now);
+        Assert.That(status.State, Is.EqualTo(LicenseState.VersionMismatch));
+        Assert.That(status.Accepted, Is.False);
+        Assert.That(status.Message, Does.Contain("version 6.x").And.Contain("version 7.x"));
+    }
+
+    [Test]
+    public void Matching_Or_Unstated_Major_Version_Is_Accepted()
+    {
+        var key = LicenseSigner.Sign(Paid(Now.AddYears(1)), _rsa);
+        Assert.That(LicenseValidator.GetStatus(key, Product, 6, Now).State, Is.EqualTo(LicenseState.Valid));
+        Assert.That(LicenseValidator.GetStatus(key, Product, now: Now).State, Is.EqualTo(LicenseState.Valid));
     }
 
     [Test]
@@ -169,7 +189,7 @@ public class LicenseStatusTests
     {
         var license = Paid(Now.AddYears(1));
         license.Limits = new Dictionary<string, int> { ["services.ratelimit.permit"] = 600 };
-        var status = LicenseValidator.GetStatus(LicenseSigner.Sign(license, _rsa), Product, Now);
+        var status = LicenseValidator.GetStatus(LicenseSigner.Sign(license, _rsa), Product, now: Now);
         Assert.That(status.Limits, Is.Not.Null);
         Assert.That(status.Limits!["services.ratelimit.permit"], Is.EqualTo(600));
     }
@@ -183,7 +203,7 @@ public class LicenseStatusTests
             Converters = { new JsonStringEnumConverter() },
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
-        var original = LicenseValidator.GetStatus(LicenseSigner.Sign(Paid(Now.AddDays(5)), _rsa), Product, Now);
+        var original = LicenseValidator.GetStatus(LicenseSigner.Sign(Paid(Now.AddDays(5)), _rsa), Product, now: Now);
         var json = JsonSerializer.Serialize(original, options);
         Assert.That(json, Does.Contain("\"ExpiringSoon\""), "enums travel as their names, like the controllers' StringEnumConverter output");
 
