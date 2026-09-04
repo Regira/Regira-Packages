@@ -40,10 +40,11 @@ A Regira MCP server is available at `https://mcp.regira.com/mcp`. It provides fu
 
 **Configure once** in your AI tool, then use these tools roughly in this order:
 
-Canonical parameter names are **not** uniform across these tools — the search term is `query` on one,
-`pattern` on another and `task` on a third, and a package is `id` everywhere except `search_docs`, where
-`package` scopes the search. Copy the call form from this table rather than inferring it from a neighbouring
-tool; where a package is taken, `id`, `pkg` and `package` all resolve, so a wrong guess costs nothing.
+Package arguments are forgiving: wherever a package is taken, `id`, `pkg` and `package` all resolve. The
+search term is **not** — it is `query` on `search_packages` and `search_docs`, `pattern` on `get_example`,
+`feature` on `recommend_packages`, and `task` (or `query`) on `how_to`. A wrong guess is dropped silently
+rather than rejected: `get_example(query: "…")` searches for the empty string and reports no matches. Copy
+the call form from this table.
 
 | Tool | Call | Purpose |
 |---|---|---|
@@ -64,15 +65,18 @@ tool; where a package is taken, `id`, `pkg` and `package` all resolve, so a wron
 
 **Configuration snippets:**
 
-Claude Desktop (`claude_desktop_config.json` in the Claude app-data folder — Windows: `%APPDATA%\Claude`, macOS: `~/Library/Application Support/Claude`):
-```json
-{ "mcpServers": { "regira": { "url": "https://mcp.regira.com/mcp" } } }
+Claude Code — one command, or a `.mcp.json` at your repo root (approve the project server the first time it asks):
+```sh
+claude mcp add --transport http regira https://mcp.regira.com/mcp
 ```
+```json
+{ "mcpServers": { "regira": { "type": "http", "url": "https://mcp.regira.com/mcp" } } }
+```
+The `"type": "http"` line is required — Claude Code skips a `url` entry without it and does not know a `transport` key.
 
-VS Code / Claude Code (`.mcp.json` at your repo root):
-```json
-{ "mcpServers": { "regira": { "url": "https://mcp.regira.com/mcp" } } }
-```
+Claude Desktop / claude.ai: Customize → Connectors → **+** → **Add custom connector** → name `regira`, URL `https://mcp.regira.com/mcp` (no config file). Every plan can add one, including Free, which is capped at a single custom connector.
+
+GitHub Copilot (VS Code): the same JSON in `.vscode/mcp.json` with the top key `servers` instead of `mcpServers`, then Agent mode.
 
 Cursor: Settings → MCP Servers → add `https://mcp.regira.com/mcp`.
 

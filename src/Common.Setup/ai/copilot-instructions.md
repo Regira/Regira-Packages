@@ -10,7 +10,7 @@ This file covers the essential rules, templates, and package tables needed befor
 
 A Regira MCP server is available at `https://mcp.regira.com/mcp`. When configured, it provides the full package catalog and all AI guides without requiring a build step.
 
-**Configuration:** add `{ "mcpServers": { "regira": { "url": "https://mcp.regira.com/mcp" } } }` to your AI tool's settings.
+**Configuration (VS Code / Copilot):** add `{ "servers": { "regira": { "type": "http", "url": "https://mcp.regira.com/mcp" } } }` to `.vscode/mcp.json`, click **Start** above the entry, and use Agent mode. Claude Code takes the same entry under `mcpServers` in `.mcp.json`; the `"type": "http"` line is required.
 
 **Tools:** `recommend_packages`, `search_packages`, `list_packages`, `get_package`, `get_example`, `get_bootstrap_guide`
 
