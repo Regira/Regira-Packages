@@ -121,10 +121,12 @@ public static class TreeListExtensions
     /// <param name="collection">The collection of <see cref="TreeNode{T}"/> objects to be ordered.</param>
     /// <param name="keySelector">
     /// An optional function to extract a key from a <see cref="TreeNode{T}"/> for ordering. 
-    /// If <c>null</c>, the nodes are ordered based on their natural hierarchy.
+    /// When provided, the roots and the children of every node are sorted by that key. 
+    /// If <c>null</c>, nodes keep their insertion order within each level.
     /// </param>
     /// <returns>
-    /// An <see cref="IEnumerable{T}"/> of <see cref="TreeNode{T}"/> objects ordered by hierarchy.
+    /// An <see cref="IEnumerable{T}"/> of <see cref="TreeNode{T}"/> objects ordered by hierarchy, 
+    /// each node preceding all of its descendants.
     /// </returns>
     public static IEnumerable<TreeNode<T>> OrderByHierarchy<T, TKey>(this IEnumerable<TreeNode<T>> collection, Func<TreeNode<T>, TKey>? keySelector = null)
     {
@@ -138,12 +140,23 @@ public static class TreeListExtensions
             return items;
         }
 
+        IEnumerable<TreeNode<T>> WithOrderedOffspring(TreeNode<T> node)
+        {
+            yield return node;
+            foreach (var child in GetOrderedCollection(node.Children))
+            {
+                foreach (var descendant in WithOrderedOffspring(child))
+                {
+                    yield return descendant;
+                }
+            }
+        }
+
         foreach (var root in GetOrderedCollection(collection.GetRoots()))
         {
-            yield return root;
-            foreach (var child in GetOrderedCollection(root.GetOffspring()))
+            foreach (var node in WithOrderedOffspring(root))
             {
-                yield return child;
+                yield return node;
             }
         }
     }

@@ -137,7 +137,10 @@ public class TimerTests
                 if (node.Value != child && node.GetAncestors().All(a => a.Value != child))
                 {
                     var childNode = node.AddChild(child);
-                    AddChildren(childNode, items);
+                    if (childNode != null)
+                    {
+                        AddChildren(childNode, items);
+                    }
                 }
             }
         }
@@ -191,7 +194,10 @@ public class TimerTests
                 if (node.Value != child && node.GetAncestors().All(a => a.Value != child))
                 {
                     var childNode = node.AddChild(child);
-                    AddChildren(childNode);
+                    if (childNode != null)
+                    {
+                        AddChildren(childNode);
+                    }
                 }
             }
         }
@@ -234,11 +240,15 @@ public class TimerTests
     {
         var persons = DataGenerator.GenerateSimplePersons(n);
 
-        foreach (var person in persons)
+        // Parents are picked from the persons generated before this one: a random forest without cycles.
+        // Picking from the whole list produced cyclic rows, which the parents-selector Fill rejects (they are
+        // reachable from no root), and which the children-selector build silently never visited - so the three
+        // build strategies this fixture compares no longer saw the same set of values.
+        for (var i = 1; i < persons.Count; i++)
         {
             if (_randomizer.Number(0, 9) < 9)
             {
-                person.Parent = _randomizer.CollectionItem(persons.FindAll(p => p != person));
+                persons[i].Parent = _randomizer.CollectionItem(persons.GetRange(0, i));
             }
         }
         foreach (var person in persons)

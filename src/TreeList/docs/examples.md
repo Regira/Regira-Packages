@@ -96,10 +96,11 @@ var ordered = tree.OrderByHierarchy()
                   .Select(n => n.Value.Name);
 // ["Grandpa", "Father", "Child1", "GrandChild1", "Child2", "Uncle", "Cousin", "GrandChild2"]
 
-// Depth-first ordering with a custom sort key per level
-var orderedById = tree.OrderByHierarchy(n => n.Value.Id)
-                      .Select(n => n.Value.Name);
-// ["Grandpa", "Father", "Uncle", "Child1", "Child2", "Cousin", "GrandChild1", "GrandChild2"]
+// Depth-first ordering with a custom sort key: the roots, and the children of every node,
+// are sorted by the key. A parent still comes before its own children.
+var orderedByIdDesc = tree.OrderByHierarchy(n => -n.Value.Id)
+                          .Select(n => n.Value.Name);
+// ["Grandpa", "Uncle", "Cousin", "GrandChild2", "Father", "Child2", "Child1", "GrandChild1"]
 
 // Read-only view (values in depth-first order)
 TreeView<FamilyMember> view = tree.ToTreeView();

@@ -48,6 +48,8 @@ Store paid keys under `Regira:LicenseKeys` in `appsettings.json`. A single key c
 
 **Reading guide:** read §Step 0 and §Entity Implementation Workflow before the first entity, then §Steps 1–5 / §Steps 6–10 / §Steps 11–15 as the happy path sends you into them. Everything from §Custom Entity Services on is a lookup table — fetch a section when you have the symptom, not up front. The one exception is §Security & Authorization: **if any row belongs to a user or tenant, read it before you design entities** — row scoping constrains DTOs, preppers and query builders, and retrofitting it is expensive. Exact signatures: `get_type` / [`entities.signatures.md`](./entities.signatures.md), never guessed.
 
+**Something looks wrong at runtime** — a short page, an empty search, a value that reset: → §Troubleshooting first. It is grouped by symptom, and each row names the section that owns the rule. Most of those failures build clean and answer 200.
+
 ---
 
 ## References
@@ -345,7 +347,7 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 - Exclude auto-generated fields (`Created`, `LastModified`, `NormalizedContent`) from `InputDto`
 - Exclude secured fields (e.g. `Password`) from DTOs
 - ⚠️ **`IsArchived` is the exception — keep it on `TInputDto`.** It reads like an auto-generated *and* server-owned flag, so it gets excluded by reflex. The write path stays archived-inclusive either way, but a DTO that cannot express the flag can never clear it, so **restore becomes impossible** — and the row is invisible meanwhile (lists hide it, `GET /{id}` 404s). Generated forms hide the field; they don't drop it. Round-trip: [`entities.patterns.md`](./entities.patterns.md) → Soft Delete
-- Server-owned fields (generated codes like `Order.Code`, computed totals, and **per-line prices** — an order/invoice line's `UnitPrice` is a textbook price-tampering vector) belong in the manager/prepper — exclude them from `InputDto` and set them server-side (`item.Code ??= …` on create, resolve `line.UnitPrice` from `Product.Price`, restore from `entry.OriginalValues` in a primer on update — recipe below)
+- Server-owned fields (generated codes like `Order.Code`, computed totals, and **per-line prices** — an order/invoice line's `UnitPrice` is a textbook price-tampering vector) stay off `InputDto` and are set server-side. Declare each one `[ServerOwned]` (or `e.ServerOwned(x => x.Code, mint)` to mint on create as well) and the write path restores it from the stored row on every update — recipe below
 - When using Attachments, exclude full File paths, since the FileService accepts relative paths (identifiers)
 - Try to facilitate mapping by keeping DTO structure similar to the entity (e.g. nested related entities instead of flattening)
 - Use navigation properties in DTOs instead of flattening related entity data: this preserves structure and enables richer client-side handling (e.g. avoid `CategoryTitle`, but use `Category`=>`Title`)
@@ -357,30 +359,31 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 
 > **⚠️ Exclude a server-owned field and restore it in the same edit.** A field absent from `TInputDto` maps
 > as `null`/default on every PUT *and* PATCH — 200 OK, silent corruption (a status-only PATCH zeroes a
-> computed `Total`). Restore it — but **decide primer vs prepper first**, because a primer is a
-> `SaveChanges` interceptor and fires on *every* save:
->
-> | Who writes the field | Use |
-> |---|---|
-> | Only the entity pipeline — generated codes, computed totals, `Created` | a **primer** (below) |
-> | A domain/workflow service or a seeder also writes it, through the raw `DbContext` | a **prepper** (`EntityPrepperBase<T>`; `original` is `null` on create, the stored row on update) — a primer would revert that writer's save (§Step 9) |
->
-> For the pipeline-only case, protect it in a **primer**, exactly as the built-in `HasCreatedDbPrimer`
-> protects `Created` — mint on create, restore from `entry.OriginalValues` on update:
+> computed `Total`). Declare it server-owned:
 > ```csharp no-compile
-> public class OrderCodePrimer : EntityPrimerBase<Order>
+> public class Order : IEntity<int>
 > {
->     public override Task PrepareAsync(Order entity, EntityEntry entry, CancellationToken token = default)
->     {
->         if (entry.State == EntityState.Added) entity.Code ??= GenerateCode();          // create: stamp once
->         else if (entry.State == EntityState.Modified)                                  // update: keep stored value
->             entity.Code = (string?)entry.OriginalValues[nameof(entity.Code)];
->         return Task.CompletedTask;
->     }
+>     public int Id { get; set; }
+>     [ServerOwned] public string? Code { get; set; }        // restored from the stored row on update
+>     [ServerOwned] public decimal Total { get; set; }
+>     public string? Status { get; set; }                    // client-writable
 > }
-> // e.AddPrimer<OrderCodePrimer>();
+> // mint on create too (the attribute carries no lambda), and on an owned child:
+> e.ServerOwned(x => x.Code, _ => GenerateCode())
+>  .Related(x => x.Lines, r => r.ServerOwned(x => x.UnitPrice));
 > ```
-> Owner-stamp from the claim, and computed totals (prepper variant with the full `original`):
+> `[ServerOwned]` (namespace `Regira.Entities.Attributes`) is enforced by a prepper `UseDefaults()`
+> registers, so it guards the `IEntityService` write path and leaves a workflow service's raw-`DbContext`
+> write alone. Scalars and FKs only — a navigation and `IArchivable.IsArchived` are rejected (a restore has
+> to be able to clear that flag).
+>
+> | What you need | Use |
+> |---|---|
+> | Protect on update; optionally mint on create from the entity itself | `[ServerOwned]` / `e.ServerOwned(…)` |
+> | Mint from an injected service, or re-derive the value on every save | a **prepper** (`EntityPrepperBase<T>`; `original` is `null` on create, the stored row on update) |
+> | Stamp the field even when a raw-`DbContext` writer creates the row (`Created`) | a **primer** — but it also *reverts* such a writer's updates (§Step 9) |
+>
+> Owner-stamp from the claim, computed totals, and the primer form:
 > [`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update.
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — Category entity
@@ -535,7 +538,7 @@ The **parent FK needs no stamping**. New children reach the store through the pa
 
 Run during `SaveChanges()` via EF Core interceptors; can inspect other modified entities in the same transaction. The interceptor is auto-wired by `UseDefaults()`; without it, select `e.WireDbContext(DbContextWiring.PrimerInterceptors)`.
 
-> ⚠️ **A primer runs on _every_ `SaveChanges()` (it's an EF interceptor); a prepper runs only on the `IEntityService` write path.** So a primer that restores a server-owned field from `entry.OriginalValues` also fires on — and reverts — a domain/workflow service's raw-`DbContext` write. When a second writer legitimately owns a field (a status/state machine), guard it with a **prepper** (`EntityPrepperBase<T>`; `original` is `null` on create, the stored row on update), not a primer. The choice table is in [`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update; the full second-writer treatment is under → Server-generated sequential codes (*Primer vs prepper when a second writer exists*).
+> ⚠️ **A primer runs on _every_ `SaveChanges()` (it's an EF interceptor); a prepper runs only on the `IEntityService` write path.** So a primer that restores a server-owned field from `entry.OriginalValues` also fires on — and reverts — a domain/workflow service's raw-`DbContext` write. When a second writer legitimately owns a field (a status/state machine), guard it with a **prepper** — `[ServerOwned]`/`e.ServerOwned(…)` is that prepper in declarative form (§Step 5), or `EntityPrepperBase<T>` when you need the full stored row — not a primer. The choice table is in [`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update; the full second-writer treatment is under → Server-generated sequential codes (*Primer vs prepper when a second writer exists*).
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — Additional Patterns > Primers
 
@@ -671,8 +674,8 @@ IEntityService<Order, int, OrderSearchObject, OrderSortBy, OrderIncludes>       
 
 > **⚠️ A field absent from `TInputDto` maps as `null`/default on PATCH *and* PUT.** Server-owned/immutable
 > values (`OwnerId` FKs, generated codes, computed totals) silently reset — a `[Required]` column 500s, a
-> computed `Total` zeroes. Restore them in a **primer** branching on `EntityState` (the Step 5 recipe; full
-> version, plus when a prepper is the right choice instead, in
+> computed `Total` zeroes. Mark each one `[ServerOwned]` (the Step 5 recipe; the cases needing a prepper or
+> a primer instead are in
 > [`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update).
 > **Synced collections invert the failure:** an `Attachments` (or `Related()`) collection the DTO never
 > declares maps as `null`, which the sync reads as "not sent" — edits are *ignored*, not reset. Silent
@@ -709,7 +712,7 @@ curl -s -X PATCH $BASE/1 -H 'Content-Type: application/json' -d '{"status":"Ship
 curl -s $BASE/1
 ```
 
-Expected: `Code` and `Total` are unchanged from step 1 (not `null`/`0`) and `status` is now `Shipped` — if either reset, a server-owned field is missing its restore primer (Step 5). Verify seeded data **through the API** (`GET /{entity}/search`), never by the `.db` file size.
+Expected: `Code` and `Total` are unchanged from step 1 (not `null`/`0`) and `status` is now `Shipped` — if either reset, a server-owned field is missing its `[ServerOwned]` declaration (Step 5). Verify seeded data **through the API** (`GET /{entity}/search`), never by the `.db` file size.
 
 **Assert your seed data's domain invariants with a query, not by eyeballing a page.** Name each rule the data must satisfy ("every asset whose status is *In use* has a holder"; "every event has at least one session"), then prove it with a search that must return `count: 0` — `GET /assets/search?statusId=3&isAssigned=false`. This is the one class of bug a green build, a green type-check *and* a passing round-trip all miss: the generator loop that skips a case leaves data that is individually valid and collectively wrong, and it only shows up as something looking odd on a page nobody scrolled to.
 
@@ -1028,6 +1031,12 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 6. Register **two** things: `.WithAttachments(_ => new BinaryFileService(...))` for the shared `Attachment` entity + file store + bytes→file primer, **and** `.For<Product>(e => e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments))` for the typed per-owner services + link prepper + DTO mapping. `HasAttachments` is an extension on the **base** `EntityServiceBuilder`, so it chains on every `For<>()` tier — a complex owner registers it exactly like the simple one shown here.
 7. *(web apps)* Call `options.UseAttachmentUris()` (before registering entities, on the **same** `UseEntities` options instance) and register `AddHttpContextAccessor()` so attachment DTOs resolve a `Uri` linking to the attachment controller's `GetFile` action.
 
+> ⚠️ **Marking one attachment as the primary one? Mark the link entity, don't point the owner at it.** An
+> owner FK to one of its own attachments makes the two tables reference each other: SQL Server refuses the
+> migration and every owner `DELETE` answers 500. Use `SortOrder` or a flag on the link entity; startup
+> validation warns, and [`entities.patterns.md`](./entities.patterns.md) → *An entity that references one of its
+> own children* covers the case where the FK has to stay.
+
 > ⚠️ **Owner is `IArchivable`?** The link entity is separately registered and has no navigation back to its owner, so archiving the owner leaves its attachments visible to `/{ownerId}/attachments`. Startup validation flags the shape; the working model configuration is in [`entities.patterns.md`](./entities.patterns.md) → Soft Delete > *Attachments on an archivable owner*.
 
 > **Reads: eager-load the owner's `Attachments`, or the file metadata comes back null.** `HasAttachments`
@@ -1134,7 +1143,7 @@ Load that file when implementing one of these:
 
 - **Bulk insert / update** — batch many rows through a single `SaveChanges()`; includes **multi-wave seeding** (Id/change-tracker timing).
 - **Single-field PATCH / state toggle** — flip `IsActive` (or any one field) via `PATCH /{id}`; covers toggling owned join rows.
-- **Server-owned / immutable fields on update** — restore `OwnerId`/codes from `entry.OriginalValues` in a primer (or from a prepper's `original` when a second writer owns the field) so PUT/PATCH can't null or re-mint them.
+- **Server-owned / immutable fields on update** — `[ServerOwned]`/`e.ServerOwned(…)` so PUT/PATCH can't null or re-mint a code, total or owner FK; plus the prepper and primer forms for what a declaration cannot cover.
 - **Server-generated sequential codes** — mint `REQ-2026-00001` from a primer on `Added` and restore it on `Modified`; includes when that primer has to be a prepper instead, and why the counter is primed from the highest code.
 - **Cross-entity aggregates & report endpoints** — a dashboard controller belongs to no entity, so it **bypasses the pipeline**: global filter row security does not apply unless you repeat the predicate. Also **domain actions on an entity resource** (`POST /{id}/approve`) and **role-gated transitions**.
 - **Aggregates over a non-owned child collection** — a parent total rolled up from children that own their own FK. Eventually consistent, seeding needs a second pass, and a child query filter can zero it on restore.
@@ -1142,6 +1151,7 @@ Load that file when implementing one of these:
 - **Writing to a related entity from a prepper** — the typed `e.Prepare(entity, dbContext)` overload; `EntityInputException<T>` must name the *serviced* entity or it escapes as a 500.
 - **Renamed DTO property** — wire both directions on the typed `UseMapping` chain when a DTO name differs from the entity's (Mapster maps by name only).
 - **Public (anonymous) attachment downloads** — serve images to `<img>` on a secured API (`[AllowAnonymous]` override of `GetFile`).
+- **An entity that references one of its own children** — an owner FK pointing at one of its own child rows: the SQL Server migration and every owner `DELETE` both fail. What to do instead, and the two-phase save when the reference has to stay.
 - **Soft delete** — the full `IArchivable` round-trip: `DELETE` archives instead of erasing, which routes see archived rows, and what restore requires.
 - **Owned children that are both sortable and individually togglable** — who owns `SortOrder` vs a per-row flag.
 - **Audit trail** — stamp `CreatedBy`/`ModifiedBy` via a global primer.
@@ -1291,7 +1301,7 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 
 ## Troubleshooting
 
-*Grouped by symptom — fetch one group, not the whole table. If nothing matches: signatures → [`entities.signatures.md`](./entities.signatures.md), namespaces → [`entities.namespaces.md`](./entities.namespaces.md), a working example → [`entities.examples.md`](./entities.examples.md).*
+*Grouped by symptom — fetch one group, not the whole table. Most rows are silent failures: a clean build, a 200, and a wrong result. If nothing matches: signatures → [`entities.signatures.md`](./entities.signatures.md), namespaces → [`entities.namespaces.md`](./entities.namespaces.md), a working example → [`entities.examples.md`](./entities.examples.md).*
 
 ### Troubleshooting — reads: data missing from responses
 
@@ -1301,7 +1311,12 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 | Nested collection comes back **empty** in an API response | The navigation was never eager-loaded — almost never a mapping problem | Add the eager-load in `e.Includes(...)` (never `Filter(...)` — filters pick rows, includes load navigations). Only add `AddMapping<…>()` if the child DTO shape genuinely diverges from the entity (§Step 10) |
 | A relation loads, then vanishes from responses after adding another `Includes(...)` | `Includes(...)` registrations are **last-write-wins** — the second call replaced the first (single `IIncludableQueryBuilder`) | Merge all eager-loads into **one** `Includes` lambda (§Step 4) |
 | Filter not applied | Query builder not registered or wrong `SearchObject` property name | Verify `e.AddFilter<>()` or `e.Filter(...)` and check property names |
+| A list page comes back **short** (`items` < `pageSize`) while `/search` still **counts** the rows; the shortfall looks like an off-by-one in paging | An `IArchivable` principal behind a **required** FK. On `net10.0` the archived filter propagates into the `Include` as an inner join, so a dependent whose parent is archived drops out of `items`; the count query has no join. A sort that interleaves parents (`SortOrder`, `Title`) loses about one row per page, which is why it reads as a paging bug. Startup validation warns on the shape | Reference data: don't make it `IArchivable` — real `DELETE` + `OnDelete(Restrict)`, or an optional FK. An aggregate parent whose dependent you also query directly: mirror the filter on the dependent ([`entities.patterns.md`](./entities.patterns.md) → Soft Delete → *Before you make reference data `IArchivable`*) |
+| `?q=` matches **nothing** — every search empty, 200, no error, no warning | The entity implements `IHasNormalizedContent` but nothing fills `NormalizedContent`: `[Normalized]` sits on the class instead of the property, or there is no attribute at all. The global `Q` filter then ANDs a match against `null` | Put `[Normalized(SourceProperties = [...])]` on the `NormalizedContent` **property** (§Step 1 — all-or-nothing note, §Normalizing). Rows saved before the attribute existed stay empty until re-saved |
+| `?q=` returns **everything**, unfiltered | The entity doesn't implement `IHasNormalizedContent` and has no custom filter — startup logs *"?q= text search is silently ignored for: X"* | Implement `IHasNormalizedContent` with a `[Normalized]` source (§Step 1) |
+| `?q=` finds fewer rows than it should, or none once a domain filter is on | A per-entity `Q` filter in your query builder ANDs on top of the global one | Delete it — keyword search is already global for `IHasNormalizedContent` entities (§Step 6 — *Don't write a `Q` filter*) |
 | `?q=` returns nothing although the text is clearly in the row | `NormalizedContent` holds raw text while the query term is normalized — punctuation the normalizer deletes never matches | Write `NormalizedContent` through `[Normalized]` or `INormalizer.Normalize(...)` (§Normalizing — the normalize contract) |
+| A computed / `[NotMapped]` field is `null` on a row nested inside another entity's response, but filled on the entity's own endpoint | Processors and after-mappers run only in their **own** entity's read pipeline — never inside another entity's projection | Expected. Render `null` as empty (not `0`), or fetch the child list from its own endpoint (§Step 7) |
 | A row vanished after `DELETE` and no payload brings it back | The entity is `IArchivable`: the row is archived, lists hide it and `GET /{id}` 404s | Keep `IsArchived` on `TInputDto` and send `false`; read the row with `?archived=included` (or list the recycle bin with `?archived=only`) ([`entities.patterns.md`](./entities.patterns.md) → Soft Delete) |
 | Mapping errors | Mapster/AutoMapper not configured or property name mismatch | Ensure `options.UseMapsterMapping()` is called; check DTO property names |
 
@@ -1311,6 +1326,8 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 |---|---|---|
 | Save not persisting | `SaveChanges()` not called | Base controllers call it automatically; direct `IEntityService` callers (services, jobs, seeding) must `await service.SaveChanges()` themselves. |
 | A related collection gets emptied or its rows reassigned after saving the parent | The parent's DTO **carried** the collection, so `Related()` diffed it as *owned* and overwrote it to match — an empty list deletes every row (only `null` is a no-op). Common when the element entity is also independently managed via its own `.For<>()`/`IEntityService<T>` | First check the parent's `TInputDto`: dropping the collection from it makes the sync a no-op and lets both coexist. If the parent must send it, pick one authority — drop the `.For<>()`, or drop the `Related()` and load via `Include()` in the query builder (§Relationship Patterns — Decision Table) |
+| Owned child rows are **gone** after a save that never touched them (a status-only PATCH) | An omitted collection reached the sync as `[]` (= delete all) instead of `null` (= untouched): the input DTO initializes it (`= []`) or declares it non-nullable, or the client sent an empty array | Declare it `ICollection<TChildInputDto>? Lines { get; set; }` — nullable, no initializer (§Step 5); a client that isn't editing the rows omits the property |
+| A row is inserted **with a client-supplied id**, or SQL Server answers *"Cannot insert explicit value for identity column"* | A positive id that matches no stored row is treated as an explicit insert — a stale key for a row someone else deleted. Only negative temp keys are cleared; `0` and `null` were never set | Reload before saving instead of resending the stale row (§Step 8 — *How the sync classifies an incoming row*) |
 | A computed total zeroes after a PATCH that didn't touch the lines | The prepper collapsed `null` (collection not sent) and `[]` (delete-all) into one branch and summed an absent collection | Branch on `null` and re-read the persisted children before summing (§Step 5; [`entities.examples.md`](./entities.examples.md) — Additional Patterns > Prepper) |
 | Edits to entities saved in an earlier `SaveChanges` wave don't persist | EF change tracker is cleared after every `SaveChanges()` — the entity is now detached; later mutations are silently dropped | Re-attach with `await service.Modify(entity)` (or `Save`), then call `await service.SaveChanges()` again |
 | `DELETE` archives the row but it still shows up in lists, `GET /{id}` and included collections | No archived query filter on the model — the registered builder translates the opt-ins only. Either the wiring never reached the context (non-generic `UseEntities()`, or `WireDbContext(...)` without `ArchivedQueryFilter`), or the `DbContext` was constructed by hand and never saw the service collection | Register with `UseEntities<TContext>(e => e.UseDefaults())`; for a hand-built context add `.AddArchivedQueryFilter()` to its options ([`entities.patterns.md`](./entities.patterns.md) → Soft Delete). Startup validation reports the DI case as an error |

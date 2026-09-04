@@ -15,6 +15,16 @@ public static class LicenseDefaults
     }
 
     /// <summary>
+    /// Whether <paramref name="tier"/> is one that pays: anything named and not <c>free</c>. The one place
+    /// that question is answered, so a host deciding limits from a <see cref="LicenseStatus"/> (which carries
+    /// the tier as a bare string) and <see cref="License.IsPaid"/> cannot come to different conclusions about
+    /// one key — including once a tier that is neither <c>free</c> nor paid, a trial say, is introduced here.
+    /// </summary>
+    public static bool IsPaidTier(string? tier) =>
+        !string.IsNullOrEmpty(tier) &&
+        !string.Equals(tier, "free", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Compile-time free-tier limit values. Free-tier limits are a runtime fallback for unlicensed
     /// consumers, so they live in code (not configuration); paid-tier limits are baked into the signed
     /// key by the license generator and configured there instead.

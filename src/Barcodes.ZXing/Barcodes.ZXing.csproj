@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Office.Barcodes.ZXing</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.3</Version>
+    <Version>6.2.0</Version>
     <Description>Barcode reading and generation using ZXing.Net for Regira Office.</Description>
     <PackageTags>regira;office;barcodes;barcode;qrcode;qr-code;scanner;zxing</PackageTags>
   </PropertyGroup>
@@ -20,6 +20,6 @@
     <ProjectReference Include="..\Drawing.SkiaSharp\Drawing.SkiaSharp.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="ZXing.Net.Bindings.SkiaSharp" Version="0.16.23" />
+    <PackageReference Include="ZXing.Net.Bindings.SkiaSharp" Version="0.16.24" />
   </ItemGroup>
 </Project>

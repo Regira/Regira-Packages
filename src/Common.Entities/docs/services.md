@@ -190,6 +190,14 @@ public abstract class EntityPrepperBase<TEntity> : IEntityPrepper<TEntity>
 }
 ```
 
+#### Server-owned fields
+
+`[ServerOwned]` on a scalar (or `e.ServerOwned(x => x.Code, mint)` for the fluent form, which also mints on
+create) restores that property from the stored row on update, so a PUT/PATCH that omits it cannot null it.
+Enforced by `AutoServerOwnedPrepper`, registered by `UseDefaults()`. Being a prepper, it guards the
+`IEntityService` write path only and leaves a workflow service's raw `DbContext` write alone. See
+[Built-in features](./built-in-features.md#server-owned-fields).
+
 #### Related child collections
 
 `e.Related()` is the shortcut for synchronizing owned child collections. It registers a `RelatedCollectionPrepper` that diffs the incoming collection against the stored one before `SaveChanges()`, marking items as added, modified or removed.

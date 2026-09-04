@@ -174,6 +174,14 @@ public class EntityIntServiceBuilder<TContext, TEntity>(EntityServiceCollectionO
 
         return this;
     }
+    // Server-owned fields
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.ServerOwned{TProp}" />
+    public new EntityIntServiceBuilder<TContext, TEntity> ServerOwned<TProp>(Expression<Func<TEntity, TProp>> selector, Func<TEntity, TProp>? mintOnCreate = null)
+    {
+        base.ServerOwned(selector, mintOnCreate);
+        return this;
+    }
+
     // Related
     /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Related{TRelated,TRelatedKey}" />
     public EntityIntServiceBuilder<TContext, TEntity> Related<TRelated>(
@@ -181,7 +189,7 @@ public class EntityIntServiceBuilder<TContext, TEntity>(EntityServiceCollectionO
         where TRelated : class, IEntity<int>
     {
         EntityRegistrationLog.TrackRelated(Services, typeof(TContext), typeof(TEntity), typeof(TRelated));
-        Services.AddPrepper(p => new RelatedCollectionPrepper<TContext, TEntity, TRelated, int, int>(p.GetRequiredService<TContext>(), navigationExpression));
+        Services.AddPrepper(p => new RelatedCollectionPrepper<TContext, TEntity, TRelated, int, int>(p.GetRequiredService<TContext>(), navigationExpression, NestedPreppers.WithServerOwned<TRelated>()));
 
         return this;
     }
@@ -198,7 +206,7 @@ public class EntityIntServiceBuilder<TContext, TEntity>(EntityServiceCollectionO
             configure(relatedBuilder);
             var nestedPreppers = relatedBuilder.PrepperFactories.Select(f => f(p));
             return new RelatedCollectionPrepper<TContext, TEntity, TRelated, int, int>(
-                p.GetRequiredService<TContext>(), navigationExpression, nestedPreppers);
+                p.GetRequiredService<TContext>(), navigationExpression, NestedPreppers.WithServerOwned(nestedPreppers));
         });
 
         return this;

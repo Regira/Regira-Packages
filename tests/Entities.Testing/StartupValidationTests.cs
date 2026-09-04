@@ -496,4 +496,185 @@ public class StartupValidationTests
 
         Assert.That(capture.Warnings, Has.None.Contains("Includes()"));
     }
+
+    public class Invoice : Regira.Entities.Models.Abstractions.IEntity<int>, Regira.Entities.Models.Abstractions.IArchivable
+    {
+        public int Id { get; set; }
+        [Regira.Entities.Attributes.ServerOwned] public string? Code { get; set; }
+        [Regira.Entities.Attributes.ServerOwned] public bool IsArchived { get; set; }
+        [Regira.Entities.Attributes.ServerOwned] public ICollection<Note>? Notes { get; set; }
+    }
+    public class InvoiceContext(DbContextOptions<InvoiceContext> options) : DbContext(options)
+    {
+        public DbSet<Invoice> Invoices => Set<Invoice>();
+        public DbSet<Note> Notes => Set<Note>();
+    }
+
+    [Test]
+    public void ServerOwned_On_The_Archived_Flag_And_On_A_Navigation_Fail_Startup()
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddDbContext<InvoiceContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<InvoiceContext>(o =>
+            {
+                o.UseDefaults();
+                o.ConfigureValidation(v => v.Enabled = true);
+            })
+            .For<Invoice>();
+
+        using var sp = services.BuildServiceProvider();
+        var ex = Assert.ThrowsAsync<InvalidOperationException>(() => RunHostedServices(sp));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex!.Message, Does.Contain("Invoice.IsArchived"));
+            Assert.That(ex.Message, Does.Contain("Invoice.Notes"));
+            Assert.That(ex.Message, Does.Not.Contain("Invoice.Code"));
+        });
+    }
+
+    public class InvoiceLine : Regira.Entities.Models.Abstractions.IEntity<int>
+    {
+        public int Id { get; set; }
+        public int InvoiceId { get; set; }
+        [Regira.Entities.Attributes.ServerOwned] public decimal UnitPrice { get; set; }
+    }
+    public class OrderContext(DbContextOptions<OrderContext> options) : DbContext(options)
+    {
+        public DbSet<Note> Notes => Set<Note>();
+        public DbSet<InvoiceLine> InvoiceLines => Set<InvoiceLine>();
+    }
+
+    /// <summary>
+    /// A Related() child is prepped through its parent's chain, which carries the [ServerOwned] restore
+    /// whether or not UseDefaults() ran — so reporting it as unenforced would name an enforced field.
+    /// </summary>
+    [Test]
+    public async Task ServerOwned_On_A_Related_Child_Alone_Does_Not_Warn()
+    {
+        var capture = new CaptureLoggerProvider();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(capture));
+        services.AddDbContext<OrderContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<OrderContext>(o => o.ConfigureValidation(v => v.Enabled = true))
+            .For<Note>(e => e.Related<InvoiceLine>(_ => null));
+
+        using var sp = services.BuildServiceProvider();
+        await RunHostedServices(sp);
+
+        Assert.That(capture.Warnings, Has.None.Contains("AutoServerOwnedPrepper"));
+    }
+
+    [Test]
+    public async Task ServerOwned_Without_Enforcement_Warns()
+    {
+        var capture = new CaptureLoggerProvider();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(capture));
+        services.AddDbContext<InvoiceContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<InvoiceContext>(o => o.ConfigureValidation(v =>
+            {
+                v.Enabled = true;
+                v.ThrowOnError = false;
+            }))
+            .For<Invoice>();
+
+        using var sp = services.BuildServiceProvider();
+        await RunHostedServices(sp);
+
+        Assert.That(capture.Warnings, Has.Some.Contains("no AutoServerOwnedPrepper is registered"));
+    }
+
+    // An entity carrying a foreign key to one of its own children cannot be deleted once the children are
+    // loaded, and on SQL Server the migration is refused before that. Neither failure names the relationship,
+    // so the model is what has to report it.
+    [Test]
+    public async Task Entity_Referencing_Its_Own_Child_Warns()
+    {
+        var capture = new CaptureLoggerProvider();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(capture));
+        services.AddDbContext<DeleteCycleTests.ArticleContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<DeleteCycleTests.ArticleContext>(o => o.ConfigureValidation(v => v.Enabled = true))
+            .For<DeleteCycleTests.Article>();
+
+        using var sp = services.BuildServiceProvider();
+        await RunHostedServices(sp);
+
+        Assert.That(capture.Warnings, Has.Some
+            .Contains("Article.CoverImageId").And.Some
+            .Contains("ArticleImage.ArticleId").And.Some
+            .Contains("circular dependency").And.Some
+            .Contains("SaveChangesBreakingDeleteCycles"));
+    }
+
+    // The same child type reached through two different references is two cycles, each with its own answer:
+    // one may be droppable and the other required, and a warning naming only the first hides the second.
+    public class Cover : Regira.Entities.Models.Abstractions.IEntity<int>
+    {
+        public int Id { get; set; }
+        public int? CoverImageId { get; set; }
+        public int? ThumbnailImageId { get; set; }
+        public ICollection<CoverImage>? Images { get; set; }
+    }
+    public class CoverImage : Regira.Entities.Models.Abstractions.IEntity<int>
+    {
+        public int Id { get; set; }
+        public int CoverId { get; set; }
+    }
+    public class CoverContext(DbContextOptions<CoverContext> options) : DbContext(options)
+    {
+        public DbSet<Cover> Covers => Set<Cover>();
+        public DbSet<CoverImage> CoverImages => Set<CoverImage>();
+
+        protected override void OnModelCreating(ModelBuilder builder)
+            => builder.Entity<Cover>(entity =>
+            {
+                entity.HasMany(x => x.Images).WithOne()
+                    .HasForeignKey(x => x.CoverId).HasPrincipalKey(x => x.Id);
+                entity.HasOne<CoverImage>().WithMany()
+                    .HasForeignKey(x => x.CoverImageId).OnDelete(DeleteBehavior.ClientSetNull);
+                entity.HasOne<CoverImage>().WithMany()
+                    .HasForeignKey(x => x.ThumbnailImageId).OnDelete(DeleteBehavior.ClientSetNull);
+            });
+    }
+
+    [Test]
+    public async Task Two_References_To_The_Same_Child_Are_Both_Reported()
+    {
+        var capture = new CaptureLoggerProvider();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(capture));
+        services.AddDbContext<CoverContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<CoverContext>(o => o.ConfigureValidation(v => v.Enabled = true))
+            .For<Cover>();
+
+        using var sp = services.BuildServiceProvider();
+        await RunHostedServices(sp);
+
+        var cycles = capture.Warnings.Where(w => w.Contains("circular dependency")).ToArray();
+        Assert.Multiple(() =>
+        {
+            Assert.That(cycles, Has.Some.Contains("Cover.CoverImageId"));
+            Assert.That(cycles, Has.Some.Contains("Cover.ThumbnailImageId"));
+            Assert.That(cycles, Has.Length.EqualTo(2), "each reference once, and the cycle not reported from both ends");
+        });
+    }
+
+    [Test]
+    public async Task A_Model_Without_Mutual_References_Is_Silent()
+    {
+        var capture = new CaptureLoggerProvider();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(capture));
+        services.AddDbContext<OrderContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<OrderContext>(o => o.ConfigureValidation(v => v.Enabled = true))
+            .For<Note>();
+
+        using var sp = services.BuildServiceProvider();
+        await RunHostedServices(sp);
+
+        Assert.That(capture.Warnings, Has.None.Contains("circular dependency"));
+    }
 }

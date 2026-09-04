@@ -231,6 +231,14 @@ public class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchOb
         return this;
     }
 
+    // Server-owned fields
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.ServerOwned{TProp}" />
+    public new EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject> ServerOwned<TProp>(Expression<Func<TEntity, TProp>> selector, Func<TEntity, TProp>? mintOnCreate = null)
+    {
+        base.ServerOwned(selector, mintOnCreate);
+        return this;
+    }
+
     // Related
     /// <summary>
     /// Single-type-argument shortcut for <see cref="EntityServiceBuilder{TContext,TEntity,TKey}.Related{TRelated,TRelatedKey}" />

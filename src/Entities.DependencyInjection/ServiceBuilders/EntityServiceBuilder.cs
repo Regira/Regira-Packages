@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.Extensions.DependencyInjection;
+using Regira.Entities.Attributes;
 using Regira.Entities.DependencyInjection.Mapping;
 using Regira.Entities.DependencyInjection.Normalizers;
 using Regira.Entities.DependencyInjection.Preppers;
@@ -13,6 +14,7 @@ using Regira.Entities.DependencyInjection.ServiceCollections.Models;
 using Regira.Entities.DependencyInjection.Validation;
 using Regira.Entities.Normalizing.Abstractions;
 using Regira.Entities.EFcore.Preppers;
+using Regira.Entities.Preppers;
 using Regira.Entities.Preppers.Abstractions;
 using Regira.Entities.EFcore.Primers;
 using Regira.Entities.EFcore.Primers.Abstractions;
@@ -436,6 +438,28 @@ public class EntityServiceBuilder<TContext, TEntity, TKey>(EntityServiceCollecti
         return this;
     }
 
+    // Server-owned fields
+    /// <summary>
+    /// Declares <paramref name="selector"/> as owned by the server: minted on create when
+    /// <paramref name="mintOnCreate"/> is supplied and the property is still unset, restored from the stored
+    /// row on update — so a PUT/PATCH that omits it cannot null it or overwrite it. The fluent counterpart of
+    /// <see cref="ServerOwnedAttribute"/>, which protects without minting.
+    /// <para>
+    /// Enforced as a <b>prepper</b>: it guards the <c>IEntityService</c> write path and leaves a
+    /// domain/workflow service's raw <c>DbContext</c> write alone. Preppers run in registration order, so a
+    /// <c>Prepare()</c> registered after this call can still set the field deliberately.
+    /// </para>
+    /// </summary>
+    /// <param name="selector">The property to protect, e.g. <c>x =&gt; x.Code</c>. Scalars and FKs only.</param>
+    /// <param name="mintOnCreate">Mints the value on create when the property is unset. Omit to protect only.</param>
+    public EntityServiceBuilder<TContext, TEntity, TKey> ServerOwned<TProp>(Expression<Func<TEntity, TProp>> selector, Func<TEntity, TProp>? mintOnCreate = null)
+    {
+        // built here, not in the factory: an invalid selector must fail at registration, not at the first write
+        var prepper = new ServerOwnedPrepper<TEntity, TProp>(selector, mintOnCreate);
+        Services.AddPrepper(_ => prepper);
+        return this;
+    }
+
     // Related
     /// <summary>
     /// Registers a <see cref="RelatedCollectionPrepper{TContext,TEntity,TRelated,TKey,TRelatedKey}"/> that automatically
@@ -496,11 +520,11 @@ public class EntityServiceBuilder<TContext, TEntity, TKey>(EntityServiceCollecti
                 var relatedBuilder = new RelatedEntityBuilder<TContext, TRelated, TRelatedKey>();
                 configure(relatedBuilder);
                 var nestedPreppers = relatedBuilder.PrepperFactories.Select(prepperFactory => prepperFactory(p));
-                return new RelatedCollectionPrepper<TContext, TEntity, TRelated, TKey, TRelatedKey>(p.GetRequiredService<TContext>(), navigationExpression, nestedPreppers);
+                return new RelatedCollectionPrepper<TContext, TEntity, TRelated, TKey, TRelatedKey>(p.GetRequiredService<TContext>(), navigationExpression, NestedPreppers.WithServerOwned(nestedPreppers));
             }
             else
             {
-                return new RelatedCollectionPrepper<TContext, TEntity, TRelated, TKey, TRelatedKey>(p.GetRequiredService<TContext>(), navigationExpression);
+                return new RelatedCollectionPrepper<TContext, TEntity, TRelated, TKey, TRelatedKey>(p.GetRequiredService<TContext>(), navigationExpression, NestedPreppers.WithServerOwned<TRelated>());
             }
         });
         if (prepareFunc != null)

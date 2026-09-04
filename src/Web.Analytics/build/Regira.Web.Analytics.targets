@@ -1,0 +1,32 @@
+<Project>
+
+  <PropertyGroup>
+    <_RegiraWebAnalyticsFilesRoot>$(MSBuildThisFileDirectory)..\ai\</_RegiraWebAnalyticsFilesRoot>
+    <_RegiraBaseDir Condition="'$(SolutionDir)' != '' And '$(SolutionDir)' != '*Undefined*'">$(SolutionDir)</_RegiraBaseDir>
+    <_RegiraBaseDir Condition="'$(_RegiraBaseDir)' == ''">$(ProjectDir)</_RegiraBaseDir>
+  </PropertyGroup>
+
+  <!--
+    Copies Web.Analytics AI instruction files into the consuming project's
+    .regira/instructions/ folder. Existing files are left untouched; missing ones are copied on the next build.
+  -->
+  <Target Name="RegiraWebAnalyticsExtractAiFiles"
+          BeforeTargets="BeforeBuild">
+
+    <!-- Per-file gating: a file the consumer already has is never overwritten, and a guide
+         added by a package upgrade still lands — a single already-extracted sentinel would
+         skip the whole copy and new guides would never reach an existing solution. -->
+    <ItemGroup>
+      <_RegiraWebAnalyticsExtractAiFilesFile Include="$(_RegiraWebAnalyticsFilesRoot)*.md" />
+      <_RegiraWebAnalyticsExtractAiFilesFileMissing Include="@(_RegiraWebAnalyticsExtractAiFilesFile)" Condition="!Exists('$(_RegiraBaseDir).regira\instructions\%(Filename)%(Extension)')" />
+    </ItemGroup>
+
+    <MakeDir Directories="$(_RegiraBaseDir).regira\instructions" Condition="'@(_RegiraWebAnalyticsExtractAiFilesFileMissing)' != ''" />
+
+    <Copy SourceFiles="@(_RegiraWebAnalyticsExtractAiFilesFileMissing)"
+          DestinationFolder="$(_RegiraBaseDir).regira\instructions\"
+          Condition="'@(_RegiraWebAnalyticsExtractAiFilesFileMissing)' != ''" />
+
+  </Target>
+
+</Project>

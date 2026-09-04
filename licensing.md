@@ -55,7 +55,8 @@ services.UseRegira(licenseKey);      // pass keys explicitly
 ## FAQ
 
 - **Is the free tier free forever?** Yes — per released version, the shipped free tier is not revocable. Future versions may adjust limits.
-- **What happens when a key expires?** Validation falls back to the free tier; nothing fails closed.
+- **What happens when a key expires?** An expired key is refused: the licensed packages throw a `LicenseException` naming the expiry date. A short grace period softens the cut-over; its length is not part of the license terms and may change between versions, so do not plan on it. `UseRegira` reminds you on the console from two weeks before the date, so renew at [regira.com/licensing](https://regira.com/licensing) before it passes.
+- **How do I check what a service makes of my key?** Ask it: `get_license_status` on the MCP server, or `GET /license/status` on the hosted Office API (`ILicenseStatusClient` in `Regira.Office.Clients`). Both answer for any key — missing, expired or valid — with the customer, expiry date, whether the key is accepted and a one-line reason.
 - **Can I ship Regira DLLs inside my commercial product?** Yes — the commercial license grants redistribution in compiled form as part of your application ([clause 3](legal/REGIRA-COMMERCIAL-LICENSE.md)). The Apache-2.0 packages carry the standard Apache grant.
 - **Will license scanners flag Regira?** The Apache-2.0 packages carry a standard SPDX expression that every scanner recognizes. Only the seven commercial packages show a custom license file.
 

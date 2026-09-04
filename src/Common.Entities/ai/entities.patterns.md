@@ -118,6 +118,17 @@ await links.SaveChanges(); // pipeline writes the file, fills Path/Length, assig
 **See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "Bulk insert / update")`
 and `get_package(id: "Regira.Entities", section: "examples", heading: "Attachments")`.
 
+### Mark one child as the primary / featured one
+<!-- how_to: key=primary-child aliases=featured,cover,primary,default,main,thumbnail,flag,attachment -->
+Put the marker on the **child** — a flag, or a rank column it already has (an attachment link entity's
+`SortOrder`, assigned from the incoming array position). A foreign key from the owner to one of its own child
+rows makes the two tables reference each other: SQL Server refuses the migration (Msg 1785) and every owner
+`DELETE` answers 500 with EF's *circular dependency*, which no primer can fix — EF orders deletes from the
+**original** foreign-key values. If the reference has to stay, map it `DeleteBehavior.ClientSetNull` and drop it
+in a save of its own.
+
+**See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "An entity that references one of its own children")`.
+
 ### Bulk insert / seed many rows
 <!-- how_to: key=bulk-insert aliases=bulk,seed,seeding,import,addrange,batch,many,insert,loop -->
 There is no `AddRange`. The per-item `Add`/`Modify`/`Save`/`Remove` calls only **track**
@@ -200,6 +211,78 @@ collection syncing.
 
 **See:** `get_package(id: "Regira.Entities", section: "blueprints", heading: "Stakeholders")` for the
 full worked model, and §Step 8 in the instructions for the `Related()` signature.
+
+### Archived lookup drops referencing rows from lists
+<!-- how_to: key=archived-lookup-drops-rows aliases=archived,archivable,soft-delete,softdelete,missing,rows,dropped,disappear,vanish,short,page,paging,count,mismatch,required,lookup,restrict,include -->
+Symptom: `GET /products` returns fewer `items` than `pageSize` while `/products/search` still **counts** them —
+200, no error. Sorted by a column that interleaves parents it loses about one row per page and reads as a
+paging off-by-one; it is not. Cause: `Product.CategoryId` is **required** and `Category` is `IArchivable`.
+On `net10.0` the archived filter propagates into the `Include` as an inner join, so a product whose
+category is archived drops out of `items`; the count query has no join. Pick by what the principal is:
+
+```csharp no-compile
+// 1. Reference data is never archivable: drop IArchivable from Category and refuse the delete while in use
+modelBuilder.Entity<Product>().HasOne(x => x.Category).WithMany().OnDelete(DeleteBehavior.Restrict);
+
+// 2. Or make the relation optional, so an archived category leaves the product visible
+public int? CategoryId { get; set; }
+public Category? Category { get; set; }
+
+// 3. An aggregate parent (Order → OrderLine) whose dependent you also query directly: mirror the filter
+modelBuilder.Entity<OrderLine>().HasQueryFilter(x => !x.Order!.IsArchived);
+```
+
+Startup validation (Development) warns naming both entities, and EF's
+`PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning` lists every affected pair — treat
+that list as the checklist, not as noise.
+
+**See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "Soft Delete")` — *Before you
+make reference data `IArchivable`*.
+
+### `?q=` search returns nothing (or everything)
+<!-- how_to: key=q-search-empty aliases=search,keyword,keywords,empty,nothing,results,unfiltered,ignored,normalized,normalizedcontent,ihasnormalizedcontent,text -->
+Two silent shapes, one fix. **Every `?q=` request returns an empty list** — 200, no error, no warning: the
+entity implements `IHasNormalizedContent` but nothing fills `NormalizedContent` (`[Normalized]` on the
+class instead of the property, or no attribute at all), so the global `Q` filter ANDs a match against
+`null`. **`?q=` returns everything, unfiltered**: the entity does not implement the interface and has no
+custom filter — startup logs *"?q= text search is silently ignored for: X"*. Either way the attribute goes
+on the **property**, naming its sources:
+
+```csharp no-compile
+public class Article : IEntity<int>, IHasNormalizedContent
+{
+    [MaxLength(1024), Normalized(SourceProperties = [nameof(Title), nameof(Description)])]
+    public string? NormalizedContent { get; set; }
+}
+```
+
+Rows saved before the attribute existed stay empty until re-saved (or seeded through `IEntityService`).
+Don't add a per-entity `Q` filter on top — it ANDs with the global one and narrows or empties results.
+
+**See:** `get_package(id: "Regira.Entities", section: "instructions", heading: "Normalizing")` and
+§Step 1 (*`IHasNormalizedContent` is all-or-nothing*).
+
+### Owned collection wiped by a partial save
+<!-- how_to: key=owned-collection-wiped aliases=owned,collection,children,child,wiped,deleted,cleared,lost,gone,patch,partial,status,null,empty,array,related -->
+Symptom: a PATCH or save that only touched `Status` left the parent with zero owned rows. Cause: the
+collection reached the `Related()` sync as `[]`. The contract is `null` = leave the rows alone, `[]` =
+delete them all — and an input DTO that initializes the collection turns every omitted collection into
+`[]`:
+
+```csharp no-compile
+public class OrderInputDto
+{
+    public string? Status { get; set; }
+    public ICollection<OrderItemInputDto>? Items { get; set; }   // nullable, no "= []": null when not sent
+}
+```
+
+A client that is not editing the rows omits the property (or sends `null`); a hand-written call must never
+default it to an empty array. A computed total in a prepper needs the same branch — `null` means re-read
+the persisted children, not "sum nothing".
+
+**See:** `get_package(id: "Regira.Entities", section: "instructions", heading: "Relationship Patterns — Decision Table")`
+— *One writer per save path* — and §Step 5.
 
 ## Soft Delete
 
@@ -651,9 +734,47 @@ per Step 5.) It compiles, returns 200, and corrupts data: a computed `Total` bec
 save. This applies to PATCH too — the merge patch is applied through `TInputDto`, so a field the DTO does
 not declare cannot survive it.
 
-After Step 5, list every field you excluded from `TInputDto`; each needs restoring on update. The idiomatic
-way is a **primer** — the same mechanism the built-in `HasCreatedDbPrimer` uses to protect `Created`: on a
-`Modified` entry, copy the stored value back from `entry.OriginalValues`. Stamp on create, restore on update:
+After Step 5, list every field you excluded from `TInputDto`; each needs restoring on update. Declare it and
+the framework does the restoring — `[ServerOwned]` (namespace `Regira.Entities.Attributes`) to protect,
+`e.ServerOwned(x => x.Code, mint)` to protect *and* mint on create:
+
+```csharp no-compile
+public class Order : IEntity<int>
+{
+    public int Id { get; set; }
+    [ServerOwned] public string? Code { get; set; }
+    [ServerOwned] public decimal Total { get; set; }
+    public string? Status { get; set; }
+}
+
+// registration — the attribute alone needs none; this adds the create-time mint
+services.UseEntities<AppDbContext>(o => o.UseDefaults())
+    .For<Order>(e => e
+        .ServerOwned(x => x.Code, _ => $"ORD-{Guid.NewGuid():N}"[..16])
+        .Related(x => x.Lines, r => r.ServerOwned(x => x.UnitPrice)));   // owned children too
+```
+
+- **Create** mints only when the property is unset, so seeded and imported values survive. The attribute on
+  its own never mints — an attribute cannot carry a lambda.
+- **Update** copies the stored value over whatever arrived, so the field is immutable through the entity
+  service. Preppers run in registration order, and `UseDefaults()` registers the restore before any
+  `.For<>()` chain, so a `Prepare()` on the entity still wins. (Registering a prepper *before* calling
+  `UseDefaults()` inverts that — the restore then runs last and overwrites it.)
+- Enforced by a **prepper** (`AutoServerOwnedPrepper`, registered by `UseDefaults()`), so a domain/workflow
+  service saving through the raw `DbContext` keeps its write — see *Primer vs prepper when a second writer
+  exists* below.
+- **Scalars and FKs only.** A navigation, a property without both accessors, and `IArchivable.IsArchived`
+  cannot be server-owned: the fluent form throws at registration, the attribute is skipped and reported as a
+  startup validation error. Owned child *collections* are governed by `Related()`.
+
+Two cases the declaration does not cover, and what to use instead:
+
+| What you need | Use |
+|---|---|
+| Mint from an injected service (a code generator, `IHttpContextAccessor`), or re-derive on every save | a **prepper** — `EntityPrepperBase<T>.Prepare(modified, original, …)`, registered with `e.AddPrepper<T>()` |
+| Stamp the field even when a raw-`DbContext` writer creates the row (what `HasCreatedDbPrimer` does for `Created`) | a **primer** — accepting that it reverts such a writer's updates too |
+
+The primer form, for that second case — stamp on create, restore on update:
 
 ```csharp no-compile
 public class ShoppingListOwnerPrimer(IHttpContextAccessor httpContextAccessor) : EntityPrimerBase<ShoppingList>
@@ -678,8 +799,9 @@ invoice number, source-system id).
 use a prepper instead: `EntityPrepperBase<T>.Prepare(modified, original, …)` hands you the full `original`
 entity (`null` on create); register with `e.AddPrepper<T>()`.
 
-**Another service writes the field too?** Use a prepper there as well — see *Primer vs prepper when a second
-writer exists* below.
+**Another service writes the field too?** `[ServerOwned]`/`e.ServerOwned(…)` already handles it — it is a
+prepper, so it never runs on that writer's save. Only the primer form above needs the warning; see *Primer vs
+prepper when a second writer exists* below.
 
 ## Aggregates over a non-owned child collection
 
@@ -809,6 +931,112 @@ guarded — the `<img>` still 401s. (Authorization is evaluated on the *routed* 
 action's internal call into the id action is a plain method call.) Reserve this for genuinely public assets
 (product/article pictures) — the routes are guessable; sensitive documents stay on the authenticated path
 (download them through the shared axios, which sends the bearer).
+
+## An entity that references one of its own children
+
+An owner with an optional foreign key to one of its own child rows — while the child's foreign key back is
+required, and therefore cascades — makes the two tables reference each other. Two independent things break, and
+neither failure names the relationship. Startup validation warns about the shape.
+
+**Prefer marking the child over pointing at it.** A flag or a rank column on the child identifies the same row
+with no foreign key and neither failure below; an attachment link entity's `SortOrder` (assigned from the
+incoming array position) often already answers it. The rest of this section is for a reference that has to stay.
+
+### Wall 1 — SQL Server refuses the schema
+
+```
+Introducing FOREIGN KEY constraint 'FK_ArticleImages_Articles_ArticleId' on table
+'ArticleImages' may cause cycles or multiple cascade paths.  (Msg 1785)
+```
+
+The child's required foreign key cascades, so a reference mapped `SetNull` or `Cascade` is a second cascade path
+between the same two tables. Map it **`ClientSetNull`**: `NO ACTION` in the database, EF nulls the reference on
+the tracked owner. SQLite does not enforce this, so an app that develops on SQLite meets it at the migration.
+
+### Wall 2 — the owner can no longer be deleted
+
+```
+Unable to save changes because a circular dependency was detected in the data to be saved:
+'Article [Deleted] ForeignKeyConstraint { 'CoverImageId' } <-
+ ArticleImage [Deleted] ForeignKeyConstraint { 'ArticleId' } <- Article [Deleted]'
+```
+
+`IEntityService.Remove` + `SaveChanges` — the `DELETE` route of `EntityControllerBase` — answers **500** for
+every owner whose children are loaded. Two dead ends, so they are not rediscovered:
+
+- **A primer or prepper nulling the property does nothing.** They *do* run for `Deleted` entries, so they look
+  like the hook. EF builds the delete order from the entry's **original** foreign-key values, and mutating the
+  current value of a deleted entry is silently ignored — no error, no warning, the same exception.
+- **Faking the original value only moves the failure.** With the edge gone EF orders the deletes happily and the
+  database rejects them: the stored row still holds the reference while the row it points at is deleted.
+
+Dropping the reference needs an `UPDATE` before the `DELETE`s, so it cannot happen inside one `SaveChanges`.
+Override **both** save methods and delegate:
+
+```csharp
+using System.Threading;
+using Regira.Entities.EFcore.Extensions;
+
+public class Article : IEntityWithSerial
+{
+    public int Id { get; set; }
+    public int? CoverImageId { get; set; }
+    public ICollection<ArticleImage>? Images { get; set; }
+}
+public class ArticleImage : IEntityWithSerial
+{
+    public int Id { get; set; }
+    public int ArticleId { get; set; }
+}
+
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+{
+    public DbSet<Article> Articles { get; set; } = null!;
+    public DbSet<ArticleImage> ArticleImages { get; set; } = null!;
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+        => modelBuilder.Entity<Article>(entity =>
+        {
+            entity.HasMany(x => x.Images).WithOne()
+                .HasForeignKey(x => x.ArticleId).HasPrincipalKey(x => x.Id);
+            entity.HasOne<ArticleImage>().WithMany()
+                .HasForeignKey(x => x.CoverImageId)
+                .OnDelete(DeleteBehavior.ClientSetNull);   // Wall 1
+        });
+
+    // Wall 2 — both overloads: overriding only the async one leaves every synchronous caller broken.
+    // acceptAllChangesOnSuccess goes to the extension, not into the delegate.
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+        => this.SaveChangesBreakingDeleteCycles(base.SaveChanges, acceptAllChangesOnSuccess);
+
+    public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken token = default)
+        => this.SaveChangesBreakingDeleteCyclesAsync(base.SaveChangesAsync, acceptAllChangesOnSuccess, token);
+}
+```
+
+`SaveChangesBreakingDeleteCycles` (`Regira.Entities.EFcore.Extensions`) scans the change tracker for pairs of
+rows deleted together that reference each other, nulls the optional side with a direct `UPDATE`, tells the
+tracker the database no longer holds that reference, and then runs the save once — one transaction, through
+the context's execution strategy. Nothing is accepted before that save returns: if the database rejects it,
+the rollback and the tracker agree, every change is still pending, and the retry (EF's own or the caller's)
+drops the reference again and completes the whole unit of work. Direct pairs only; a longer ring
+(`A → B → C → A`) is left to EF's own exception.
+
+> **Pass `base.SaveChanges` itself as the delegate** and give `acceptAllChangesOnSuccess` to the extension,
+> which hands it to the one save unchanged. `SaveChanges(false)` + `AcceptAllChanges()` therefore behaves
+> exactly as it does without the extension: the deletes stay pending until the caller accepts them.
+
+> **Already in a transaction?** One the caller began, or an ambient `TransactionScope`, already spans both
+> saves, so the extension joins it rather than opening a second one. That is what keeps the shape working under
+> `EnableRetryOnFailure()`, the standard SQL Server setting: EF's recipe for combining a retrying strategy with
+> an explicit transaction puts the save inside `CreateExecutionStrategy().Execute(...)`, and a second transaction
+> in there is a second unit of work the retry cannot replay. A bare `BeginTransaction()` with no strategy around
+> it is refused by EF's own `SaveChanges` — *does not support user-initiated transactions* — extension or not.
+
+> **Only the pair matters.** A save without one calls the real save exactly once and opens no transaction. An
+> owner deleted without its children loaded has no edge and takes that path — the database cascade still removes
+> the child rows. Deleting only a child is untouched too: one row, no cycle, and EF's own `ClientSetNull` fixup
+> nulls the owner's reference.
 
 ## Audit Trail with Custom Primer
 

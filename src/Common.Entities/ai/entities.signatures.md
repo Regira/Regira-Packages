@@ -481,6 +481,35 @@ public static class DbContextOptionsBuilderExtensions
 }
 ```
 
+### DeleteCycleExtensions
+
+```csharp no-compile
+using Regira.Entities.EFcore.Extensions;
+
+public static class DeleteCycleExtensions
+{
+    // Two rows deleted together that reference each other — an entity carrying a foreign key to one of its
+    // own children — are a save EF Core refuses with "a circular dependency was detected in the data to be
+    // saved". Dropping the reference needs an UPDATE before the DELETEs, so it cannot happen inside one
+    // SaveChanges: call these FROM the DbContext's own overrides, BOTH of them, passing base.SaveChanges as
+    // the delegate. A save with no such pair calls the delegate exactly once and opens no transaction.
+    // Give acceptAllChangesOnSuccess to the EXTENSION and let the delegate take it as a parameter: the
+    // reference is dropped with a direct UPDATE and the delegate then runs exactly once with that flag, so
+    // nothing is accepted before the save returns and a failed save leaves every change pending for the
+    // retry. A transaction the caller owns (or a TransactionScope) is joined rather than nested, so the
+    // pattern holds under EnableRetryOnFailure().
+    public static int SaveChangesBreakingDeleteCycles(this DbContext dbContext, Func<bool, int> save,
+        bool acceptAllChangesOnSuccess = true);
+    public static Task<int> SaveChangesBreakingDeleteCyclesAsync(this DbContext dbContext,
+        Func<bool, CancellationToken, Task<int>> save, bool acceptAllChangesOnSuccess = true,
+        CancellationToken token = default);
+}
+```
+
+> Direct pairs only; a longer ring (`A → B → C → A`) is left to EF's own exception. Startup validation warns
+> about the shape at registration time. Full recipe: `entities.patterns` → *An entity that references one of
+> its own children*.
+
 ### QueryExtensions
 
 > Every method
@@ -935,6 +964,13 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
     EntityServiceBuilder<TContext, TEntity, TKey> AddPrepper<TPrepper>()
         where TPrepper : class, IEntityPrepper<TEntity>;
 
+    // Server-owned scalar/FK: restored from the stored row on update, minted on create when
+    // mintOnCreate is supplied and the property is unset. [ServerOwned] is the protect-only
+    // attribute form (no registration needed once UseDefaults() has run).
+    EntityServiceBuilder<TContext, TEntity, TKey> ServerOwned<TProp>(
+        Expression<Func<TEntity, TProp>> selector,
+        Func<TEntity, TProp>? mintOnCreate = null);
+
     // Primers
     // inline shortcuts:
     EntityServiceBuilder<TContext, TEntity, TKey> Prime(Action<TEntity> primeFunc);
@@ -984,6 +1020,11 @@ public class RelatedEntityBuilder<TContext, TRelated, TRelatedKey>
 
     // Add a prepare action applied to each item in the collection
     RelatedEntityBuilder<TContext, TRelated, TRelatedKey> Prepare(Action<TRelated> prepareFunc);
+
+    // Server-owned scalar/FK on the child (a line's UnitPrice) - same semantics as the parent's
+    RelatedEntityBuilder<TContext, TRelated, TRelatedKey> ServerOwned<TProp>(
+        Expression<Func<TRelated, TProp>> selector,
+        Func<TRelated, TProp>? mintOnCreate = null);
 }
 ```
 
@@ -1053,6 +1094,12 @@ public partial class EntityIntServiceBuilder<TContext, TEntity>
 
     // Int-key shortcuts (no TRelatedKey / TContext parameter needed)
     EntityIntServiceBuilder<TContext, TEntity> Prepare(Func<TEntity, TContext, Task> prepareFunc);
+
+    // Re-declared to keep the builder type through a chain — without it the next call falls back to
+    // the base Related<TRelated, TRelatedKey>, whose key argument cannot be inferred (CS0411).
+    EntityIntServiceBuilder<TContext, TEntity> ServerOwned<TProp>(
+        Expression<Func<TEntity, TProp>> selector,
+        Func<TEntity, TProp>? mintOnCreate = null);
 
     // Int-key shortcuts: sync only, or with a configure callback. For a parent-level prepare use
     // the inherited Related<TRelated, int>(nav, prepareFunc) or a separate e.Prepare(...).

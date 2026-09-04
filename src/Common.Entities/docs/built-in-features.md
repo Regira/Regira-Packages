@@ -192,6 +192,8 @@ Registers a set of commonly used features for typical applications, including:
   - `ArchivablePrimer`
   - `HasCreatedDbPrimer`
   - `HasLastModifiedDbPrimer`
+- `AddDefaultPreppers()`
+  - `AutoServerOwnedPrepper`
 - `AddDefaultGlobalQueryFilters()`
   - `FilterIdsQueryBuilder`
   - `FilterArchivablesQueryBuilder`
@@ -228,7 +230,8 @@ services.UseEntities<AppDbContext>(o =>
 generic-arity mismatches (the controller check activates automatically when `Regira.Entities.Web` is
 referenced, or explicitly via `ValidateEntityControllers()`), warns when primers/normalizers are registered
 without their SaveChanges interceptor (an informational note instead when the `RegisterPrimerContainer` +
-`ApplyPrimers()` pattern is detected), and warns when `?q=` would be silently ignored for an entity.
+`ApplyPrimers()` pattern is detected), warns when `?q=` would be silently ignored for an entity, and fails
+on a `[ServerOwned]` declaration nothing can enforce.
 Configure via `UseEntities(o => o.ConfigureValidation(v => { v.Enabled = true; /* Production opt-in */ }))`.
 
 
@@ -237,6 +240,8 @@ Configure via `UseEntities(o => o.ConfigureValidation(v => { v.Enabled = true; /
 | Prepper | Description |
 |---------|-------------|
 | **RelatedCollectionPrepper** | *Prepares related collections for saving by adding, updating, or removing items as necessary.* |
+| **AutoServerOwnedPrepper**   | *Restores every `[ServerOwned]` scalar from the stored row on update. Registered for all entities by `AddDefaultPreppers()`.* |
+| **ServerOwnedPrepper**       | *The fluent form: restores one property on update and mints it on create. Registered by `e.ServerOwned(...)`.* |
 
 ```csharp
 // use shortcut when configuring Entity (creates RelatedCollectionPrepper in background)
@@ -244,6 +249,37 @@ Configure via `UseEntities(o => o.ConfigureValidation(v => { v.Enabled = true; /
     e.Related(x => x.OrderItems, (item, _) => item.OrderItems?.Prepare());
 });
 ```
+
+#### Server-owned fields
+
+A field left off `TInputDto` maps onto the entity as `null`/default on PUT **and** PATCH, and is written
+back that way: a status-only PATCH resets a generated `Code` or a computed `Total`, returns 200 and logs
+nothing. Declare such a field server-owned and the write path restores it from the stored row instead.
+
+```csharp
+public class Order : IEntity<int>
+{
+    public int Id { get; set; }
+    [ServerOwned] public string? Code { get; set; }     // protect only
+    [ServerOwned] public decimal Total { get; set; }
+    public string? Status { get; set; }
+}
+
+// mint on create as well - the attribute carries no lambda
+.For<Order>(e => e
+    .ServerOwned(x => x.Code, _ => $"ORD-{Guid.NewGuid():N}"[..16])
+    .Related(x => x.Lines, r => r.ServerOwned(x => x.UnitPrice)));   // also works on owned children
+```
+
+- **Create** mints when a `mintOnCreate` is supplied and the property is unset; a value already there
+  (seeding, import) is kept. The attribute alone never mints.
+- **Update** restores the stored value, so the field is immutable through the entity service.
+- It is a **prepper**, not a primer: a domain/workflow service saving through the raw `DbContext` keeps its
+  write. That is what lets a second writer legitimately own the same field - and what keeps
+  `ArchivablePrimer`'s delete-to-update from being reverted.
+- Scalars and FKs only. A navigation, a property without both accessors, and `IArchivable.IsArchived` (a
+  restore has to be able to clear it) cannot be server-owned: the fluent form throws at registration, the
+  attribute is skipped and reported by startup validation.
 
 ### Primers
 

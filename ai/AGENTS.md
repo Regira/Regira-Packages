@@ -40,10 +40,11 @@ A Regira MCP server is available at `https://mcp.regira.com/mcp`. It provides fu
 
 **Configure once** in your AI tool, then use these tools roughly in this order:
 
-Canonical parameter names are **not** uniform across these tools — the search term is `query` on one,
-`pattern` on another and `task` on a third, and a package is `id` everywhere except `search_docs`, where
-`package` scopes the search. Copy the call form from this table rather than inferring it from a neighbouring
-tool; where a package is taken, `id`, `pkg` and `package` all resolve, so a wrong guess costs nothing.
+Package arguments are forgiving: wherever a package is taken, `id`, `pkg` and `package` all resolve. The
+search term is **not** — it is `query` on `search_packages` and `search_docs`, `pattern` on `get_example`,
+`feature` on `recommend_packages`, and `task` (or `query`) on `how_to`. A wrong guess is dropped silently
+rather than rejected: `get_example(query: "…")` searches for the empty string and reports no matches. Copy
+the call form from this table.
 
 | Tool | Call | Purpose |
 |---|---|---|
@@ -60,18 +61,22 @@ tool; where a package is taken, `id`, `pkg` and `package` all resolve, so a wron
 | `how_to` | `how_to(task: "seed data")`, or no argument to list recipes | Answer "how do I do X in code?" for common Regira Entities tasks — the registered service, a minimal snippet, and a doc pointer. |
 | `list_types` | `list_types(id: "Regira.Entities", nameFilter: "EntityService")` | Optional branch: inspect the public API surface from the source map without loading docs. |
 | `get_type` | `get_type(id: "Regira.Entities", typeName: "IEntityService")` | Optional branch: inspect one type and its member signatures in detail. |
+| `get_license_status` | `get_license_status()` | When calls come back rate-limited unexpectedly, or to check when a key must be renewed: reports what the server made of your `X-License-Key` (customer, products, expiry, validity, applied limit). Works without a key and with an expired one. |
 
 **Configuration snippets:**
 
-Claude Desktop (`claude_desktop_config.json` in the Claude app-data folder — Windows: `%APPDATA%\Claude`, macOS: `~/Library/Application Support/Claude`):
-```json
-{ "mcpServers": { "regira": { "url": "https://mcp.regira.com/mcp" } } }
+Claude Code — one command, or a `.mcp.json` at your repo root (approve the project server the first time it asks):
+```sh
+claude mcp add --transport http regira https://mcp.regira.com/mcp
 ```
+```json
+{ "mcpServers": { "regira": { "type": "http", "url": "https://mcp.regira.com/mcp" } } }
+```
+The `"type": "http"` line is required — Claude Code skips a `url` entry without it and does not know a `transport` key.
 
-VS Code / Claude Code (`.mcp.json` at your repo root):
-```json
-{ "mcpServers": { "regira": { "url": "https://mcp.regira.com/mcp" } } }
-```
+Claude Desktop / claude.ai: Customize → Connectors → **+** → **Add custom connector** → name `regira`, URL `https://mcp.regira.com/mcp` (no config file). Every plan can add one, including Free, which is capped at a single custom connector.
+
+GitHub Copilot (VS Code): the same JSON in `.vscode/mcp.json` with the top key `servers` instead of `mcpServers`, then Agent mode.
 
 Cursor: Settings → MCP Servers → add `https://mcp.regira.com/mcp`.
 
@@ -197,7 +202,7 @@ When the consumer project already contains Regira packages, inspect the project'
 | `Regira.Media*`, `Regira.Drawing.*` | `Media` | Dedicated module guides | Image processing, resize, crop, rotate, FFmpeg workflows | `Regira.Media`, `Regira.Drawing.SkiaSharp` (preferred image backend), `Regira.Drawing.GDI`, `Regira.Media.FFMpeg` |
 | `Regira.Printing.GDI` | `Printing` | No dedicated family guide | GDI-based document printing utilities on Windows | `Regira.Printing.GDI` |
 | `Regira.Security*` | `Security` | Dedicated module guides | Hashing, cryptography, and every authentication scheme — self-issued JWT (+ refresh tokens), API keys, cookie sessions, Microsoft Entra ID, OpenID Connect sign-in, multi-scheme selection | `Regira.Security`, `Regira.Security.Hashing.BCryptNet` (preferred for passwords), `Regira.Security.Authentication`, `Regira.Security.Authentication.Web` |
-| `Regira.Web*` | `Web` | Dedicated module guides | Razor rendering, middleware, and optional Swagger/OpenAPI auth helpers | `Regira.Web`, `Regira.Web.HTML.RazorEngineCore`, `Regira.Web.HTML.RazorLight`, `Regira.Web.Swagger` |
+| `Regira.Web*` | `Web` | Dedicated module guides | Razor rendering, middleware, visit/page-view analytics, and optional Swagger/OpenAPI auth helpers | `Regira.Web`, `Regira.Web.Analytics`, `Regira.Web.Analytics.GeoIP2`, `Regira.Web.HTML.RazorEngineCore`, `Regira.Web.HTML.RazorLight`, `Regira.Web.Swagger` |
 | `Regira.System*` | `System` | Dedicated module guides | Windows Service hosting, background tasks, and `.csproj` project tooling | `Regira.System`, `Regira.System.Hosting`, `Regira.System.Projects` |
 | `Regira.Invoicing*` | `Invoicing` | Dedicated module guides | Invoice models, UBL, Peppol, accounting integration, and AP gateway transmission | `Regira.Invoicing`, `Regira.Invoicing.Billit`, `Regira.Invoicing.UblSharp`, `Regira.Invoicing.ViaAdValvas` |
 | `Regira.Payments*` | `Payments` | Dedicated module guides | Payment providers, payment links, webhooks | `Regira.Payments`, `Regira.Payments.Mollie`, `Regira.Payments.Pom` |

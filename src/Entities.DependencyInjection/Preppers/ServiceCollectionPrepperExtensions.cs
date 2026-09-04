@@ -1,7 +1,10 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Regira.Entities.Attributes;
 using Regira.Entities.DependencyInjection.ServiceCollections.Models;
 using Regira.Entities.EFcore.Preppers;
+using Regira.Entities.Preppers;
 using Regira.Entities.Preppers.Abstractions;
 
 namespace Regira.Entities.DependencyInjection.Preppers;
@@ -65,6 +68,22 @@ public static class ServiceCollectionPrepperExtensions
         where TEntity : class
     {
         options.Services.AddPrepper(prepareFunc);
+        return options;
+    }
+
+    /// <summary>
+    /// Add default Preppers
+    /// <list type="bullet">
+    ///     <item><see cref="AutoServerOwnedPrepper"/> — enforces <see cref="ServerOwnedAttribute"/> on every entity</item>
+    /// </list>
+    /// Inert until an entity marks a property <c>[ServerOwned]</c>. Preppers run in registration order, so
+    /// an entity's own prepper can take a marked field over as long as it is registered after this call —
+    /// which every <c>.For&lt;&gt;()</c> chain after <c>UseDefaults()</c> is.
+    /// </summary>
+    public static EntityServiceCollectionOptions AddDefaultPreppers(this EntityServiceCollectionOptions options)
+    {
+        // TryAddEnumerable: repeating UseDefaults() must not put the same restore in the pipeline twice
+        options.Services.TryAddEnumerable(ServiceDescriptor.Transient<IEntityPrepper, AutoServerOwnedPrepper>());
         return options;
     }
 }

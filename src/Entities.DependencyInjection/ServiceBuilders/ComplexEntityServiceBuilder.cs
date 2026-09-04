@@ -11,6 +11,8 @@ using Regira.Entities.EFcore.Services;
 using Regira.Entities.Models.Abstractions;
 using Regira.Entities.Services.Abstractions;
 
+using System.Linq.Expressions;
+
 namespace Regira.Entities.DependencyInjection.ServiceBuilders;
 
 public class ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes>(
@@ -239,6 +241,14 @@ public class ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject,
     public ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> Includes(Func<IQueryable<TEntity>, TIncludes?, IQueryable<TEntity>> addIncludes)
     {
         Services.AddTransient<IIncludableQueryBuilder<TEntity, TKey, TIncludes>>(_ => new IncludableQueryBuilder<TEntity, TKey, TIncludes>(addIncludes));
+        return this;
+    }
+
+    // Server-owned fields
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.ServerOwned{TProp}" />
+    public new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> ServerOwned<TProp>(Expression<Func<TEntity, TProp>> selector, Func<TEntity, TProp>? mintOnCreate = null)
+    {
+        base.ServerOwned(selector, mintOnCreate);
         return this;
     }
 

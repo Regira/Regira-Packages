@@ -74,6 +74,21 @@ The documents for AI agents and the documents for developers should not refer to
 
 Write docs as if authored correctly from scratch — no correction notes or change history.
 
+### Ship the shape, not the case that reported it
+
+Work arrives concrete: a consumer report, one app's schema, a single failing endpoint. What ships is the
+general shape behind it.
+
+- **Name the mechanism, never the reporting domain.** An XML doc, a validator message or an exception that
+  says *"featured attachment"* is wrong for every other shape it covers; *"an entity referencing one of its
+  own children"* is right for all of them. Same for public API names.
+- **Prose generic and short; examples concrete.** One worked example, not three — and pick one that drags in
+  no unrelated subsystem.
+- **One home per explanation.** Everything else links to it. A second copy drifts.
+- **General rule in the general guide.** Put a short pointer in the specific place readers arrive from, not a
+  second version of the rule.
+- **Test fixtures are examples too** — reuse the guide's example names so the two read as one thing.
+
 ---
 
 ## Versioning & releases
@@ -93,6 +108,10 @@ Every package owns its own `<Version>` in its `.csproj` (SemVer). Published vers
   re-versions dependents on top of that, and only then does the `## Unreleased` block become a dated
   heading, so do not date it yourself. Deploy mechanics live in `DEPLOY.md` in the private **Regira-Tools**
   repo — outside this repository.
+- **The tag and the GitHub release come last, from this repo.** `.github/workflows/release.yml` tags a
+  `main` commit and publishes the release page, with the notes taken from that version's `CHANGELOG.md`
+  block. It publishes nothing to nuget.org — that already happened — so it refuses a version the registry
+  does not have, an undated changelog heading, and a commit that is not on `main`.
 
 ---
 
@@ -122,6 +141,7 @@ Source lives in `src/Common.Setup/ai/commands/`.
 ## Key conventions
 
 - Guides travel with packages — every public API change that affects usage patterns needs a corresponding guide update
+- A concrete report ships as the general shape: mechanism-named APIs and messages, generic prose, concrete examples — see *Ship the shape, not the case that reported it*
 - Every shipped change bumps the changed package's version and adds a `CHANGELOG.md` bullet — see *Versioning & releases*
 - Never add consumer-scaffolding content to this file; it belongs in `ai/AGENTS.md`
 - Keep `Program.cs` thin and use `IServiceCollection` extension methods

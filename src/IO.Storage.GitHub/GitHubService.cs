@@ -250,7 +250,7 @@ public class GitHubService(GitHubCommunicator communicator, ISerializer serializ
             };
 
             var json = serializer.Serialize(body);
-            var request = new HttpRequestMessage(HttpMethod.Delete, path)
+            using var request = new HttpRequestMessage(HttpMethod.Delete, path)
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             };

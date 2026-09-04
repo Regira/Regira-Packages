@@ -255,6 +255,14 @@ public class ComplexEntityIntServiceBuilder<TContext, TEntity, TSearchObject, TS
         return this;
     }
 
+    // Server-owned fields
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.ServerOwned{TProp}" />
+    public new ComplexEntityIntServiceBuilder<TContext, TEntity, TSearchObject, TSortBy, TIncludes> ServerOwned<TProp>(Expression<Func<TEntity, TProp>> selector, Func<TEntity, TProp>? mintOnCreate = null)
+    {
+        base.ServerOwned(selector, mintOnCreate);
+        return this;
+    }
+
     // Related
     /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Related{TRelated,TRelatedKey}" />
     public new ComplexEntityIntServiceBuilder<TContext, TEntity, TSearchObject, TSortBy, TIncludes> Related<TRelated>(

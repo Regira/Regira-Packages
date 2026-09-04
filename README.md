@@ -73,6 +73,8 @@ Regira is a collection of .NET libraries providing unified abstractions for comm
 | Module | Description |
 |--------|-------------|
 | [Web / HTML](src/Common.Web) | Razor template rendering, middleware, Swagger, and background tasks |
+| [Web / Analytics](src/Web.Analytics) | Abstract visitor analytics — pluggable capture, enrichment, and storage hooks |
+| [Web / Analytics.GeoIP2](src/Web.Analytics.GeoIP2) | Country/city enrichment for the analytics from a local MaxMind GeoIP2/GeoLite2 database |
 
 ---
 
@@ -114,27 +116,31 @@ Two optional layers add repo-local context when you want it:
 
 ### Connect the MCP server (recommended)
 
-The hosted server lives at `https://mcp.regira.com/mcp`. Most clients share the same config — add this block to the file your tool reads, then reload it:
+The hosted server lives at `https://mcp.regira.com/mcp`. No key or sign-up is needed. Pick your client:
+
+| Client | How to connect | Notes |
+|--------|----------------|-------|
+| Claude Code (CLI / VS Code extension) | `claude mcp add --transport http regira https://mcp.regira.com/mcp` — or commit the `.mcp.json` below at the repo root | The first time, Claude Code asks you to approve the project server (or run `/mcp`). `claude mcp list` shows whether it is connected. |
+| Claude Desktop / claude.ai | Customize → Connectors → **+** → **Add custom connector** → name `regira`, URL `https://mcp.regira.com/mcp` | No config file (`claude_desktop_config.json` only takes local servers). Every plan can add one; Free is capped at a single custom connector. |
+| GitHub Copilot (VS Code) | `.vscode/mcp.json` with the JSON below, but with the top key `servers` instead of `mcpServers` | Click the **Start** action VS Code shows above the server entry, then switch Copilot Chat to **Agent mode**. |
+| Cursor | Settings → MCP Servers → Add server → paste `https://mcp.regira.com/mcp` | — |
 
 ```json
 {
   "mcpServers": {
     "regira": {
-      "url": "https://mcp.regira.com/mcp",
-      "transport": "http"
+      "type": "http",
+      "url": "https://mcp.regira.com/mcp"
     }
   }
 }
 ```
 
-| Client | Config file | Notes |
-|--------|-------------|-------|
-| Claude Code (VS Code extension) | `.mcp.json` (repo root) | Tools appear automatically |
-| Claude Desktop | `claude_desktop_config.json` in the Claude app-data folder (Windows: `%APPDATA%\Claude`, macOS: `~/Library/Application Support/Claude`) | Restart Claude Desktop |
-| GitHub Copilot (VS Code) | `.vscode/mcp.json` (project) | Rename the top key `mcpServers` → `servers`; then switch Copilot Chat to **Agent mode** |
-| Cursor | — | No file: Settings → MCP Servers → Add server → paste `https://mcp.regira.com/mcp` |
+> The `"type": "http"` line is required — Claude Code and VS Code skip a `url` entry without it, and neither knows a `transport` key.
 
-> **Note:** Some tools don't auto-start the server. In VS Code, click the **Start** action shown inline above the server entry in the config file to make sure it's running.
+**First prompt.** Describe the app and let the agent follow the bootstrap guide: *"Scaffold a Regira Entities API for a shopping list with categories and articles — start from the Regira MCP server's bootstrap guide."* The agent calls `get_bootstrap_guide` first and works through the golden path's checkpoints.
+
+**What to expect.** A back-end API takes roughly 15–45 minutes and 20–25 MCP calls; adding the Vue SPA about doubles that. Most of the budget goes to documentation reads rather than code — that is by design, so the agent doesn't guess signatures. The free tier covers 5 simple + 2 complex entity registrations per application; the agent counts your entities in phase 0 and tells you if the design won't fit (see [Licensing](#licensing)).
 
 #### Available tools
 

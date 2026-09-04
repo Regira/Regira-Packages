@@ -1,0 +1,184 @@
+name: Release
+
+# Creates the git tag and the GitHub release page for a Regira Packages version.
+#
+# This workflow does NOT publish to nuget.org. Packages are packed and pushed by
+# ProjectFilesProcessor in the private Regira-Tools repo (DEPLOY.md there, section 3), which runs
+# against `wip` before the release PR is merged. By the time this workflow runs the versions are
+# already live on nuget.org and immutable — the tag records which commit on `main` they were built
+# from, it is not the act of publishing.
+#
+# Two ways in:
+#   - Actions -> Run workflow, giving the version. The normal path: it creates the tag for you.
+#   - Pushing a v* tag by hand, if you would rather tag locally.
+#
+# The version is the family version: every package publishes on one aligned number, which is also
+# the `## X.Y.Z — YYYY-MM-DD` heading in CHANGELOG.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Family version to release, e.g. 6.2.0 (with or without the leading v)"
+        required: true
+        type: string
+      commit:
+        description: "Commit to tag. Defaults to the tip of main; set it only to backfill an older release."
+        required: false
+        type: string
+      skip_nuget_check:
+        description: "Skip the nuget.org guard (only for a release that did not bump Regira.Common)"
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the tag and the release
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: the ancestry guard has to reach main, and a backfill needs old commits.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # CHANGELOG.md is always read from the checked-out tip, never from the commit being tagged:
+      # a backfilled version was dated in a later commit than the one it shipped from.
+      - name: Resolve the version and the commit to tag
+        id: resolve
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_COMMIT: ${{ inputs.commit }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_EVENT_NAME}" = "push" ]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            COMMIT="${GITHUB_SHA}"
+          else
+            VERSION="${INPUT_VERSION#v}"
+            git fetch --no-tags --prune origin +refs/heads/main:refs/remotes/origin/main
+            COMMIT="${INPUT_COMMIT:-$(git rev-parse origin/main)}"
+            COMMIT="$(git rev-parse --verify "${COMMIT}^{commit}")"
+          fi
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::'$VERSION' is not a three-part version (expected e.g. 6.2.0)" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "Releasing $VERSION from $COMMIT"
+
+      # The heading must already be dated. DEPLOY.md section 4 dates the Unreleased block on `wip`
+      # before the merge, so an undated heading here means the release PR carried a stale changelog
+      # onto main and the release notes would come out empty.
+      - name: Guard — CHANGELOG.md has a dated heading for this version
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          VERSION_RE="${VERSION//./\\.}"
+          if ! grep -Eq "^## ${VERSION_RE}( |\$)" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no '## $VERSION' heading — move the Unreleased entries under it first (DEPLOY.md section 4)" >&2
+            exit 1
+          fi
+          if ! grep -Eq "^## ${VERSION_RE} .*[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]]*\$" CHANGELOG.md; then
+            echo "::error::The '## $VERSION' heading carries no release date — date it as '## $VERSION — $(date +%F)' (DEPLOY.md section 4)" >&2
+            exit 1
+          fi
+
+      # A tag on a wip-only commit is stranded when the release PR is squashed or rebased, taking
+      # the release page's source with it. The same reasoning DEPLOY.md gives for the npm tag.
+      - name: Guard — the commit is on main
+        env:
+          COMMIT: ${{ steps.resolve.outputs.commit }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --prune origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$COMMIT" origin/main; then
+            echo "::error::$COMMIT is not reachable from main — merge the release PR first (DEPLOY.md section 5). Tagging a wip commit strands the tag when the PR is squashed or rebased." >&2
+            exit 1
+          fi
+
+      # The tag records a publish that already happened, so the packages have to be on nuget.org
+      # first. Regira.Common stands in for the family: every package publishes on one aligned
+      # version, and it is republished unchanged when it has no change of its own.
+      - name: Guard — the version is published on nuget.org
+        if: ${{ !inputs.skip_nuget_check }}
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          if ! curl -sSfL https://api.nuget.org/v3-flatcontainer/regira.common/index.json \
+             | jq -e --arg v "$VERSION" '.versions | index($v)' >/dev/null; then
+            echo "::error::Regira.Common $VERSION is not on nuget.org — run ProjectFilesProcessor first (DEPLOY.md section 3). If this release genuinely did not bump Regira.Common, re-run with skip_nuget_check." >&2
+            exit 1
+          fi
+
+      - name: Build the release notes
+        id: notes
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Everything between this version's heading and the next '## ' heading.
+          awk -v prefix="## $VERSION " '
+            index($0, prefix) == 1 { found = 1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          {
+            echo
+            echo "---"
+            echo
+            echo "Every package is published on [nuget.org](https://www.nuget.org/profiles/Regira) at version $VERSION."
+            echo "Full changelog: [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/main/CHANGELOG.md)"
+          } >> notes.md
+          # Only the newest dated version in the changelog becomes the repository's "Latest"
+          # release, so backfilling an old version cannot demote the current one.
+          NEWEST="$(grep -Eom1 '^## [0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md | awk '{print $2}')"
+          if [ "$NEWEST" = "$VERSION" ]; then
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "latest=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Skipped on the tag-push path, where the tag is what started this run. Pushed with the
+      # default GITHUB_TOKEN, which deliberately does not trigger another workflow run.
+      - name: Create the tag
+        env:
+          VERSION: ${{ steps.resolve.outputs.version }}
+          COMMIT: ${{ steps.resolve.outputs.commit }}
+        run: |
+          set -euo pipefail
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "Tag v$VERSION already exists — leaving it as it is."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" "$COMMIT" -m "Regira Packages v$VERSION"
+          git push origin "v$VERSION"
+
+      # Idempotent, so a re-run repairs a release page rather than failing on it.
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.resolve.outputs.version }}
+          LATEST: ${{ steps.notes.outputs.latest }}
+        run: |
+          set -euo pipefail
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release edit "v$VERSION" --title "v$VERSION" --notes-file notes.md --latest="$LATEST"
+            echo "Updated the existing release v$VERSION."
+          else
+            gh release create "v$VERSION" --title "v$VERSION" --notes-file notes.md --latest="$LATEST" --verify-tag
+            echo "Created release v$VERSION."
+          fi

@@ -48,7 +48,7 @@ internal sealed class ArchivedQueryFilterValidator : IEntityRegistrationValidato
         }
 
         using var scope = context.Provider.CreateScope();
-        foreach (var inspectType in InspectableContextTypes(context))
+        foreach (var inspectType in ValidationContextTypes.Inspectable(context))
         {
             var (unfiltered, inspectionFailure) = UnfilteredArchivables(scope.ServiceProvider, inspectType);
             if (inspectionFailure != null)
@@ -80,19 +80,6 @@ internal sealed class ArchivedQueryFilterValidator : IEntityRegistrationValidato
     }
 
 #if NET10_0_OR_GREATER
-    /// <summary>
-    /// The concrete <see cref="DbContext"/> types to inspect. A recorded context type may be an abstract base
-    /// (<c>UseEntities&lt;AppContextBase&gt;()</c> + <c>AddDbContext&lt;SqlServerAppContext&gt;()</c>); the
-    /// model EF actually builds belongs to the registered concrete type(s) it covers.
-    /// </summary>
-    private static IEnumerable<Type> InspectableContextTypes(EntityValidationContext context)
-        => context.Registrations.ContextTypes
-            .SelectMany(contextType => context.Services
-                .Select(d => d.ServiceType)
-                .Where(t => !t.IsAbstract && typeof(DbContext).IsAssignableFrom(t) && contextType.IsAssignableFrom(t))
-                .DefaultIfEmpty(contextType))
-            .Where(t => !t.IsAbstract)
-            .Distinct();
 
     /// <summary>
     /// Names of the <see cref="IArchivable"/> entity types in <paramref name="contextType"/>'s model that carry

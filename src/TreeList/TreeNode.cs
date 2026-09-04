@@ -29,9 +29,13 @@ public class TreeNode<T> : TreeNodeBase<T>
         Level = parent.Level + 1;
     }
 
-    public TreeNode<T> AddChild(T value)
+    /// <summary>
+    /// Adds a single child node and returns it, or <c>null</c> when the value was rejected
+    /// (circular reference while <see cref="TreeList{T}.ThrowOnError"/> is <c>false</c>).
+    /// </summary>
+    public TreeNode<T>? AddChild(T value)
     {
-        return AddChildren([value]).First();
+        return AddChildren([value]).FirstOrDefault();
     }
     public IEnumerable<TreeNode<T>> AddChildren(IEnumerable<T> values)
     {
