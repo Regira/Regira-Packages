@@ -48,7 +48,7 @@ public class CustomPageViewTests
             });
 
         var client = host.GetTestClient();
-        var request = new HttpRequestMessage(HttpMethod.Get, "/some-page");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/some-page");
         request.Headers.Accept.ParseAdd("text/html");
         request.Headers.TryAddWithoutValidation("User-Agent",
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36");
@@ -87,7 +87,7 @@ public class CustomPageViewTests
             });
 
         var client = host.GetTestClient();
-        var request = new HttpRequestMessage(HttpMethod.Get, "/page");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/page");
         request.Headers.Accept.ParseAdd("text/html");
         var response = await client.SendAsync(request);
         Assert.That((int)response.StatusCode, Is.EqualTo(200), "the site itself is unaffected");

@@ -189,7 +189,8 @@ public class PageViewWriterTests
         });
 
         // The loop is inside its 30s backoff (deliberately non-cancellable); don't wait it out.
-        await writer.StopAsync(new CancellationTokenSource(500).Token);
+        using var cts = new CancellationTokenSource(500);
+        await writer.StopAsync(cts.Token);
     }
 
     [Test]
@@ -247,8 +248,10 @@ public class PageViewWriterTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(store.LastPurge!.Value.SiteName, Is.EqualTo("TestSite"));
-            Assert.That(store.LastPurge.Value.CutoffUtc,
+            Assert.That(store.LastPurge, Is.Not.Null);
+            var lastPurge = store.LastPurge!.Value;
+            Assert.That(lastPurge.SiteName, Is.EqualTo("TestSite"));
+            Assert.That(lastPurge.CutoffUtc,
                 Is.EqualTo(DateTime.UtcNow.AddDays(-30)).Within(TimeSpan.FromMinutes(5)));
         });
     }

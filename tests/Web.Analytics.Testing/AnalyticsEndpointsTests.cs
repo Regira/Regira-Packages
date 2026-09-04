@@ -81,7 +81,7 @@ public class AnalyticsEndpointsTests
         var client = host.GetTestClient();
 
         var noKey = await client.GetAsync("/analytics/stats");
-        var request = new HttpRequestMessage(HttpMethod.Get, "/analytics/stats");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/analytics/stats");
         request.Headers.Add("X-Analytics-Key", "wrong");
         var wrongKey = await client.SendAsync(request);
 
@@ -99,7 +99,7 @@ public class AnalyticsEndpointsTests
         using var host = await StartHostAsync();
         await SeedAsync(host);
 
-        var request = new HttpRequestMessage(HttpMethod.Get, "/analytics/stats?includeBots=true");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/analytics/stats?includeBots=true");
         request.Headers.Add("X-Analytics-Key", ApiKey);
         var response = await host.GetTestClient().SendAsync(request);
 
@@ -120,7 +120,7 @@ public class AnalyticsEndpointsTests
     public async Task Days_IsClamped()
     {
         using var host = await StartHostAsync();
-        var request = new HttpRequestMessage(HttpMethod.Get, "/analytics/stats?days=9999");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/analytics/stats?days=9999");
         request.Headers.Add("X-Analytics-Key", ApiKey);
         var response = await host.GetTestClient().SendAsync(request);
 
@@ -156,7 +156,7 @@ public class AnalyticsEndpointsTests
             TimestampUtc = DateTime.UtcNow, SiteName = "TestSite", Path = "/x", CountryCode = "BE"
         }]);
 
-        var request = new HttpRequestMessage(HttpMethod.Get, "/analytics/stats");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/analytics/stats");
         request.Headers.Add("X-Analytics-Key", ApiKey);
         var body = await (await host.GetTestClient().SendAsync(request)).Content.ReadAsStringAsync();
 
@@ -169,7 +169,7 @@ public class AnalyticsEndpointsTests
     public async Task SiteWildcard_AsksTheStoreForAllSites()
     {
         using var host = await StartHostAsync();
-        var request = new HttpRequestMessage(HttpMethod.Get, "/analytics/stats?site=*");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/analytics/stats?site=*");
         request.Headers.Add("X-Analytics-Key", ApiKey);
         await host.GetTestClient().SendAsync(request);
 
