@@ -52,7 +52,16 @@ public class VisitTrackingMiddleware<TPageView>(RequestDelegate next, PageViewQu
             {
                 await contributor.OnCapturedAsync(context, pending.View);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (
+                ex is not OperationCanceledException &&
+                ex is not OutOfMemoryException &&
+                ex is not StackOverflowException &&
+                ex is not AccessViolationException &&
+                ex is not AppDomainUnloadedException &&
+                ex is not BadImageFormatException &&
+                ex is not CannotUnloadAppDomainException &&
+                ex is not InvalidProgramException &&
+                ex is not System.Threading.ThreadAbortException)
             {
                 logger.LogWarning(ex, "Analytics: contributor {Contributor} failed after capture",
                     contributor.GetType().Name);
