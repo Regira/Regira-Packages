@@ -104,7 +104,7 @@ public class SchemeSelectorTests : IClassFixture<TestingWebApplicationFactory<Sc
     public async Task Test_Blank_ApiKey_Header_Does_Not_Claim_The_Request()
     {
         var httpClient = _factory.CreateClient();
-        var request = new HttpRequestMessage(HttpMethod.Get, "protected");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "protected");
         request.Headers.TryAddWithoutValidation(ApiKeyDefaults.HeaderName, string.Empty);
 
         var response = await httpClient.SendAsync(request);

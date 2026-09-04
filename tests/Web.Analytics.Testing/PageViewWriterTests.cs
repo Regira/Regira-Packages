@@ -246,13 +246,12 @@ public class PageViewWriterTests
         await TestHostFactory.WaitUntilAsync(() => store.LastPurge != null);
         await writer.StopAsync(CancellationToken.None);
 
+        var lastPurge = store.LastPurge;
+        Assert.That(lastPurge, Is.Not.Null);
         Assert.Multiple(() =>
         {
-            Assert.That(store.LastPurge, Is.Not.Null);
-            var lastPurge = store.LastPurge!.Value;
-            Assert.That(lastPurge.SiteName, Is.EqualTo("TestSite"));
-            Assert.That(lastPurge.CutoffUtc,
-                Is.EqualTo(DateTime.UtcNow.AddDays(-30)).Within(TimeSpan.FromMinutes(5)));
+            Assert.That(lastPurge!.Value.SiteName, Is.EqualTo("TestSite"));
+            Assert.That(lastPurge.Value.CutoffUtc, Is.EqualTo(DateTime.UtcNow.AddDays(-30)).Within(TimeSpan.FromMinutes(5)));
         });
     }
 

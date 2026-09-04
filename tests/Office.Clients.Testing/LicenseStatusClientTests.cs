@@ -37,12 +37,13 @@ public class LicenseStatusClientTests
     }
 
     [Test]
-    public void GetStatus_Calls_The_Status_Path()
+    public async Task GetStatus_Calls_The_Status_Path()
     {
         var handler = new CannedHandler("""{"state":"Missing","productCode":"regira.services","accepted":false,"message":"none"}""");
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://office.example.test/") };
 
-        Assert.DoesNotThrowAsync(() => new LicenseStatusClient(http).GetStatus());
+        await new LicenseStatusClient(http).GetStatus();
+
         Assert.That(handler.LastRequest?.RequestUri?.ToString(), Is.EqualTo("https://office.example.test/license/status"));
         Assert.That(handler.LastRequest?.Method, Is.EqualTo(HttpMethod.Get));
     }
