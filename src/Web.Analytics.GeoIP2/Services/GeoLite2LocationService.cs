@@ -45,7 +45,11 @@ public sealed class GeoLite2LocationService : IGeoLocationService, IDisposable
             logger.LogInformation("Analytics: geo lookup enabled using {Path} ({DatabaseType})",
                 path, _reader.Metadata.DatabaseType);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (
+            ex is IOException
+            or UnauthorizedAccessException
+            or System.Security.SecurityException
+            or MaxMind.GeoIP2.Exceptions.InvalidDatabaseException)
         {
             logger.LogError(ex, "Analytics: failed to open GeoIP2 database at {Path}, geo lookup disabled", path);
         }
