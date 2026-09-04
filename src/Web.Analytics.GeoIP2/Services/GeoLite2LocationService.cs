@@ -49,7 +49,7 @@ public sealed class GeoLite2LocationService : IGeoLocationService, IDisposable
             ex is IOException
             or UnauthorizedAccessException
             or System.Security.SecurityException
-            or MaxMind.GeoIP2.Exceptions.InvalidDatabaseException)
+            or MaxMind.Db.InvalidDatabaseException)
         {
             logger.LogError(ex, "Analytics: failed to open GeoIP2 database at {Path}, geo lookup disabled", path);
         }

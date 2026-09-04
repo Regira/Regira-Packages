@@ -36,7 +36,7 @@ internal sealed class DeleteCycleValidator : IEntityRegistrationValidator
                 // inspection, and the archived-filter validator already reports an uninspectable context.
                 dbContext = (DbContext)context.Provider.GetRequiredService(inspectType);
             }
-            catch (InvalidOperationException)
+            catch
             {
                 continue;
             }

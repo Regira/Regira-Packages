@@ -38,7 +38,7 @@ public class PageViewWriter<TPageView>(PageViewQueue<TPageView> queue, Analytics
 
             hasRetentionStore = AnalyticsExtensions.IsRegistered(scope.ServiceProvider, typeof(IPageViewRetentionStore));
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex)
         {
             logger.LogError(ex, "Analytics: startup check failed — visit tracking is inactive");
             return;
