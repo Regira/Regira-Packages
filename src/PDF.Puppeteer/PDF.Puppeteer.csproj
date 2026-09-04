@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Office.PDF.Puppeteer</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.1.3</Version>
+    <Version>6.2.0</Version>
     <Description>PDF generation from HTML using PuppeteerSharp for Regira Office.</Description>
     <PackageTags>regira;office;pdf;puppeteer;html-to-pdf</PackageTags>
   </PropertyGroup>
