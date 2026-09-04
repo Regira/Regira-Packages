@@ -141,9 +141,8 @@ public class LicenseStatusTests
         var otherProduct = Paid(Now.AddYears(1));
         otherProduct.Products = ["regira.entities"];
         var keys = new[] { null, "not-a-key", LicenseSigner.Sign(Paid(Now.AddDays(-60)), _rsa), LicenseSigner.Sign(otherProduct, _rsa), LicenseSigner.Sign(Paid(Now.AddYears(1)), _rsa) };
-        foreach (var key in keys)
+        foreach (var status in System.Linq.Enumerable.Select(keys, key => LicenseValidator.GetStatus(key, Product, 7, Now)))
         {
-            var status = LicenseValidator.GetStatus(key, Product, 7, Now);
             Assert.That(status.Accepted, Is.False, "every key in this set is one the product rejects");
             Assert.That(status.Message, Does.Not.Contain("free tier").And.Not.Contain("ignored"), status.State.ToString());
             Assert.That(status.Applied, Is.Null, "the package never fills in the host's line");
