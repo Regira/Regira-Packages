@@ -212,6 +212,78 @@ collection syncing.
 **See:** `get_package(id: "Regira.Entities", section: "blueprints", heading: "Stakeholders")` for the
 full worked model, and §Step 8 in the instructions for the `Related()` signature.
 
+### Archived lookup drops referencing rows from lists
+<!-- how_to: key=archived-lookup-drops-rows aliases=archived,archivable,soft-delete,softdelete,missing,rows,dropped,disappear,vanish,short,page,paging,count,mismatch,required,lookup,restrict,include -->
+Symptom: `GET /products` returns fewer `items` than `pageSize` while `/products/search` still **counts** them —
+200, no error. Sorted by a column that interleaves parents it loses about one row per page and reads as a
+paging off-by-one; it is not. Cause: `Product.CategoryId` is **required** and `Category` is `IArchivable`.
+On `net10.0` the archived filter propagates into the `Include` as an inner join, so a product whose
+category is archived drops out of `items`; the count query has no join. Pick by what the principal is:
+
+```csharp no-compile
+// 1. Reference data is never archivable: drop IArchivable from Category and refuse the delete while in use
+modelBuilder.Entity<Product>().HasOne(x => x.Category).WithMany().OnDelete(DeleteBehavior.Restrict);
+
+// 2. Or make the relation optional, so an archived category leaves the product visible
+public int? CategoryId { get; set; }
+public Category? Category { get; set; }
+
+// 3. An aggregate parent (Order → OrderLine) whose dependent you also query directly: mirror the filter
+modelBuilder.Entity<OrderLine>().HasQueryFilter(x => !x.Order!.IsArchived);
+```
+
+Startup validation (Development) warns naming both entities, and EF's
+`PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning` lists every affected pair — treat
+that list as the checklist, not as noise.
+
+**See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "Soft Delete")` — *Before you
+make reference data `IArchivable`*.
+
+### `?q=` search returns nothing (or everything)
+<!-- how_to: key=q-search-empty aliases=search,keyword,keywords,empty,nothing,results,unfiltered,ignored,normalized,normalizedcontent,ihasnormalizedcontent,text -->
+Two silent shapes, one fix. **Every `?q=` request returns an empty list** — 200, no error, no warning: the
+entity implements `IHasNormalizedContent` but nothing fills `NormalizedContent` (`[Normalized]` on the
+class instead of the property, or no attribute at all), so the global `Q` filter ANDs a match against
+`null`. **`?q=` returns everything, unfiltered**: the entity does not implement the interface and has no
+custom filter — startup logs *"?q= text search is silently ignored for: X"*. Either way the attribute goes
+on the **property**, naming its sources:
+
+```csharp no-compile
+public class Article : IEntity<int>, IHasNormalizedContent
+{
+    [MaxLength(1024), Normalized(SourceProperties = [nameof(Title), nameof(Description)])]
+    public string? NormalizedContent { get; set; }
+}
+```
+
+Rows saved before the attribute existed stay empty until re-saved (or seeded through `IEntityService`).
+Don't add a per-entity `Q` filter on top — it ANDs with the global one and narrows or empties results.
+
+**See:** `get_package(id: "Regira.Entities", section: "instructions", heading: "Normalizing")` and
+§Step 1 (*`IHasNormalizedContent` is all-or-nothing*).
+
+### Owned collection wiped by a partial save
+<!-- how_to: key=owned-collection-wiped aliases=owned,collection,children,child,wiped,deleted,cleared,lost,gone,patch,partial,status,null,empty,array,related -->
+Symptom: a PATCH or save that only touched `Status` left the parent with zero owned rows. Cause: the
+collection reached the `Related()` sync as `[]`. The contract is `null` = leave the rows alone, `[]` =
+delete them all — and an input DTO that initializes the collection turns every omitted collection into
+`[]`:
+
+```csharp no-compile
+public class OrderInputDto
+{
+    public string? Status { get; set; }
+    public ICollection<OrderItemInputDto>? Items { get; set; }   // nullable, no "= []": null when not sent
+}
+```
+
+A client that is not editing the rows omits the property (or sends `null`); a hand-written call must never
+default it to an empty array. A computed total in a prepper needs the same branch — `null` means re-read
+the persisted children, not "sum nothing".
+
+**See:** `get_package(id: "Regira.Entities", section: "instructions", heading: "Relationship Patterns — Decision Table")`
+— *One writer per save path* — and §Step 5.
+
 ## Soft Delete
 
 **Opt-in, and often the wrong default.** Soft delete takes a large share of this guide's warning budget, which can read as "every deletable entity should be `IArchivable`". It should not. No `IArchivable` entity means no archived query filter, no `?archived=` machinery, and none of the hazards below apply — a plain `DELETE` is the simpler contract. Reach for it when the row's history must survive its removal (an `Asset`, an `Order`), not for reference data (see the decision table below) and not for "an employee left" — a plain `IsActive` flag keeps them out of pickers without pulling their rows out of the audit trail.
