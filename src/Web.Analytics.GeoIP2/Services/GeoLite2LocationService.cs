@@ -64,10 +64,10 @@ public sealed class GeoLite2LocationService : IGeoLocationService, IDisposable
         {
             if (_hasCityData)
             {
-                if (_reader.TryCity(ip, out var city) && city != null)
+                if (_reader.TryCity(ip, out var city))
                     return new GeoLocation(city.Country.IsoCode, city.Country.Name, city.City?.Name);
             }
-            else if (_reader.TryCountry(ip, out var country) && country != null)
+            else if (_reader.TryCountry(ip, out var country))
             {
                 return new GeoLocation(country.Country.IsoCode, country.Country.Name, null);
             }
