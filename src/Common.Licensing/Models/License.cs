@@ -55,7 +55,5 @@ public class License
     /// Returns <c>true</c> when the license is not a free tier (i.e. it has a non-null, non-"free" Tier value).
     /// </summary>
     [JsonIgnore]
-    public bool IsPaid =>
-        !string.IsNullOrEmpty(Tier) &&
-        !string.Equals(Tier, "free", StringComparison.OrdinalIgnoreCase);
+    public bool IsPaid => LicenseDefaults.IsPaidTier(Tier);
 }
