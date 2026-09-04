@@ -5,6 +5,11 @@ adds one bullet under **Unreleased** in the same change (format: `` `PackageId` 
 and leaves that package's `<Version>` higher than its last published version. At publish time the
 Unreleased block becomes a dated release heading.
 
+## Unreleased
+
+- `Regira.Web.Analytics.GeoIP2` 6.2.1 — `GeoLite2LocationService` catches only what opening the `.mmdb` and reading its header can throw (`IOException`, `UnauthorizedAccessException`, `SecurityException`, `MaxMind.Db.InvalidDatabaseException`): those still log and disable the lookup, as documented, while anything else escaping `DatabaseReader` now surfaces at startup instead of being logged as a database problem. `Lookup` drops the null checks after `TryCity` / `TryCountry`, whose out value is set whenever they return true. Both changes reached `main` after the 6.2.0 package was built.
+- `Regira.IO.Storage.GitHub` 6.2.1 — `GitHubService` disposes the `HttpRequestMessage` it builds for a delete. Reached `main` after the 6.2.0 package was built.
+
 ## 6.2.0 — 2026-09-04
 
 - All packages — version aligned at 6.2.0 for a whole-family publish. Twelve packages carry a change of their own: `Regira.Entities`, `Regira.Entities.EFcore`, `Regira.Entities.DependencyInjection`, `Regira.Licensing`, `Regira.Office`, `Regira.Office.Clients`, `Regira.Office.Mail.MailGun`, `Regira.Setup`, `Regira.System.Projects` and `Regira.TreeList` below, plus the two new packages `Regira.Web.Analytics` and `Regira.Web.Analytics.GeoIP2`; five more ship the dependency moves at the end of this block. `Regira.Web` is the one exception to the aligned number: it ships as 6.1.4, a guide-only patch that was already versioned before the family pass. The remaining packages are republished unchanged so the family shares one version.
