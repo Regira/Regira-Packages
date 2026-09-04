@@ -943,18 +943,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 ```
 
 `SaveChangesBreakingDeleteCycles` (`Regira.Entities.EFcore.Extensions`) scans the change tracker for pairs of
-rows deleted together that reference each other, nulls the optional side, saves, and deletes in a second save —
-one transaction, through the context's execution strategy. Direct pairs only; a longer ring (`A → B → C → A`) is
-left to EF's own exception.
+rows deleted together that reference each other, nulls the optional side with a direct `UPDATE`, tells the
+tracker the database no longer holds that reference, and then runs the save once — one transaction, through
+the context's execution strategy. Nothing is accepted before that save returns: if the database rejects it,
+the rollback and the tracker agree, every change is still pending, and the retry (EF's own or the caller's)
+drops the reference again and completes the whole unit of work. Direct pairs only; a longer ring
+(`A → B → C → A`) is left to EF's own exception.
 
-> **Hand the flag to the extension, not to `base`.** `base.SaveChanges` itself as the delegate cannot get this
-> wrong. Closing over `acceptAllChangesOnSuccess` in a lambda instead — `_ => base.SaveChanges(acceptAllChangesOnSuccess)`
-> — is the one wiring that compiles and breaks:
-> an unaccepted phase one keeps its **original** foreign-key values, so phase two sees the cycle it just broke
-> and re-raises the exact exception the extension exists to prevent, and re-sends every other change in the
-> save besides. The extension always accepts the reference-dropping `UPDATE` and honours the caller's flag on
-> the final save, which is where `SaveChanges(false)` + `AcceptAllChanges()` expects the deletes to still be
-> pending.
+> **Pass `base.SaveChanges` itself as the delegate** and give `acceptAllChangesOnSuccess` to the extension,
+> which hands it to the one save unchanged. `SaveChanges(false)` + `AcceptAllChanges()` therefore behaves
+> exactly as it does without the extension: the deletes stay pending until the caller accepts them.
 
 > **Already in a transaction?** One the caller began, or an ambient `TransactionScope`, already spans both
 > saves, so the extension joins it rather than opening a second one. That is what keeps the shape working under

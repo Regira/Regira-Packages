@@ -1,6 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.EntityFrameworkCore.Update;
 using System.Transactions;
 
 namespace Regira.Entities.EFcore.Extensions;
@@ -32,16 +35,17 @@ namespace Regira.Entities.EFcore.Extensions;
 public static class DeleteCycleExtensions
 {
     /// <summary>
-    /// Runs <paramref name="save"/>, first dropping any reference that would make EF Core reject the delete as
-    /// a circular dependency. A save with no such pair runs <paramref name="save"/> exactly once, opens no
-    /// transaction and starts no execution strategy — the common path costs one change-tracker scan.
+    /// Runs <paramref name="save"/> once, first dropping with a direct <c>UPDATE</c> any reference that would
+    /// make EF Core reject the delete as a circular dependency. A save with no such pair opens no transaction
+    /// and starts no execution strategy — the common path costs one change-tracker scan.
     /// </summary>
     /// <param name="dbContext">The context whose change tracker holds the pending delete.</param>
-    /// <param name="save">The real save — <c>base.SaveChanges</c> from an override. Called twice when a cycle
-    /// was broken, and its return values are summed.</param>
-    /// <param name="acceptAllChangesOnSuccess">The caller's flag, honoured on the save that carries the
-    /// deletes. The reference-dropping <c>UPDATE</c> before it is always accepted: the delete order is read
-    /// from the original values it settles, and everything else pending in the same save would be sent twice.</param>
+    /// <param name="save">The real save — <c>base.SaveChanges</c> from an override. Called exactly once; the
+    /// reference-dropping <c>UPDATE</c> runs as a direct statement before it, so the value returned is the
+    /// save's own count and every row is counted once.</param>
+    /// <param name="acceptAllChangesOnSuccess">The caller's flag, passed to the save unchanged. Nothing is
+    /// accepted before that save returns, so a save the database rejects leaves the change tracker holding
+    /// every pending change for the retry EF's strategy or the caller makes.</param>
     public static int SaveChangesBreakingDeleteCycles(this DbContext dbContext, Func<bool, int> save,
         bool acceptAllChangesOnSuccess = true)
     {
@@ -53,13 +57,13 @@ public static class DeleteCycleExtensions
 
         if (CallerOwnsTheTransaction(dbContext))
         {
-            return TwoPhaseSave(breaks, save, acceptAllChangesOnSuccess);
+            return DropReferencesAndSave(dbContext, breaks, save, acceptAllChangesOnSuccess);
         }
 
         return dbContext.Database.CreateExecutionStrategy().Execute(() =>
         {
             using var transaction = dbContext.Database.BeginTransaction();
-            var affected = TwoPhaseSave(breaks, save, acceptAllChangesOnSuccess);
+            var affected = DropReferencesAndSave(dbContext, breaks, save, acceptAllChangesOnSuccess);
             transaction.Commit();
             return affected;
         });
@@ -78,13 +82,13 @@ public static class DeleteCycleExtensions
 
         if (CallerOwnsTheTransaction(dbContext))
         {
-            return await TwoPhaseSaveAsync(breaks, save, acceptAllChangesOnSuccess, token);
+            return await DropReferencesAndSaveAsync(dbContext, breaks, save, acceptAllChangesOnSuccess, token);
         }
 
         return await dbContext.Database.CreateExecutionStrategy().ExecuteAsync(async ct =>
         {
             await using var transaction = await dbContext.Database.BeginTransactionAsync(ct);
-            var affected = await TwoPhaseSaveAsync(breaks, save, acceptAllChangesOnSuccess, ct);
+            var affected = await DropReferencesAndSaveAsync(dbContext, breaks, save, acceptAllChangesOnSuccess, ct);
             await transaction.CommitAsync(ct);
             return affected;
         }, token);
@@ -116,55 +120,163 @@ public static class DeleteCycleExtensions
         => dbContext.Database.CurrentTransaction != null || Transaction.Current != null;
 
     /// <summary>
-    /// Drop the reference, save, delete. Phase one is saved with <c>acceptAllChangesOnSuccess: true</c>
-    /// whatever the caller asked for — see the parameter's remarks.
+    /// Drops the references with a direct <c>UPDATE</c>, tells the change tracker the database no longer holds
+    /// them, and runs the caller's save once. Nothing is accepted before that save returns: if the database
+    /// rejects it, the rollback and the tracker agree and every change is still pending. The tracker's view of
+    /// the references is put back on failure for the same reason — a replay, by EF's strategy or by the caller,
+    /// must find the cycle again and drop it again on a database where the rollback restored the reference.
     /// </summary>
-    private static int TwoPhaseSave(IReadOnlyList<CycleBreak> breaks, Func<bool, int> save, bool acceptAllChangesOnSuccess)
+    private static int DropReferencesAndSave(DbContext dbContext, IReadOnlyList<CycleBreak> breaks,
+        Func<bool, int> save, bool acceptAllChangesOnSuccess)
     {
-        DropReferences(breaks);
-        var affected = save(true);
-        Redelete(breaks);
-        return affected + save(acceptAllChangesOnSuccess);
+        var undo = new List<Action>();
+        try
+        {
+            foreach (var (entry, properties) in GroupByEntry(breaks))
+            {
+                var (sql, parameters) = DropReferenceStatement(dbContext, entry, properties);
+                ThrowIfNoRowMatched(entry, dbContext.Database.ExecuteSqlRaw(sql, parameters));
+                var databaseValues = HasStoreGeneratedToken(entry) ? entry.GetDatabaseValues() : null;
+                ForgetReference(entry, properties, databaseValues, undo);
+            }
+            return save(acceptAllChangesOnSuccess);
+        }
+        catch
+        {
+            undo.ForEach(action => action());
+            throw;
+        }
     }
 
-    /// <inheritdoc cref="TwoPhaseSave"/>
-    private static async Task<int> TwoPhaseSaveAsync(IReadOnlyList<CycleBreak> breaks,
+    /// <inheritdoc cref="DropReferencesAndSave"/>
+    private static async Task<int> DropReferencesAndSaveAsync(DbContext dbContext, IReadOnlyList<CycleBreak> breaks,
         Func<bool, CancellationToken, Task<int>> save, bool acceptAllChangesOnSuccess, CancellationToken token)
     {
-        DropReferences(breaks);
-        var affected = await save(true, token);
-        Redelete(breaks);
-        return affected + await save(acceptAllChangesOnSuccess, token);
+        var undo = new List<Action>();
+        try
+        {
+            foreach (var (entry, properties) in GroupByEntry(breaks))
+            {
+                var (sql, parameters) = DropReferenceStatement(dbContext, entry, properties);
+                ThrowIfNoRowMatched(entry, await dbContext.Database.ExecuteSqlRawAsync(sql, parameters, token));
+                var databaseValues = HasStoreGeneratedToken(entry) ? await entry.GetDatabaseValuesAsync(token) : null;
+                ForgetReference(entry, properties, databaseValues, undo);
+            }
+            return await save(acceptAllChangesOnSuccess, token);
+        }
+        catch
+        {
+            undo.ForEach(action => action());
+            throw;
+        }
     }
 
+    private static IEnumerable<(EntityEntry Entry, IReadOnlyList<IProperty> Properties)> GroupByEntry(IReadOnlyList<CycleBreak> breaks)
+        => breaks.GroupBy(b => b.Entry).Select(g => (g.Key, (IReadOnlyList<IProperty>)g.SelectMany(b => b.Properties).Distinct().ToList()));
 
     /// <summary>
-    /// Phase one: the entry stops being deleted and becomes an <c>UPDATE</c> that nulls the offending foreign
-    /// key. <see cref="EntityState.Unchanged"/> clears every modification flag, so the property is written
-    /// after the state, not before.
+    /// A token the store moves on every <c>UPDATE</c> — a rowversion — which the reference drop therefore
+    /// changed. An application-owned token (<c>[ConcurrencyCheck]</c>) is deliberately not included: the
+    /// <c>UPDATE</c> never touched it, and re-reading it would adopt another writer's value and defeat the
+    /// very check the column exists for.
     /// </summary>
-    private static void DropReferences(IReadOnlyList<CycleBreak> breaks)
+    private static bool IsStoreGeneratedToken(IProperty property)
+        => property.IsConcurrencyToken && property.ValueGenerated.HasFlag(ValueGenerated.OnUpdate);
+
+    private static bool HasStoreGeneratedToken(EntityEntry entry)
+        => entry.Metadata.GetProperties().Any(IsStoreGeneratedToken);
+
+    /// <summary>
+    /// The change tracker's side of the <c>UPDATE</c>: the reference's original value becomes null, so EF no
+    /// longer orders this delete after the row it pointed at — the original values are what the delete order
+    /// is read from. A token the store moved on that <c>UPDATE</c> (a rowversion) is refreshed from the row so
+    /// the <c>DELETE</c>'s <c>WHERE</c> carries the value the database now holds. Every original value touched
+    /// is recorded in <paramref name="undo"/>, to be put back if the save fails.
+    /// </summary>
+    private static void ForgetReference(EntityEntry entry, IReadOnlyList<IProperty> properties, PropertyValues? databaseValues, List<Action> undo)
     {
-        foreach (var group in breaks.GroupBy(b => b.Entry))
+        foreach (var property in properties)
         {
-            group.Key.State = EntityState.Unchanged;
-            foreach (var property in group.SelectMany(b => b.Properties))
-            {
-                var entryProperty = group.Key.Property(property.Name);
-                entryProperty.CurrentValue = null;
-                entryProperty.IsModified = true;
-            }
+            Remember(entry.Property(property.Name), undo).OriginalValue = null;
+        }
+
+        if (databaseValues is null)
+        {
+            return;
+        }
+        foreach (var token in entry.Metadata.GetProperties().Where(IsStoreGeneratedToken))
+        {
+            Remember(entry.Property(token.Name), undo).OriginalValue = databaseValues[token.Name];
         }
     }
 
-    /// <summary>Phase two: the row is deleted now that nothing being deleted alongside it is still referenced.</summary>
-    private static void Redelete(IReadOnlyList<CycleBreak> breaks)
+    private static PropertyEntry Remember(PropertyEntry property, List<Action> undo)
     {
-        foreach (var group in breaks.GroupBy(b => b.Entry))
+        var previous = property.OriginalValue;
+        undo.Add(() => property.OriginalValue = previous);
+        return property;
+    }
+
+    /// <summary>
+    /// The <c>UPDATE</c> matched no row: another writer changed or removed it since this unit of work loaded
+    /// it. Surfaced the way EF's own update would surface it, before anything of the other writer's is
+    /// overwritten or adopted, and with the entry in <see cref="DbUpdateException.Entries"/> so the recovery
+    /// EF documents — reload or reconcile each entry, then save again — works on this exception too.
+    /// </summary>
+    private static void ThrowIfNoRowMatched(EntityEntry entry, int affected)
+    {
+        if (affected == 0)
         {
-            group.Key.State = EntityState.Deleted;
+            // The entries collection takes EF's internal entry type, reached through the infrastructure
+            // accessor. That type has implemented IUpdateEntry since EF Core 2; if a major ever changes that,
+            // this cast is the one line to revisit, and the message stays the whole signal in the meantime.
+            throw new DbUpdateConcurrencyException(
+                $"The {entry.Metadata.DisplayName()} row being deleted was modified or deleted since it was loaded, "
+                + "so the reference to its child could not be dropped. Reload the entity and retry.",
+                [(IUpdateEntry)entry.GetInfrastructure()]);
         }
     }
+
+    /// <summary>
+    /// <c>UPDATE table SET fk = NULL WHERE key = @p0 AND token = @p1</c> for one entry, against the table the
+    /// foreign key is mapped to, with values converted the way the provider stores them. The <c>WHERE</c>
+    /// carries the row's concurrency tokens from their original values, as EF's own <c>UPDATE</c> would, so
+    /// another writer's change is detected here rather than overwritten — which is also what makes refreshing
+    /// a store-generated token afterwards sound: the row was proven untouched before its new value is adopted.
+    /// </summary>
+    private static (string Sql, object?[] Parameters) DropReferenceStatement(DbContext dbContext, EntityEntry entry, IReadOnlyList<IProperty> properties)
+    {
+        var entityType = properties[0].DeclaringType as IEntityType ?? entry.Metadata;
+        var tableName = entityType.GetTableName()
+            ?? throw new InvalidOperationException($"{entityType.DisplayName()} is not mapped to a table, so a delete cycle through it cannot be broken.");
+        var schema = entityType.GetSchema();
+        var table = StoreObjectIdentifier.Table(tableName, schema);
+        var key = entry.Metadata.FindPrimaryKey()
+            ?? throw new InvalidOperationException($"{entry.Metadata.DisplayName()} has no primary key, so a delete cycle through it cannot be broken.");
+
+        var helper = dbContext.GetService<ISqlGenerationHelper>();
+        string Column(IProperty property) => helper.DelimitIdentifier(property.GetColumnName(table) ?? property.Name);
+
+        var set = string.Join(", ", properties.Select(p => $"{Column(p)} = NULL"));
+
+        var guards = key.Properties.Concat(entry.Metadata.GetProperties().Where(p => p.IsConcurrencyToken && !p.IsKey()));
+        var parameters = new List<object?>();
+        var where = string.Join(" AND ", guards.Select(p =>
+        {
+            var value = ToProviderValue(p, entry.Property(p.Name).OriginalValue);
+            if (value is null)
+            {
+                return $"{Column(p)} IS NULL";
+            }
+            parameters.Add(value);
+            return $"{Column(p)} = {{{parameters.Count - 1}}}";
+        }));
+
+        return ($"UPDATE {helper.DelimitIdentifier(tableName, schema)} SET {set} WHERE {where}", parameters.ToArray());
+    }
+
+    private static object? ToProviderValue(IProperty property, object? value)
+        => property.FindTypeMapping()?.Converter is { } converter ? converter.ConvertToProvider(value) : value;
 
 
     /// <summary>

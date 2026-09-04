@@ -7,6 +7,7 @@ using Regira.Entities.DependencyInjection.Extensions;
 using Regira.Entities.EFcore.Extensions;
 using Regira.Entities.Models.Abstractions;
 using Regira.Entities.Services.Abstractions;
+using System.ComponentModel.DataAnnotations;
 
 namespace Entities.Testing;
 
@@ -25,6 +26,11 @@ public class DeleteCycleTests
         /// The marked child — optional, which is what makes the cycle breakable.
         public int? CoverImageId { get; set; }
         public ICollection<ArticleImage>? Images { get; set; }
+        /// A store-generated token, moved by a trigger on every UPDATE — what a SQL Server rowversion does.
+        public int RowVersion { get; set; }
+        /// An application-owned token: only the application writes it, so a changed value means another writer.
+        [ConcurrencyCheck]
+        public int Version { get; set; }
     }
 
     /// The child: its foreign key back at the owner is required, and therefore cascades.
@@ -55,6 +61,8 @@ public class DeleteCycleTests
                 entity.HasOne<ArticleImage>().WithMany()
                     .HasForeignKey(x => x.CoverImageId)
                     .OnDelete(DeleteBehavior.ClientSetNull);
+                // SQLite has no rowversion; the trigger created in Seed plays its part on every UPDATE.
+                entity.Property(x => x.RowVersion).HasDefaultValue(1).ValueGeneratedOnAddOrUpdate().IsConcurrencyToken();
             });
 
         public override int SaveChanges(bool acceptAllChangesOnSuccess)
@@ -67,15 +75,29 @@ public class DeleteCycleTests
                 ? this.SaveChangesBreakingDeleteCyclesAsync(CountedSaveAsync, acceptAllChangesOnSuccess, token)
                 : CountedSaveAsync(acceptAllChangesOnSuccess, token);
 
+        /// <summary>
+        /// Simulates the database failing the save that carries the owner's DELETE — the round trip after the
+        /// reference has already been dropped — which is the one moment the change tracker and the database
+        /// can disagree about what was persisted.
+        /// </summary>
+        public bool FailTheSaveThatDeletesTheArticle { get; set; }
+
         private int CountedSave(bool acceptAllChangesOnSuccess)
         {
             SaveCount++;
+            ThrowIfSimulatingFailure();
             return base.SaveChanges(acceptAllChangesOnSuccess);
         }
         private Task<int> CountedSaveAsync(bool acceptAllChangesOnSuccess, CancellationToken token)
         {
             SaveCount++;
+            ThrowIfSimulatingFailure();
             return base.SaveChangesAsync(acceptAllChangesOnSuccess, token);
+        }
+        private void ThrowIfSimulatingFailure()
+        {
+            if (FailTheSaveThatDeletesTheArticle && ChangeTracker.Entries<Article>().Any(e => e.State == EntityState.Deleted))
+                throw new InvalidOperationException("simulated: the database rejected the save carrying the DELETE");
         }
     }
 
@@ -196,7 +218,7 @@ public class DeleteCycleTests
         {
             Assert.That(await db.Articles.CountAsync(), Is.Zero);
             Assert.That(await db.ArticleImages.CountAsync(), Is.Zero, "the children go with the owner");
-            Assert.That(db.SaveCount - before, Is.EqualTo(2), "one UPDATE round trip to drop the reference, then the deletes");
+            Assert.That(db.SaveCount - before, Is.EqualTo(1), "the reference is dropped by a direct UPDATE, then a single save carries the deletes");
         });
     }
 
@@ -440,10 +462,143 @@ public class DeleteCycleTests
     }
 
 
+    [Test]
+    public async Task A_Failed_Delete_Leaves_The_Tracker_Truthful_And_The_Database_Untouched()
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ArticleContext>();
+        var id = await Seed(db);
+        db.BreakDeleteCycles = true;
+
+        // An unrelated insert rides along in the same save, as it would in any real unit of work. If the round
+        // trip carrying the DELETE fails, the transaction rolls the database back — and the tracker must still
+        // hold every change as pending, or the next save (EF's retry, or the caller's) silently loses them.
+        var article = await db.Articles.Include(x => x.Images!).FirstAsync(x => x.Id == id);
+        var image = article.Images!.Single();
+        var survivor = new Article { Title = "Survivor" };
+        db.Articles.Remove(article);
+        db.Articles.Add(survivor);
+        db.FailTheSaveThatDeletesTheArticle = true;
+
+        Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
+
+        Assert.Multiple(async () =>
+        {
+            Assert.That(db.Entry(survivor).State, Is.EqualTo(EntityState.Added), "the insert was rolled back, so it must still be pending");
+            Assert.That(db.Entry(article).State, Is.EqualTo(EntityState.Deleted));
+            Assert.That(db.Entry(image).State, Is.EqualTo(EntityState.Deleted));
+            Assert.That(await db.Articles.AsNoTracking().CountAsync(), Is.EqualTo(1), "nothing reached the database");
+            Assert.That((await db.Articles.AsNoTracking().SingleAsync()).CoverImageId, Is.EqualTo(image.Id), "the dropped reference was rolled back too");
+        });
+
+        // The retry a caller (or EF's own strategy) would make must then complete the whole unit of work.
+        db.FailTheSaveThatDeletesTheArticle = false;
+        await db.SaveChangesAsync();
+
+        Assert.Multiple(async () =>
+        {
+            Assert.That(await db.Articles.AsNoTracking().Select(x => x.Title).ToListAsync(), Is.EqualTo(new[] { "Survivor" }));
+            Assert.That(await db.ArticleImages.CountAsync(), Is.Zero);
+        });
+    }
+
+
+    [Test]
+    public async Task Breaking_The_Cycle_Counts_Each_Row_Once()
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ArticleContext>();
+        var id = await Seed(db);
+        db.BreakDeleteCycles = true;
+
+        // The reference-dropping UPDATE is a mechanism, not a change the caller made: the owner and its child
+        // are the two rows that change, and SaveChanges reports two — the number EF would report on its own.
+        var article = await db.Articles.Include(x => x.Images!).FirstAsync(x => x.Id == id);
+        db.Articles.Remove(article);
+
+        Assert.That(await db.SaveChangesAsync(), Is.EqualTo(2));
+    }
+
+
+    [Test]
+    public async Task A_Store_Generated_Token_Moved_By_The_Reference_Drop_Is_Refreshed()
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ArticleContext>();
+        var id = await Seed(db);
+        db.BreakDeleteCycles = true;
+
+        // The trigger moves RowVersion on the UPDATE that drops the reference, exactly as a rowversion would.
+        // The DELETE's WHERE must carry the value the row holds now; the one loaded before the UPDATE would
+        // match nothing and EF would report a concurrency conflict on a row nobody else touched.
+        var article = await db.Articles.Include(x => x.Images!).FirstAsync(x => x.Id == id);
+        var loaded = article.RowVersion;
+        db.Articles.Remove(article);
+
+        Assert.DoesNotThrowAsync(() => db.SaveChangesAsync());
+        Assert.Multiple(async () =>
+        {
+            Assert.That(await db.Articles.CountAsync(), Is.Zero);
+            Assert.That(loaded, Is.GreaterThan(0), "the fixture's token must have been in play");
+        });
+    }
+
+    [Test]
+    public async Task A_Store_Generated_Token_Still_Detects_Another_Writer()
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ArticleContext>();
+        var id = await Seed(db);
+        db.BreakDeleteCycles = true;
+
+        var article = await db.Articles.Include(x => x.Images!).FirstAsync(x => x.Id == id);
+        db.Articles.Remove(article);
+        // Another writer edits the row after this unit of work loaded it, and the trigger moves RowVersion as
+        // a rowversion would. Dropping the reference must fail on that token, like any EF UPDATE would — not
+        // overwrite the other writer's row and then adopt the token that writer left behind.
+        await db.Database.ExecuteSqlRawAsync("UPDATE Articles SET Title = 'Edited elsewhere' WHERE Id = {0}", id);
+
+        var ex = Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => db.SaveChangesAsync());
+        Assert.That(ex!.Entries.Select(e => e.Entity), Is.EqualTo(new object[] { article }),
+            "EF's documented recovery loops ex.Entries; it must find the row that conflicted");
+        var row = await db.Articles.AsNoTracking().SingleAsync();
+        Assert.Multiple(() =>
+        {
+            Assert.That(row.CoverImageId, Is.Not.Null, "the reference drop was rolled back");
+            Assert.That(row.Title, Is.EqualTo("Edited elsewhere"), "the other writer's change survives");
+        });
+    }
+
+    [Test]
+    public async Task An_Application_Owned_Token_Still_Detects_Another_Writer()
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ArticleContext>();
+        var id = await Seed(db);
+        db.BreakDeleteCycles = true;
+
+        var article = await db.Articles.Include(x => x.Images!).FirstAsync(x => x.Id == id);
+        db.Articles.Remove(article);
+        // Another writer changes the token the application owns after this unit of work loaded the row. The
+        // reference drop never touches that column, so re-reading it from the row would adopt the other
+        // writer's value and silently defeat the very check the column exists for.
+        await db.Database.ExecuteSqlRawAsync("UPDATE Articles SET Version = Version + 1 WHERE Id = {0}", id);
+
+        var ex = Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => db.SaveChangesAsync());
+        Assert.That(ex!.Entries.Select(e => e.Entity), Is.EqualTo(new object[] { article }));
+        Assert.That((await db.Articles.AsNoTracking().SingleAsync()).CoverImageId, Is.Not.Null,
+            "the conflict rolled the reference drop back along with the delete");
+    }
+
+
     /// <summary>An owner with one child, and a reference pointing at it.</summary>
     private static async Task<int> Seed(ArticleContext db)
     {
         await db.Database.EnsureCreatedAsync();
+        // Stands in for a rowversion: the store moves the token on every UPDATE the application makes.
+        await db.Database.ExecuteSqlRawAsync(
+            "CREATE TRIGGER IF NOT EXISTS Articles_RowVersion AFTER UPDATE OF Title, CoverImageId, Version ON Articles " +
+            "BEGIN UPDATE Articles SET RowVersion = OLD.RowVersion + 1 WHERE Id = NEW.Id; END;");
         var article = new Article { Title = "Release notes" };
         db.Articles.Add(article);
         await db.SaveChangesAsync();
