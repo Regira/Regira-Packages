@@ -70,9 +70,31 @@ plus `IGeoPageView` on the entity; see its own guide. Never hand-write a geo enr
 (true) · `Ipv4PrefixLength`/`Ipv6PrefixLength` (24/48 bits kept when masking) · `RecordBots` (true; flagged not dropped) · `RetentionDays` (365; needs retention
 store; 0 = keep) · `ApiKey` (empty = stats route not mapped; header `X-Analytics-Key`) · `IgnorePaths`
 ([]) · `QueueCapacity`/`BatchSize`/`FlushIntervalSeconds` (10000/200/5) ·
-`BotDetection:{MinUserAgentLength (12), IncludeDefaultMarkers (true), Markers, Exceptions}`.
+`BotDetection:{MinUserAgentLength (12), RequireBrowserToken (true), DetectProbeRequests (true),
+IncludeDefaultMarkers (true), Markers, Exceptions, BrowserTokens, ProbePaths}`.
 
-Bot markers are compiled in (~90 crawler/tool/preview agents); configured markers merge on top.
+## Bot detection
+
+`BotDetector` exposes two independent predicates and the middleware flags a visit when either says
+yes; a custom filter or contributor can call them separately.
+
+`IsBot(userAgent)` — *does the agent claim to be a person?* User agent shorter than
+`MinUserAgentLength` → marker substring → `RequireBrowserToken` (the agent names none of
+`BrowserTokens`, built-in `mozilla/` and `opera/`). The token check covers HTTP clients, scripts and
+unknown one-off crawlers, so the ~110 compiled-in markers only have to name crawlers that dress up as
+a browser. An `Exceptions` entry cancels only the marker it overlaps with (`cubot` vs `bot`), not the
+whole agent. `BrowserTokens` takes the product token of a non-browser client whose visits should still
+count as human (`kioskshell/`).
+
+`IsProbe(path, queryString)` — *could a person have asked for this target?* A path in `ProbePaths`
+(WordPress and PHP paths, other stacks' debug endpoints, key and credential files), a dot-directory
+(`/.git/config`, `/home/ubuntu/.aws/credentials`; `/.well-known` excepted), or a path climbing out of
+the site root. Path **and** query are matched, so `/?file=../../.env` is caught on the site's own home
+page. This is the only signal that survives a scanner copying a real browser's user agent. Defaults
+stay unambiguous on purpose — scanners also sweep `/admin` and `/login`, but those are somebody's real
+page, so flagging them is the host's call via `ProbePaths`.
+
+Every list merges on top of the defaults unless `IncludeDefaultMarkers` is false;
 `AddAnalyticsConfiguration()` layers an optional watched `botdetector.json` (content root) for
 restart-free additions.
 
@@ -96,5 +118,9 @@ a fallback authorization policy applies on top of the key check.
 - **Timing of hooks**: request-bound data must be taken in a contributor (in-request); by the time an
   enricher runs, the HttpContext is gone. Body reads need `EnableBuffering()` in `OnCapturing` — after
   the endpoint consumed the body it cannot be re-read otherwise.
+- **One flag for two kinds of non-human traffic**: `IPageView.IsBot` covers both an announced crawler
+  and a probe request, so `RecordBots=false` drops scanner sweeps along with Googlebot. A host that
+  needs to tell them apart adds its own column and sets it from an `IVisitContributor`, which still
+  has the `HttpContext`.
 - **Privacy stance**: no cookie, no session id; the full IP exists in memory only (enrichers), the
   store sees the masked form unless `MaskIpAddress` is switched off.

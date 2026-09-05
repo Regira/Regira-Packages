@@ -132,8 +132,12 @@ runtime type or the subclass's columns are silently lost — see the JSON-lines 
 | `IgnorePaths` | `[]` | extra prefixes the default filter skips |
 | `QueueCapacity` / `BatchSize` / `FlushIntervalSeconds` | `10000` / `200` / `5` | queue bound and write batching |
 | `BotDetection:MinUserAgentLength` | `12` | shorter/absent user agents are flagged; `0` disables |
-| `BotDetection:IncludeDefaultMarkers` | `true` | merge the built-in ~90 crawler markers under yours |
-| `BotDetection:Markers` / `Exceptions` | `[]` | your additions; exceptions clear an agent before markers run |
+| `BotDetection:RequireBrowserToken` | `true` | flag agents naming none of `BrowserTokens`; `false` leaves it to the markers |
+| `BotDetection:DetectProbeRequests` | `true` | flag requests for a target no visitor could have navigated to |
+| `BotDetection:IncludeDefaultMarkers` | `true` | merge the built-in rule lists under yours |
+| `BotDetection:Markers` / `Exceptions` | `[]` | your additions; an exception cancels only the marker it overlaps with |
+| `BotDetection:BrowserTokens` | `[]` | extra product tokens that count as a browser (`mozilla/`, `opera/` built in) |
+| `BotDetection:ProbePaths` | `[]` | extra paths this site is swept for but does not serve |
 
 The default `HtmlPageVisitFilter` tracks GET requests whose `Accept` contains `text/html` and whose
 last path segment has no dot, and skips the built-in prefixes `/favicon`, `/.well-known`,
@@ -141,9 +145,36 @@ last path segment has no dot, and skips the built-in prefixes `/favicon`, `/.wel
 `/sitemapping` would be skipped too; a host with such routes registers its own filter. `IgnorePaths`
 adds the host's own prefixes on top.
 
-Bot markers are compiled into the package; `AddAnalyticsConfiguration()` additionally loads an
-optional, watched `botdetector.json` from the content root so new crawlers can be flagged without a
-restart.
+`BotDetector` answers two independent questions, and a visit is flagged when either says yes.
+
+**Does the agent claim to be a person?** (`IsBot`) — a user agent shorter than `MinUserAgentLength`, a
+marker substring, or, with `RequireBrowserToken`, an agent that names no browser at all. That last one
+covers the long tail: every real browser says `Mozilla/` (or `Opera/`), so HTTP clients, scripts and
+one-off crawlers are caught without the marker list having to know their names, and markers are left
+to do the one job only they can — recognising a crawler that dresses up as a browser. A non-browser
+client whose visits should still count as human is registered by its product token in `BrowserTokens`.
+
+**Could a person have asked for this target?** (`IsProbe`) — a path in `ProbePaths`, a dot-directory
+(`/.git/config`, `/home/ubuntu/.aws/credentials`), or a path climbing out of the site root, matched
+against path **and** query so an attack riding in `?file=../../.env` is caught on the site's own home
+page. This is the only signal that survives a scanner copying a real browser's user agent, which is
+how most `/wp-admin` and `/.env` sweeps arrive. The built-in list stays deliberately unambiguous —
+scanners also try `/admin` and `/login`, but those are somebody's real page, so flagging them is the
+host's call via `ProbePaths`:
+
+```json
+"Analytics": {
+  "BotDetection": {
+    "Markers": [ "acmeprobe" ],
+    "BrowserTokens": [ "kioskshell/" ],
+    "ProbePaths": [ "/legacy-cms" ]
+  }
+}
+```
+
+The rule lists are compiled into the package; `AddAnalyticsConfiguration()` additionally loads an
+optional, watched `botdetector.json` from the content root so new crawlers and sweep paths can be
+flagged without a restart.
 
 ## Stats endpoint
 
