@@ -377,6 +377,10 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 > write alone. Scalars and FKs only — a navigation and `IArchivable.IsArchived` are rejected (a restore has
 > to be able to clear that flag).
 >
+> **On create the guard does nothing**: whatever value the entity already carries is inserted as-is, which is
+> what lets a seeder back-date a `Code` or import a historical rating. `e.ServerOwned(x => x.Code, mint)`
+> fills it *only when unset*, so a supplied value survives that form too. The protection is update-only.
+>
 > | What you need | Use |
 > |---|---|
 > | Protect on update; optionally mint on create from the entity itself | `[ServerOwned]` / `e.ServerOwned(…)` |
@@ -452,10 +456,22 @@ The same scoping applies to **after-mappers** (Step 10): `IEntityAfterMapper` is
 
 Use to: manage child collections (if not using `e.Related()`), recalculate totals/codes/FKs before `SaveChanges()`.
 
-⚠️ **A required FK left off `TInputDto` is written as `default` on PUT/PATCH** — restore it from the stored
-row like any server-owned field ([`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable
-fields on update). One that *is* on the DTO reaches the database unchecked: an existence check here turns
-its `409` into a field-level `400` (`EntityInputException<TEntity>`, §Error Handling).
+⚠️ **On update, `modified` carries only what `TInputDto` sent.** Every other field is `default` — a required
+FK left off the DTO, a `[ServerOwned]` value, and any timestamp a primer stamps (primers run *after* every
+prepper, inside `SaveChanges`, so `modified.Created` is `default(DateTime)` here even on a row created a year
+ago). **Read those from `original`**, never from `modified` with a `== default` fallback: that fallback is
+silent, plausible and wrong — an SLA deadline derived from `modified.Created` drifts forward by the row's age
+on every edit, and the response is a 200. Restoring a value is the same move as any server-owned field
+([`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update). A required FK
+that *is* on the DTO reaches the database unchecked: an existence check here turns its `409` into a
+field-level `400` (`EntityInputException<TEntity>`, §Error Handling).
+
+⚠️ **A prepper enforcing a cap must count the change tracker's pending rows too.** A capacity, quota or
+duplicate check written as a `dbContext.Set<T>().CountAsync(...)`/`AnyAsync(...)` cannot see rows queued in
+the same `SaveChanges()` batch, so every row in a bulk wave sees the last-flushed count and the cap is never
+reached — no error, just collectively wrong data. Add `dbContext.ChangeTracker.Entries<T>()` entries in
+`EntityState.Added` to the persisted count (§Seeding via IEntityService has the full rule). This is not a
+seeding-only concern: a batch import, a `POST /list` write and two concurrent requests have the same shape.
 
 ⚠️ **Stamp a server-owned timestamp or code only when the value is absent**, as `HasCreatedDbPrimer` does —
 an unconditional `DateTime.UtcNow` on create overwrites back-dated seed data
@@ -1024,7 +1040,16 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
    **One subclass per owner entity** — the class *is* the join table, and its constructor pins a single
    `ObjectType`, so a second owner needs its own subclass, `DbSet`, controller and registration. Budget it as
    one extra simple slot per owner, not one for the whole app.
-2. Implement `IHasAttachments` and `IHasAttachments<TAttachment>` on the owning entity (`Attachments` property needs explicit interface implementation)
+2. Implement `IHasAttachments` and `IHasAttachments<TAttachment>` on the owning entity. The typed collection
+   is the ordinary property; the **non-generic** one takes the explicit implementation, casting both ways:
+   ```csharp no-compile
+   public ICollection<ProductAttachment>? Attachments { get; set; }
+   ICollection<IEntityAttachment>? IHasAttachments.Attachments
+   {
+       get => Attachments?.Cast<IEntityAttachment>().ToArray();
+       set => Attachments = value?.Cast<ProductAttachment>().ToArray();
+   }
+   ```
 3. **Mapped owner (`UseMapping`)? Declare the collection on the input DTO:** `public ICollection<EntityAttachmentInputDto>? Attachments { get; set; }` (or your derived attachment input DTO). Without it the convention map drops the incoming collection on every save and the sync reads that as "attachments not sent" — adds, removes and reorders through the parent are silently ignored (200 OK, no error; the `/{objectId}/attachments` sub-routes still work, which masks it). Startup validation warns. Mirror on the read DTO with `ICollection<EntityAttachmentDto>?`.
 4. Create a controller inheriting `EntityAttachmentControllerBase<TAttachment>` — **name it after the attachment type** (`ProductAttachmentController` or `ProductAttachmentsController` for a `ProductAttachment`; any other name makes `Uri` unresolvable, see 7) and set the class route to the **owner base path**, e.g. `[Route("products")]` (resource-relative — see the route-prefix note in §Step 13). The base controller appends the sub-routes `{objectId}/attachments`, `attachments/{id}`, `{objectId}/files`, ….
 5. Add `DbSet<Attachment>` and `DbSet<TAttachment>` to DbContext; configure relationship in `OnModelCreating`
@@ -1059,9 +1084,14 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 > on every parent save, so this is what makes the saved order survive a reload:
 > `e.Includes((q, _) => q.Include(x => x.Attachments!.OrderBy(a => a.SortOrder)).ThenInclude(a => a.Attachment))`.
 
-> ⚠️ **`HasAttachment` serializes `null` — nothing populates it.** The `?hasAttachment=` filter queries
-> `Attachments.Any()`, not the property. Set it yourself (a primer, or a mapped projection) or leave it off
-> the DTO; a UI indicator bound to it (a paperclip icon) is otherwise always empty.
+> ⚠️ **`HasAttachment` is a property nothing fills and a filter nothing binds** — both halves are yours.
+> *Reads:* it serializes `null` unless you set it (a primer, or a mapped projection); a paperclip icon bound
+> to it is otherwise always empty, so leave it off the DTO if you do not populate it. *Filtering:* declare
+> `bool? HasAttachment` on your `TSearchObject` and apply `query.FilterHasAttachment(so.HasAttachment)`
+> (`Regira.Entities.EFcore.Extensions` — it queries `Attachments.Any()`, not the property) in the query
+> builder. Without the SearchObject property, `?hasAttachment=true` binds to nothing and the request returns
+> **every row with a 200** — the general shape of an unbound filter parameter, so verify each new filter
+> returns fewer rows than no filter at all.
 
 > **The `Uri` is `null`, never an error.** All four causes: the option was omitted, or set on a different
 > `UseEntities` options instance than the one the entity was registered on (both leave the
@@ -1099,9 +1129,16 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 
 ### EntityInputException (returns HTTP 400)
 
-`EntityControllerBase` and `EntityAttachmentControllerBase` each catch `EntityInputException` on their own
-write actions and return `BadRequest (400)`. Nothing else does — mapping it in your own controller:
-[`entities.patterns.md`](./entities.patterns.md) § Domain actions on an entity resource.
+Throw `EntityInputException<TEntity>` from a prepper or an action, and `InputErrors` becomes the field-level
+body of a **400**. `ConfigureDefaultJsonOptions()` registers the exception filter that maps it application-wide,
+so a hand-written domain action (`POST {id}/approve`) answers exactly like the generated `PUT` — one of the two
+reasons that call is not optional.
+
+> **Catching it yourself** — to add context, or to convert it — catch the **non-generic base**
+> `EntityInputException`. The generated write actions catch their own closed generic, so an
+> `EntityInputException<Product>` thrown by a prepper during an `Order` write escapes them; the base is what
+> the filter matches, and what your own `catch` should. Worked example:
+> [`entities.patterns.md`](./entities.patterns.md) § Domain actions on an entity resource.
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — Order + OrderLine entities (OrderManager)
 
@@ -1109,8 +1146,9 @@ write actions and return `BadRequest (400)`. Nothing else does — mapping it in
 
 `SaveChanges()` wraps a database **integrity-constraint** violation (unique index, FK, NOT NULL, check —
 detected per provider: SQLSTATE class 23, SQLite error 19, SQL Server 547/515/2601/2627) in
-`EntityConstraintException`; every write surface (controller bases, attachment controllers) returns
-**409 Conflict**. The response detail is generic — the provider's
+`EntityConstraintException`; every write surface returns **409 Conflict** — the controller bases, the
+attachment controllers, and any hand-written action, through the same filter
+`ConfigureDefaultJsonOptions()` registers. The response detail is generic — the provider's
 constraint message can leak index names and other users' values, so it is logged server-side (warning) by
 the write service instead. Transient faults (deadlocks, timeouts, concurrency conflicts) are **not**
 wrapped and keep surfacing as 500s for alerting. When the client can fix the input, prefer an explicit
@@ -1198,11 +1236,15 @@ verbatim; everything around them is the wrapper:
 // POST /api/products/save  → 200
 { "item": { "id": 13, "code": "LMP-002", "title": "Floor lamp" }, "isNew": true, "affected": 1, "duration": 7 }
 
-// any save that fails validation → 400. ⚠️ Keys are echoed from your EntityInputException verbatim —
-// nothing camelCases them (the web JSON defaults rename properties, not dictionary keys), so pass the
-// DTO's camelCase spelling as below rather than nameof(Product.CategoryId).
+// EntityInputException → 400. ⚠️ A FLAT map, with no ProblemDetails "errors" wrapper around it — this is
+// BadRequest(ModelState), not ValidationProblem(). Keys are camelCased by the web JSON defaults' dictionary
+// key policy, so nameof(Product.CategoryId) reaches the client as "categoryId" either way.
+{ "categoryId": ["Category 99 does not exist"], "code": ["Code is required"] }
+
+// Model binding / DataAnnotations failing first is a DIFFERENT shape — [ApiController]'s automatic 400,
+// which does wrap. A client reading errors must handle both, or read the flat map when `errors` is absent.
 { "title": "One or more validation errors occurred.", "status": 400,
-  "errors": { "categoryId": ["Category 99 does not exist"], "code": ["Code is required"] } }
+  "errors": { "credits": ["The field Credits must be between 0 and 5."] } }
 
 // GET /api/products/7/attachments — a List endpoint, so no "count"; the file metadata is NESTED
 { "items": [ { "id": 5, "objectId": 7, "attachmentId": 91, "objectType": "Product", "sortOrder": 0,

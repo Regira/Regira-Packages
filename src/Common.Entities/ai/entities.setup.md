@@ -267,9 +267,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 // ... usings from BasicApi
 using Microsoft.EntityFrameworkCore;
 
-// JSON contract: ignore reference cycles + nulls, serialize enums as names. ConfigureDefaultJsonOptions
-// applies all three to BOTH the MVC options and Http.Json.JsonOptions — the set AddOpenApi() and
-// minimal-API results read — so the generated schema matches the wire format.
+// HTTP contract: ignore reference cycles + nulls, serialize enums as names — applied to BOTH the MVC
+// options and Http.Json.JsonOptions, the set AddOpenApi() and minimal-API results read, so the generated
+// schema matches the wire format — plus the entity-exception filter (400 / 409) for every action.
 builder.Services.AddControllers();
 builder.Services.ConfigureDefaultJsonOptions();   // Regira.Entities.Web.DependencyInjection
 
@@ -303,6 +303,13 @@ builder.Services.AddEntityServices();
 > reports that reaches the SPA as wrong types. `ConfigureDefaultJsonOptions()` applies all three to both; its
 > `configure` / `configureHttp` callbacks target the two sets separately (a converter added to only one
 > re-creates the mismatch).
+>
+> **The second reason to call it: the entity exceptions.** It also registers `EntityExceptionFilter`, which
+> maps `EntityInputException` → **400** (its `InputErrors` as ModelState) and `EntityConstraintException` →
+> **409** for *every* MVC action. Without it that mapping reaches only the generated write actions, so a
+> hand-written domain action on an entity controller — `POST {id}/approve` and its kind — answers a rule
+> breach with a 500 and a stack trace. `MapEntityExceptions()` registers the filter on its own for a host
+> that configures its JSON itself.
 
 > **DbContext wiring is automatic.** `UseEntities<TContext>(e => e.UseDefaults())` contributes the
 > primer/normalizer/auto-truncate interceptors, the UTC date convention and the archived query filter to the

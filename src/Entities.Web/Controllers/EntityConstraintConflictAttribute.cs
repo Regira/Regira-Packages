@@ -10,6 +10,12 @@ namespace Regira.Entities.Web.Controllers;
 /// <see cref="EntityConstraintException.ClientMessage"/> (the provider's constraint message is logged by
 /// the write service). Applied to the controller bases whose write actions call
 /// <c>SaveChanges</c> directly instead of going through the <see cref="ControllerExtensions"/> helpers.
+/// <para>
+/// Belt and braces: the application-wide <see cref="EntityExceptionFilter"/> that
+/// <c>ConfigureDefaultJsonOptions()</c> registers already produces this response for every action. The
+/// attribute keeps those bases correct in a host that calls neither, and remains the way to scope the
+/// mapping to a single controller or action.
+/// </para>
 /// </summary>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
 public class EntityConstraintConflictAttribute : ExceptionFilterAttribute

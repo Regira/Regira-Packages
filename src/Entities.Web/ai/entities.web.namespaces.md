@@ -11,6 +11,7 @@
 | Namespace | Types |
 |---|---|
 | `Regira.Entities.Web.Controllers.Abstractions` | `EntityControllerBase<>` (all overloads) |
+| `Regira.Entities.Web.Controllers` | `ControllerExtensions` *(`Save()`/`Patch()`/`Delete()` — on `ControllerBase`)*, `EntityExceptionFilter`, `EntityConstraintConflictAttribute` |
 
 > ⚠️ **The `.Abstractions` suffix is required.** `using Regira.Entities.Web.Controllers;` is NOT enough — the class lives one level deeper in `...Controllers.Abstractions`.
 
@@ -71,7 +72,8 @@ Simple and complex controller bases expose different endpoint sets:
 | Namespace | Types |
 |---|---|
 | `Regira.Entities.Web.Attachments.DependencyInjection` | `UseAttachmentUris()` — opt in to ASP.NET Core attachment `Uri` resolution |
-| `Regira.Entities.Web.DependencyInjection` | `ConfigureDefaultJsonOptions()` — on `IServiceCollection` *and* `EntityServiceCollectionOptions` |
+| `Regira.Entities.Web.DependencyInjection` | `ConfigureDefaultJsonOptions()` — on `IServiceCollection` *and* `EntityServiceCollectionOptions`; sets the JSON contract **and** registers `EntityExceptionFilter` |
+| `Regira.Entities.Web.DependencyInjection` | `MapEntityExceptions()` — on `IServiceCollection`; the exception filter alone, for a host that configures JSON itself |
 
 > **Web-specific registrations live in `Entities.Web`.** In a web host, call `o.UseAttachmentUris()` inside the
 > `UseEntities` options block (before entities are registered) and register `AddHttpContextAccessor()` so attachment
@@ -83,5 +85,5 @@ Simple and complex controller bases expose different endpoint sets:
 
 | Namespace | Types |
 |---|---|
-| `Regira.Entities.Web.Models` | `ListResult<>`, `DetailsResult<>`, `CountResult`, `SaveResult<>`, `DeleteResult`, `SearchResult<>` |
+| `Regira.Entities.Web.Models` | `ListResult<>`, `DetailsResult<>`, `CountResult`, `SaveResult<>`, `DeleteResult<>`, `SearchResult<>` |
 | `Regira.Entities.Web.Models.Abstractions` | `IEntityResult<>` |

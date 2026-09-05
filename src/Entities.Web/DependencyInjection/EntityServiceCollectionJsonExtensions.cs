@@ -26,8 +26,13 @@ public static class EntityServiceCollectionJsonExtensions
     /// <c>Http.Json</c> ones. A converter added to only one of them re-creates the same document/response
     /// mismatch, so apply contract-affecting changes to both.
     /// </para>
+    /// Also calls <see cref="EntityServiceCollectionExceptionExtensions.MapEntityExceptions"/>: the entity
+    /// exceptions belong to the same HTTP contract as the JSON shape, so a hand-written domain action and the
+    /// generated write actions answer a rule breach alike.
+    /// <para>
     /// Startup validation of entity controllers is enabled by <c>UseEntities()</c> (Development-only by
     /// default) — see <see cref="EntityControllerValidationExtensions.ValidateEntityControllers(IServiceCollection)"/> to enable it explicitly.
+    /// </para>
     /// </summary>
     /// <param name="services"></param>
     /// <param name="configure">Customizes the MVC JSON options.</param>
@@ -46,7 +51,8 @@ public static class EntityServiceCollectionJsonExtensions
             {
                 ApplyDefaults(o.SerializerOptions);
                 configureHttp?.Invoke(o);
-            });
+            })
+            .MapEntityExceptions();
 
         return services;
     }

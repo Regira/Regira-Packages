@@ -8,9 +8,13 @@ namespace Regira.Entities.Models;
 /// <see cref="Exception.Message"/> is the same generic text — safe to render anywhere (dev exception
 /// pages, generic handlers); the provider's constraint message stays server-side, on
 /// <see cref="Exception.InnerException"/> and in the write service's warning log.<br />
-/// <b>Every write surface must map this exception</b> — current mappings: the controller helpers
-/// (<c>ControllerExtensions.Save</c>/<c>Delete</c>) and the <c>[EntityConstraintConflict]</c> exception filter
-/// (attachment controller bases). A new write surface without a mapping leaks this as a 500.
+/// In an ASP.NET host the mapping is application-wide: <c>ConfigureDefaultJsonOptions()</c> registers
+/// <c>EntityExceptionFilter</c>, so every MVC action answers 409 — generated, hand-written, or on a
+/// controller of the consumer's own. The controller helpers (<c>ControllerExtensions.Save</c>/<c>Delete</c>)
+/// and the <c>[EntityConstraintConflict]</c> attribute on the attachment controller bases catch it first and
+/// emit the same body.<br />
+/// A write surface <b>outside</b> MVC — a minimal endpoint, a background job, a message handler — is not
+/// covered by that filter and leaks this as a 500 unless it maps the exception itself.
 /// </summary>
 public class EntityConstraintException(string message, Exception? innerException = null)
     : Exception(message, innerException)

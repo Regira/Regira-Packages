@@ -130,7 +130,7 @@ in a save of its own.
 **See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "An entity that references one of its own children")`.
 
 ### Bulk insert / seed many rows
-<!-- how_to: key=bulk-insert aliases=bulk,seed,seeding,import,addrange,batch,many,insert,loop -->
+<!-- how_to: key=bulk-insert aliases=bulk,seed,seed-data,seeding,import,addrange,batch,many,insert,loop -->
 There is no `AddRange`. The per-item `Add`/`Modify`/`Save`/`Remove` calls only **track**
 changes; nothing hits the database until a single `SaveChanges()`. Loop the per-item calls
 and flush **once**:
@@ -545,14 +545,14 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
 }
 ```
 
-- ⚠️ **Return the 400 yourself, via `ModelState` + `BadRequest`.** `EntityInputException<T>` becomes a
-  field-level 400 only inside `ControllerExtensions.Save` (the path `EntityControllerBase` writes through)
-  and `EntityAttachmentControllerBase`; nothing maps it globally, so from a plain `ControllerBase` it escapes
-  unhandled as a **500**. That applies to a *prepper* too: preppers run in `EntityWriteService.PrepareItem`,
-  reached from `Add`/`Modify` — so one throwing during the `service.Modify(item)` above escapes this action
-  just the same. Only a write that goes **through** `ControllerExtensions.Save` is inside the catch. Wrap the
-  call in `try`/`catch (EntityInputException<CreditRequest> ex)` and map `ex.InputErrors` into `ModelState`
-  if a prepper is the one guarding.
+- **Either shape returns a 400 here.** `ModelState` + `BadRequest` as above, or
+  `throw new EntityInputException<CreditRequest>(…) { InputErrors = { [nameof(item.Status)] = "…" } }` — the
+  filter `ConfigureDefaultJsonOptions()` registers maps the exception on **any** action, so this controller
+  and the generated one answer alike. That covers a prepper too: preppers run in
+  `EntityWriteService.PrepareItem`, reached from the `service.Modify(item)` above, and one throwing there
+  lands on the same filter rather than escaping as a 500. Catch it explicitly only to add context — and then
+  catch the non-generic base `EntityInputException`, since a prepper guarding a *related* entity throws
+  `EntityInputException<Product>`.
 - **Write through `IEntityService`** — keeps preppers, primers and row security in play, so the action and the
   CRUD route cannot diverge.
 - ⚠️ **Where the transitioned fields live depends on who may write them.** *May anyone with PATCH rights set
@@ -616,6 +616,13 @@ gates a controller's reads too — so the tier goes in one global filter, declar
 cannot silently miss it:
 
 ```csharp no-compile
+using Microsoft.AspNetCore.Authorization;              // IAllowAnonymous
+using Microsoft.AspNetCore.Http;                       // HttpMethods
+using Microsoft.AspNetCore.Mvc;                        // ForbidResult
+using Microsoft.AspNetCore.Mvc.Controllers;            // ControllerActionDescriptor
+using Microsoft.AspNetCore.Mvc.Filters;                // IAsyncActionFilter, ActionExecutingContext
+using Regira.Security.Authentication.Jwt.Extensions;   // FindRoles() — package Regira.Security.Authentication
+
 // builder.Services.AddControllers(o => o.Filters.Add<WriteAuthorizationFilter>());
 public class WriteAuthorizationFilter : IAsyncActionFilter
 {
@@ -630,7 +637,6 @@ public class WriteAuthorizationFilter : IAsyncActionFilter
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
         var controller = context.RouteData.Values["controller"]?.ToString() ?? "";
-        // ControllerActionDescriptor: Microsoft.AspNetCore.Mvc.Controllers
         var route = (context.ActionDescriptor as ControllerActionDescriptor)?.AttributeRouteInfo?.Template ?? "";
 
         // Reads: every GET, plus the two POST query overloads. Everything else writes — including the
@@ -639,8 +645,7 @@ public class WriteAuthorizationFilter : IAsyncActionFilter
             || route.EndsWith("/search", StringComparison.OrdinalIgnoreCase)
             || route.EndsWith("/list", StringComparison.OrdinalIgnoreCase);
 
-        // FindRoles(): package Regira.Security.Authentication, namespace …Authentication.Jwt.Extensions —
-        // reads all three role-claim spellings.
+        // FindRoles() reads all three role-claim spellings.
         // User.IsInRole reads only the principal's RoleClaimType, which is the quiet 403 when an inbound claim
         // map rewrites `role` to the WS-2008 URI (security.instructions → Claim normalization).
         var userRoles = context.HttpContext.User.FindRoles();
@@ -719,7 +724,7 @@ e.Prepare(async (order, dbContext) =>
 });
 ```
 
-- Throw `EntityInputException<Order>` on a rule breach — parameterized by the **serviced** entity (`Order`, the one with the `.For<>()`/controller), **not** the related `Product`. The endpoint only catches `EntityInputException<TEntity>` for its own `TEntity`, so a mismatched type argument escapes as an unhandled **500** instead of a **400**.
+- Throw `EntityInputException<Order>` on a rule breach — parameterized by the **serviced** entity (`Order`, the one with the `.For<>()`/controller), **not** the related `Product`. Both still return 400 (the registered filter matches the non-generic base), but the generated action's own `catch` is on its closed `EntityInputException<TEntity>`, so only the matching type argument reaches its `ModelState` — and any `catch` you write should be on the base for the same reason.
 - On **update** the decrement would compound — diff against the original quantities (prepper-with-original, or a primer branching on `EntityState.Modified`) and apply only the delta.
 
 ## Server-owned / immutable fields on update
