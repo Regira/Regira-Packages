@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Web.Analytics.GeoIP2</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.2.0</Version>
+    <Version>6.2.1</Version>
     <Description>Geolocation enricher for Regira.Web.Analytics — resolves country and city from a local MaxMind GeoIP2/GeoLite2 database.</Description>
     <PackageTags>regira;web;analytics;geolocation;maxmind;geoip2;geolite2</PackageTags>
   </PropertyGroup>

@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Office.Clients</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.2.0</Version>
+    <Version>6.2.1</Version>
     <RegiraLicenseEnforced>true</RegiraLicenseEnforced>
     <Description>HTTP client extensions for consuming Regira Office services remotely. Free tier included — a license key removes the free-tier limits.</Description>
     <PackageTags>regira;office;clients;http</PackageTags>

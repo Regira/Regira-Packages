@@ -170,7 +170,9 @@ Delete(id) -> DeleteResult
 - Responsible for mapping to/from DTO models using `IEntityMapper`
 - **Error status codes:** `EntityInputException` → **400** with the field errors as `ModelState`; a database
   constraint violation (`EntityConstraintException`) → **409 Conflict** with a generic `ProblemDetails`
-  detail (the provider message is logged server-side); a missing entity → **404**. See
+  detail (the provider message is logged server-side); a missing entity → **404**. The first two are not
+  endpoint-scoped — `ConfigureDefaultJsonOptions()` registers `EntityExceptionFilter` application-wide, so a
+  hand-written action added beside the generated ones answers a rule breach the same way. See
   [Built-in Features → Constraint Exceptions](built-in-features.md#constraint-exceptions)
 
 ---

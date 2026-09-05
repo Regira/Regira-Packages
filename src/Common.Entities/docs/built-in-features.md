@@ -42,16 +42,26 @@ Task<int> SaveChanges(CancellationToken token = default)
 
 ### Input Exceptions
 
-**EntityInputException**: Caught by Controllers and returned as BadRequest (400).
+**EntityInputException**: returned as BadRequest (400), with `InputErrors` as the ModelState payload.
 
 ```csharp
-public class EntityInputException<T>(string message, Exception? innerException = null)
+public abstract class EntityInputException(string message, Exception? innerException = null)
     : Exception(message, innerException)
 {
-    public T? Item { get; set; }
     public IDictionary<string, string> InputErrors { get; set; } = new Dictionary<string, string>();
 }
+
+public class EntityInputException<T>(string message, Exception? innerException = null)
+    : EntityInputException(message, innerException)
+{
+    public T? Item { get; set; }
+}
 ```
+
+Throw the generic form; **catch the non-generic base**. The generated write actions catch their own closed
+`EntityInputException<TEntity>`, so one a prepper threw for a *related* entity
+(`EntityInputException<Product>` during an `Order` write) is not theirs to handle. The base is what
+`EntityExceptionFilter` matches, and what a hand-written `catch` should match too.
 
 
 ### Constraint Exceptions
@@ -71,9 +81,11 @@ public class EntityConstraintException(string message, Exception? innerException
 }
 ```
 
-- **Every web write surface returns 409 Conflict** with `ClientMessage` as the `ProblemDetails` detail:
-  the controller helpers (`ControllerExtensions.Save`/`Delete`) and the `[EntityConstraintConflict]` exception
-  filter (attachment controller bases). The provider's constraint message is logged server-side (warning) by the write service.
+- **Every web write surface returns 409 Conflict** with `ClientMessage` as the `ProblemDetails` detail —
+  hand-written actions included, through the application-wide `EntityExceptionFilter` that
+  `ConfigureDefaultJsonOptions()` registers. The controller helpers (`ControllerExtensions.Save`/`Delete`)
+  and the `[EntityConstraintConflict]` attribute on the attachment controller bases catch it first and emit
+  the same body. The provider's constraint message is logged server-side (warning) by the write service.
 - **Direct `SaveChanges()` callers** (seeding, jobs, custom services): catch `EntityConstraintException`,
   not `DbUpdateException` — a `catch (DbUpdateException)` no longer sees constraint failures, only
   transient faults. `Message` is the same generic text (safe to render anywhere); the provider message is

@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Web.Analytics</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.2.0</Version>
+    <Version>6.2.1</Version>
     <Description>Abstract visitor analytics for ASP.NET Core — collects page views and hands them to consumer-registered enrichment and persistence hooks.</Description>
     <PackageTags>regira;web;analytics;tracking;middleware</PackageTags>
   </PropertyGroup>

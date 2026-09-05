@@ -136,6 +136,34 @@ public class VisitTrackingMiddlewareTests
     }
 
     [Test]
+    public async Task ProbeRequest_IsFlagged_BehindARealBrowserUserAgent()
+    {
+        var config = new AnalyticsConfig();
+        var queue = CreateQueue(config);
+
+        // Nothing about the agent gives this away; only the target does.
+        await CreateMiddleware(Respond(200), queue, config)
+            .InvokeAsync(CreateContext(path: "/wp-admin/"));
+
+        Assert.That(queue.Reader.TryRead(out var pending), Is.True);
+        Assert.That(pending!.View.IsBot, Is.True);
+    }
+
+    [Test]
+    public async Task ProbeQueryString_IsFlagged_OnASitesOwnPage()
+    {
+        var config = new AnalyticsConfig();
+        var queue = CreateQueue(config);
+        var context = CreateContext(path: "/");
+        context.Request.QueryString = new QueryString("?file=../../../../etc/passwd");
+
+        await CreateMiddleware(Respond(200), queue, config).InvokeAsync(context);
+
+        Assert.That(queue.Reader.TryRead(out var pending), Is.True);
+        Assert.That(pending!.View.IsBot, Is.True);
+    }
+
+    [Test]
     public async Task Bot_IsDropped_WhenRecordBotsOff()
     {
         var config = new AnalyticsConfig { RecordBots = false };

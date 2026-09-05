@@ -96,7 +96,7 @@
 | `Regira.Entities.DependencyInjection.Preppers` | `ServiceCollectionPrepperExtensions` *(`AddPrepper<>()` — on `IServiceCollection` and `EntityServiceCollectionOptions`)* |
 | `Regira.Entities.DependencyInjection.Processors` | `ServiceCollectionProcessorExtensions` *(`AddProcessor<>()` — on `IServiceCollection`; the per-entity `e.AddProcessor<>()` verb rides the `For<>()` builder)* |
 | `Regira.Entities.DependencyInjection.Mapping` | `ServiceCollectionMappingExtensions` *(`AddMapping<>()`, `AddAfterMapper<>()`, `AfterMap<>()` — on `EntityServiceCollectionOptions`)*, `MappedEntityServiceBuilder<>` |
-| `Regira.Entities.Web.DependencyInjection` | `EntityServiceCollectionJsonExtensions` *(`ConfigureDefaultJsonOptions()` — extension on `IServiceCollection`; applies cycles/nulls/enum-names to both the MVC and `Http.Json` options — see `entities.setup` → P3)* |
+| `Regira.Entities.Web.DependencyInjection` | `EntityServiceCollectionJsonExtensions` *(`ConfigureDefaultJsonOptions()` — extension on `IServiceCollection`; applies cycles/nulls/enum-names to both the MVC and `Http.Json` options, and registers the entity-exception filter — see `entities.setup` → P3)*, `EntityServiceCollectionExceptionExtensions` *(`MapEntityExceptions()` — the filter on its own, for a host configuring JSON itself)* |
 
 ---
 
@@ -156,6 +156,7 @@
 | Namespace | Types |
 |---|---|
 | `Regira.Entities.Web.Controllers.Abstractions` | `EntityControllerBase<>` |
+| `Regira.Entities.Web.Models` | `SaveResult<>`, `DeleteResult<>`, `DetailsResult<>`, `ListResult<>`, `SearchResult<>` *(the generated actions' return types — needed to override one)* |
 | `Microsoft.AspNetCore.Mvc` | `[ApiController]`, `[Route]`, `ControllerBase` |
 
 ---

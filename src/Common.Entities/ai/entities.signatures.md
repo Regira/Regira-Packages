@@ -367,6 +367,24 @@ public abstract class EntityControllerBase<TEntity, TKey, TSo, TSortBy, TInclude
     where TInputDto : class;
 ```
 
+**The generated actions are `virtual`** — override one to add an `[Authorize]` policy (administrators manage
+reference data) without re-implementing it. Signatures are identical on both bases; the complex one adds the
+`[FromBody] TSo[]` overloads of `List`/`Search`:
+
+```csharp no-compile
+public virtual Task<ActionResult<DetailsResult<TDto>>> Details([FromRoute] TKey id, [FromQuery] ArchivedFilter? archived = null);
+public virtual Task<ActionResult<ListResult<TDto>>>    List([FromQuery] TSearchObject so, [FromQuery] PagingInfo pagingInfo);
+public virtual Task<ActionResult<SearchResult<TDto>>>  Search([FromQuery] TSearchObject so, [FromQuery] PagingInfo pagingInfo);
+public virtual Task<ActionResult<SaveResult<TDto>>>    Save([FromBody] TInputDto model);
+public virtual Task<ActionResult<SaveResult<TDto>>>    Create([FromBody] TInputDto model);
+public virtual Task<ActionResult<SaveResult<TDto>>>    Modify([FromRoute] TKey id, [FromBody] TInputDto model);
+public virtual Task<ActionResult<SaveResult<TDto>>>    Patch([FromRoute] TKey id);          // reads the body itself
+public virtual Task<ActionResult<DeleteResult<TDto>>?> Delete([FromRoute] TKey id);
+```
+
+The verb attribute is **inherited** by the override, so the route survives without it: declare only the
+`[Authorize]` and delegate — `return base.Create(model);`.
+
 **Endpoints exposed by controller bases:**
 
 | Method | Route | Action | Availability |
@@ -1528,14 +1546,25 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto>
 ```csharp
 using Regira.Entities.Models;
 
-// Throw to return HTTP 400 from a controller action
-public class EntityInputException<T>(string message, Exception? innerException = null)
+// Throw the generic form; the base is what handlers catch. HTTP 400, from any MVC action.
+public abstract class EntityInputException(string message, Exception? innerException = null)
     : Exception(message, innerException)
 {
-    public T? Item { get; set; }
     public IDictionary<string, string> InputErrors { get; set; } = new Dictionary<string, string>(); // pre-initialized
 }
+
+public class EntityInputException<T>(string message, Exception? innerException = null)
+    : EntityInputException(message, innerException)
+{
+    public T? Item { get; set; }
+}
 ```
+
+`ConfigureDefaultJsonOptions()` registers the filter that maps it — 400 with `InputErrors` as the body,
+409 for `EntityConstraintException` — so a **hand-written** action returns what the generated ones do.
+Catch the non-generic base if you handle it yourself: the generated write actions catch their own closed
+generic, which misses the one a prepper threw for a related entity (`EntityInputException<Product>` inside
+an `Order` write).
 
 `InputErrors` is initialized, so both forms work — a nested initializer for a fixed set, indexer assignment for a map you build:
 

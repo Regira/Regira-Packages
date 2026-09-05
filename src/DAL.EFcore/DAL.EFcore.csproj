@@ -11,7 +11,7 @@
     <AssemblyName>Regira.DAL.EFcore</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.2.0</Version>
+    <Version>6.2.1</Version>
     <Description>Entity Framework Core data access layer base classes and helpers for Regira.</Description>
     <PackageTags>regira;dal;efcore;entityframework;orm</PackageTags>
   </PropertyGroup>
