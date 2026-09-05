@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Media.FFMpeg</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.2.0</Version>
+    <Version>6.2.1</Version>
     <Description>Video and audio processing using FFMpegCore for Regira.</Description>
     <PackageTags>regira;media;video;audio;ffmpeg</PackageTags>
   </PropertyGroup>

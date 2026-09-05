@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Security.Hashing.BCryptNet</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.2.0</Version>
+    <Version>6.2.1</Version>
     <Description>BCrypt password hashing using BCrypt.Net-Next for Regira.</Description>
     <PackageTags>regira;security;hashing;bcrypt;passwords</PackageTags>
   </PropertyGroup>

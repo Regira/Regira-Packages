@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Media</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.2.0</Version>
+    <Version>6.2.1</Version>
     <Description>Abstractions for image and media processing in Regira.</Description>
     <PackageTags>regira;media;images;drawing</PackageTags>
   </PropertyGroup>
