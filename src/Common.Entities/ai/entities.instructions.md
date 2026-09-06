@@ -110,7 +110,7 @@ Input → Mapping* → AfterInput* → Preppers → SaveChanges → Primers (Int
 
 *(One-time project bootstrap. Distinct from the per-entity `Step N` scheme below.)*
 
-Full procedure — packages, `Program.cs`, DbContext, DI extension method: [`entities.setup.md`](./entities.setup.md). Defaults unless instructed otherwise: **net10**, **SQLite** + `Database.EnsureCreated()` (no initial migration), **Mapster**, per-entity folder structure, default `EntityRepository`.
+Full procedure — packages, `Program.cs`, DbContext, DI extension method: [`entities.setup.md`](./entities.setup.md). Defaults unless instructed otherwise: **net10**, **SQLite** + `Database.EnsureCreated()` (no initial migration), **Mapster**, per-entity folders in a single project (when and how to split it by layer: [§Project Structure](./entities.setup.md#project-structure)), default `EntityRepository`.
 
 The two rules that are easy to get wrong and that `entities.setup.md` assumes you already know:
 

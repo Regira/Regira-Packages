@@ -90,6 +90,8 @@ MyProject/
 ├── appsettings.json
 ```
 
+One host, one project. A `Regira.Entities` domain that outgrows it — several hosts, a second `DbContext`, many entities — is split into layer projects under `src/` with the hosts under `app/`; the layout and its triggers are described once, in `get_package(id: "Regira.Entities", section: "entities.setup", heading: "Layered solution")`.
+
 ### Logging (serilog)
 
 All templates use Serilog with console + rolling file sinks configured from `appsettings.json`.

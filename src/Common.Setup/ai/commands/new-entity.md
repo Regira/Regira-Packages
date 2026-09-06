@@ -5,6 +5,7 @@ Scaffold a complete Regira entity with full CRUD. Read the required guides befor
 Before writing a single line of code, read these files in full from `.regira/instructions/`:
 - `entities.instructions.md`
 - `entities.signatures.md`
+- `entities.setup.md` — §Project Structure only: it says whether the solution is a single project or a layered one, which decides where every file below goes
 
 If they do not exist, run `dotnet build` to trigger extraction from the installed `Regira.Entities` package.
 
@@ -28,6 +29,8 @@ Ask the user:
 
 Produce all of the following, in this order:
 
+**Placement:** put each file where `entities.setup.md` §Project Structure puts it for the layout the solution already has — single project: `Entities/{Plural}/` for 1–5, `Data/{App}DbContext.cs` for 6–7, `Controllers/` for 8; layered solution: the same files split by layer, `{App}.Models/{Domain}/{Plural}/` for 1–5, `{App}.Data/{App}DbContext.cs` for 6–7, the host's `Controllers/` for 8. Do not introduce the other layout.
+
 1. **Entity model class** — implement `IEntity<TKey>` plus applicable optional interfaces
 2. **`SearchObject`** — extend `EntitySearchObject` with entity-specific filter properties
 3. **`SortBy` enum** — extend `EntitySortBy` with entity-specific sort fields
@@ -45,7 +48,7 @@ Ask: **"Does the entity look correct? Ready to add the DI registration?"**
 
 ## Step 5 — DI registration
 
-Only after confirmation, generate the `IServiceCollection` extension method that registers the entity's services, repository, and controller mapping using the patterns in `entities.instructions.md`.
+Only after confirmation, generate the `IServiceCollection` extension method that registers the entity's services, repository, and controller mapping using the patterns in `entities.instructions.md`. In a layered solution that method is `{App}.DependencyInjection/{Domain}/{Entity}ServiceConfiguration.cs`, chained from the domain aggregator (`Add{Domain}()`) rather than from the root; any query builder, normalizer or manager it registers goes in `{App}.Services/{Domain}/{Plural}/`.
 
 ## Rules
 

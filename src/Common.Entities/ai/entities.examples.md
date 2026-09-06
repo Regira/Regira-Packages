@@ -11,7 +11,7 @@
 
 ## Structure
 
-> **→ See:** [`entities.setup.md`](./entities.setup.md) — §Project Structure for the recommended per-entity folder layout this example follows.
+> **→ See:** [`entities.setup.md`](./entities.setup.md#project-structure) — §Project Structure for the per-entity folder layout this example follows (single project); in a layered solution the `// Entities/{Plural}/…` path comments below become `{Layer}/{Domain}/{Plural}/` as that section describes.
 
 ## Setup
 

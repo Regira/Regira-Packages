@@ -249,7 +249,7 @@ Apply these conventions when no narrower module guide exists, or as a supplement
 
 ### Following conventions
 
-Follow the prescribed conventions by default; deviate deliberately, not by defaulting to a remembered pattern, and declare any **intended deviations** and why. This applies especially to the **Serilog template** (`project.setup` → *Logging*) and the **per-entity file-per-class layout** (`entities.setup` → *Project Structure*).
+Follow the prescribed conventions by default; deviate deliberately, not by defaulting to a remembered pattern, and declare any **intended deviations** and why. This applies especially to the **Serilog template** (`project.setup` → *Logging*) and the **project layout** — per-entity folders in a single project, or the layered solution once its triggers apply — described in one place only: `entities.setup` → *Project Structure*.
 
 ### Project conventions
 
