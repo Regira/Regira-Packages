@@ -956,7 +956,7 @@ falls off is silently unsearchable. Widen `[MaxLength]` if you genuinely need mo
 
 ### Filtering with Normalized Content and IQKeywordHelper
 
-Use `IQKeywordHelper.Parse(q)` to parse `Q` into keywords with wildcard support (e.g. `"blue*"` → `"blue%"`). For normalized columns, use `keyword.QW` with `EF.Functions.Like` (for raw columns, use `keyword.TrimmedQW`).
+Use `IQKeywordHelper.Parse(q)` to parse `Q` into keywords with wildcard support (e.g. `"blue*"` → `"blue%"`). For normalized columns, use `keyword.QW` with `EF.Functions.Like` (for raw columns, use `keyword.TrimmedQW`). Use `Like` in a hand-written text filter too (matching a related entity's content, say): EF translates `string.Contains` to SQLite's case-sensitive `instr()`, so `?q=emma` finds nothing while `?q=Emma` works — inconsistent with every built-in filter, and silent.
 
 > **⚠️ Match the keyword family to the column.** Every `QKeyword` carries the term twice: the `Trimmed*`
 > members (`Trimmed`, `TrimmedStartsWith`, `TrimmedEndsWith`, `TrimmedQ`, `TrimmedQW`) hold the **raw**
@@ -1230,7 +1230,7 @@ verbatim; everything around them is the wrapper:
 // GET /api/products/search?q=lamp&pageSize=2
 { "items": [ { "id": 12, "code": "LMP-001", "title": "Desk lamp", "categoryId": 3,
                "category": { "id": 3, "title": "Lighting" },        // nested DTO — see the warning below
-               "created": "2026-08-13T09:12:44Z", "lastModified": null } ],
+               "created": "2026-08-13T09:12:44Z" } ],
   "count": 42, "duration": 5 }
 
 // POST /api/products/save  → 200
@@ -1250,9 +1250,15 @@ verbatim; everything around them is the wrapper:
 { "items": [ { "id": 5, "objectId": 7, "attachmentId": 91, "objectType": "Product", "sortOrder": 0,
                "uri": "https://localhost:5001/api/products/7/files/manual.pdf",
                "attachment": { "id": 91, "fileName": "manual.pdf", "contentType": "application/pdf",
-                               "length": 20481, "created": "2026-08-13T09:12:44Z", "lastModified": null } } ],
+                               "length": 20481, "created": "2026-08-13T09:12:44Z" } } ],
   "duration": 4 }
 ```
+
+⚠️ **A null value is absent from the payload, not `null`.** `ConfigureDefaultJsonOptions()` sets
+`DefaultIgnoreCondition = WhenWritingNull`, so an unset timestamp or a foreign key an action just cleared is
+**omitted** — which is why no sample above carries a `null`. A client asserting `assignedEmployeeId === null`
+after the action that cleared it fails against a correct API: test for absence (`== null`), and never read a
+missing key as "this entity has no such field".
 
 ⚠️ **Nest a Core/summary DTO and its collections are absent, not empty.** A UI reading `status.transitions`
 off a nested `StatusCoreDto` gets `undefined`, with no error — and on the front end `fromPool` rehydrates it
@@ -1332,7 +1338,9 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 
 - Put `[Authorize]` on your controller subclass (use `[AllowAnonymous]` per action for exceptions): `[Authorize] public class ProductController : EntityControllerBase<Product, ProductDto, ProductInputDto>;`
 - **Row-level scoping:** register a global filter query builder that applies the caller's scope (tenant/owner) to every query — inject `IHttpContextAccessor` in its constructor and filter on the claim. The claim reaches the principal the same way whichever scheme authenticated the caller (bearer token, cookie session, API key), so the filter needs no knowledge of which one is in use. The filter pipeline runs on **every controller path**: List, Search, `Details(id)` (the id goes through the same filters), and the write endpoints' existence checks — so `PUT`/`PATCH`/`DELETE` on a foreign row 404 as well.
-- **What a scoping filter cannot do:** validate **create** (the client supplies the FK — stamp/verify `OwnerId` from the claim in a prepper, never trust the body) or guard **direct `IEntityService` calls** in custom code, which bypass the controller's filtered existence checks.
+- **What a scoping filter cannot do:** validate **create** (the client supplies the FK — stamp/verify `OwnerId` from the claim in a prepper, never trust the body) or guard **direct `IEntityService` calls** in custom code, which bypass the controller's filtered existence checks. Two variants of the create hole bite hardest:
+  - ⚠️ **An attachment upload is a create the filter never sees.** `POST /{owner}/{id}/files` takes the owner id from the **route**, stamps it on a new link row and saves — no query runs, so no global filter applies, and any authenticated caller can attach a file to a row they cannot read. `PUT`/`DELETE` on an existing link load it through the service first and *are* filtered; only the upload is exposed. Add a prepper on the **link** entity that re-runs the owner's scope over the owner's `DbSet` and throws an `EntityInputException<TLink>` when it resolves nothing — which answers **400**, not the 404 the read path gives a foreign row, since the write pipeline maps only 400 and 409. Override the controller's `virtual Add` and return `NotFound()` instead where the two must agree.
+  - ⚠️ **Read scope is not write scope.** The write endpoints' existence checks run the *same* filter, so a read scope you widened deliberately — a manager who may see their reports' rows — silently grants that manager `PATCH`/`DELETE` on them too. When the two differ, keep the filter at read width and put the ownership check in a prepper.
 - **Scope before any early return.** The idiomatic query-builder shape opens with `if (so == null) return query;` — for a security filter that is a hole, because `Details(id)` and the write existence checks can run with a null search object and would skip the scoping entirely. Derive from `GlobalFilteredQueryBuilderBase<TEntity>` (it runs on every query and takes no search object), apply the ownership predicate unconditionally, and return `query.Where(_ => false)` when no identity resolves — an anonymous or stale-token call must see nothing, not everything.
 - **Multiple global filters accumulate (AND).** Every registered filter whose `TEntity` the entity satisfies runs, and their predicates compose — so an `IOwnedEntity`-wide filter and a `ShoppingList`-specific one both apply. `TEntity` may be an interface, a base class, **or the concrete entity type**. The one case that does *not* stack is the key variants of a single filter family (`FilterArchivablesQueryBuilder` vs `<Guid>`): one variant runs, preferring the key-matching one. Two filters deriving separately from `GlobalFilteredQueryBuilderBase<>` are always distinct families and never suppress each other. A filter scoped to a type **no registered entity satisfies** never runs at all — startup validation warns about this, which is your signal that a security filter is inert.
 - **Role/permission tiers** (admin vs editor): declare claim policies (`AddAuthorization(o => o.AddPolicy("EditorOnly", p => p.RequireClaim(...)))`) and gate the baseline with `MapControllers().RequireAuthorization("AdminOrEditor")`. For "everyone reads, some roles write", one global filter carries the tier — worked recipe with the traps in [`entities.patterns.md`](./entities.patterns.md) § Role-gated write authorization filter. ⚠️ Gate that filter on an allow-list of your own controllers, and remember `POST /{entity}/search` and `POST /{entity}/list` are reads. ⚠️ `RequireClaim`/`RequireRole` and any hand-written claim read must use the spelling the *validated* principal carries, and getting it wrong costs rows, not errors (next bullet). The claim contract is one lookup away in `security.instructions` → *Claims emitted per scheme* and *Claim normalization*. The schemes do **not** all agree on the role claim type (`role`, Entra's `roles`, and the long `ClaimTypes.Role` URI are all in play), so read roles with `User.FindRoles()` and scopes with `User.HasScope()` rather than a single `HasClaim`; on a normalized principal — every scheme except the API key — the canonical `sub`/`name`/`email`/`role` spellings are present alongside the provider's, so `RequireClaim("role", …)` does hold.

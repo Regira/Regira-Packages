@@ -104,6 +104,9 @@ foreach (var product in sheets.First().Data!)
 
 // Write sheets to a new workbook
 IMemoryFile output = await excel.Create(sheets);
+// ⚠️ Read the result with GetBytes() (Regira.IO.Extensions), never .Bytes — a producer fills EITHER
+// .Bytes or .Stream, and reading the empty half yields a 0-byte download with no error.
+byte[] outputBytes = output.GetBytes()!;
 ```
 
 ---

@@ -511,6 +511,8 @@ the entity controller on the **same** resource route, as a second controller wit
 is supported, and keeps the guard off the hot path where every ordinary PATCH would pay for it:
 
 ```csharp
+using Regira.Entities.Web.Controllers;                                       // this.DetailsResult(...)
+
 public enum RequestStatus { Draft, Submitted, Approved }
 
 public class CreditRequest : IEntity<int>
@@ -540,7 +542,7 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
         item.DecidedOn = DateTime.UtcNow;
         await service.Modify(item);
         await service.SaveChanges();                                         // no base controller here — save explicitly
-        return Ok(item);
+        return this.DetailsResult(item);                                     // { "item": … } — the envelope every generated endpoint uses
     }
 }
 ```
@@ -555,6 +557,10 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
   `EntityInputException<Product>`.
 - **Write through `IEntityService`** — keeps preppers, primers and row security in play, so the action and the
   CRUD route cannot diverge.
+- **Answer in the same envelope as the generated endpoints.** `this.DetailsResult(item)`
+  (`Regira.Entities.Web.Controllers`) wraps it as `{ "item": … }`, so a client reads
+  `data.item` on every route it calls and the SPA service needs no per-action unwrapping. A bare
+  `Ok(item)` works but makes this one action the exception.
 - ⚠️ **Where the transitioned fields live depends on who may write them.** *May anyone with PATCH rights set
   the state?* Keep `Status`/`DecidedOn` on `TInputDto` and let this controller be their real writer —
   excluding them without a restore makes every ordinary PATCH reset them to `null`/default (§Server-owned /
