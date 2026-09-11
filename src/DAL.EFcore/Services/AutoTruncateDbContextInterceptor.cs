@@ -9,32 +9,45 @@ using Microsoft.Extensions.Logging;
 using Regira.DAL.EFcore.Extensions;
 
 namespace Regira.DAL.EFcore.Services;
+
+/// <summary>
+/// Truncates all string properties with a <see cref="MaxLengthAttribute"/> for <see cref="EntityEntry">Entries</see> that have pending changes,
+/// on <c>SaveChanges()</c> and <c>SaveChangesAsync()</c> alike<br />
+/// Credits: https://gist.github.com/abrari/dfe772db172f950e9f0d8acdd3982fbb
+/// </summary>
 public class AutoTruncateDbContextInterceptor : SaveChangesInterceptor
 {
-    /// <summary>
-    /// Truncates all string properties with a <see cref="MaxLengthAttribute"/> for <see cref="EntityEntry">Entries</see> that have pending changes<br />
-    /// Credits: https://gist.github.com/abrari/dfe772db172f950e9f0d8acdd3982fbb
-    /// </summary>
-    /// <param name="eventData"></param>
-    /// <param name="result"></param>
-    /// <param name="cancellationToken"></param>
-    /// <returns></returns>
-    public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData, InterceptionResult<int> result,
+    public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
+    {
+        if (eventData.Context is not null)
+        {
+            TruncatePendingEntries(eventData.Context);
+        }
+
+        return base.SavingChanges(eventData, result);
+    }
+
+    public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData, InterceptionResult<int> result,
         CancellationToken cancellationToken = new())
     {
         if (eventData.Context is not null)
         {
-            var logger = eventData.Context.GetService<ILoggerFactory>()?.CreateLogger<AutoTruncateDbContextInterceptor>();
-            foreach (var entry in eventData.Context.GetPendingEntries())
-            {
-                if (entry.State != EntityState.Deleted)
-                {
-                    entry.AutoTruncate(logger);
-                }
-            }
+            TruncatePendingEntries(eventData.Context);
         }
 
-        return await base.SavingChangesAsync(eventData, result, cancellationToken);
+        return base.SavingChangesAsync(eventData, result, cancellationToken);
+    }
+
+    private static void TruncatePendingEntries(DbContext context)
+    {
+        var logger = context.GetService<ILoggerFactory>()?.CreateLogger<AutoTruncateDbContextInterceptor>();
+        foreach (var entry in context.GetPendingEntries())
+        {
+            if (entry.State != EntityState.Deleted)
+            {
+                entry.AutoTruncate(logger);
+            }
+        }
     }
 }
 

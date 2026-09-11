@@ -69,8 +69,9 @@ Throw the generic form; **catch the non-generic base**. The generated write acti
 **EntityConstraintException**: thrown by the EFcore write services when `SaveChanges()` fails on a database
 **integrity-constraint** violation — unique index, foreign key, NOT NULL, check. Detection is per provider
 (SQLSTATE class 23, SQLite error 19, SQL Server 547/515/2601/2627 — `DbUpdateException.IsConstraintViolation()`
-in `Regira.Entities.EFcore.Extensions`); transient faults (deadlocks, timeouts, concurrency conflicts) are
-**not** wrapped and keep throwing `DbUpdateException` subtypes.
+in `Regira.Entities.EFcore.Extensions`); transient faults (deadlocks, timeouts) are **not** wrapped and keep
+throwing `DbUpdateException` subtypes. A write built on a stale read is an `EntityConcurrencyException` — see
+[Concurrency Exceptions](#concurrency-exceptions).
 
 ```csharp
 public class EntityConstraintException(string message, Exception? innerException = null)
@@ -92,6 +93,45 @@ public class EntityConstraintException(string message, Exception? innerException
   on `InnerException` and in the write service's warning log.
 - The response is deliberately generic — throw `EntityInputException` from a prepper when the client
   should receive a field-level 400 instead.
+
+
+### Concurrency Exceptions
+
+**EntityConcurrencyException**: thrown by the EFcore write services when `SaveChanges()` fails with EF Core's
+`DbUpdateConcurrencyException` — an `UPDATE`/`DELETE` that matched no row, because the row no longer holds the
+concurrency token the client sent, or another writer removed it. The EF exception stays on `InnerException`, with
+the conflicting rows in `Entries`.
+
+```csharp
+public class EntityConcurrencyException(string message, Exception? innerException = null)
+    : Exception(message, innerException)
+{
+    public const string ClientMessage = "The record was changed or removed since it was read. Reload it and try again.";
+}
+```
+
+- **The client's token is what gets compared.** Every concurrency token the EF model declares — `[Timestamp]` /
+  `IsRowVersion()`, `[ConcurrencyCheck]`, `IsConcurrencyToken()` — is checked against the value that arrived with
+  the write, not against the row the update reloads. The token travels as an ordinary DTO field: put it on both
+  the read and the input DTO, without an initializer.
+- **A token the client leaves out is not compared** (`null`, empty, or the CLR default): the write goes through,
+  only a write racing it is caught, and the empty value never overwrites the token — with `IHasConcurrencyToken`
+  the primer still mints a new one. `PATCH` carries the stored value unless its body sets the token; `DELETE`
+  carries none.
+- **The token must move on every write.** `IHasConcurrencyToken` takes care of it: `UseDefaults()` declares its
+  `ConcurrencyToken` a concurrency token and `HasConcurrencyTokenDbPrimer` mints a new one on every insert and
+  update. A token the database moves (SQL Server `rowversion`, PostgreSQL `xmin`) needs nothing; an
+  application-owned token you declare yourself needs a primer of your own, or two clients holding the same value
+  both pass.
+- **Every web write surface returns 409 Conflict** with a `ProblemDetails` titled "Concurrency conflict" —
+  distinct from the constraint 409 — through the same `EntityExceptionFilter`, controller helpers and
+  `[EntityConstraintConflict]` attribute.
+- **Direct `SaveChanges()` callers** (seeding, jobs, custom services): catch `EntityConcurrencyException`, not
+  `DbUpdateConcurrencyException`. A failed save keeps the change tracker; reload and retry in a fresh scope.
+- Startup validation warns when a DTO has no property for a token, and when the input DTO — or an entity that is
+  its own input DTO — initializes it, so a client that omits the token gets a 409 instead of an unchecked write. It
+  reports an error when the entity initializes its token while the input DTO has no property to overwrite it —
+  every write would answer 409.
 
 
 ## DbContext
@@ -139,6 +179,23 @@ protected override void OnModelCreating(ModelBuilder modelBuilder)
 }
 ```
 
+**AddConcurrencyTokenConvention**: *Declares `ConcurrencyToken` an EF Core concurrency token on every entity type
+implementing `IHasConcurrencyToken`.*
+
+*With `UseEntities<TContext>(e => e.UseDefaults())` it is wired into the context's options automatically
+(`DbContextWiring.ConcurrencyTokens`) and applied at model finalization, so an explicit
+`.IsConcurrencyToken(false)` in `OnModelCreating` still opts one entity type out. Call it on the options builder of
+a context built outside that wiring.*
+
+```csharp
+using Regira.Entities.EFcore.Extensions;
+
+new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
+    .UseSqlServer(connectionString)
+    .AddConcurrencyTokenConvention()
+    .Options);
+```
+
 A model that ends up with no archived filter returns archived rows everywhere, and startup validation raises
 an error naming the entity. See [Soft delete](#soft-delete) for the ordering rules and the read-side opt-ins.
 
@@ -167,8 +224,8 @@ protected override void ConfigureConventions(ModelConfigurationBuilder configura
 }
 ```
 
-**AddAutoTruncateInterceptors**: *Truncates string properties based on MaxLength attribute before saving to database.
-Adds a global `AutoTruncatePrimer` as interceptor*.
+**AddAutoTruncateInterceptors**: *Truncates string properties based on MaxLength attribute before saving to database,
+on `SaveChanges()` and `SaveChangesAsync()` alike. Adds the `AutoTruncateDbContextInterceptor`*.
 
 ```csharp
 using Regira.DAL.EFcore.Services; // external namespace
@@ -193,10 +250,10 @@ services.UseEntities<ContosoContext>(e => e.UseDefaults());
 
 Registers a set of commonly used features for typical applications, including:
 - `AddDefaultInterceptors()` — **automatic DbContext wiring**: `UseEntities<TContext>()` contributes the
-  primer/normalizer/auto-truncate interceptors, the UTC date convention and the archived query filter to the
-  context's options, so `AddDbContext` only needs the provider and the `DbContext` itself stays free of
-  framework calls. Matches by assignability (an abstract-base registration also wires derived
-  provider-specific contexts), in any registration order. Fine-grained control via
+  primer/normalizer/auto-truncate interceptors, the UTC date convention, the archived query filter and the
+  concurrency-token convention to the context's options, so `AddDbContext` only needs the provider and the
+  `DbContext` itself stays free of framework calls. Matches by assignability (an abstract-base registration also
+  wires derived provider-specific contexts), in any registration order. Fine-grained control via
   `WireDbContext(DbContextWiring …)`: `None` opts out; without `UseDefaults()` pick pieces à la carte
   (e.g. `DbContextWiring.PrimerInterceptors`). A `DbContext` constructed outside the service collection is
   not covered — configure such a context's options builder directly
@@ -204,6 +261,7 @@ Registers a set of commonly used features for typical applications, including:
   - `ArchivablePrimer`
   - `HasCreatedDbPrimer`
   - `HasLastModifiedDbPrimer`
+  - `HasConcurrencyTokenDbPrimer`
 - `AddDefaultPreppers()`
   - `AutoServerOwnedPrepper`
 - `AddDefaultGlobalQueryFilters()`
@@ -304,6 +362,7 @@ To be combined with the archived query filter and `FilterArchivablesQueryBuilder
 |-----------------------------|-------------|
 | **HasCreatedDbPrimer**      | *Sets Created timestamp (UTC) on new entities implementing `IHasCreated`. Client-supplied values are normalized to UTC.* |
 | **HasLastModifiedDbPrimer** | *Sets LastModified timestamp (UTC) when updating entities implementing `IHasLastModified`.* |
+| **HasConcurrencyTokenDbPrimer** | *Mints a new `ConcurrencyToken` on every update of an entity implementing `IHasConcurrencyToken` — a soft delete included — and on insert when it is empty.* |
 
 #### UTC timestamps
 
@@ -461,6 +520,7 @@ public static class EntityExtensions
 | `IHasLastModified` | LastModified (DateTime?) | `HasLastModifiedDbPrimer` | Track modification time (UTC) |
 | `IHasTimestamps` | Created, LastModified | see `IHasCreated` & `IHasLastModified` | Both timestamps |
 | `IArchivable` | IsArchived (bool) | `ArchivablePrimer`, `FilterArchivablesQueryBuilder`, archived query filter | Soft delete capability |
+| `IHasConcurrencyToken` | ConcurrencyToken (Guid) | `HasConcurrencyTokenDbPrimer`, `AddConcurrencyTokenConvention` | Optimistic concurrency — a stale write answers 409 |
 | `ISortable` | SortOrder (int) | *`Preppers`* -> `EntityExtensions.SetSortOrder` | Sortable as (child) collection |
 | `IHasObjectId` | ObjectId (TKey) | *`Attachments`* | FK to owning entity |
 

@@ -10,8 +10,8 @@
 
 | Namespace | Types |
 |---|---|
-| `Regira.Entities.Models` | `SearchObject<>`, `EntitySortBy`, `EntityInputException<>`, `EntityIncludes`, `ArchivedFilter` *(`Excluded`/`Included`/`Only` — `ISearchObject.Archived`, bound from `?archived=`)* |
-| `Regira.Entities.Models.Abstractions` | `IEntity<>`, `IEntityWithSerial`, `ISearchObject<>`, `IHasTimestamps`, `IHasCreated`, `IHasLastModified`, `IHasTitle`, `IHasNormalizedTitle`, `IHasDescription`, `IHasCode`, `IHasNormalizedContent`, `IHasLastNormalized`, `IArchivable`, `ISortable`, `IHasObjectId<>`, `IHasAggregateKey`, `IHasDefault<>`, `IHasParentEntity<>`, `IHasPassword`, `IHasEncryptedPassword`, `IHasSlug`, `IHasStartDate`, `IHasEndDate`, `IHasStartEndDate`, `IHasUri`, `IHasUserId` |
+| `Regira.Entities.Models` | `SearchObject<>`, `EntitySortBy`, `EntityInputException<>`, `EntityConstraintException`, `EntityConcurrencyException`, `EntityIncludes`, `ArchivedFilter` *(`Excluded`/`Included`/`Only` — `ISearchObject.Archived`, bound from `?archived=`)* |
+| `Regira.Entities.Models.Abstractions` | `IEntity<>`, `IEntityWithSerial`, `ISearchObject<>`, `IHasTimestamps`, `IHasCreated`, `IHasLastModified`, `IHasTitle`, `IHasNormalizedTitle`, `IHasDescription`, `IHasCode`, `IHasNormalizedContent`, `IHasLastNormalized`, `IArchivable`, `IHasConcurrencyToken`, `ISortable`, `IHasObjectId<>`, `IHasAggregateKey`, `IHasDefault<>`, `IHasParentEntity<>`, `IHasPassword`, `IHasEncryptedPassword`, `IHasSlug`, `IHasStartDate`, `IHasEndDate`, `IHasStartEndDate`, `IHasUri`, `IHasUserId` |
 
 ---
 
@@ -61,7 +61,7 @@
 
 | Namespace | Types |
 |---|---|
-| `Regira.Entities.EFcore.Primers` | `ArchivablePrimer`, `HasCreatedDbPrimer`, `HasLastModifiedDbPrimer`, `AutoTruncatePrimer`, `AutoNormalizingPrimer`, `EntityPrimerContainerInterceptor` |
+| `Regira.Entities.EFcore.Primers` | `ArchivablePrimer`, `HasCreatedDbPrimer`, `HasLastModifiedDbPrimer`, `HasConcurrencyTokenDbPrimer`, `AutoTruncatePrimer`, `AutoNormalizingPrimer`, `EntityPrimerContainerInterceptor` |
 | `Regira.Entities.EFcore.Primers.Abstractions` | `IEntityPrimer<>`, `EntityPrimerBase<>` |
 | `Regira.Entities.DependencyInjection.Primers` | `ServiceCollectionPrimerExtensions` *(`AddPrimer<>()`, `AddDefaultPrimers()`, `AddAutoTruncatePrimer()`, `AddDefaultEntityNormalizerPrimer()` — on `IServiceCollection` and `EntityServiceCollectionOptions`)* |
 
@@ -185,6 +185,7 @@ Regira.DAL.EFcore.Services                                       → AddAutoTrun
 Regira.DAL.EFcore.Extensions                                     → AddUtcDateTimeConvention()       (standalone EF — auto-wired by UseDefaults())
 Regira.DAL.EFcore.Extensions                                     → SetDecimalPrecisionConvention()
 Regira.Entities.EFcore.Extensions                                → AddArchivedQueryFilter()        (DbContextOptionsBuilder — auto-wired by UseDefaults(); needed on a hand-built DbContext)
+Regira.Entities.EFcore.Extensions                                → AddConcurrencyTokenConvention() (DbContextOptionsBuilder — auto-wired by UseDefaults(); needed on a hand-built DbContext)
 Regira.Entities.EFcore.Extensions                                → SetArchivedQueryFilter()        (OnModelCreating — optional alternative to the wiring)
 ```
 

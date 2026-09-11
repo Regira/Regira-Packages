@@ -83,10 +83,9 @@ public static class DbContextExtensions
         foreach (var entity in relatedItemsToModify)
         {
             var originalEntity = originalItems.Single(p => p.Id!.Equals(entity.Id));
-            dbContext.Entry(originalEntity).State = EntityState.Detached;
-            dbContext.Attach(entity);
-            dbContext.Entry(entity).OriginalValues.SetValues(originalEntity);
-            dbContext.Entry(entity).State = EntityState.Modified;
+            // read the child's concurrency tokens now: RelatedCollectionPrepper runs the nested preppers
+            // ([ServerOwned] among them) only after this sync
+            dbContext.TrackAsUpdateOf(entity, originalEntity, dbContext.CaptureClientTokens(entity));
         }
     }
 

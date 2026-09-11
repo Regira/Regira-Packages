@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Regira.Entities.Attachments.Abstractions;
 using Regira.Entities.Attachments.Extensions;
+using Regira.Entities.EFcore.Extensions;
 using Regira.Entities.Preppers.Abstractions;
 using Regira.Entities.Extensions;
 using Regira.Entities.Models.Abstractions;
@@ -87,10 +88,7 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
                     }
                 }
 
-                dbContext.Entry(originalEntity).State = EntityState.Detached;
-                dbContext.Attach(entity);
-                dbContext.Entry(entity).OriginalValues.SetValues(originalEntity);
-                dbContext.Update(entity);
+                dbContext.TrackAsUpdateOf(entity, originalEntity, dbContext.CaptureClientTokens(entity));
             }
             foreach (var entity in relatedItemsToDelete)
             {

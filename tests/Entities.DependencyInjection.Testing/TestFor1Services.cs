@@ -740,10 +740,11 @@ public class TestFor1Services
         Assert.That(entityProcessors, Is.Empty);
         Assert.That(entityReadService2, Is.TypeOf<EntityReadService<ContosoContext, Course, int, SearchObject<int>>>());
         Assert.That(entityReadService3, Is.TypeOf<EntityReadService<ContosoContext, Course, int, SearchObject<int>>>());
-        Assert.That(primers.Length, Is.EqualTo(4));
+        Assert.That(primers.Length, Is.EqualTo(5));
         Assert.That(primers.OfType<HasCreatedDbPrimer>(), Is.Not.Empty);
         Assert.That(primers.OfType<HasLastModifiedDbPrimer>(), Is.Not.Empty);
         Assert.That(primers.OfType<ArchivablePrimer>(), Is.Not.Empty);
+        Assert.That(primers.OfType<HasConcurrencyTokenDbPrimer>(), Is.Not.Empty);
         Assert.That(primers.OfType<CoursePrimer>(), Is.Not.Empty);
         Assert.That(entityWriteService, Is.TypeOf<EntityWriteService<ContosoContext, Course>>());
         Assert.That(repo1, Is.TypeOf<CourseRepository1>());

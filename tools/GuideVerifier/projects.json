@@ -38,6 +38,7 @@
       ],
       "usings": [
         "System.ComponentModel.DataAnnotations",
+        "System.Threading",
         "Microsoft.EntityFrameworkCore",
         "Microsoft.Extensions.DependencyInjection",
         "Regira.Entities.Models",

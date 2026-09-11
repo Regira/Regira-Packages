@@ -240,6 +240,7 @@ The table below lists the optional steps; the required steps (1–6, 11–15) fo
 | `IEntityWithSerial` | int primary key (auto-increment). Shortcut for `IEntity<int>` |
 | `IEntity<TKey>` | Non-int primary key (e.g. `Guid`) |
 | `IHasTimestamps` | Track Created + LastModified (stored as UTC by default) |
+| `IHasConcurrencyToken` | Optimistic concurrency — a PUT/PATCH built on a stale read answers 409 instead of overwriting; carry `ConcurrencyToken` on both DTOs ([`entities.patterns.md`](./entities.patterns.md) → Optimistic concurrency) |
 | `IArchivable` | Soft-delete — ⚠️ `DELETE /{id}` then flags the row instead of erasing it; the flagged rows are hidden by the archived query filter, auto-wired by `UseDefaults()` (Step 11); full round-trip in [`entities.patterns.md`](./entities.patterns.md) → Soft Delete |
 | `IHasTitle` | Entity has a short display name |
 | `IHasDescription` | Entity has a long text field |
@@ -554,6 +555,8 @@ The **parent FK needs no stamping**. New children reach the store through the pa
 
 Run during `SaveChanges()` via EF Core interceptors; can inspect other modified entities in the same transaction. The interceptor is auto-wired by `UseDefaults()`; without it, select `e.WireDbContext(DbContextWiring.PrimerInterceptors)`.
 
+Primers — like the normalizer and auto-truncate interceptors — run on `SaveChanges()` and `SaveChangesAsync()` alike, so a synchronous save (a seeder, a job, your own `SaveChanges` override) archives, stamps and primes exactly like the async write path. On the synchronous call a primer that awaits is waited on without the caller's synchronization context: it cannot deadlock, but it holds the calling thread for its I/O — prefer `SaveChangesAsync()` when primers do I/O.
+
 > ⚠️ **A primer runs on _every_ `SaveChanges()` (it's an EF interceptor); a prepper runs only on the `IEntityService` write path.** So a primer that restores a server-owned field from `entry.OriginalValues` also fires on — and reverts — a domain/workflow service's raw-`DbContext` write. When a second writer legitimately owns a field (a status/state machine), guard it with a **prepper** — `[ServerOwned]`/`e.ServerOwned(…)` is that prepper in declarative form (§Step 5), or `EntityPrepperBase<T>` when you need the full stored row — not a primer. The choice table is in [`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update; the full second-writer treatment is under → Server-generated sequential codes (*Primer vs prepper when a second writer exists*).
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — Additional Patterns > Primers
@@ -808,8 +811,8 @@ Examples:
 
 - **Paging defaults** — `DefaultPageSize = 10`, `MaxPageSize = 100` (override either afterwards). An omitted `pageSize` uses the default; a `pageSize <= 0` opts out and falls back to the max; every request is capped by `MaxPageSize`.
 - **UTC date handling** — on by default, one policy per process (`Regira.Utilities.DateTimeDefaults.UseUtc`): timestamps are written as UTC and client-supplied dates/filter inputs are normalized. Disable with `e.UseUtc(false)` → values are used as given with `DateTime.Now` timestamps, and the UTC convention's converter goes inert automatically.
-- **Default primers** — `HasCreatedDbPrimer`, `HasLastModifiedDbPrimer`, `ArchivablePrimer` (timestamps + soft-delete stamping).
-- **Automatic DbContext wiring** (`AddDefaultInterceptors()`) — `UseEntities<TContext>()` contributes the primer/normalizer/auto-truncate interceptors, the UTC date convention and the archived query filter to the context's options itself, so `AddDbContext` only needs the provider and the `DbContext` needs no Regira call. Matches by assignability: an abstract-base registration (`UseEntities<AppContextBase>()`) also wires derived provider-specific contexts, in any registration order. Fine-grained control via `e.WireDbContext(DbContextWiring …)`: `None` opts out; without `UseDefaults()` use `e.AddDefaultInterceptors()` for the full set or pick pieces à la carte (e.g. `DbContextWiring.PrimerInterceptors`).
+- **Default primers** — `HasCreatedDbPrimer`, `HasLastModifiedDbPrimer`, `ArchivablePrimer`, `HasConcurrencyTokenDbPrimer` (timestamps, soft-delete stamping, concurrency-token minting).
+- **Automatic DbContext wiring** (`AddDefaultInterceptors()`) — `UseEntities<TContext>()` contributes the primer/normalizer/auto-truncate interceptors, the UTC date convention, the archived query filter and the concurrency-token convention to the context's options itself, so `AddDbContext` only needs the provider and the `DbContext` needs no Regira call. Matches by assignability: an abstract-base registration (`UseEntities<AppContextBase>()`) also wires derived provider-specific contexts, in any registration order. Fine-grained control via `e.WireDbContext(DbContextWiring …)`: `None` opts out; without `UseDefaults()` use `e.AddDefaultInterceptors()` for the full set or pick pieces à la carte (e.g. `DbContextWiring.PrimerInterceptors`).
 - **Default global query filters** — `FilterIdsQueryBuilder`, `FilterArchivablesQueryBuilder`, `FilterHasCreatedQueryBuilder`, `FilterHasLastModifiedQueryBuilder`. These are int-keyed; for full key-typed filtering of a non-int entity also call `AddDefaultGlobalQueryFilters<TKey>()`. The query builder runs one variant per filter family and prefers the key-matching one, so a non-int entity's key-agnostic defaults (the archived opt-ins, timestamp/`Q` filtering) still apply when only the int variant is registered.
 
 > **Hiding archived rows is part of `UseDefaults()`** (`DbContextWiring.ArchivedQueryFilter`): the `e => !e.IsArchived` EF query filter is wired into the context's options, so archived rows are hidden on every list/count *and* inside included collections without a line in the `DbContext`. The registered query builder translates the opt-ins on top of it — a caller opts in per request with `?archived=included` (both) or `?archived=only` (the recycle bin); flip the app-wide default with `DefaultArchivedFilter = ArchivedFilter.Included` on `UseEntities()`. ⚠️ The wiring reaches contexts resolved from DI only: a hand-constructed `new AppDbContext(options)` takes `.AddArchivedQueryFilter()` on its options builder. Startup validation errors out naming the entity when a model ends up without the filter. Full round-trip: [`entities.patterns.md`](./entities.patterns.md) → Soft Delete.
@@ -1150,9 +1153,18 @@ detected per provider: SQLSTATE class 23, SQLite error 19, SQL Server 547/515/26
 attachment controllers, and any hand-written action, through the same filter
 `ConfigureDefaultJsonOptions()` registers. The response detail is generic — the provider's
 constraint message can leak index names and other users' values, so it is logged server-side (warning) by
-the write service instead. Transient faults (deadlocks, timeouts, concurrency conflicts) are **not**
-wrapped and keep surfacing as 500s for alerting. When the client can fix the input, prefer an explicit
-check in a prepper + `EntityInputException` — a field-level 400 beats a generic 409.
+the write service instead. Transient faults (deadlocks, timeouts) are **not** wrapped and keep surfacing as
+500s for alerting. When the client can fix the input, prefer an explicit check in a prepper +
+`EntityInputException` — a field-level 400 beats a generic 409.
+
+### EntityConcurrencyException (returns HTTP 409)
+
+A write built on a stale read — the row no longer holds the concurrency token the client sent, or another
+writer removed it — surfaces as `EntityConcurrencyException` (EF's `DbUpdateConcurrencyException` is its
+`InnerException`). Every write surface returns **409 Conflict** through the same filter, with a `ProblemDetails`
+titled **"Concurrency conflict"**, so a client can tell "reload and try again" from the constraint 409. Tokens,
+the DTO rules and what each route checks: [`entities.patterns.md`](./entities.patterns.md) → Optimistic
+concurrency.
 
 ---
 
@@ -1182,6 +1194,7 @@ Load that file when implementing one of these:
 - **Bulk insert / update** — batch many rows through a single `SaveChanges()`; includes **multi-wave seeding** (Id/change-tracker timing).
 - **Single-field PATCH / state toggle** — flip `IsActive` (or any one field) via `PATCH /{id}`; covers toggling owned join rows.
 - **Server-owned / immutable fields on update** — `[ServerOwned]`/`e.ServerOwned(…)` so PUT/PATCH can't null or re-mint a code, total or owner FK; plus the prepper and primer forms for what a declaration cannot cover.
+- **Optimistic concurrency (stale-write detection)** — a concurrency token on both DTOs, so a PUT/PATCH built on a stale read answers 409 instead of silently overwriting; the primer that makes an application-owned token move, and what each route is checked against.
 - **Server-generated sequential codes** — mint `REQ-2026-00001` from a primer on `Added` and restore it on `Modified`; includes when that primer has to be a prepper instead, and why the counter is primed from the highest code.
 - **Cross-entity aggregates & report endpoints** — a dashboard controller belongs to no entity, so it **bypasses the pipeline**: global filter row security does not apply unless you repeat the predicate. Also **domain actions on an entity resource** (`POST /{id}/approve`) and **role-gated transitions**.
 - **Aggregates over a non-owned child collection** — a parent total rolled up from children that own their own FK. Eventually consistent, seeding needs a second pass, and a child query filter can zero it on restore.
@@ -1283,6 +1296,7 @@ own endpoint.
 | `IHasLastModified` | `LastModified (DateTime?)` | `HasLastModifiedDbPrimer`, `FilterHasLastModifiedQueryBuilder` |
 | `IHasTimestamps` | `Created, LastModified` | Both timestamp services |
 | `IArchivable` | `IsArchived (bool)` | `ArchivablePrimer`, `FilterArchivablesQueryBuilder`, archived query filter (`DbContextWiring.ArchivedQueryFilter`) |
+| `IHasConcurrencyToken` | `ConcurrencyToken (Guid)` | `HasConcurrencyTokenDbPrimer`, concurrency-token convention (`DbContextWiring.ConcurrencyTokens`) — [`entities.patterns.md`](./entities.patterns.md) → Optimistic concurrency |
 | `ISortable` | `SortOrder (int)` | `RelatedCollectionPrepper`, `EntityExtensions.SetSortOrder` |
 | `IHasStartDate` | `StartDate (DateTime?)` | *(contract only)* |
 | `IHasEndDate` | `EndDate (DateTime?)` | *(contract only)* |
@@ -1319,6 +1333,7 @@ accepts search objects matching its own key type, so non-int entities need the m
 | `HasCreatedDbPrimer` | `IHasCreated` | Sets `Created` (UTC) on insert; normalizes client-supplied values to UTC |
 | `HasLastModifiedDbPrimer` | `IHasLastModified` | Sets `LastModified` (UTC) on update |
 | `ArchivablePrimer` | `IArchivable` | Soft-delete: sets `IsArchived = true` |
+| `HasConcurrencyTokenDbPrimer` | `IHasConcurrencyToken` | Mints a new `ConcurrencyToken` on every update (a soft delete included) and on insert when empty |
 | `AutoTruncatePrimer` | All entities | Truncates strings to `[MaxLength]` |
 
 ### Normalizer Services
@@ -1384,7 +1399,9 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 | Restore 404s / a repeated `DELETE` 404s, only on an entity with a custom read service | The service implements `Details(id, ct)` only and inherits the default `Details(id, archived, ct)`, which cannot see archived rows | Override **both** `Details` overloads on the custom read service / repository |
 | `DELETE` erases the row instead of archiving it | `IArchivable` not implemented, or `ArchivablePrimer` not registered | Implement `IArchivable`; use `UseDefaults()` |
 | A `Restrict` FK lets the parent delete anyway (no 409) | SQLite enforces foreign keys only when the connection string sets `Foreign Keys=True` | Add it to the connection string ([`entities.setup.md`](./entities.setup.md) → P3) |
-| Save/delete returns **409 Conflict** on a valid-looking payload | A DB constraint rejected the change — required FK points at a nonexistent parent, duplicate unique key, or a delete under `Restrict` (§Error Handling); the response detail is generic — the constraint name is in the server log (warning) | Fix the data, or validate in a prepper and `throw new EntityInputException<TEntity>(…)` → field-level 400 (parameterize by the *serviced* entity) |
+| Save/delete returns **409 Conflict** (`ProblemDetails` title "Conflict") on a valid-looking payload | A DB constraint rejected the change — required FK points at a nonexistent parent, duplicate unique key, or a delete under `Restrict` (§Error Handling); the response detail is generic — the constraint name is in the server log (warning) | Fix the data, or validate in a prepper and `throw new EntityInputException<TEntity>(…)` → field-level 400 (parameterize by the *serviced* entity) |
+| A user's edit silently overwrites another user's change — no 409 | No concurrency token, or it never round-trips: missing from the read or input DTO (the client then sends the default, which is not checked), or an application-owned token nothing re-mints | Implement `IHasConcurrencyToken` (or declare a token of your own and mint it in a primer) and put it on both DTOs ([`entities.patterns.md`](./entities.patterns.md) → Optimistic concurrency). Startup validation warns about a DTO without the property |
+| Every PUT/PATCH answers **409 "Concurrency conflict"**, even with a single user | The entity initializes its token (`= Guid.NewGuid()`) and the input DTO has no property for it, so each mapped entity carries a token the row never held; or the client resends the token it read before its own last save | Remove the initializer and add the property to both DTOs; take the new token from the `SaveResult` after each save. Startup validation reports the initializer as an error |
 | A dashboard/report endpoint answers **500 with an empty body** on a green build; the log says *"The LINQ expression … could not be translated"* or *"Translating this query requires the SQL APPLY operation"* | An untranslatable construct in the query: a record constructor in the projection, a correlated `SelectMany` (`CROSS APPLY`), **a method of your own called on the row**, or a provider-specific `EF.Functions` member (`DateDiff*` is SQL Server only) | The full list with the translating alternative for each is in [`entities.patterns.md`](./entities.patterns.md) § Cross-entity aggregates & report endpoints |
 
 ### Troubleshooting — compiler errors

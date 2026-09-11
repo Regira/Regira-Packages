@@ -406,8 +406,8 @@ builder.Services.AddEntityServices();
 > that configures its JSON itself.
 
 > **DbContext wiring is automatic.** `UseEntities<TContext>(e => e.UseDefaults())` contributes the
-> primer/normalizer/auto-truncate interceptors, the UTC date convention and the archived query filter to the
-> context's options itself
+> primer/normalizer/auto-truncate interceptors, the UTC date convention, the archived query filter and the
+> concurrency-token convention to the context's options itself
 > (via EF's `IDbContextOptionsConfiguration<TContext>`), regardless of `AddDbContext` ↔ `UseEntities()` call
 > order — `AddDbContext<AppDbContext>(options => …)` only needs the provider. The match is by assignability,
 > so `UseEntities<AppContextBase>()` (abstract base) also wires derived provider-specific contexts
@@ -417,7 +417,8 @@ builder.Services.AddEntityServices();
 > `e.WireDbContext(DbContextWiring.PrimerInterceptors | DbContextWiring.UtcDateTimeConvention)`.
 > ⚠️ It reaches contexts EF builds from the service collection. A `DbContext` you construct yourself
 > (`new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()…Options)`) gets none of it — add what that
-> context needs to its own options builder (`.AddArchivedQueryFilter()`, `.AddUtcDateTimeConvention()`, …).
+> context needs to its own options builder (`.AddArchivedQueryFilter()`, `.AddConcurrencyTokenConvention()`,
+> `.AddUtcDateTimeConvention()`, …).
 
 > **ValidateOnBuild:** turn it on — a `.For<>()` with a wrong generic argument, or one never added at all, then throws when the host builds instead of on some later request.
 >

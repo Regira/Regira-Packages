@@ -814,6 +814,81 @@ entity (`null` on create); register with `e.AddPrepper<T>()`.
 prepper, so it never runs on that writer's save. Only the primer form above needs the warning; see *Primer vs
 prepper when a second writer exists* below.
 
+## Optimistic concurrency (stale-write detection)
+
+Two users open the same row and both save. Without a concurrency token the second save silently overwrites the
+first — last write wins, 200 OK. With one, the write built on the stale read answers **409 Conflict** and the
+first user's change survives.
+
+The write path compares every concurrency token the EF model declares with the value the **client sent** — the
+one it read — never with the row the update reloads. The token is an ordinary DTO field: `GET` returns it,
+`PUT`/`PATCH` send it back, the `SaveResult` returns the new one. A stale value matches no row, and the write
+service rethrows EF's concurrency failure as `EntityConcurrencyException` → 409.
+
+**1. Declare a token that moves on every write.** On any provider, SQLite included, the marker is the whole job:
+
+```csharp
+public class Order : IEntity<int>, IHasConcurrencyToken
+{
+    public int Id { get; set; }
+    public string? Status { get; set; }
+    public Guid ConcurrencyToken { get; set; }   // no initializer — see step 2
+}
+```
+
+`UseEntities<TContext>(o => o.UseDefaults())` declares `ConcurrencyToken` a concurrency token from the context's
+options (`DbContextWiring.ConcurrencyTokens` — no `DbContext` change) and registers `HasConcurrencyTokenDbPrimer`,
+which mints a new value on every insert and update, a soft delete and a raw-`DbContext` write included. A
+`DbContext` you construct yourself takes `.AddConcurrencyTokenConvention()` on its options builder; an explicit
+`.IsConcurrencyToken(false)` opts one entity type out. Adding the interface to an existing entity adds a column, so
+create a migration. Startup validation reports a marker whose context never got the wiring (error) and one that
+nothing mints (warning).
+
+A token you declare yourself goes through the same check:
+
+| Token | Declaration | What moves it |
+|---|---|---|
+| SQL Server `rowversion` | `[Timestamp] public byte[]? RowVersion { get; set; }` | the database, on every `UPDATE` |
+| PostgreSQL `xmin` | `[Timestamp] public uint Version { get; set; }` (Npgsql maps it to `xmin`) | the database |
+| Application-owned | `[ConcurrencyCheck] public Guid Version { get; set; }` | **a primer you register** — `HasConcurrencyTokenDbPrimer` is the one to copy |
+
+Nothing else changes an application-owned token, so without a primer two clients holding the same value both pass.
+
+**2. Carry it on both DTOs, uninitialized** — `public Guid ConcurrencyToken { get; set; }` on `OrderDto` and
+`OrderInputDto`. Startup validation reports the shapes that break the check:
+
+- A DTO **without** the property: the client never receives the token or can never send it back, so every write
+  is last-write-wins again (warning).
+- An **initializer** on the entity's token (`= Guid.NewGuid()`) with no input-DTO property to overwrite it: the
+  mapper builds a fresh entity per request, so every `PUT`/`PATCH` carries a token the row never held and
+  answers 409 (error). An initializer on the input DTO — or on the entity's token when the entity is its own input
+  DTO — does the same to a client that omits the token (warning).
+
+**3. Handle the 409 on the client.** The body is a `ProblemDetails` titled **"Concurrency conflict"** — the
+constraint 409 is titled "Conflict" — so the client can tell "reload and try again" from "fix the input". Reload
+the row, which brings its current token, and let the user re-apply the edit.
+
+What each write is checked against:
+
+| Write | Checked against |
+|---|---|
+| `PUT` carrying the token | the client's token — a stale one answers 409 |
+| `PUT` without it (`null`, empty, `Guid.Empty`, `0`) | nothing the client read: it writes, only a write racing it is caught, and the empty value never overwrites the token (the marker's primer still mints a new one) |
+| `PATCH` | the token in the body when it carries one; otherwise the merge base supplies the value read at `PATCH` time |
+| `DELETE`, and child rows a save drops | no client token reaches them — only a write racing them is caught |
+| Owned children (`Related()`) | each child's own token, when it declares one; one stale child fails the whole save |
+
+- A token whose default is a legitimate value — an `int` version starting at `0` — cannot be told apart from an
+  absent one. Start it at `1`, or use a `Guid`.
+- EF raises the same failure for any `UPDATE`/`DELETE` that matched no row, token or not: a row another writer
+  removed also answers 409.
+- Direct `IEntityService` callers (jobs, imports) catch `EntityConcurrencyException`; EF's
+  `DbUpdateConcurrencyException` is its `InnerException`, with the conflicting rows in `Entries`. A failed save
+  keeps the change tracker, so reload and retry in a fresh scope.
+- The token must not be restored from the stored row. `[ServerOwned]` on it is harmless — the client's value is
+  read before any prepper runs — but a parent prepper copying stored values onto incoming *children* before the
+  collection sync overwrites their tokens as well.
+
 ## Aggregates over a non-owned child collection
 
 The case above assumes the children ride the parent's DTO. When they don't — the **optional parent FK** row
@@ -1100,6 +1175,7 @@ full set with `e.AddDefaultInterceptors()` or select pieces à la carte with `e.
 | `AutoTruncateInterceptors` | Silently truncates `string` values to their `[MaxLength]` before `SaveChanges` to prevent DB exceptions |
 | `UtcDateTimeConvention` | Rounds all `DateTime` properties through the database as UTC |
 | `ArchivedQueryFilter` | Applies the soft-delete filter (`e => !e.IsArchived`) to every `IArchivable` entity type — see §Soft Delete |
+| `ConcurrencyTokens` | Declares `IHasConcurrencyToken.ConcurrencyToken` a concurrency token on every implementing entity type — see §Optimistic concurrency |
 
 > **À-la-carte pattern (no `UseDefaults()`):**
 > ```csharp
@@ -1112,6 +1188,6 @@ full set with `e.AddDefaultInterceptors()` or select pieces à la carte with `e.
 > ```
 >
 > `AddAutoTruncateInterceptors()` and `AddUtcDateTimeConvention()` also exist as plain
-> `DbContextOptionsBuilder` extensions (`Regira.DAL.EFcore`) for EF usage without the entities stack, as does
-> `AddArchivedQueryFilter()` (`Regira.Entities.EFcore.Extensions`) — the one to reach for on a `DbContext`
-> you construct yourself, which no service-collection wiring can reach.
+> `DbContextOptionsBuilder` extensions (`Regira.DAL.EFcore`) for EF usage without the entities stack, as do
+> `AddArchivedQueryFilter()` and `AddConcurrencyTokenConvention()` (`Regira.Entities.EFcore.Extensions`) — the
+> ones to reach for on a `DbContext` you construct yourself, which no service-collection wiring can reach.
