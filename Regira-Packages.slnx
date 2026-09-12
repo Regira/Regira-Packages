@@ -25,6 +25,7 @@
     <Project Path="src/DAL.MySQL.MySqlBackup/DAL.MySQL.MySqlBackup.csproj" />
     <Project Path="src/DAL.MySQL/DAL.MySQL.csproj" />
     <Project Path="src/DAL.PostgreSQL/DAL.PostgreSQL.csproj" />
+    <Project Path="src/DAL.SqlServer/DAL.SqlServer.csproj" />
   </Folder>
   <Folder Name="/src/Entities/">
     <Project Path="src/Common.Entities/Common.Entities.csproj" />
@@ -140,6 +141,8 @@
     <Project Path="tests/Common.Testing/Common.Testing.csproj" />
     <Project Path="tests/DAL.EFcore.Testing/DAL.EFcore.Testing.csproj" />
     <Project Path="tests/DAL.MongoDB.Testing/DAL.MongoDB.Testing.csproj" />
+    <Project Path="tests/DAL.PostgreSQL.Testing/DAL.PostgreSQL.Testing.csproj" />
+    <Project Path="tests/DAL.SqlServer.Testing/DAL.SqlServer.Testing.csproj" />
     <Project Path="tests/Drawing.Testing/Drawing.Testing.csproj" />
     <Project Path="tests/Entities.DependencyInjection.Testing/Entities.DependencyInjection.Testing.csproj" />
     <Project Path="tests/Entities.Mapping.Mapster.Testing/Entities.Mapping.Mapster.Testing.csproj" />
@@ -163,6 +166,7 @@
     <Project Path="tests/Payments.Testing/Payments.Testing.csproj" />
     <Project Path="tests/Security.Testing/Security.Testing.csproj" />
     <Project Path="tests/Serializing.Testing/Serializing.Testing.csproj" />
+    <Project Path="tests/System.Testing/System.Testing.csproj" />
     <Project Path="tests/Testing.Library/_Testing.Library.csproj" />
     <Project Path="tests/TreeList.Testing/TreeList.Testing.csproj" />
     <Project Path="tests/Web.Analytics.GeoIP2.Testing/Web.Analytics.GeoIP2.Testing.csproj" />

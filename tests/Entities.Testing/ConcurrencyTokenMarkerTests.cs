@@ -1,7 +1,10 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Regira.Entities.EFcore.Primers.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
 using Regira.Entities.DependencyInjection.Extensions;
+using Regira.Entities.DependencyInjection.Primers;
 using Regira.Entities.DependencyInjection.ServiceCollections.Models;
 using Regira.Entities.EFcore.Extensions;
 using Regira.Entities.Models;
@@ -35,10 +38,29 @@ public class ConcurrencyTokenMarkerTests
         public Guid ConcurrencyToken { get; set; }
     }
 
+    /// Hard-deleted: no IArchivable, so removing one reaches the database as a DELETE.
+    public class Receipt : IEntity<int>, IHasConcurrencyToken
+    {
+        public int Id { get; set; }
+        public string? Number { get; set; }
+        public Guid ConcurrencyToken { get; set; }
+    }
+
+    /// Awaits before throwing, so the failure travels back through the synchronous SaveChanges bridge.
+    public class ThrowingPrimer : EntityPrimerBase<Order>
+    {
+        public override async Task PrepareAsync(Order entity, EntityEntry entry, CancellationToken token = default)
+        {
+            await Task.Yield();
+            throw new InvalidOperationException("primer failed");
+        }
+    }
+
     public class ShopContext(DbContextOptions<ShopContext> options) : DbContext(options)
     {
         public DbSet<Order> Orders => Set<Order>();
         public DbSet<Draft> Drafts => Set<Draft>();
+        public DbSet<Receipt> Receipts => Set<Receipt>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -65,7 +87,8 @@ public class ConcurrencyTokenMarkerTests
         services.AddDbContext<ShopContext>(db => db.UseSqlite(_connection));
         services.UseEntities<ShopContext>(configure)
             .For<Order>()
-            .For<Draft>();
+            .For<Draft>()
+            .For<Receipt>();
         return services.BuildServiceProvider();
     }
 
@@ -226,5 +249,112 @@ public class ConcurrencyTokenMarkerTests
 
         Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(sp, new Order { Id = order.Id, Status = "Cancelled", ConcurrencyToken = read }));
         Assert.That((await Stored(order.Id)).Status, Is.EqualTo("Picked"));
+    }
+
+    // ── hard deletes and stubs ─────────────────────────────────────────────────
+
+    [Test]
+    public async Task A_Stub_Delete_Goes_Through_Without_A_Token()
+    {
+        using var sp = await Defaults();
+        var id = await NewReceipt(sp);
+
+        using var scope = sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        // the shape every hard delete by id takes: an entity carrying its key and nothing else
+        db.Remove(new Receipt { Id = id });
+        await db.SaveChangesAsync();
+
+        await using var raw = Raw();
+        Assert.That(await raw.Receipts.FindAsync(id), Is.Null);
+    }
+
+    [Test]
+    public async Task A_Stub_Delete_Still_Fails_On_A_Token_The_Caller_Got_Wrong()
+    {
+        using var sp = await Defaults();
+        var id = await NewReceipt(sp);
+
+        using var scope = sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        // a caller that does hold a token is making a claim, and a stale one is still a conflict
+        db.Remove(new Receipt { Id = id, ConcurrencyToken = Guid.NewGuid() });
+
+        Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => db.SaveChangesAsync());
+    }
+
+    [Test]
+    public async Task A_Stub_Delete_Goes_Through_On_The_Synchronous_Save_Path()
+    {
+        using var sp = await Defaults();
+        var id = await NewReceipt(sp);
+
+        using var scope = sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        db.Remove(new Receipt { Id = id });
+        // SaveChanges, not SaveChangesAsync: reading the stored token is the first primer work in the codebase to
+        // await real I/O while the caller holds the thread, which is what the blocking bridge has to survive
+        db.SaveChanges();
+
+        await using var raw = Raw();
+        Assert.That(await raw.Receipts.FindAsync(id), Is.Null);
+    }
+
+    [Test]
+    public async Task A_Stub_Delete_Survives_A_Synchronous_Save_On_A_Single_Lane_Scheduler()
+    {
+        using var sp = await Defaults();
+        var id = await NewReceipt(sp);
+
+        using var scope = sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        db.Remove(new Receipt { Id = id });
+
+        // an exclusive scheduler has one lane, and it is the one blocked here: the awaited query inside the primer
+        // deadlocks unless the bridge starts the work on the default scheduler
+        var scheduler = new ConcurrentExclusiveSchedulerPair().ExclusiveScheduler;
+        var save = Task.Factory.StartNew(() => db.SaveChanges(), CancellationToken.None, TaskCreationOptions.None, scheduler);
+
+        // Wait with a timeout, so a deadlock fails the test instead of hanging the run
+        Assert.That(save.Wait(TimeSpan.FromSeconds(30)), Is.True, "the synchronous save deadlocked");
+
+        await using var raw = Raw();
+        Assert.That(await raw.Receipts.FindAsync(id), Is.Null);
+    }
+
+    // ── the synchronous save path ──────────────────────────────────────────────
+
+    [Test]
+    public async Task A_Primer_That_Throws_After_Awaiting_Reaches_The_Caller_Unwrapped()
+    {
+        var sp = Services(o =>
+        {
+            o.UseDefaults();
+            o.Services.AddPrimer<ThrowingPrimer>();
+        });
+        using (sp)
+        {
+            using var seed = sp.CreateScope();
+            await seed.ServiceProvider.GetRequiredService<ShopContext>().Database.EnsureCreatedAsync();
+
+            using var scope = sp.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+            db.Orders.Add(new Order { Status = "new" });
+
+            // SaveChanges, not SaveChangesAsync: the blocking bridge must rethrow the original, not an AggregateException
+            var ex = Assert.Throws<InvalidOperationException>(() => db.SaveChanges());
+
+            Assert.That(ex!.Message, Is.EqualTo("primer failed"));
+        }
+    }
+
+    private static async Task<int> NewReceipt(IServiceProvider sp)
+    {
+        using var scope = sp.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Receipt, int>>();
+        var receipt = new Receipt { Number = "R-1" };
+        await service.Save(receipt);
+        await service.SaveChanges();
+        return receipt.Id;
     }
 }

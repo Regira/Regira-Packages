@@ -27,12 +27,13 @@ public class SnapshotService(IImageService imageService, IProcessHelper? process
         var tempPath = $"{Path.GetTempFileName()}.bmp";
         var ss = time?.ToString().Substring(0, 12);
         var cmd = $@"ffmpeg -i ""{inputPath}"" -ss {ss} -update 1 -frames:v 1 ""{tempPath}""";
-        var result = _processHelper.ExecuteCommand(cmd);
+        // capture what ffmpeg has to say: it reports every failure on stderr, and without it there is only an exit code
+        var result = _processHelper.ExecuteCommand(cmd, waitForOutput: true);
 
         //var success = await FFMegService.SnapshotAsync(inputPath, tempFile, new Size((int)size.Value.Width, (int)size.Value.Height), time);
         if (result.ExitCode != 0)
         {
-            throw new Exception("Internal error while creating snapshot");
+            throw new Exception($"Internal error while creating snapshot (ExitCode {result.ExitCode}): {result.Error}");
         }
 
         using var tempFile = new BinaryFileItem(tempPath);

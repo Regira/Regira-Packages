@@ -1,4 +1,4 @@
-using Microsoft.Data.Sqlite;
+﻿using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -11,6 +11,7 @@ using Regira.Entities.EFcore.Primers;
 using Regira.Entities.EFcore.Primers.Abstractions;
 using Regira.Entities.Models.Abstractions;
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Entities.Testing;
 
@@ -44,6 +45,13 @@ public class ConcurrencyTokenValidatorTests
     {
         public int Id { get; set; }
         public Guid ConcurrencyToken { get; set; }
+    }
+
+    /// The marker with its token kept out of the model: a convention cannot declare a property that is not mapped.
+    public class Ticket : IEntity<int>, IHasConcurrencyToken
+    {
+        public int Id { get; set; }
+        [NotMapped] public Guid ConcurrencyToken { get; set; }
     }
 
     /// No token at all — the negative control.
@@ -89,6 +97,7 @@ public class ConcurrencyTokenValidatorTests
         public DbSet<Invoice> Invoices => Set<Invoice>();
         public DbSet<Basket> Baskets => Set<Basket>();
         public DbSet<Note> Notes => Set<Note>();
+        public DbSet<Ticket> Tickets => Set<Ticket>();
     }
 
     private sealed class CaptureLoggerProvider : ILoggerProvider
@@ -246,6 +255,17 @@ public class ConcurrencyTokenValidatorTests
             Assert.That(issues[0].Level, Is.EqualTo(LogLevel.Error));
             Assert.That(issues[0].Message, Does.Contain(nameof(Basket)).And.Contain("DbContextWiring.ConcurrencyTokens"));
         });
+    }
+
+    [Test]
+    public async Task A_Marker_Whose_Token_The_Model_Never_Got_Is_An_Error()
+    {
+        // the wiring ran, so the context is convention-wired — but [NotMapped] keeps the property out of the model,
+        // and a token nothing compares is the silent last-write-wins this check exists to catch
+        var issues = await Issues<Ticket>(null, o => o.UseDefaults());
+
+        Assert.That(issues, Has.Exactly(1).Matches<(LogLevel Level, string Message)>(i =>
+            i.Level == LogLevel.Error && i.Message.Contains(nameof(Ticket)) && i.Message.Contains("[NotMapped]")));
     }
 
     [Test]

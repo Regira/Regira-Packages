@@ -19,40 +19,93 @@ public class MongoSettings(
     {
     }
 
+    /// <summary>
+    /// Database holding the user's credentials (<c>authSource</c>), when that is not <see cref="DbSettingsBase.DatabaseName"/>.
+    /// Credentials are commonly created in <c>admin</c> while the application reads another database.
+    /// </summary>
+    /// <remarks>
+    /// Left empty, MongoDB resolves the source itself: <see cref="DbSettingsBase.DatabaseName"/>, or <c>admin</c> when no database is named.
+    /// </remarks>
+    public string? AuthenticationDatabase { get; set; }
+
+    /// <summary>
+    /// The connection uses the <c>mongodb+srv://</c> scheme (Atlas and other DNS-seeded deployments), where DNS
+    /// supplies the hosts and the port rather than the URI.
+    /// </summary>
+    /// <remarks>
+    /// Read from the connection string and written back out again, so a URI survives
+    /// <see cref="FromConnectionString"/> followed by <see cref="DbSettingsBase.BuildConnectionString"/> — which is
+    /// what <see cref="Clone{T}"/> and the backup services do. Emitting <c>mongodb://</c> for an SRV deployment names
+    /// one host that need not exist, and no port that DNS would have supplied.
+    /// </remarks>
+    public bool UseSrv { get; set; }
+
 
     public static MongoSettings FromConnectionString(string connectionString)
     {
         var mongoUrl = MongoUrl.Create(connectionString);
-        var host = mongoUrl.Url.Split(':').First();
-        var port = mongoUrl.Url.Split(':').LastOrDefault() ?? MongoDefaults.Port;
+        var servers = mongoUrl.Servers?.ToList() ?? [];
+        var server = servers.FirstOrDefault();
+        var useSrv = connectionString.StartsWith("mongodb+srv://", StringComparison.OrdinalIgnoreCase);
+
+        // an SRV URI names a single DNS seed and no port; a replica set names every member, each with its own port
+        var host = useSrv || servers.Count <= 1
+            ? server?.Host
+            : string.Join(",", servers.Select(x => $"{x.Host}:{x.Port}"));
 
         return new MongoSettings(host, mongoUrl.DatabaseName)
         {
-            Host = host,
-            DatabaseName = mongoUrl.DatabaseName,
+            Port = server != null ? server.Port.ToString() : MongoDefaults.Port,
             Username = mongoUrl.Username,
             Password = mongoUrl.Password,
-            Port = port,
-            UseSecure = mongoUrl.UseTls
+            AuthenticationDatabase = mongoUrl.AuthenticationSource,
+            UseSecure = mongoUrl.UseTls,
+            UseSrv = useSrv
         };
     }
     public override string BuildConnectionString(params KeyValuePair<string, string>[] extraOptions)
+        => BuildConnectionString(true, extraOptions);
+    /// <summary>
+    /// Builds the connection URI, with or without the password.
+    /// </summary>
+    /// <param name="includePassword">
+    /// <c>false</c> leaves the password out and keeps the rest of the URI intact, for a consumer that passes the password
+    /// through a channel of its own — a command line and a log are both readable by other processes.
+    /// </param>
+    /// <param name="extraOptions">Appended to the URI's query string as-is</param>
+    public string BuildConnectionString(bool includePassword, params KeyValuePair<string, string>[] extraOptions)
     {
-        //mongodb[+srv]://[username:password@]host[:port][/[database]]
-        var connectionString = "mongodb";
-        if (UseSecure)
-        {
-            connectionString += "+serv";
-        }
-        connectionString += "://";
+        // mongodb://[username[:password]@]host[:port]/[database][?options]
+        var connectionString = UseSrv ? "mongodb+srv://" : "mongodb://";
         if (!string.IsNullOrEmpty(Username))
         {
-            connectionString += $"{Username}:{Password}@";
+            connectionString += Uri.EscapeDataString(Username!);
+            if (includePassword && !string.IsNullOrEmpty(Password))
+            {
+                connectionString += $":{Uri.EscapeDataString(Password!)}";
+            }
+            connectionString += "@";
         }
-        connectionString += $"{Host}:{Port}";
-        if (DatabaseName != null)
+        // an SRV seed carries no port (DNS supplies it), and a replica-set host list carries a port per member
+        connectionString += UseSrv || Host.Contains(',') ? $"{Host}/" : $"{Host}:{Port}/";
+        if (!string.IsNullOrEmpty(DatabaseName))
         {
-            connectionString += $"/{DatabaseName};";
+            connectionString += Uri.EscapeDataString(DatabaseName!);
+        }
+
+        var options = new List<KeyValuePair<string, string>>();
+        if (!string.IsNullOrEmpty(AuthenticationDatabase))
+        {
+            options.Add(new KeyValuePair<string, string>("authSource", AuthenticationDatabase!));
+        }
+        if (UseSecure)
+        {
+            options.Add(new KeyValuePair<string, string>("tls", "true"));
+        }
+        options.AddRange(extraOptions);
+        if (options.Any())
+        {
+            connectionString += $"?{string.Join("&", options.Select(x => $"{x.Key}={x.Value}"))}";
         }
 
         return connectionString;

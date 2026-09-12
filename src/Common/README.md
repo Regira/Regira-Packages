@@ -392,6 +392,7 @@ See the individual DAL project docs for implementations:
 - [MongoDB](https://regira.github.io/Regira-Packages/src/DAL.MongoDB)
 - [MySQL](https://regira.github.io/Regira-Packages/src/DAL.MySQL)
 - [PostgreSQL](https://regira.github.io/Regira-Packages/src/DAL.PostgreSQL)
+- [SQL Server](https://regira.github.io/Regira-Packages/src/DAL.SqlServer)
 
 ---
 

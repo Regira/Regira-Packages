@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.DependencyInjection;
@@ -125,19 +125,35 @@ internal sealed class ConcurrencyTokenValidator : IEntityRegistrationValidator
 
         foreach (var marker in markers)
         {
-            var owner = contexts.FirstOrDefault(c => c.Model.FindEntityType(marker) != null);
-            var property = owner?.Model.FindEntityType(marker)!.FindProperty(nameof(IHasConcurrencyToken.ConcurrencyToken));
-            if (owner == null || property?.IsConcurrencyToken == true || owner.ConventionWired)
+            // every context that maps the marker, not whichever one comes first: the same entity can be a token in one
+            // context and last-write-wins in another, and the silent one is what this check exists to find
+            foreach (var owner in contexts.Where(c => c.Model.FindEntityType(marker) != null))
             {
-                continue;
-            }
+                var property = owner.Model.FindEntityType(marker)!.FindProperty(nameof(IHasConcurrencyToken.ConcurrencyToken));
+                if (property?.IsConcurrencyToken == true)
+                {
+                    continue;
+                }
 
-            var contextName = owner.ContextType.Name;
-            yield return new EntityValidationIssue(EntityValidationSeverity.Error,
-                $"{marker.Name} implements IHasConcurrencyToken, but {contextName}'s model does not treat ConcurrencyToken as a concurrency token: " +
-                "the wiring that declares it never reached this context (a non-generic UseEntities(), or WireDbContext(...) without DbContextWiring.ConcurrencyTokens). " +
-                "Nothing is compared, so every write is last-write-wins — 200 OK, no conflict, no log. " +
-                $"ACTION: register the context with UseEntities<{contextName}>(o => o.UseDefaults()), or add DbContextWiring.ConcurrencyTokens to WireDbContext(...). {SeeAlso}");
+                // a mapped property the wiring left alone is an explicit .IsConcurrencyToken(false): a deliberate opt-out.
+                // A property the model does not have at all is not a choice about concurrency — the convention had
+                // nothing to attach to, and saying nothing there is how the marker goes quiet.
+                if (property != null && owner.ConventionWired)
+                {
+                    continue;
+                }
+
+                var contextName = owner.ContextType.Name;
+                var cause = property == null
+                    ? $"{contextName}'s model has no ConcurrencyToken property to declare — [NotMapped], an Ignore(...) call, or an explicit interface implementation keeps it out of the model, and a convention cannot reach what is not mapped. " +
+                      "ACTION: map the property (drop [NotMapped]/Ignore(...), or implement the member implicitly rather than explicitly)"
+                    : "the wiring that declares it never reached this context (a non-generic UseEntities(), or WireDbContext(...) without DbContextWiring.ConcurrencyTokens). " +
+                      $"ACTION: register the context with UseEntities<{contextName}>(o => o.UseDefaults()), or add DbContextWiring.ConcurrencyTokens to WireDbContext(...)";
+
+                yield return new EntityValidationIssue(EntityValidationSeverity.Error,
+                    $"{marker.Name} implements IHasConcurrencyToken, but {contextName}'s model does not treat ConcurrencyToken as a concurrency token: {cause}. " +
+                    $"Nothing is compared, so every write is last-write-wins — 200 OK, no conflict, no log. {SeeAlso}");
+            }
         }
 
         foreach (var mapping in mapped)

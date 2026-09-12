@@ -25,13 +25,18 @@ Regira DAL.MongoDB provides lightweight MongoDB connectivity using the MongoDB D
 | `Port` | `string` | Port (default `27017`) |
 | `Username` | `string?` | Auth username |
 | `Password` | `string?` | Auth password |
+| `AuthenticationDatabase` | `string?` | `authSource` — the database holding the credentials, when that is not `DatabaseName`. Left empty, MongoDB resolves it itself: `DatabaseName`, or `admin` when no database is named |
 | `UseSecure` (UseTls) | `bool` | TLS/SSL |
 
 ```csharp
 var settings = new MongoSettings("localhost", "mydb");
 // or parse from connection string:
-settings = MongoSettings.FromConnectionString("mongodb://user:pass@host:27017/mydb");
+settings = MongoSettings.FromConnectionString("mongodb://user:pass@host:27017/mydb?authSource=admin");
 ```
+
+A `Username` makes every connection an authenticated one — the communicator's and `mongodump`/`mongorestore`'s alike.
+
+`BuildConnectionString()` composes the URI back, percent-encoding the credentials; `BuildConnectionString(includePassword: false)` composes the same URI without the password, for a caller that passes the password through a channel of its own.
 
 ## MongoCommunicator
 
@@ -86,10 +91,13 @@ Task<long>                 Delete(TEntity item)   // deleted count
 
 ## MongoBackupService / MongoRestoreService
 
-Requires `mongodump` / `mongorestore` executables in `MongoOptions.ToolsDirectory`. Both services also take an `IProcessHelper` (e.g. `ProcessHelper` from `Regira.System`) to run those executables.
+Requires the `mongodump` / `mongorestore` executables of the [MongoDB Database Tools](https://www.mongodb.com/docs/database-tools/) 100.3.0 or later in `MongoOptions.ToolsDirectory`. Both services also take an `IProcessHelper` (e.g. `ProcessHelper` from `Regira.System`) to run those executables, and an optional `ILogger` that records the command without its password.
 
 ```csharp
-var settings = new MongoSettings("localhost", "mydb");
+var settings = new MongoSettings("mongo.example.com", "mydb", username: "app", password: "s3cret")
+{
+    AuthenticationDatabase = "admin"
+};
 var options = new MongoOptions
 {
     DbSettings     = settings,
@@ -100,6 +108,14 @@ IProcessHelper processHelper = new ProcessHelper();
 IMemoryFile backup = await new MongoBackupService(options, processHelper).Backup();
 await new MongoRestoreService(options, processHelper).Restore(backup);
 ```
+
+### Authentication
+
+The username reaches the tool in the connection URI, alongside `authSource` for `AuthenticationDatabase` and `tls=true` for `UseSecure`. The password travels separately: it is written to a temporary YAML file that the tool reads through `--config`, and deleted again once the tool has run. The tools take a password on the command line as well, but a command line is readable by every other process on the machine for as long as the dump runs — and they accept it nowhere else, reading no environment variable and answering their interactive prompt from the console rather than from stdin.
+
+A `Password` without a `Username` is refused with an `ArgumentException`: there is nothing to authenticate as.
+
+Both services start the executable directly, without a shell in between, so an `IProcessHelper` of your own sees `ExecuteFile` rather than `ExecuteCommand`.
 
 ## Backup/Restore contracts
 

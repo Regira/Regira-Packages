@@ -213,6 +213,7 @@ When the consumer project already contains Regira packages, inspect the project'
 | `Regira.DAL.MongoDB` | `DAL.MongoDB` | No dedicated family guide | MongoDB connectivity and backup or restore workflows | `Regira.DAL.MongoDB` |
 | `Regira.DAL.MySQL*` | `DAL.MySQL` | No dedicated family guide | MySQL or MariaDB connectivity and backup workflows | `Regira.DAL.MySQL`, `Regira.DAL.MySQL.MySqlBackup` |
 | `Regira.DAL.PostgreSQL` | `DAL.PostgreSQL` | No dedicated family guide | PostgreSQL connectivity | `Regira.DAL.PostgreSQL` |
+| `Regira.DAL.SqlServer` | `DAL.SqlServer` | No dedicated family guide | SQL Server backup and restore (native `.bak`) | `Regira.DAL.SqlServer` |
 | `Regira.Globalization.LibPhoneNumber` | `Globalization` | No dedicated family guide | Phone number parsing and formatting | `Regira.Globalization.LibPhoneNumber` |
 | `Regira.Licensing` | `Licensing` | No dedicated family guide | License key registration and offline validation — `UseRegira(configuration)` or `UseRegira(licenseKey)` before any module setup calls (see the pre-flight checklist) | `Regira.Licensing` |
 | `Regira.Setup` | `Setup` | Shared setup guides | Shared project-template and setup-guide extraction for local AI guidance | `Regira.Setup` |

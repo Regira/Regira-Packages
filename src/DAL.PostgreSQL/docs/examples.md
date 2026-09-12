@@ -7,8 +7,7 @@ var options = new PgOptions
 {
     DbSettings     = new PgSettings("pg.example.com", "prod-db", "postgres", "pass"),
     ToolsDirectory = "/usr/lib/postgresql/16/bin",
-    BackupSchemas  = ["public"],
-    Overwrite      = true
+    BackupSchemas  = ["public"]
 };
 
 var processHelper = new ProcessHelper();  // or inject IProcessHelper
@@ -18,18 +17,57 @@ IMemoryFile backup = await new PgBackupService(options, processHelper).Backup();
 
 ---
 
-## Example 2: Create database then restore
+## Example 2: Copy one database onto another
+
+`Overwrite` drops the target database and recreates it from the backup — anything the backup does not
+contain is lost. Without it, restoring onto a database that already exists fails.
 
 ```csharp
-await using var conn = new NpgsqlConnection(adminConnectionString);
-await conn.OpenAsync();
+var processHelper = new ProcessHelper();
 
-var restorer = new PgRestoreService(options, processHelper);
+var source = new PgOptions
+{
+    DbSettings     = new PgSettings("pg.example.com", "prod-db", "postgres", "pass"),
+    ToolsDirectory = "/usr/lib/postgresql/16/bin"
+};
+var target = new PgOptions
+{
+    DbSettings     = new PgSettings("pg.example.com", "staging-db", "postgres", "pass"),
+    ToolsDirectory = "/usr/lib/postgresql/16/bin",
+    Overwrite      = true
+};
 
-if (!await restorer.Exists(conn, "staging-db"))
-    await restorer.Create(conn, "staging-db");
+IMemoryFile backup = await new PgBackupService(source, processHelper).Backup();
+await new PgRestoreService(target, processHelper).Restore(backup);
+```
 
-await restorer.Restore(backup);
+---
+
+## Example 3: Managing the target database yourself
+
+`Restore` creates the target database itself, from a connection to the maintenance database — `postgres`
+unless `MaintenanceDatabase` says otherwise, since `CREATE DATABASE` cannot run from a connection to the
+database it creates. The same three operations are available separately, against any connection to a
+*different* database on the same server:
+
+```csharp
+var options = new PgOptions
+{
+    DbSettings     = new PgSettings("pg.example.com", "staging-db", "postgres", "pass"),
+    ToolsDirectory = "/usr/lib/postgresql/16/bin"
+};
+var restorer = new PgRestoreService(options, new ProcessHelper());
+
+await using var maintenance = new NpgsqlConnection("Server=pg.example.com;Database=postgres;User ID=postgres;Password=pass;");
+await maintenance.OpenAsync();
+
+if (await restorer.Exists(maintenance, "staging-db"))
+{
+    // PostgreSQL refuses this while other sessions are connected to staging-db
+    await restorer.Drop(maintenance, "staging-db");
+}
+
+await restorer.Create(maintenance, "staging-db");
 ```
 
 ---
@@ -37,4 +75,4 @@ await restorer.Restore(backup);
 ## Overview
 
 1. [Index](../README.md) — Settings, backup/restore, and BackupRestoreManager
-1. **[Examples](examples.md)** — Schema-specific backup, create and restore
+1. **[Examples](examples.md)** — Schema-specific backup, copying a database, managing it yourself

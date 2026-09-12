@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore;
+﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Regira.Entities.EFcore.Primers.Abstractions;
 using Regira.Entities.Models.Abstractions;
@@ -17,13 +17,45 @@ namespace Regira.Entities.EFcore.Primers;
 /// </summary>
 public class HasConcurrencyTokenDbPrimer : EntityPrimerBase<IHasConcurrencyToken>
 {
-    public override Task PrepareAsync(IHasConcurrencyToken entity, EntityEntry entry, CancellationToken token = default)
+    public override async Task PrepareAsync(IHasConcurrencyToken entity, EntityEntry entry, CancellationToken token = default)
     {
         if (entry.State == EntityState.Modified || (entry.State == EntityState.Added && entity.ConcurrencyToken == Guid.Empty))
         {
             entity.ConcurrencyToken = Guid.NewGuid();
+            return;
         }
 
-        return Task.CompletedTask;
+        if (entry.State == EntityState.Deleted && entity.ConcurrencyToken == Guid.Empty)
+        {
+            await DeleteUnconditionally(entry, token);
+        }
+    }
+
+    /// <summary>
+    /// Points a stub delete at the stored token, so it deletes the row instead of failing as a conflict.
+    /// </summary>
+    /// <remarks>
+    /// A hard delete is commonly issued from a stub — <c>Remove(new Order { Id = id })</c>, and the framework's own
+    /// related-collection handling does the same — which carries no token. EF builds
+    /// <c>DELETE ... WHERE ConcurrencyToken = @original</c> from that stub, so the row is compared against
+    /// <see cref="Guid.Empty"/>, matches nothing, and the delete fails as a concurrency conflict every time it is
+    /// retried: opting an entity into the marker would otherwise make such deletes impossible. An empty token is the
+    /// absence of a claim rather than a claim of emptiness, so the delete goes ahead unconditionally, as it did before
+    /// the entity carried the marker. A caller that *does* hold a token keeps its check: a non-empty value is compared.
+    /// </remarks>
+    private static async Task DeleteUnconditionally(EntityEntry entry, CancellationToken token)
+    {
+        var property = entry.Property(nameof(IHasConcurrencyToken.ConcurrencyToken));
+        if (!Equals(property.OriginalValue, Guid.Empty))
+        {
+            return;
+        }
+
+        // a row that is already gone stays a conflict: there is nothing to delete, and saying so is the honest answer
+        var stored = await entry.GetDatabaseValuesAsync(token);
+        if (stored != null)
+        {
+            property.OriginalValue = stored[property.Metadata];
+        }
     }
 }

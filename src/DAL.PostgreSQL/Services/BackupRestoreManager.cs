@@ -12,12 +12,13 @@ namespace Regira.DAL.PostgreSQL.Services;
 public class BackupRestoreManager
 {
 
-    private const string BackupProcessFile = "pg_dump.exe";
-    private const string RestoreProcessFile = "pg_restore.exe";
+    private static readonly string BackupProcessFile = OperatingSystem.IsWindows() ? "pg_dump.exe" : "pg_dump";
+    private static readonly string RestoreProcessFile = OperatingSystem.IsWindows() ? "pg_restore.exe" : "pg_restore";
     private readonly IProcessHelper _processHelper;
     private readonly ILogger<BackupRestoreManager>? _logger;
     private readonly string _backupProcessPath;
     private readonly string _restoreProcessPath;
+    private readonly string _maintenanceDatabase;
 
     /// <summary>
     /// Manager for backing up and restoring a PostgreSQL Database
@@ -29,6 +30,7 @@ public class BackupRestoreManager
     {
         _processHelper = processHelper;
         _logger = logger;
+        _maintenanceDatabase = options.MaintenanceDatabase ?? PgDefaults.MaintenanceDatabase;
 
         if (string.IsNullOrEmpty(options.ToolsDirectory))
         {
@@ -74,17 +76,16 @@ public class BackupRestoreManager
         // ReSharper disable once AssignNullToNotNullAttribute
         Directory.CreateDirectory(backupDir);
 
-        // log without password
         _logger?.LogDebug($"Creating backup...{Environment.NewLine}{cmd}");
 
+        // the password travels in the process environment, so it never reaches the generated script
+        var environment = new Dictionary<string, string>();
         if (!string.IsNullOrEmpty(settings.Password))
         {
-            cmd = $@"set PGPASSWORD={settings.Password}
-{cmd}
-set PGPASSWORD=";
+            environment["PGPASSWORD"] = settings.Password;
         }
-        // execute backup process
-        var output = _processHelper.ExecuteCommand(cmd);
+        // execute backup process, capturing what pg_dump has to say: without it a failure reports an exit code and nothing else
+        var output = _processHelper.ExecuteCommand(cmd, environment, waitForOutput: true);
 
         if (output.ExitCode != 0)
         {
@@ -98,20 +99,40 @@ set PGPASSWORD=";
     /// <param name="settings">Database configuration</param>
     /// <param name="targetDb">Name of target Database</param>
     /// <param name="sourcePath">Path of backup-file to restore</param>
-    /// <param name="overwrite"></param>
+    /// <param name="overwrite">Replaces the target database when it already exists: it is dropped and recreated,
+    /// so anything the backup does not contain is lost. Without it, restoring onto an existing database fails.</param>
     /// <returns></returns>
     /// <exception cref="Exception"></exception>
     public async Task Restore(PgSettings settings, string targetDb, string sourcePath, bool overwrite = false)
     {
-        var cn = new NpgsqlConnection(settings.BuildConnectionString());
+        // creating or dropping a database cannot happen from a connection to that same database
+        var maintenanceSettings = new PgSettings(
+            settings.Host,
+            _maintenanceDatabase,
+            settings.Username,
+            settings.Password,
+            settings.Port
+        );
+
+        await using var cn = new NpgsqlConnection(maintenanceSettings.BuildConnectionString());
         await cn.OpenAsync();
 
-        if (!overwrite && await Exists(cn, targetDb))
+        var exists = await Exists(cn, targetDb);
+        if (exists && !overwrite)
         {
             throw new Exception($"Database {targetDb} already exists.");
         }
 
-        // create db & add postgis extension
+        // read the archive before the target database is touched: dropping it for a backup that turns out to be
+        // unreadable would leave neither
+        ValidateArchive(sourcePath);
+
+        if (exists)
+        {
+            await Drop(cn, targetDb);
+        }
+
+        // create db
         await Create(cn, targetDb);
 
         // execute restoring tool
@@ -126,18 +147,17 @@ set PGPASSWORD=";
                 SourcePath = sourcePath
             })!;
 
-        // log without password
         _logger?.LogDebug($"Restoring backup...{Environment.NewLine}{cmd}");
 
+        // the password travels in the process environment, so it never reaches the generated script
+        var environment = new Dictionary<string, string>();
         if (!string.IsNullOrEmpty(settings.Password))
         {
-            cmd = $@"set PGPASSWORD={settings.Password}
-{cmd}
-set PGPASSWORD=";
+            environment["PGPASSWORD"] = settings.Password;
         }
 
-        // execute restore process
-        var output = _processHelper.ExecuteCommand(cmd);
+        // execute restore process, capturing what pg_restore has to say: without it a failure reports an exit code and nothing else
+        var output = _processHelper.ExecuteCommand(cmd, environment, waitForOutput: true);
 
         if (output.ExitCode != 0)
         {
@@ -146,14 +166,49 @@ set PGPASSWORD=";
         }
     }
 
+    /// <summary>
+    /// Reads the archive's table of contents (<c>pg_restore --list</c>), which reaches no server. A file that cannot
+    /// be read here cannot be restored either, and finding that out first is what keeps a failed restore from
+    /// costing the database it was meant to replace.
+    /// </summary>
+    /// <param name="sourcePath">Path of the backup-file to read</param>
+    /// <exception cref="Exception">The file is not an archive <c>pg_restore</c> can read</exception>
+    private void ValidateArchive(string sourcePath)
+    {
+        var cmd = BackupCommands.ListArchive
+            .Inject(new
+            {
+                ProcessPath = _restoreProcessPath,
+                SourcePath = sourcePath
+            })!;
+
+        var output = _processHelper.ExecuteCommand(cmd, waitForOutput: true);
+
+        if (output.ExitCode != 0)
+        {
+            throw new Exception($"Backup is not a readable archive (ExitCode {output.ExitCode}): {output.Error}");
+        }
+    }
+
+    /// <summary>
+    /// Checks whether a database exists.
+    /// </summary>
+    /// <param name="cn">Open connection to any database on the server</param>
+    /// <param name="databaseName">Name of the database to look for</param>
     public Task<bool> Exists(IDbConnection cn, string databaseName)
-    {
-        var sql = $@"SELECT EXISTS (SELECT NULL FROM pg_catalog.pg_database WHERE datname = @{databaseName});";
-        return cn.ExecuteScalarAsync<bool>(sql, new { databaseName });
-    }
+        => cn.ExecuteScalarAsync<bool>(PgSql.DatabaseExists, new { databaseName });
+    /// <summary>
+    /// Creates a database.
+    /// </summary>
+    /// <param name="cn">Open connection to another database on the same server</param>
+    /// <param name="databaseName">Name of the database to create</param>
     public Task Create(IDbConnection cn, string databaseName)
-    {
-        var sql = $@"CREATE DATABASE {databaseName} WITH TABLESPACE = pg_default;";
-        return cn.ExecuteScalarAsync<bool>(sql, new { databaseName });
-    }
+        => cn.ExecuteAsync(PgSql.CreateDatabase(databaseName));
+    /// <summary>
+    /// Drops a database if it exists. PostgreSQL refuses this while other sessions are connected to it.
+    /// </summary>
+    /// <param name="cn">Open connection to another database on the same server</param>
+    /// <param name="databaseName">Name of the database to drop</param>
+    public Task Drop(IDbConnection cn, string databaseName)
+        => cn.ExecuteAsync(PgSql.DropDatabase(databaseName));
 }

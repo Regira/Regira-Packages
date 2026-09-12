@@ -864,6 +864,14 @@ Nothing else changes an application-owned token, so without a primer two clients
   answers 409 (error). An initializer on the input DTO — or on the entity's token when the entity is its own input
   DTO — does the same to a client that omits the token (warning).
 
+**Deleting by key still works, at one read per row.** A hard delete is commonly issued from a stub —
+`Remove(new Order { Id = id })` — which carries no token, and comparing the stored row against `Guid.Empty` would
+match nothing and fail as a conflict forever. An absent token is read as the absence of a claim, so the primer reads
+the stored token and deletes against that: the delete goes through, while a caller that *does* supply a token keeps
+its check and an already-deleted row still reports a conflict. The cost is one extra `SELECT` per deleted row that
+carries the marker, so removing N stubs in a loop is N extra round trips — load the entities you are deleting (a
+single query) when that matters.
+
 **3. Handle the 409 on the client.** The body is a `ProblemDetails` titled **"Concurrency conflict"** — the
 constraint 409 is titled "Conflict" — so the client can tell "reload and try again" from "fix the input". Reload
 the row, which brings its current token, and let the user re-apply the edit.

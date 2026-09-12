@@ -30,6 +30,7 @@ Regira is a collection of .NET libraries providing unified abstractions for comm
 | [MongoDB](src/DAL.MongoDB) | MongoDB connectivity and backup/restore |
 | [MySQL](src/DAL.MySQL) | MySQL/MariaDB connectivity and backup/restore |
 | [PostgreSQL](src/DAL.PostgreSQL) | PostgreSQL connectivity and backup/restore |
+| [SQL Server](src/DAL.SqlServer) | SQL Server backup/restore |
 
 ---
 

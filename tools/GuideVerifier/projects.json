@@ -333,18 +333,23 @@
         "src/DAL.MySQL/DAL.MySQL.csproj",
         "src/DAL.MySQL.MySqlBackup/DAL.MySQL.MySqlBackup.csproj",
         "src/DAL.PostgreSQL/DAL.PostgreSQL.csproj",
+        "src/DAL.SqlServer/DAL.SqlServer.csproj",
         "src/Common.System/Common.System.csproj"
       ],
       "guideFiles": [
         "src/DAL.EFcore/README.md",
         "src/DAL.MongoDB/README.md",
         "src/DAL.MySQL/README.md",
-        "src/DAL.PostgreSQL/README.md"
+        "src/DAL.PostgreSQL/README.md",
+        "src/DAL.PostgreSQL/docs/examples.md",
+        "src/DAL.SqlServer/README.md",
+        "src/DAL.SqlServer/docs/examples.md"
       ],
       "usings": [
         "System.IO",
         "MongoDB.Bson",
         "MongoDB.Driver",
+        "Npgsql",
         "Regira.DAL.MongoDB.Abstractions",
         "Regira.DAL.MongoDB.Core",
         "Regira.DAL.MongoDB.Services",
@@ -353,6 +358,8 @@
         "Regira.DAL.MySQL.Services",
         "Regira.DAL.PostgreSQL.Core",
         "Regira.DAL.PostgreSQL.Services",
+        "Regira.DAL.SqlServer.Core",
+        "Regira.DAL.SqlServer.Services",
         "Regira.IO.Abstractions",
         "Regira.Serializing.Abstractions",
         "Regira.System",
