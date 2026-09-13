@@ -17,7 +17,10 @@ namespace Entities.DependencyInjection.Testing;
 /// up to 5 simple entities or 2 complex entities require no license.
 /// Exceeding either limit triggers validation.
 /// </summary>
+// Sets and disposes the process-wide LicenseValidator.TestPublicKey, which the license-validating code
+// every other fixture exercises reads. Kept out of the parallel shift.
 [TestFixture]
+[NonParallelizable]
 public class LicenseEnforcementTests
 {
     private RSA _testRsa = null!;

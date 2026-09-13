@@ -4,8 +4,6 @@ using Regira.Web.HTML.RazorLight;
 using Regira.Web.Utilities;
 using Web.HTML.Testing.Models;
 
-[assembly: Parallelizable(ParallelScope.Fixtures)]
-
 namespace Web.HTML.Testing;
 
 /* !Important!

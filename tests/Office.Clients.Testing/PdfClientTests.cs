@@ -10,6 +10,7 @@ namespace Office.Clients.Testing;
 
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]
+[Category("Network")]
 public class PdfClientTests : OfficeClientTestsBase
 {
     private readonly string _inputDir;

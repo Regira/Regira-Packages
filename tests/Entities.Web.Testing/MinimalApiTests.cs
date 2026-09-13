@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using Entities.Web.Testing.Infrastructure;
+using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -7,23 +8,22 @@ using Testing.Library.Data;
 
 namespace Entities.Web.Testing;
 
-[Collection(nameof(NonParallelCollectionDefinition))]
-public class MinimalApiTests : IDisposable
+public class MinimalApiTests : IClassFixture<ContosoApiFactory>, IDisposable
 {
     private readonly ContosoContext _dbContext;
-    public MinimalApiTests()
+    private readonly ContosoApiFactory _factory;
+    public MinimalApiTests(ContosoApiFactory factory)
     {
-        // the same file the API under test writes to — take it from there rather than rebuilding the path
-        var filename = Entities.TestApi.Infrastructure.ApiConfiguration.DatabaseFile;
-        _dbContext = new ContosoContext(new DbContextOptionsBuilder<ContosoContext>().UseSqlite($"Filename={filename}").Options);
+        _factory = factory;
+        // the same database the API under test writes to - take it from the host rather than rebuilding the path
+        _dbContext = factory.CreateDbContext();
         _dbContext.Database.EnsureCreated();
     }
 
     [Fact]
     public async Task Create_Client()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
         var response = await client.GetAsync("/");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -34,8 +34,7 @@ public class MinimalApiTests : IDisposable
     [Fact]
     public async Task Get_404()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
         var response = await client.GetAsync("does-not-exist");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
@@ -43,8 +42,7 @@ public class MinimalApiTests : IDisposable
     [Fact]
     public async Task Get_Departments()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
         var response = await client.GetAsync("/minimal/departments");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -56,8 +54,7 @@ public class MinimalApiTests : IDisposable
     [Fact]
     public async Task Add_Departments()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         // UTC kind: the entity pipeline canonicalizes DateTimes to UTC, so a local-kind value would come
         // back as the same instant with shifted ticks and fail the representation equality below

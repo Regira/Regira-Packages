@@ -1,4 +1,5 @@
-﻿using Entities.TestApi.Infrastructure;
+﻿using Entities.Web.Testing.Infrastructure;
+using Entities.TestApi.Infrastructure;
 using Entities.TestApi.Infrastructure.Courses;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -13,18 +14,19 @@ using Testing.Library.Data;
 
 namespace Entities.Web.Testing;
 
-[Collection(nameof(NonParallelCollectionDefinition))]
-public class CourseAttachmentsControllerTests : IDisposable
+public class CourseAttachmentsControllerTests : IClassFixture<ContosoApiFactory>, IDisposable
 {
     Department[] Departments { get; }
     Course[] Courses { get; }
 
     private readonly ContosoContext _dbContext;
-    public CourseAttachmentsControllerTests()
+    private readonly ContosoApiFactory _factory;
+    public CourseAttachmentsControllerTests(ContosoApiFactory factory)
     {
-        Directory.CreateDirectory(ApiConfiguration.AttachmentsDirectory);
+        _factory = factory;
+        Directory.CreateDirectory(_factory.AttachmentsDirectory);
 
-        _dbContext = new ContosoContext(new DbContextOptionsBuilder<ContosoContext>().UseSqlite(ApiConfiguration.ConnectionString).Options);
+        _dbContext = factory.CreateDbContext();
         _dbContext.Database.EnsureCreated();
 
         Departments = Enumerable.Range(1, 5).Select((_, i) => new Department { Title = $"Department #{i}", Budget = i * 1000, StartDate = DateTime.Today.AddDays(i * 3) }).ToArray();
@@ -39,8 +41,7 @@ public class CourseAttachmentsControllerTests : IDisposable
     [Fact]
     public async Task Empty_Get()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
         var response = await client.GetAsync("/courses/attachments");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -52,8 +53,7 @@ public class CourseAttachmentsControllerTests : IDisposable
     [Fact]
     public async Task Insert_And_Get_Details()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 3;
         var attachmentFileName = "test-attachment.txt";
@@ -64,7 +64,7 @@ public class CourseAttachmentsControllerTests : IDisposable
         };
         var inputResponse = await client.PostAsync($"/courses/{courseId}/files", inputContent);
         Assert.Equal(HttpStatusCode.OK, inputResponse.StatusCode);
-        //Assert.Single(Directory.GetFiles(ApiConfiguration.AttachmentsDirectory, "", SearchOption.AllDirectories));
+        //Assert.Single(Directory.GetFiles(_factory.AttachmentsDirectory, "", SearchOption.AllDirectories));
         var saveResult = await inputResponse.Content.ReadFromJsonAsync<SaveResult<EntityAttachmentDto>>();
         Assert.NotNull(saveResult);
         Assert.NotNull(saveResult.Item);
@@ -80,8 +80,7 @@ public class CourseAttachmentsControllerTests : IDisposable
     [Fact]
     public async Task Download_File()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 3;
         var attachmentFileName = "test-attachment.txt";
@@ -105,8 +104,7 @@ public class CourseAttachmentsControllerTests : IDisposable
     [Fact]
     public async Task Insert_And_Get_List()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 3;
         var attachmentFileName = "test-attachment.txt";
@@ -142,13 +140,12 @@ public class CourseAttachmentsControllerTests : IDisposable
             Assert.True(item.Id > 0);
             Assert.True(item.Attachment!.Id > 0);
         }
-        //Assert.Equal(count, Directory.GetFiles(ApiConfiguration.AttachmentsDirectory, "", SearchOption.AllDirectories).Length);
+        //Assert.Equal(count, Directory.GetFiles(_factory.AttachmentsDirectory, "", SearchOption.AllDirectories).Length);
     }
     [Fact]
     public async Task Insert_And_Force_404()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 3;
         var attachmentFileName = "test-attachment.txt";
@@ -174,8 +171,7 @@ public class CourseAttachmentsControllerTests : IDisposable
     {
         // Attachment order travels by ARRAY POSITION: HasAttachments wires SetSortOrder() over the incoming
         // collection on every parent save (the input DTO deliberately carries no SortOrder).
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 3;
         for (var i = 1; i <= 3; i++)
@@ -227,8 +223,7 @@ public class CourseAttachmentsControllerTests : IDisposable
         // of their own to hang a SortBy on. Without a default the list came back unordered while paging still
         // applied a Take — an EF row-limiting-without-OrderBy warning on every request, unfixable from
         // consumer code, and a list whose order was whatever the provider happened to return.
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 7;
         for (var i = 1; i <= 3; i++)
@@ -272,8 +267,7 @@ public class CourseAttachmentsControllerTests : IDisposable
         // so rows that arrive by upload alone all carry 0. Ordering on SortOrder by itself is then not a total
         // order and the provider picks the tiebreak — which is exactly the unstable paging the row-limiting
         // warning used to flag. Id has to break the tie.
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 11;
         for (var i = 1; i <= 4; i++)
@@ -301,8 +295,7 @@ public class CourseAttachmentsControllerTests : IDisposable
         // generic EntityAttachmentControllerBase<,,> and must reach this derived controller through MVC's
         // inherited-attribute collection — nothing at compile time verifies that. If the inheritance path
         // broke, every attachment constraint violation would silently regress to a 500.
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var inputContent = new MultipartFormDataContent{
             { new StreamContent(FileUtility.GetStreamFromString("This is a testmessage for an attachment")), "file", "test-attachment.txt" }
@@ -320,8 +313,7 @@ public class CourseAttachmentsControllerTests : IDisposable
     public async Task Update_Route_Is_Authoritative()
     {
         // the body must neither retarget another row nor reparent it, and a mismatched parent route 400s
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 3;
         var inputContent = new MultipartFormDataContent{
@@ -366,8 +358,7 @@ public class CourseAttachmentsControllerTests : IDisposable
     [InlineData(false)] // PUT {courseId} with a new attachment in the collection
     public async Task Uploading_A_Foldered_Name_Keeps_The_Virtual_Path_And_Stays_Downloadable(bool directUpload)
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 2;
         var bareName = $"{(directUpload ? "direct" : "nested")}-scan.txt";
@@ -415,15 +406,14 @@ public class CourseAttachmentsControllerTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync(stored.Uri)).StatusCode);
 
         // ...and none of the client's folders reached storage
-        var entityFolder = Path.Combine(ApiConfiguration.AttachmentsDirectory, "Course", "Attachments", courseId.ToString());
+        var entityFolder = Path.Combine(_factory.AttachmentsDirectory, "Course", "Attachments", courseId.ToString());
         Assert.False(Directory.Exists(Path.Combine(entityFolder, "archive")), "the virtual folder must stay virtual");
     }
 
     [Fact]
     public async Task Refiling_An_Attachment_Moves_It_Virtually_Without_Touching_Storage()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 4;
         var bareName = "refile-me.txt";
@@ -433,7 +423,7 @@ public class CourseAttachmentsControllerTests : IDisposable
             .Content.ReadFromJsonAsync<SaveResult<CourseAttachmentDto>>();
 
         var storedFilesBefore = Directory.GetFiles(
-            Path.Combine(ApiConfiguration.AttachmentsDirectory, "Course", "Attachments", courseId.ToString()),
+            Path.Combine(_factory.AttachmentsDirectory, "Course", "Attachments", courseId.ToString()),
             "*", SearchOption.AllDirectories);
 
         // the "move" is a rename to a different virtual folder
@@ -452,7 +442,7 @@ public class CourseAttachmentsControllerTests : IDisposable
 
         // ...while the bytes never moved
         var storedFilesAfter = Directory.GetFiles(
-            Path.Combine(ApiConfiguration.AttachmentsDirectory, "Course", "Attachments", courseId.ToString()),
+            Path.Combine(_factory.AttachmentsDirectory, "Course", "Attachments", courseId.ToString()),
             "*", SearchOption.AllDirectories);
         Assert.Equal(storedFilesBefore, storedFilesAfter);
     }
@@ -460,8 +450,7 @@ public class CourseAttachmentsControllerTests : IDisposable
     [Fact]
     public async Task Update_Entity_With_New_EntityAttachment()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 3;
         var attachmentFileName1 = "test-attachment1.txt";
@@ -519,8 +508,7 @@ public class CourseAttachmentsControllerTests : IDisposable
     [Fact]
     public async Task Update_Entity_And_Replace_Attachment()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 3;
         var attachmentFileName1 = "test-attachment1.txt";
@@ -565,8 +553,7 @@ public class CourseAttachmentsControllerTests : IDisposable
     [Fact]
     public async Task Delete()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 3;
         var inputContent = new MultipartFormDataContent{
@@ -587,14 +574,13 @@ public class CourseAttachmentsControllerTests : IDisposable
         var detailsResponse = await client.GetAsync($"/courses/attachments/{insertResult.Item.Id}");
         Assert.Equal(HttpStatusCode.NotFound, detailsResponse.StatusCode);
 
-        Assert.Empty(Directory.GetFiles(ApiConfiguration.AttachmentsDirectory, "", SearchOption.AllDirectories));
+        Assert.Empty(Directory.GetFiles(_factory.AttachmentsDirectory, "", SearchOption.AllDirectories));
     }
 
     [Fact]
     public async Task Update_FileName()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 3;
         var attachmentFileName = "test-attachment.txt";
@@ -638,8 +624,7 @@ public class CourseAttachmentsControllerTests : IDisposable
     [Fact]
     public async Task Update_Description()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 3;
         var attachmentFileName = "test-attachment.txt";
@@ -667,8 +652,7 @@ public class CourseAttachmentsControllerTests : IDisposable
     [Fact]
     public async Task Update_File()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 3;
         var attachmentFileName = "test-attachment.txt";
@@ -705,8 +689,7 @@ public class CourseAttachmentsControllerTests : IDisposable
     [Fact]
     public async Task Update_ObjectEntity_Data_Only()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 3;
         var attachmentFileName = "test-attachment.txt";
@@ -735,8 +718,7 @@ public class CourseAttachmentsControllerTests : IDisposable
     [Fact]
     public async Task Update_FileName_By_ObjectEntity_Update()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 3;
         var inputContent = new MultipartFormDataContent{
@@ -761,8 +743,7 @@ public class CourseAttachmentsControllerTests : IDisposable
     [Fact]
     public async Task Delete_By_ObjectEntity_Update()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 3;
         var inputContent = new MultipartFormDataContent{
@@ -788,8 +769,7 @@ public class CourseAttachmentsControllerTests : IDisposable
     [Fact]
     public async Task Get_Included_Attachments()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseId = 5;
         var attachmentFileName = "test-attachment.txt";
@@ -822,7 +802,7 @@ public class CourseAttachmentsControllerTests : IDisposable
     public void Dispose()
     {
         // delete all attachment files
-        Directory.Delete(ApiConfiguration.AttachmentsDirectory, true);
+        Directory.Delete(_factory.AttachmentsDirectory, true);
         // delete DB
         _dbContext.Database.EnsureDeleted();
     }

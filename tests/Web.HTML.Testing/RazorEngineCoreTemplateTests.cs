@@ -32,7 +32,7 @@ public class RazorEngineCoreTemplateTests
         Assert.That(inputHtml, Is.Not.EqualTo(parsedHtml));
         Assert.That(parsedHtml.Contains($"<p>Hello {model}!</p>"), Is.True);
 
-        await File.WriteAllTextAsync(Path.Combine(_assetsDir, "Output", "simple-razor.html"), parsedHtml);
+        await File.WriteAllTextAsync(Path.Combine(_assetsDir, "Output", "simple-razor-engine-core.html"), parsedHtml);
     }
 
     [Test]
@@ -63,6 +63,6 @@ public class RazorEngineCoreTemplateTests
             Assert.That(parsedHtml.Contains($"<li>{orderline.Title}: {orderline.Amount} x {orderline.Price}</li>"), Is.True);
         }
 
-        await File.WriteAllTextAsync(Path.Combine(_assetsDir, "Output", "razor-order.html"), parsedHtml);
+        await File.WriteAllTextAsync(Path.Combine(_assetsDir, "Output", "razor-order-engine-core.html"), parsedHtml);
     }
 }

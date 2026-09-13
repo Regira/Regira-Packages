@@ -20,6 +20,7 @@ namespace DAL.PostgreSQL.Testing;
 /// <c>REGIRA_PROVIDER_TESTS=containers</c> is set, and skips rather than fails when Docker is unavailable.
 /// </remarks>
 [TestFixture]
+[Category("Containers")]
 public class PgDatabaseTests
 {
     public const string EnvVar = "REGIRA_PROVIDER_TESTS";
@@ -29,6 +30,12 @@ public class PgDatabaseTests
     // anything that is not lower case.
     private const string HyphenatedDb = "staging-db";
     private const string MixedCaseDb = "Staging_Db";
+
+    // Opt-in container reuse: with REGIRA_CONTAINER_REUSE=1 the container is left running between runs,
+    // so a repeat run attaches to it instead of starting a fresh one. It also needs
+    // testcontainers.reuse.enable=true in ~/.testcontainers.properties. Off by default, because a reused
+    // container carries its previous state into the next run. See CONTRIBUTING.md.
+    private static bool ReuseContainers => Environment.GetEnvironmentVariable("REGIRA_CONTAINER_REUSE") == "1";
 
     private PostgreSqlContainer? _container;
     private PgSettings _server = null!;
@@ -43,7 +50,7 @@ public class PgDatabaseTests
 
         try
         {
-            _container = new PostgreSqlBuilder("postgres:16-alpine").Build();
+            _container = new PostgreSqlBuilder("postgres:16-alpine").WithReuse(ReuseContainers).Build();
             await _container.StartAsync();
         }
         catch (Exception ex)

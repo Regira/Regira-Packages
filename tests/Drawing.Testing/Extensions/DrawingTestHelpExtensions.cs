@@ -1,4 +1,5 @@
-﻿using Regira.Dimensions;
+﻿using System.Collections.Concurrent;
+using Regira.Dimensions;
 using Regira.IO.Extensions;
 using Regira.Media.Drawing.Dimensions;
 using Regira.Media.Drawing.Enums;
@@ -13,9 +14,21 @@ namespace Drawing.Testing.Extensions;
 
 public static class DrawingTestHelpExtensions
 {
-    internal static async Task SetupTests(this IImageService service)
+    // The six assets are shared by every fixture of the same image library, and those fixtures run
+    // concurrently. Creating them is therefore done exactly once per input directory: a second caller
+    // awaits the same task instead of racing the create-if-missing check.
+    private static readonly ConcurrentDictionary<string, Lazy<Task>> AssetSetups = new();
+
+    internal static Task SetupTests(this IImageService service)
     {
         var inputDir = service.GetInputDir();
+        return AssetSetups.GetOrAdd(
+            inputDir,
+            dir => new Lazy<Task>(() => CreateAssets(service, dir), LazyThreadSafetyMode.ExecutionAndPublication)).Value;
+    }
+
+    private static async Task CreateAssets(IImageService service, string inputDir)
+    {
         var transparentPath = Path.Combine(inputDir, "transparent-400x300.jpg");
         if (!File.Exists(transparentPath))
         {

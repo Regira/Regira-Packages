@@ -1,11 +1,9 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Text;
 using Regira.IO.Storage.FileSystem;
 using Regira.System.Projects.Models;
 using Regira.System.Projects.Services;
 using Regira.TreeList;
-
-[assembly: Parallelizable(ParallelScope.Fixtures)]
 
 namespace TreeList.Testing;
 
@@ -323,8 +321,10 @@ public class CreationTests
         var files = Directory.GetFiles(_testDirectory, string.Empty, SearchOption.AllDirectories)
             .Select(f => new FsItem { Path = f, ParentDirectory = Path.GetDirectoryName(f)! });
         var items = directories.Concat(files)
-            // shuffle
-            .OrderBy(_ => Guid.NewGuid())
+            // Reverse of the order the tests sort back into, so the input is guaranteed not to be
+            // path-sorted already. A random shuffle also has to satisfy that, but on a fixture this
+            // small it lands sorted often enough to fail the precondition on its own.
+            .OrderByDescending(x => x.Path)
             .ToArray();
 
         var sw = new Stopwatch();

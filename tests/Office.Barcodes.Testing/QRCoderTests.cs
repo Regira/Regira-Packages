@@ -1,8 +1,6 @@
 ﻿using Office.Barcodes.Testing.Abstractions;
 using Regira.Office.Barcodes.QRCoder;
 
-[assembly: Parallelizable(ParallelScope.Fixtures)]
-
 namespace Office.Barcodes.Testing;
 
 [TestFixture]

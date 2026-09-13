@@ -17,6 +17,7 @@ namespace Entities.Providers.Testing;
 /// AND Docker is available (otherwise the fixture's OneTimeSetUp calls Assert.Ignore, skipping the whole set).
 /// </summary>
 [TestFixtureSource(typeof(ProviderFixtureSource))]
+[Category("Containers")]
 public class ProviderQueryPipelineTests(DbProvider provider)
 {
     private ProviderHarness _harness = null!;

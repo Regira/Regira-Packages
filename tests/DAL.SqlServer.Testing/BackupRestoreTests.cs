@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Transactions;
 using Dapper;
 using Microsoft.Data.SqlClient;
@@ -16,6 +17,7 @@ namespace DAL.SqlServer.Testing;
 /// (LocalDB) can reach — set <c>REGIRA_SQLSERVER_BACKUP_DIRECTORY</c> for any other server.
 /// Every database created here is named <c>RegiraBackupTest_*</c> and dropped afterwards.
 /// </summary>
+[Category("LocalDb")]
 public class BackupRestoreTests
 {
     private const string ConnectionVariable = "REGIRA_SQLSERVER_CONNECTION";
@@ -41,6 +43,8 @@ public class BackupRestoreTests
         var backupDirectory = Environment.GetEnvironmentVariable(BackupDirectoryVariable);
         _ownsBackupDirectory = string.IsNullOrWhiteSpace(backupDirectory);
         _backupDirectory = _ownsBackupDirectory ? Directory.CreateTempSubdirectory("regira-sqlserver-").FullName : backupDirectory!;
+
+        await WarmUpServer();
 
         _databases.Add(_sourceDb);
         await Execute("master", $"CREATE DATABASE [{_sourceDb}]");
@@ -174,10 +178,94 @@ public class BackupRestoreTests
         return name;
     }
 
+    private const string LocalDbPrefix = "(localdb)" + "\\";
+
+    /// <summary>
+    /// Opens the first connection of the run, and recovers the instance once if that fails.
+    /// <para>
+    /// LocalDB starts its instance on the first connection, and that start can fail outright with
+    /// "SQL Server process failed to start" when a previous run left a half-started instance behind.
+    /// The instance is then wedged: it stays wedged for every later connection, so retrying the
+    /// connection alone recovers nothing and only makes the failure take longer. Stopping it with
+    /// <c>-k</c> and starting it again is what clears it, so that is what this does — once, and only
+    /// for a connection string that actually names a LocalDB instance, since it would otherwise be
+    /// stopping a server someone else owns.
+    /// </para>
+    /// </summary>
+    private async Task WarmUpServer()
+    {
+        var instance = LocalDbInstanceName();
+        try
+        {
+            await using var cn = await Open("master");
+            return;
+        }
+        catch (SqlException) when (instance is not null)
+        {
+            RestartLocalDb(instance);
+        }
+
+        // Whatever the restart did, the connection is the verdict: if the instance is still unreachable
+        // the original kind of SqlException surfaces here and the run fails on it.
+        await using var retried = await Open("master");
+    }
+
+    /// <summary>The instance name when this run targets LocalDB, otherwise null.</summary>
+    private string? LocalDbInstanceName()
+    {
+        var dataSource = new SqlConnectionStringBuilder(_connectionString).DataSource;
+        return dataSource.StartsWith(LocalDbPrefix, StringComparison.OrdinalIgnoreCase)
+            ? dataSource[LocalDbPrefix.Length..]
+            : null;
+    }
+
+    /// <summary>
+    /// Best effort: a missing or failing sqllocaldb is not itself the failure to report, so the retrying
+    /// connection is left to decide. Started without a shell, so nothing is written to a temporary script.
+    /// </summary>
+    private static void RestartLocalDb(string instance)
+    {
+        Run("stop", instance, "-k");
+        Run("start", instance);
+        return;
+
+        static void Run(params string[] arguments)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo("sqllocaldb") { UseShellExecute = false, CreateNoWindow = true };
+                foreach (var argument in arguments)
+                {
+                    psi.ArgumentList.Add(argument);
+                }
+
+                using var process = Process.Start(psi);
+                process?.WaitForExit(milliseconds: 60_000);
+            }
+            catch (Exception ex)
+            {
+                TestContext.Out.WriteLine($"sqllocaldb {string.Join(' ', arguments)} failed: {ex.Message}");
+            }
+        }
+    }
+
+    // A LocalDB instance shuts itself down when idle, so the first connection of a run starts one — and
+    // that start competes with every other test assembly for the machine. Measured at 22s on a loaded
+    // box, past the 15s default, which surfaces as "the timeout period elapsed while attempting to
+    // consume the pre-login handshake" or a bare "SQL Server process failed to start" rather than as
+    // anything naming a timeout. Raised only when the supplied string asks for less.
+    private const int MinimumConnectTimeoutSeconds = 60;
+
     // unpooled, so a session the restore kills never returns to a pool
     private async Task<SqlConnection> Open(string database)
     {
-        var cn = new SqlConnection(new SqlConnectionStringBuilder(_connectionString) { InitialCatalog = database, Pooling = false }.ConnectionString);
+        var builder = new SqlConnectionStringBuilder(_connectionString) { InitialCatalog = database, Pooling = false };
+        if (builder.ConnectTimeout < MinimumConnectTimeoutSeconds)
+        {
+            builder.ConnectTimeout = MinimumConnectTimeoutSeconds;
+        }
+
+        var cn = new SqlConnection(builder.ConnectionString);
         await cn.OpenAsync();
         return cn;
     }

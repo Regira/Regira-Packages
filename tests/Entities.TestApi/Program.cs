@@ -78,7 +78,7 @@ builder.Services
     .AddDbContext<ContosoContext>(db =>
     {
         // interceptors + UTC convention are auto-wired by UseEntities(o => o.UseDefaults()) below
-        db.UseSqlite(ApiConfiguration.ConnectionString)
+        db.UseSqlite(ApiConfiguration.ResolveConnectionString(builder.Configuration))
             .EnableSensitiveDataLogging();
     })
     .UseRegira(builder.Configuration)
@@ -101,7 +101,7 @@ builder.Services
     .AddPersons()
     // Attachments
     // FileSystem storage
-    .WithAttachments(_ => new BinaryFileService(new FileSystemOptions { RootFolder = ApiConfiguration.AttachmentsDirectory }))
+    .WithAttachments(_ => new BinaryFileService(new FileSystemOptions { RootFolder = ApiConfiguration.ResolveAttachmentsDirectory(builder.Configuration) }))
     // Azure storage
     /*
     .ConfigureAttachmentService(_ => new BinaryBlobService(new AzureCommunicator(new AzureConfig

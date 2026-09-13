@@ -8,8 +8,6 @@ using Regira.Office.PDF.Models;
 using Regira.Utilities;
 using System.Text;
 
-[assembly: Parallelizable(ParallelScope.Fixtures)]
-
 namespace Office.PDF.Testing.Abstractions;
 
 public static class PdfTestHelper

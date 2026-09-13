@@ -10,6 +10,7 @@ namespace Office.Clients.Testing;
 
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]
+[Category("Network")]
 public class WordClientTests : OfficeClientTestsBase
 {
     private readonly string _inputDir;

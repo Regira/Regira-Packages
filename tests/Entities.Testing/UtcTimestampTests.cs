@@ -17,7 +17,11 @@ namespace Entities.Testing;
 /// the UTC value converter (<c>SetUtcDateTimeConvention</c> on <see cref="ProductContext"/>), filter normalization
 /// and the <see cref="DateTimeDefaults.UseUtc"/> policy.
 /// </summary>
+// Writes the process-wide DateTimeDefaults.UseUtc policy, which every other fixture in this assembly
+// reads. NUnit runs the non-parallel shift on its own, so marking the writers is what keeps the
+// readers from ever observing a flipped flag.
 [TestFixture]
+[NonParallelizable]
 public class UtcTimestampTests
 {
     private SqliteConnection _connection = null!;

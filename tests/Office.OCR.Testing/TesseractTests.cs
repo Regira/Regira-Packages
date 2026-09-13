@@ -1,7 +1,5 @@
 using Regira.Office.OCR.Tesseract;
 
-[assembly: Parallelizable(ParallelScope.Fixtures)]
-
 namespace Office.OCR.Testing;
 
 [TestFixture]

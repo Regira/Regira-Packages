@@ -9,6 +9,7 @@ namespace Office.Clients.Testing;
 
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]
+[Category("Network")]
 public class ExcelClientTests : OfficeClientTestsBase
 {
     private IExcelService _service = null!;

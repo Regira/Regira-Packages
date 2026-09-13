@@ -7,6 +7,7 @@ namespace IO.Testing.SSH;
 [TestFixture]
 [Ignore("wait for proper config")]
 [Parallelizable(ParallelScope.Self)]
+[Category("Network")]
 public class SshStorageTests
 {
     public StorageTestHelper.IStorageTestContext StorageTestContext { get; set; }

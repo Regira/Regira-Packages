@@ -7,8 +7,6 @@ using Regira.IO.Models;
 using Regira.Office.Csv.CsvHelper;
 using Regira.Utilities;
 
-[assembly: Parallelizable(ParallelScope.Fixtures)]
-
 namespace Office.Csv.Testing;
 
 [TestFixture]

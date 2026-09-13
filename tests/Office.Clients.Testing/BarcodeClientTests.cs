@@ -4,12 +4,11 @@ using Regira.IO.Extensions;
 using Regira.Office.Barcodes.Abstractions;
 using Regira.Office.Barcodes.Models;
 
-[assembly: Parallelizable(ParallelScope.Fixtures)]
-
 namespace Office.Clients.Testing;
 
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]
+[Category("Network")]
 public class BarcodeClientTests : OfficeClientTestsBase
 {
     private IBarcodeService _service = null!;

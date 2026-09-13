@@ -3,12 +3,14 @@ using NUnit.Framework.Legacy;
 using Regira.DAL.MongoDB.Core;
 using Regira.Serializing.Newtonsoft.Json;
 using Regira.Utilities;
-[assembly: Parallelizable(ParallelScope.Fixtures)]
 
 namespace DAL.MongoDB.Testing;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
+// Connects to a MongoDB on localhost. The other fixtures in this assembly parse connection strings
+// and stub the process helper, so only this one needs a server.
+[Category("MongoDb")]
 public class RepositoryTests : IDisposable
 {
     //private readonly string _personId;

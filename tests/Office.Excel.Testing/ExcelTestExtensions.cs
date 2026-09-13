@@ -7,8 +7,6 @@ using Regira.Office.Excel.Models;
 using Regira.Utilities;
 using System.Text.Json;
 
-[assembly: Parallelizable(ParallelScope.Fixtures)]
-
 namespace Office.Excel.Testing;
 
 public static class ExcelTestExtensions

@@ -10,8 +10,6 @@ using Regira.Utilities;
 using System.Globalization;
 using System.Text.Json;
 
-[assembly: Parallelizable(ParallelScope.Fixtures)]
-
 namespace Office.Word.testing;
 
 [TestFixture]

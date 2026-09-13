@@ -6,6 +6,7 @@ namespace Office.Mail.Testing;
 
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]
+[Category("Network")]
 public class MailGunTests : MailerTestsBase
 {
     private readonly string? _missingSecret;

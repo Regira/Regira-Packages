@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using Entities.Web.Testing.Infrastructure;
+using System.Net;
 using System.Net.Http.Json;
 using Entities.TestApi.Infrastructure;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -9,13 +10,14 @@ using Testing.Library.Data;
 
 namespace Entities.Web.Testing;
 
-[Collection(nameof(NonParallelCollectionDefinition))]
-public class DepartmentControllerTests : IDisposable
+public class DepartmentControllerTests : IClassFixture<ContosoApiFactory>, IDisposable
 {
     private readonly ContosoContext _dbContext;
-    public DepartmentControllerTests()
+    private readonly ContosoApiFactory _factory;
+    public DepartmentControllerTests(ContosoApiFactory factory)
     {
-        _dbContext = new ContosoContext(new DbContextOptionsBuilder<ContosoContext>().UseSqlite(ApiConfiguration.ConnectionString).Options);
+        _factory = factory;
+        _dbContext = factory.CreateDbContext();
         _dbContext.Database.EnsureCreated();
 
         _dbContext.SaveChanges();
@@ -25,8 +27,7 @@ public class DepartmentControllerTests : IDisposable
     [Fact]
     public async Task Empty_Get()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
         var response = await client.GetAsync("/departments");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -38,8 +39,7 @@ public class DepartmentControllerTests : IDisposable
     [Fact]
     public async Task Get_404()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var departmentInput = new Department
         {
@@ -59,8 +59,7 @@ public class DepartmentControllerTests : IDisposable
     [Fact]
     public async Task Insert_And_Get_Details()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         await CreateTestItems(_dbContext);
 
@@ -90,8 +89,7 @@ public class DepartmentControllerTests : IDisposable
     [Fact]
     public async Task Insert_And_Get_List()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var inputDepartments = Enumerable.Range(1, 100)
             .Select((_, i) => new Department
@@ -121,8 +119,7 @@ public class DepartmentControllerTests : IDisposable
     [Fact]
     public async Task Insert_And_Force_404()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var departmentInput = new Department
         {
@@ -143,8 +140,7 @@ public class DepartmentControllerTests : IDisposable
     [Fact]
     public async Task Update()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
         var departmentInput = new Department
         {
             Title = "Department (new)",
@@ -169,8 +165,7 @@ public class DepartmentControllerTests : IDisposable
     [Fact]
     public async Task Delete()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
         var departmentInput = new Department
         {
             Title = "Department (new)",

@@ -8,6 +8,7 @@ namespace Office.Clients.Testing;
 
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]
+[Category("Network")]
 public class CsvClientTests : OfficeClientTestsBase
 {
     private const string SampleCsv = "Id,Name,Value\r\n1,Alpha,10.5\r\n2,Beta,20.0\r\n3,Gamma,30.75";

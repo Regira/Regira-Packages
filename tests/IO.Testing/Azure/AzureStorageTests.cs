@@ -7,6 +7,7 @@ namespace IO.Testing.Azure;
 
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]
+[Category("Network")]
 public class AzureStorageTests
 {
     public StorageTestHelper.StorageTestContext<BinaryBlobService> StorageTestContext { get; set; }

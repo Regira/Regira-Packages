@@ -1,3 +1,4 @@
+using Entities.Web.Testing.Infrastructure;
 using System.Net;
 using System.Net.Http.Json;
 using Entities.TestApi.Infrastructure;
@@ -16,13 +17,14 @@ namespace Entities.Web.Testing;
 /// needs another writer it uses this fixture's own <see cref="ContosoContext"/>, which moves the token directly.
 /// Each refusal is paired with the same request carrying the current token.
 /// </summary>
-[Collection(nameof(NonParallelCollectionDefinition))]
-public class ConcurrencyTokenControllerTests : IDisposable
+public class ConcurrencyTokenControllerTests : IClassFixture<ContosoApiFactory>, IDisposable
 {
     private readonly ContosoContext _dbContext;
-    public ConcurrencyTokenControllerTests()
+    private readonly ContosoApiFactory _factory;
+    public ConcurrencyTokenControllerTests(ContosoApiFactory factory)
     {
-        _dbContext = new ContosoContext(new DbContextOptionsBuilder<ContosoContext>().UseSqlite(ApiConfiguration.ConnectionString).Options);
+        _factory = factory;
+        _dbContext = factory.CreateDbContext();
         _dbContext.Database.EnsureCreated();
     }
 
@@ -52,8 +54,7 @@ public class ConcurrencyTokenControllerTests : IDisposable
     public async Task Each_Save_Returns_A_New_Token_And_A_Client_Still_Holding_The_Old_One_Is_Refused()
     {
         // two clients read the same department; the first one's save moves the token under the second
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
         var created = await Create(client, Guid.Empty);
         var read = created.ConcurrencyToken;
 
@@ -70,8 +71,7 @@ public class ConcurrencyTokenControllerTests : IDisposable
     [Fact]
     public async Task A_Put_Built_On_A_Stale_Read_Answers_409_And_A_Current_One_Goes_Through()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
         var read = Guid.NewGuid();
         var department = await Create(client, read);
         var current = await OtherWriter(department.Id);
@@ -90,8 +90,7 @@ public class ConcurrencyTokenControllerTests : IDisposable
     [Fact]
     public async Task A_Put_Without_A_Token_Is_Not_Checked()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
         var department = await Create(client, Guid.NewGuid());
         await OtherWriter(department.Id);
 
@@ -105,8 +104,7 @@ public class ConcurrencyTokenControllerTests : IDisposable
     [Fact]
     public async Task A_Patch_Is_Checked_Only_When_Its_Body_Carries_The_Token()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
         var read = Guid.NewGuid();
         var department = await Create(client, read);
         await OtherWriter(department.Id);
@@ -123,8 +121,7 @@ public class ConcurrencyTokenControllerTests : IDisposable
     [Fact]
     public async Task A_Delete_Carries_No_Token_And_Is_Not_Refused()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
         var department = await Create(client, Guid.NewGuid());
         await OtherWriter(department.Id);
 

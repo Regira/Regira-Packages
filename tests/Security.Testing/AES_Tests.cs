@@ -1,8 +1,6 @@
 using Regira.Security.Core;
 using Regira.Security.Encryption;
 
-[assembly: Parallelizable(ParallelScope.Fixtures)]
-
 namespace Security.Testing;
 
 [TestFixture]

@@ -6,6 +6,7 @@ namespace Office.Mail.Testing;
 
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]
+[Category("Network")]
 public class SendGridTests : MailerTestsBase
 {
     public SendGridTests()
