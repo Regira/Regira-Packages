@@ -1,5 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RunSettings>
     <RunConfiguration>
+        <!--
+            Opt the gated integration fixtures in by default, so a full run covers them and individual
+            tests can still be picked in the runner. Both are wired here rather than in machine
+            environment variables so the setup travels with the repo.
+
+            REGIRA_PROVIDER_TESTS=containers enables the Testcontainers-backed fixtures:
+            tests\DAL.PostgreSQL.Testing and the larger tests\Entities.Providers.Testing suite.
+            Both skip themselves when Docker is unavailable.
+
+            REGIRA_SQLSERVER_CONNECTION points tests\DAL.SqlServer.Testing at a server whose login may
+            create databases; it creates and drops RegiraBackupTest_* databases. LocalDB is the default
+            because its backup directory (a temp dir) is reachable by a server running as the current
+            user. For any other server, also set REGIRA_SQLSERVER_BACKUP_DIRECTORY to a path the service
+            account can write to.
+        -->
+        <EnvironmentVariables>
+            <REGIRA_PROVIDER_TESTS>containers</REGIRA_PROVIDER_TESTS>
+            <REGIRA_SQLSERVER_CONNECTION>Server=(localdb)\MSSQLLocalDB;Integrated Security=true;TrustServerCertificate=true</REGIRA_SQLSERVER_CONNECTION>
+        </EnvironmentVariables>
     </RunConfiguration>
 </RunSettings>
