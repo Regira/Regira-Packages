@@ -4,6 +4,23 @@ This file is for AI agents working **on** the Regira source codebase (adding mod
 
 ---
 
+## Keep things in sync (first priority)
+
+Edits here reach further than this repo. Change one of these and update its counterparts in the same
+turn; if a counterpart edit is out of scope, say so explicitly rather than leaving things inconsistent.
+
+| You change… | Also update… |
+|---|---|
+| a public signature or behaviour | the module's `ai/*.md` and `README.md`. The MCP knowledge base is built from `ai/` (Regira-Tools, DEPLOY.md §7), so a stale guide ships to every agent that asks |
+| a package version | `CHANGELOG.md`; Regira-Website's `packages.json` is regenerated from this repo's `src/` by `npm run packages` over there |
+| the path or filename of a doc page under `src/*/` | the links into it — regira.com's views and Regira-Blog post bodies point at this repo's Pages site with absolute URLs |
+
+**Write docs in final state, not as a diff.** Don't narrate a history of changes — no changelogs,
+"previously…/now…", "fixed", "updated", or migration notes. Update each document as if it had just
+been authored cleanly, with no record of prior errors or revisions.
+
+---
+
 ## What this repository is
 
 A collection of .NET NuGet packages published to nuget.org. Each package:
