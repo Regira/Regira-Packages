@@ -66,7 +66,7 @@ start the tool without it.
 | `DbSettings` | `PgSettings?` | Connection details, or use `ConnectionString` |
 | `ConnectionString` | `string?` | Alternative to `DbSettings` |
 | `ToolsDirectory` | `string` | Where `pg_dump` / `pg_restore` live |
-| `BackupSchemas` | `ICollection<string>?` | Backup these schemas only |
+| `BackupSchemas` | `ICollection<string>?` | Backup these schemas only — each name matched exactly, case and all; a schema that does not exist fails the backup |
 | `Overwrite` | `bool` | Replace the target database if it exists |
 | `MaintenanceDatabase` | `string?` | Database to create/drop from, default `postgres` |
 
@@ -74,7 +74,8 @@ start the tool without it.
 `CREATE DATABASE` cannot run from a connection to the database it creates. When the target already
 exists, `Overwrite` drops and recreates it (so anything the backup does not contain is lost) and
 without `Overwrite` the restore fails. PostgreSQL refuses to drop a database while other sessions are
-connected to it.
+connected to it. That connection never joins an ambient `TransactionScope`, inside which PostgreSQL refuses
+to create or drop a database.
 
 The three database operations are also available on their own, against a connection to any *other*
 database on the same server:

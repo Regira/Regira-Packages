@@ -1,8 +1,5 @@
 using System.Text;
-using Microsoft.Extensions.DependencyInjection;
-using Regira.Office.Word.Abstractions;
 using Regira.Office.Word.Aspose;
-using Regira.Office.Word.Aspose.DependencyInjection;
 
 namespace Office.Word.testing;
 
@@ -147,25 +144,6 @@ public class AsposeLicenseTests
             Assert.That(ex!.Message, Does.Contain("missing.lic"));
             Assert.That(ex.Message, Does.Contain("AsposeWordConfig.LicensePath"));
             Assert.That(ex.InnerException, Is.InstanceOf<FileNotFoundException>());
-        });
-    }
-
-    [Test]
-    public void AddAsposeWord_Hands_The_Configuration_To_The_Service()
-    {
-        var services = new ServiceCollection();
-        services.AddAsposeWord(o => o.LicensePath = "licenses/aspose.lic");
-        // outside any scope, as a singleton or a hosted service resolves it
-        using var provider = services.BuildServiceProvider(new ServiceProviderOptions { ValidateScopes = true });
-
-        // resolving IWordService itself would apply the configured licence to the whole process
-        var descriptor = services.Last(d => d.ServiceType == typeof(IWordService));
-        var config = provider.GetRequiredService<AsposeWordConfig>();
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(descriptor.ImplementationType, Is.EqualTo(typeof(WordService)));
-            Assert.That(config.LicensePath, Is.EqualTo("licenses/aspose.lic"));
         });
     }
 

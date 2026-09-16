@@ -59,6 +59,9 @@ public class SpireTests() : WordTestsBase(new WordService(), "Spire")
     [Test]
     public override Task A_Null_Or_Unused_Parameter_Is_Harmless() => base.A_Null_Or_Unused_Parameter_Is_Harmless();
 
+    [Test]
+    public override Task A_Parameter_Key_Is_Matched_Literally() => base.A_Parameter_Key_Is_Matched_Literally();
+
     [TestCase(HeaderFooterType.Even, true)]
     [TestCase(HeaderFooterType.Even, false)]
     [TestCase(HeaderFooterType.FirstPage, true)]

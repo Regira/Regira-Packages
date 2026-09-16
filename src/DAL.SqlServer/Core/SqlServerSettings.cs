@@ -25,6 +25,12 @@ public class SqlServerSettings : DbSettingsBase
     /// </summary>
     public bool TrustServerCertificate { get; set; }
 
+    /// <summary>
+    /// <c>Encrypt=Strict</c>: TLS before the login (TDS 8.0, SQL Server 2022 and later), rather than the
+    /// <c>Mandatory</c> encryption <see cref="Regira.DAL.Models.DbSettingsBase.UseSecure"/> asks for.
+    /// </summary>
+    public bool UseStrictEncryption { get; set; }
+
 
     public static SqlServerSettings FromConnectionString(string connectionString)
     {
@@ -44,6 +50,7 @@ public class SqlServerSettings : DbSettingsBase
         )
         {
             UseSecure = !builder.Encrypt.Equals(SqlConnectionEncryptOption.Optional),
+            UseStrictEncryption = builder.Encrypt.Equals(SqlConnectionEncryptOption.Strict),
             TrustServerCertificate = builder.TrustServerCertificate
         };
     }
@@ -52,7 +59,9 @@ public class SqlServerSettings : DbSettingsBase
         var builder = new SqlConnectionStringBuilder
         {
             DataSource = string.IsNullOrEmpty(Port) || Port == DefaultPort ? Host : $"{Host},{Port}",
-            Encrypt = UseSecure ? SqlConnectionEncryptOption.Mandatory : SqlConnectionEncryptOption.Optional,
+            Encrypt = UseStrictEncryption ? SqlConnectionEncryptOption.Strict
+                : UseSecure ? SqlConnectionEncryptOption.Mandatory
+                : SqlConnectionEncryptOption.Optional,
             TrustServerCertificate = TrustServerCertificate
         };
         if (!string.IsNullOrEmpty(DatabaseName))

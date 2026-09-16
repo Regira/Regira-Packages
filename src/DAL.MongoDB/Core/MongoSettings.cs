@@ -68,7 +68,7 @@ public class MongoSettings(
         // an SRV URI names a single DNS seed and no port; a replica set names every member, each with its own port
         var host = useSrv || servers.Count <= 1
             ? server?.Host
-            : string.Join(",", servers.Select(x => $"{x.Host}:{x.Port}"));
+            : string.Join(",", servers.Select(x => $"{BracketIPv6(x.Host)}:{x.Port}"));
 
         var settings = new MongoSettings(host, mongoUrl.DatabaseName)
         {
@@ -121,6 +121,29 @@ public class MongoSettings(
     /// </param>
     /// <param name="extraOptions">Appended to the URI's query string after <see cref="UriOptions"/>, escaped</param>
     public string BuildConnectionString(bool includePassword, params KeyValuePair<string, string>[] extraOptions)
+        => Build(includePassword, false, extraOptions);
+
+    /// <summary>
+    /// The URI for a log: without the password, and with the value of every option that can carry a secret masked.
+    /// </summary>
+    internal string BuildRedactedConnectionString() => Build(false, true);
+
+    /// <summary>
+    /// The value of the first <see cref="UriOptions"/> entry named <paramref name="name"/>, ignoring case.
+    /// </summary>
+    internal string? GetUriOption(string name)
+        => UriOptions.Where(option => option.Key.Equals(name, StringComparison.OrdinalIgnoreCase)).Select(option => option.Value).FirstOrDefault();
+
+    /// <summary>
+    /// Options whose value can be a secret: a key file's password, and the mechanism properties that carry an
+    /// <c>AWS_SESSION_TOKEN</c>.
+    /// </summary>
+    private static readonly HashSet<string> SecretOptions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "tlsCertificateKeyFilePassword", "sslPEMKeyPassword", "authMechanismProperties"
+    };
+
+    private string Build(bool includePassword, bool redactSecrets, params KeyValuePair<string, string>[] extraOptions)
     {
         // mongodb://[username[:password]@]host[:port]/[database][?options]
         var connectionString = UseSrv ? "mongodb+srv://" : "mongodb://";
@@ -134,7 +157,7 @@ public class MongoSettings(
             connectionString += "@";
         }
         // an SRV seed carries no port (DNS supplies it), and a replica-set host list carries a port per member
-        connectionString += UseSrv || Host.Contains(',') ? $"{Host}/" : $"{Host}:{Port}/";
+        connectionString += UseSrv || Host.Contains(',') ? $"{Host}/" : $"{BracketIPv6(Host)}:{Port}/";
         if (!string.IsNullOrEmpty(DatabaseName))
         {
             connectionString += Uri.EscapeDataString(DatabaseName!);
@@ -153,11 +176,17 @@ public class MongoSettings(
         options.AddRange(extraOptions);
         if (options.Any())
         {
-            connectionString += $"?{string.Join("&", options.Select(x => $"{Uri.EscapeDataString(x.Key)}={Uri.EscapeDataString(x.Value)}"))}";
+            connectionString += $"?{string.Join("&", options.Select(x => $"{Uri.EscapeDataString(x.Key)}={(redactSecrets && SecretOptions.Contains(x.Key) ? "***" : Uri.EscapeDataString(x.Value))}"))}";
         }
 
         return connectionString;
     }
+
+    /// <summary>
+    /// An IPv6 address as a URI names it: in brackets, so its colons are not read as the port separator.
+    /// </summary>
+    private static string BracketIPv6(string host)
+        => host.Contains(':') && !host.StartsWith('[') ? $"[{host}]" : host;
     public override T Clone<T>()
     {
         var cn = BuildConnectionString();

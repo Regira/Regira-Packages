@@ -68,7 +68,7 @@ public class BackupRestoreManager
         if (output.ExitCode != 0)
         {
             // failed
-            throw new Exception($"Backup failed (ExitCode {output.ExitCode}): {output.Error}");
+            throw new Exception($"Backup failed (ExitCode {output.ExitCode}): {PgTools.Tail(output.Error)}");
         }
     }
     /// <summary>
@@ -92,7 +92,7 @@ public class BackupRestoreManager
             settings.Port
         );
 
-        await using var cn = new NpgsqlConnection(maintenanceSettings.BuildConnectionString());
+        await using var cn = new NpgsqlConnection(PgTools.MaintenanceConnectionString(maintenanceSettings));
         await cn.OpenAsync();
 
         var exists = await Exists(cn, targetDb);
@@ -125,7 +125,7 @@ public class BackupRestoreManager
         if (output.ExitCode != 0)
         {
             // failed
-            throw new Exception($"Restore failed (ExitCode {output.ExitCode}): {output.Error}");
+            throw new Exception($"Restore failed (ExitCode {output.ExitCode}): {PgTools.Tail(output.Error)}");
         }
     }
 
@@ -142,7 +142,7 @@ public class BackupRestoreManager
 
         if (output.ExitCode != 0)
         {
-            throw new Exception($"Backup is not a readable archive (ExitCode {output.ExitCode}): {output.Error}");
+            throw new Exception($"Backup is not a readable archive (ExitCode {output.ExitCode}): {PgTools.Tail(output.Error)}");
         }
     }
 

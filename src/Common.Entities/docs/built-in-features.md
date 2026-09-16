@@ -87,10 +87,11 @@ public class EntityConstraintException(string message, Exception? innerException
   `ConfigureDefaultJsonOptions()` registers. The controller helpers (`ControllerExtensions.Save`/`Delete`)
   and the `[EntityConstraintConflict]` attribute on the attachment controller bases catch it first and emit
   the same body. The provider's constraint message is logged server-side (warning) by the write service.
-- **Direct `SaveChanges()` callers** (seeding, jobs, custom services): catch `EntityConstraintException`,
-  not `DbUpdateException` — a `catch (DbUpdateException)` no longer sees constraint failures, only
-  transient faults. `Message` is the same generic text (safe to render anywhere); the provider message is
-  on `InnerException` and in the write service's warning log.
+- **Direct callers** (seeding, jobs, custom services): `IEntityService.SaveChanges()` throws
+  `EntityConstraintException` for a constraint failure and lets only transient faults through as
+  `DbUpdateException`; `DbContext.SaveChanges()` throws EF's `DbUpdateException` for both. `Message` is the same
+  generic text (safe to render anywhere); the provider message is on `InnerException` and in the write service's
+  warning log.
 - The response is deliberately generic — throw `EntityInputException` from a prepper when the client
   should receive a field-level 400 instead.
 
@@ -132,8 +133,12 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
 - **Every web write surface returns 409 Conflict** with a `ProblemDetails` titled "Concurrency conflict" —
   distinct from the constraint 409 — through the same `EntityExceptionFilter`, controller helpers and
   `[EntityConstraintConflict]` attribute.
-- **Direct `SaveChanges()` callers** (seeding, jobs, custom services): catch `EntityConcurrencyException`, not
-  `DbUpdateConcurrencyException`. A failed save keeps the change tracker; reload and retry in a fresh scope.
+- **Direct callers** (seeding, jobs, custom services): `IEntityService.SaveChanges()` throws
+  `EntityConcurrencyException`, with EF's exception inside; `DbContext.SaveChanges()` throws EF's
+  `DbUpdateConcurrencyException` itself. A failed save keeps the change tracker; reload and retry in a fresh scope.
+- **A write through the raw `DbContext` is checked against the token the entity was loaded with.** Copying a
+  client's token onto a tracked entity changes only its current value, so a stale client still wins; set
+  `db.Entry(entity).Property(x => x.ConcurrencyToken).OriginalValue` to the client's token for the check to apply.
 - Startup validation warns when a DTO has no property for a version stamp, and when the input DTO — or an entity
   that is its own input DTO — initializes it, so a client that omits the stamp gets a 409 instead of an unchecked
   write. It reports an error when the entity initializes its stamp while the input DTO has no property to overwrite

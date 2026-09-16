@@ -9,9 +9,8 @@ public class EntityTypeExtensionsTests
 {
     /// <summary>
     /// The attribute metadata cache is filled on first use, so concurrent requests that touch an entity type
-    /// for the first time all reach the fill path at once. It used to be primed with a ContainsKey check
-    /// followed by Add, and the caller that lost that race was handed
-    /// "The key already existed in the dictionary" out of a save.
+    /// for the first time all reach the fill path at once. A ContainsKey check followed by Add would hand
+    /// the caller that loses that race "The key already existed in the dictionary" out of a save.
     /// </summary>
     [Test]
     public void GetPropertyAttributes_Survives_Concurrent_First_Use()

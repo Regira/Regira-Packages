@@ -124,6 +124,19 @@ public class MongoSettingsTests
     }
 
     [Test]
+    public void An_IPv6_Host_Survives_The_Round_Trip()
+    {
+        var single = MongoSettings.FromConnectionString("mongodb://[::1]:27018/shop").Clone<MongoSettings>();
+        var replicaSet = MongoSettings.FromConnectionString("mongodb://[fe80::1]:27017,[fe80::2]:27018/shop?replicaSet=rs0").Clone<MongoSettings>();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(single.BuildConnectionString(), Is.EqualTo("mongodb://[::1]:27018/shop"));
+            Assert.That(replicaSet.BuildConnectionString(), Is.EqualTo("mongodb://[fe80::1]:27017,[fe80::2]:27018/shop?replicaSet=rs0"));
+        });
+    }
+
+    [Test]
     public void A_Repeated_Option_Survives_The_Round_Trip()
     {
         const string uri = "mongodb://mongo.example.com:27017/shop?readPreference=secondary&readPreferenceTags=dc%3Any&readPreferenceTags=dc%3Aeu";

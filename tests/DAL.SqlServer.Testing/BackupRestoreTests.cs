@@ -217,6 +217,37 @@ public class BackupRestoreTests
     }
 
     [Test]
+    public async Task Refuses_To_Write_Over_The_Files_Of_An_Offline_Database()
+    {
+        var copy = NewDatabaseName();
+        // an offline database whose files carry the names the restore gives the copy's — a rename leaves exactly that
+        var owner = NewDatabaseName();
+        await using (var cn = await Open("master"))
+        {
+            var (dataDirectory, logDirectory) = await cn.QuerySingleAsync<(string, string)>(
+                "SELECT CAST(SERVERPROPERTY('InstanceDefaultDataPath') AS nvarchar(4000)), CAST(SERVERPROPERTY('InstanceDefaultLogPath') AS nvarchar(4000))");
+            await cn.ExecuteAsync($"""
+                CREATE DATABASE [{owner}]
+                    ON (NAME = N'{owner}', FILENAME = N'{Path.Combine(dataDirectory, copy + ".mdf")}')
+                    LOG ON (NAME = N'{owner}_log', FILENAME = N'{Path.Combine(logDirectory, copy + "_log.ldf")}')
+                """);
+        }
+        await Execute(owner, "CREATE TABLE dbo.Kept (Id int); INSERT dbo.Kept VALUES (1);");
+        await Execute("master", $"ALTER DATABASE [{owner}] SET OFFLINE WITH ROLLBACK IMMEDIATE");
+
+        var ex = Assert.ThrowsAsync<InvalidOperationException>(() => new SqlServerRestoreService(Options(copy, overwrite: true)).Restore(_backup));
+
+        await Execute("master", $"ALTER DATABASE [{owner}] SET ONLINE");
+        await using var check = await Open(owner);
+        var kept = await check.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Kept");
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex!.Message, Does.Contain(owner));
+            Assert.That(kept, Is.EqualTo(1), "the other database's data must be untouched");
+        });
+    }
+
+    [Test]
     public async Task A_Backup_This_Process_Cannot_Read_Is_Removed_From_The_Server()
     {
         var options = Options(_sourceDb);

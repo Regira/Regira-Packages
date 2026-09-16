@@ -45,7 +45,7 @@ public class PgBackupService(PgOptions options, IProcessHelper processHelper, IL
         if (output.ExitCode != 0)
         {
             // failed
-            throw new Exception($"Backup failed (ExitCode {output.ExitCode}): {output.Error}");
+            throw new Exception($"Backup failed (ExitCode {output.ExitCode}): {PgTools.Tail(output.Error)}");
         }
 
         // read the dump into memory so the temporary file can be removed

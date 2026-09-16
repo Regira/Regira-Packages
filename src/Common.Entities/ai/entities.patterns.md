@@ -838,7 +838,9 @@ public class Order : IEntity<int>, IHasConcurrencyToken
 
 `UseEntities<TContext>(o => o.UseDefaults())` declares `ConcurrencyToken` a concurrency token from the context's
 options (`DbContextWiring.ConcurrencyTokens` — no `DbContext` change) and registers `HasConcurrencyTokenDbPrimer`,
-which mints a new value on every insert and update, a soft delete and a raw-`DbContext` write included. A
+which mints a new value on every insert and update, a soft delete and a raw-`DbContext` write included — so a
+client that read the row before such a write is refused afterwards (what the raw write itself is checked against is
+in the table below). A
 `DbContext` you construct yourself takes `.AddConcurrencyTokenConvention()` on its options builder; an explicit
 `.IsConcurrencyToken(false)` opts one entity type out. Adding the interface to an existing entity adds a column, so
 create a migration. Startup validation reports a marker whose context never got the wiring (error) and one that
@@ -886,6 +888,10 @@ the stored token and deletes against that: the delete goes through, while a call
 its check and an already-deleted row still reports a conflict. The cost is one extra `SELECT` per deleted row that
 carries the marker, so removing N stubs in a loop is N extra round trips — load the entities you are deleting (a
 single query) when that matters. On a synchronous `SaveChanges()` each of those reads blocks the calling thread.
+Two stubs still need the entity loaded: one of an `IArchivable` entity — the soft delete turns the stub into an
+update, which is checked like any other and answers 409 rather than overwriting the row with the stub's defaults —
+and one whose row references its own children, whose reference is dropped by a direct `UPDATE` before any primer
+runs.
 
 **3. Handle the 409 on the client.** The body is a `ProblemDetails` titled **"Concurrency conflict"** — the
 constraint 409 is titled "Conflict" — so the client can tell "reload and try again" from "fix the input". Reload
@@ -899,6 +905,7 @@ What each write is checked against:
 | `PUT` without it (`null`, empty, `Guid.Empty`, `0`) | nothing the client read: it writes, only a write racing it is caught, and the empty value never overwrites the token (the marker's primer still mints a new one) |
 | `PATCH` | the token in the body when it carries one; otherwise the merge base supplies the value read at `PATCH` time |
 | `DELETE`, and child rows a save drops | no client token reaches them — only a write racing them is caught |
+| Your own code on the raw `DbContext` (load, copy the DTO, `SaveChanges()`) | the token the entity was **loaded** with — copying the client's token onto a tracked entity changes only its current value, so a stale client wins. Set the original yourself: `db.Entry(order).Property(x => x.ConcurrencyToken).OriginalValue = dto.ConcurrencyToken` |
 | Owned children (`Related()`) | each child's own token, when it declares one; one stale child fails the whole save. A CLR type EF maps more than once — a shared-type entity, an owned type with several owners — has no single model to read its token from, so only a write racing it is caught |
 | A data-column token | the stored row — only a write racing the save is caught |
 
@@ -908,7 +915,8 @@ What each write is checked against:
 - EF raises the same failure for any `UPDATE`/`DELETE` that matched no row, token or not: a row another writer
   removed also answers 409.
 - Direct `IEntityService` callers (jobs, imports) catch `EntityConcurrencyException`; EF's
-  `DbUpdateConcurrencyException` is its `InnerException`, with the conflicting rows in `Entries`. A failed save
+  `DbUpdateConcurrencyException` is its `InnerException`, with the conflicting rows in `Entries`. Code calling
+  `SaveChanges()` on the `DbContext` itself gets EF's `DbUpdateConcurrencyException` unwrapped. A failed save
   keeps the change tracker, so reload and retry in a fresh scope.
 - The token must not be restored from the stored row. `[ServerOwned]` on it is harmless — the client's value is
   read before any prepper runs — but a parent prepper copying stored values onto incoming *children* before the

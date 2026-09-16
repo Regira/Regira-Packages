@@ -65,11 +65,14 @@ internal static class ConcurrencyTokenExtensions
     /// <see cref="IHasConcurrencyToken.ConcurrencyToken"/>, or it carries <see cref="VersionStampAttribute"/>. Any other
     /// token is a version stamp only on a write that moves it, which the model cannot tell.
     /// </summary>
-    internal static bool IsDeclaredVersionStamp(this IProperty token)
+    /// <param name="token">The concurrency token.</param>
+    /// <param name="entityType">The entity the token is read from — a derived type may carry the marker its mapped
+    /// base, which declares the property, does not.</param>
+    internal static bool IsDeclaredVersionStamp(this IProperty token, Type entityType)
         => (token.ValueGenerated & ValueGenerated.OnUpdate) != 0
            || token.ValueGenerated == ValueGenerated.OnUpdateSometimes
            || (token.Name == nameof(IHasConcurrencyToken.ConcurrencyToken)
-               && typeof(IHasConcurrencyToken).IsAssignableFrom(token.DeclaringType.ClrType))
+               && typeof(IHasConcurrencyToken).IsAssignableFrom(entityType))
            || token.PropertyInfo?.IsDefined(typeof(VersionStampAttribute), inherit: true) == true;
 
     /// <summary>
@@ -119,7 +122,7 @@ internal static class ConcurrencyTokenExtensions
         {
             var token = entry.Property(property);
             var moved = !property.GetValueComparer().Equals(token.CurrentValue, clientValue);
-            if (!moved && !property.IsDeclaredVersionStamp())
+            if (!moved && !property.IsDeclaredVersionStamp(incoming.GetType()))
             {
                 undecided.Add((property, clientValue));
             }

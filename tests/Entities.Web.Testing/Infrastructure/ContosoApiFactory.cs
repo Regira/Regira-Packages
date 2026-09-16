@@ -13,8 +13,8 @@ namespace Entities.Web.Testing.Infrastructure;
 /// and seeds it.
 /// <para>
 /// The database file and the attachments folder are per factory instance. That isolation is what lets the
-/// test classes run concurrently: they used to share one fixed temp path, and each class deleting "the"
-/// database at the end of every test is only safe while nothing else is running.
+/// test classes run concurrently: with one shared path, each class deleting "the" database at the end of
+/// every test would be safe only while nothing else is running.
 /// </para>
 /// </summary>
 public class ContosoApiFactory : WebApplicationFactory<Program>

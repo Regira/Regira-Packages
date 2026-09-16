@@ -129,8 +129,9 @@ internal static class OpenXmlPageSetup
     {
         pageMargin.Top = (int)Math.Round(margins.Top * TwipsPerPoint);
         pageMargin.Bottom = (int)Math.Round(margins.Bottom * TwipsPerPoint);
-        pageMargin.Left = (uint)Math.Round(margins.Left * TwipsPerPoint);
-        pageMargin.Right = (uint)Math.Round(margins.Right * TwipsPerPoint);
+        // top and bottom may be negative (text over the header); left and right may not
+        pageMargin.Left = (uint)Math.Max(0, Math.Round(margins.Left * TwipsPerPoint));
+        pageMargin.Right = (uint)Math.Max(0, Math.Round(margins.Right * TwipsPerPoint));
         // required by the schema; Word's defaults
         pageMargin.Header ??= 720U;
         pageMargin.Footer ??= 720U;

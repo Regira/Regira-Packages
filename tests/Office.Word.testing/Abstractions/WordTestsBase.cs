@@ -323,6 +323,22 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         Assert.That(await HasContent(output, "Item #12"), Is.True);
     }
 
+    public virtual async Task A_Parameter_Key_Is_Matched_Literally()
+    {
+        // characters a regular expression would read as syntax
+        var input = new WordTemplateInput { Template = Document(("Sum: {{ Total (EUR) }}, item {{ x[1 }}, rate {{ a.b }}", false)) };
+        input.GlobalParameters = new Dictionary<string, object>
+        {
+            ["Total (EUR)"] = "42",
+            ["x[1"] = "one",
+            ["a.b"] = "0.5"
+        };
+
+        using var output = await RequireCreator().Create(input);
+
+        Assert.That(await HasContent(output, "Sum: 42, item one, rate 0.5"), Is.True);
+    }
+
     public virtual async Task A_Null_Or_Unused_Parameter_Is_Harmless()
     {
         var input = TemplateInput("parameters.docx");

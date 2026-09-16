@@ -55,7 +55,7 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 > **Word.Mini limits:** `Create` renders `GlobalParameters`, `CollectionParameters` and `Images`, with MiniWord's template syntax rather than the other backends': every value fills a `{{tag}}` — a collection fills a table row whose cells hold `{{Items.Name}}` tags (the row repeats per item, and `{{ row_number }}` is not provided), and an image replaces a `{{logo}}` tag, not a picture named by its Alt Text. A template written for Word.Spire therefore renders its global parameters identically and its collection tables and images not at all. Spaces inside the braces are ignored, and a tag Word split over several runs still matches. It throws `NotSupportedException` for `DocumentParameters`, `Headers`, `Footers` and any non-default `InputOptions` — MiniWord has no API for them. A key may appear in only one of `GlobalParameters`, `Images` and `CollectionParameters`; they share one `{{tag}}` namespace and a duplicate throws `ArgumentException`. `GetText` and `GetImages` run against the rendered document, and `ToImages` is unavailable (no layout engine).
 
-> **Word.Aspose limits:** ODT templates load and EPUB is written; `Convert` writes every document format and throws `NotSupportedException` only for `Png`/`Jpeg` (use `ToImages`). Without a licence Aspose.Words runs in evaluation mode: every document gets *"Created with an evaluation copy of Aspose.Words…"* at the top and *"Evaluation Only. Created with Aspose.Words…"* in place of its own headers and footers, and documents beyond a few hundred paragraphs are cut short. So constructing `WordService` throws when no licence is configured anywhere — a configuration key that resolves to nothing fails at startup — unless `AsposeWordConfig.AllowEvaluation` accepts evaluation output, or the process already holds a licence. Both banners are ordinary text, so a containment check on your own content still passes — assert they are **absent**, and check the last paragraph of a long document survives, if you need to know the licence works. Aspose sells developer, site and metered licences, which differ in the number of developers and locations and in whether public-facing web apps and SaaS are covered ([purchase.aspose.com/pricing/words/net](https://purchase.aspose.com/pricing/words/net/)); a free 30-day temporary licence is available on request. On Linux, add `SkiaSharp.NativeAssets.Linux` at the version of `SkiaSharp` the application resolves (3.119 or later) and install `libfontconfig1` and `libharfbuzz-icu0`.
+> **Word.Aspose limits:** ODT templates load and EPUB is written; `Convert` writes every document format and throws `NotSupportedException` only for `Png`/`Jpeg` (use `ToImages`). Without a licence Aspose.Words runs in evaluation mode: every document gets *"Created with an evaluation copy of Aspose.Words…"* at the top and *"Evaluation Only. Created with Aspose.Words…"* in place of its own headers and footers, and documents beyond a few hundred paragraphs are cut short. So constructing `WordService` throws when no licence is configured anywhere — a configuration key that resolves to nothing fails the first time the service is built — unless `AsposeWordConfig.AllowEvaluation` accepts evaluation output, or the process already holds a licence. Both banners are ordinary text, so a containment check on your own content still passes — assert they are **absent**, and check the last paragraph of a long document survives, if you need to know the licence works. Aspose sells developer, site and metered licences, which differ in the number of developers and locations and in whether public-facing web apps and SaaS are covered ([purchase.aspose.com/pricing/words/net](https://purchase.aspose.com/pricing/words/net/)); a free 30-day temporary licence is available on request. On Linux, add `SkiaSharp.NativeAssets.Linux` at the version of `SkiaSharp` the application resolves (3.119 or later) and install `libfontconfig1` and `libharfbuzz-icu0`.
 
 > **Word.Gotenberg limits:** Implements `IWordConverter` and `IWordToImagesService` only — Gotenberg has no document model. `Convert` produces PDF only; every other `FileFormat` throws `NotSupportedException`. It reads Word (`.doc`, `.dot`, `.docx`, `.dotx`, `.docm`, `.dotm`), OpenDocument (`.odt`, `.ott`), `.rtf`, `.txt`, `.html`/`.htm` and `.epub` sources. `ConversionOptions.Settings` needs an OOXML source (`.docx`, `.dotx`, `.docm`, `.dotm`), because the page size, orientation and margins are written into the document before upload; any `PageSize` is honoured. An input carrying template substitutions needs an `IWordCreator` that renders it first, and throws `NotSupportedException` without one: `Word.Mini.WordService` covers `GlobalParameters`, `CollectionParameters` and `Images` (in its own template syntax), while `Headers`, `Footers`, `DocumentParameters` and non-default `InputOptions` need a creator with a document model — Word.Spire, Word.Syncfusion or Word.Aspose — because Word.Mini refuses them. `ToImages` needs an `IPdfToImageService` such as `Regira.Office.PDF.DocNET`, which rasterises the PDF. **LibreOffice lays documents out differently from Word:** a font missing from the Gotenberg image is substituted, which moves line and page breaks, so page images and page counts can differ from Word's — install the fonts your documents use in the image. The server enforces its own time limit (`--api-timeout`, 30 seconds by default) and answers 503 when a conversion exceeds it.
 
@@ -106,7 +106,7 @@ Composite of all the above. `Word.Spire.WordService`, `Word.Syncfusion.WordServi
 | `GlobalParameters` | `IDictionary<string, object>?` | Simple `{{Key}}` replacements |
 | `CollectionParameters` | `IDictionary<string, ICollection<IDictionary<string, object>>>?` | Table row data — key matches a table placeholder |
 | `Images` | `ICollection<WordImage>?` | Image replacements (matched by name) |
-| `DocumentParameters` | `IDictionary<string, WordTemplateInput>?` | Insert nested documents at bookmarks |
+| `DocumentParameters` | `IDictionary<string, WordTemplateInput>?` | Nested documents, each inserted in place of a `<{ key }>` placeholder paragraph |
 | `Headers` | `ICollection<WordHeaderFooterInput>?` | Page headers |
 | `Footers` | `ICollection<WordHeaderFooterInput>?` | Page footers |
 | `Options` | `InputOptions?` | Processing behaviour flags |
@@ -198,21 +198,26 @@ GlobalParameters = new Dictionary<string, object>
 
 ## Registration
 
-`Word.Syncfusion` and `Word.Aspose` have a DI extension because their vendor needs the licence before
-the first document is touched:
+The backends are constructed directly; register one under the interfaces the application injects. Word.Syncfusion
+and Word.Aspose take their licence through the constructor, because their vendor needs it before the first document
+is touched:
 
 ```csharp
-services.AddSyncfusionWord(o => o.LicenseKey = builder.Configuration["Syncfusion:LicenseKey"]);
+IWordService word = new Regira.Office.Word.Spire.WordService();
 
-services.AddAsposeWord(o => o.LicensePath = builder.Configuration["Aspose:LicensePath"]);
-// or, from a secret store: o.LicenseBase64 = builder.Configuration["Aspose:License"]
+builder.Services.AddSingleton(new SyncfusionWordConfig { LicenseKey = builder.Configuration["Syncfusion:LicenseKey"] });
+builder.Services.AddTransient<IWordService, Regira.Office.Word.Syncfusion.WordService>();
+
+builder.Services.AddSingleton(new AsposeWordConfig { LicensePath = builder.Configuration["Aspose:LicensePath"] });
+// or, from a secret store: LicenseBase64 = builder.Configuration["Aspose:License"]
+builder.Services.AddTransient<IWordConverter, Regira.Office.Word.Aspose.WordService>();
 ```
 
 Both licences also resolve from environment variables — `SYNCFUSION_LICENSE_KEY`, and
 `ASPOSE_WORDS_LICENSE` (the licence file, Base64-encoded) or `ASPOSE_WORDS_LICENSE_PATH` — so a host that
 already sets them needs no configuration. Each is applied once per process. When none of Aspose's four
-settings resolves, resolving the service throws; set `o.AllowEvaluation = true` to accept evaluation output
-instead (a trial, a test run). Both services resolve from singletons and hosted services as well.
+settings resolves, constructing the service throws; set `AllowEvaluation = true` to accept evaluation output
+instead (a trial, a test run).
 
 `Word.Gotenberg` has a DI extension because it talks to a server through a typed `HttpClient`. It
 registers `IWordConverter` and `IWordToImagesService`, and takes an `IPdfToImageService` (for
@@ -233,10 +238,6 @@ Its `HttpClient` is named `Regira.Office.Word.Gotenberg.DependencyInjection.Serv
 (add handlers or resilience through `services.AddHttpClient(HttpClientName)`), so it keeps its own base address and
 credentials beside `AddOfficeClients`. Both register an `IWordConverter`, and the one registered **last** is
 the one resolved — call `AddGotenbergWord` after `AddOfficeClients` to convert with Gotenberg while the Regira
-Office API serves the rest, its `IPdfToImageService` included.
-
-The other backends are constructed directly:
-
-```csharp
-IWordService word = new Regira.Office.Word.Spire.WordService();
-```
+Office API serves the rest, its `IPdfToImageService` included. For template input that needs headers, footers
+or nested documents, register a backend with a document model as the `IWordCreator` —
+`builder.Services.AddTransient<IWordCreator, Regira.Office.Word.Aspose.WordService>()` beside its config.

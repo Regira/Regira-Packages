@@ -418,7 +418,7 @@ public class WordService : IWordService
             var parameterKey = parameter.Key;
             var parameterValue = parameter.Value?.ToString() ?? string.Empty;
 
-            var keyPattern = $"{{{{ *{parameterKey} *}}}}";
+            var keyPattern = $"{{{{ *{Regex.Escape(parameterKey)} *}}}}";
             if (parameterKey.StartsWith("html_", StringComparison.InvariantCultureIgnoreCase))
             {
                 // a template without the tag leaves the parameter unused, as for any other key
@@ -484,7 +484,7 @@ public class WordService : IWordService
                                 itemDic.TryGetValue(key, out value);
                                 break;
                         }
-                        newRow.Cells[i].FirstParagraph.Replace(new Regex($"{{{{ *{key} *}}}}"), value?.ToString() ?? string.Empty);
+                        newRow.Cells[i].FirstParagraph.Replace(new Regex($"{{{{ *{Regex.Escape(key)} *}}}}"), value?.ToString() ?? string.Empty);
                     }
                 }
 
@@ -519,7 +519,7 @@ public class WordService : IWordService
         foreach (var inputDocParameter in documentParameters)
         {
             var docKey = $"<{{ {inputDocParameter.Key} }}>";
-            var regex = new Regex($"<{{ *{inputDocParameter.Key} *}}>");
+            var regex = new Regex($"<{{ *{Regex.Escape(inputDocParameter.Key)} *}}>");
 
             if (regex.IsMatch(content))
             {

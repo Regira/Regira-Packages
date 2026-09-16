@@ -131,6 +131,33 @@ public class ConcurrencyTokenMarkerTests
         Assert.That(IsToken<Order>(scope.ServiceProvider.GetRequiredService<ShopContext>()), Is.True);
     }
 
+    /// A mapped base type declares the token without the marker; the derived type carries the marker.
+    public class Paper : IEntity<int>
+    {
+        public int Id { get; set; }
+        public Guid ConcurrencyToken { get; set; }
+    }
+
+    public class Certificate : Paper, IHasConcurrencyToken;
+
+    public class ArchiveContext(DbContextOptions<ArchiveContext> options) : DbContext(options)
+    {
+        public DbSet<Paper> Papers => Set<Paper>();
+        public DbSet<Certificate> Certificates => Set<Certificate>();
+    }
+
+    [Test]
+    public void The_Marker_Declares_A_Token_Its_Mapped_Base_Holds()
+    {
+        var services = new ServiceCollection();
+        services.AddDbContext<ArchiveContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<ArchiveContext>(o => o.UseDefaults()).For<Certificate>();
+        using var sp = services.BuildServiceProvider();
+        using var scope = sp.CreateScope();
+
+        Assert.That(IsToken<Certificate>(scope.ServiceProvider.GetRequiredService<ArchiveContext>()), Is.True);
+    }
+
     [Test]
     public void An_Explicit_Opt_Out_Wins()
     {

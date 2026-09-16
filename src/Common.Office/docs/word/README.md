@@ -80,7 +80,7 @@ Task<IEnumerable<IImageFile>>   ToImages(WordTemplateInput input, CancellationTo
 
 ### IWordService
 
-Composite of all the above. `Word.Spire.WordService`, `Word.Syncfusion.WordService` and `Word.Aspose.WordService` implement this. `Word.Mini.WordService` implements `IWordCreator`, `IWordTextExtractor` and `IWordImageExtractor` only, and `Word.Gotenberg.WordService` implements `IWordConverter` and `IWordToImagesService` only, so depend on the narrowest interface you need. An `[Obsolete]` alias `IWordManager : IWordService` remains for backward compatibility.
+Composite of all the above. `Word.Spire.WordService`, `Word.Syncfusion.WordService` and `Word.Aspose.WordService` implement this. `Word.Mini.WordService` implements `IWordCreator`, `IWordTextExtractor` and `IWordImageExtractor` only, and `Word.Gotenberg.WordService` implements `IWordConverter` and `IWordToImagesService` only, so depend on the narrowest interface you need. `IWordManager : IWordService` is an `[Obsolete]` alias — depend on `IWordService`.
 
 ## WordTemplateInput
 
@@ -90,7 +90,7 @@ Composite of all the above. `Word.Spire.WordService`, `Word.Syncfusion.WordServi
 | `GlobalParameters` | `IDictionary<string, object>?` | Simple `{{Key}}` replacements |
 | `CollectionParameters` | `IDictionary<string, ICollection<IDictionary<string, object>>>?` | Table row data — key matches a table placeholder in the template |
 | `Images` | `ICollection<WordImage>?` | Image replacements (matched by name) |
-| `DocumentParameters` | `IDictionary<string, WordTemplateInput>?` | Insert nested documents at bookmarks |
+| `DocumentParameters` | `IDictionary<string, WordTemplateInput>?` | Nested documents, each inserted in place of a `<{ key }>` placeholder paragraph |
 | `Headers` | `ICollection<WordHeaderFooterInput>?` | Page headers |
 | `Footers` | `ICollection<WordHeaderFooterInput>?` | Page footers |
 | `Options` | `InputOptions?` | Processing behaviour flags |
@@ -155,18 +155,22 @@ Docx  Doc  Dotx  Dot  Docm  Dotm  Pdf  Html  Rtf  Odt  EPub  Jpeg  Png
 
 `WordService` implements `IWordService` — the full capability set, on Syncfusion DocIO. No document size cap, and the same template features as Word.Spire (`html_*` parameters, collection tables by Alt-Text Title, nested documents, headers and footers). Unlike Word.Spire, `Convert` reports the content type of the format it actually produced.
 
-Register it, so the licence key reaches DocIO before the first document:
+The licence key goes to the constructor, which hands it to DocIO before the first document. In a container, register the configuration and the service under the interfaces the application injects:
 
 ```csharp
-using Regira.Office.Word.Syncfusion.DependencyInjection;
+using Regira.Office.Word.Syncfusion;
 
 IServiceCollection services  = new ServiceCollection();
 IConfiguration configuration = new ConfigurationBuilder().Build();
 
-services.AddSyncfusionWord(o => o.LicenseKey = configuration["Syncfusion:LicenseKey"]);
+services.AddSingleton(new SyncfusionWordConfig { LicenseKey = configuration["Syncfusion:LicenseKey"] });
+services.AddTransient<IWordService, WordService>();
+
+// or without a container
+var word = new WordService(new SyncfusionWordConfig { LicenseKey = configuration["Syncfusion:LicenseKey"] });
 ```
 
-The key also resolves from the `SYNCFUSION_LICENSE_KEY` environment variable.
+The key also resolves from the `SYNCFUSION_LICENSE_KEY` environment variable, and is registered once per process.
 
 > **Licence:** required. Without a valid key DocIO prepends *"Created with a trial version of Syncfusion Word library or registered the wrong key in your application"* to every document, conversion and rendered page. It is ordinary body text rather than a hard failure, so check for its absence to confirm a key actually works. Document SDK is priced per developer per year with a minimum team size ([Syncfusion pricing](https://www.syncfusion.com/sales/products)). Their Community Licence page names Document Solution SDKs among the products it covers, but the Document Solutions sales and licensing pages do not corroborate that and mention only a 30-day evaluation, so confirm eligibility with Syncfusion rather than assuming a free tier.
 
@@ -178,15 +182,17 @@ The key also resolves from the `SYNCFUSION_LICENSE_KEY` environment variable.
 
 `WordService` implements `IWordService` — the full capability set, on Aspose.Words, with the same template features as Word.Spire (`html_*` parameters, collection tables by Alt-Text Title, nested documents, headers and footers). It is the one backend that both loads ODT templates and writes EPUB, and `Convert` writes every document format. `Convert` reports the content type of the format it actually produced, and page settings honour every `PageSize`, A0 to A10.
 
-Register it, so the licence reaches Aspose.Words before the first document:
+The licence goes to the constructor, which applies it before the first document. In a container, register the configuration and the service under the interfaces the application injects:
 
 ```csharp
-using Regira.Office.Word.Aspose.DependencyInjection;
+using Regira.Office.Word.Aspose;
 
 IServiceCollection services  = new ServiceCollection();
 IConfiguration configuration = new ConfigurationBuilder().Build();
 
-services.AddAsposeWord(o => o.LicensePath = configuration["Aspose:LicensePath"]);
+services.AddSingleton(new AsposeWordConfig { LicensePath = configuration["Aspose:LicensePath"] });
+services.AddTransient<IWordConverter, WordService>();
+services.AddTransient<IWordTextExtractor, WordService>();
 ```
 
 `LicenseBase64` takes the licence file's content instead, for a host that keeps it in a secret store. Without either, the `ASPOSE_WORDS_LICENSE` (Base64 content) and `ASPOSE_WORDS_LICENSE_PATH` environment variables are used. The licence is applied once per process.
@@ -201,7 +207,7 @@ When none of the four resolves — a configuration key that is missing, say — 
 
 ### Word.Mini
 
-`WordService` implements `IWordCreator`, `IWordTextExtractor` and `IWordImageExtractor` (`WordCreator` remains as an `[Obsolete]` alias). Lightweight and MIT-licensed, with no document size cap. Text and image extraction read the rendered document through the Open XML SDK, which MiniWord already depends on.
+`WordService` implements `IWordCreator`, `IWordTextExtractor` and `IWordImageExtractor` (`WordCreator` is an `[Obsolete]` alias). Lightweight and MIT-licensed, with no document size cap. Text and image extraction read the rendered document through the Open XML SDK, which MiniWord already depends on.
 
 `Convert`, `Merge` and `ToImages` are unavailable: MiniWord has no layout engine. Use Word.Spire for those, or pair Word.Mini with Word.Gotenberg for PDF output and page images.
 

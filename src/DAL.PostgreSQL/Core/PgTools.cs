@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.RegularExpressions;
+using Npgsql;
 using Regira.DAL.PostgreSQL.Constants;
 
 namespace Regira.DAL.PostgreSQL.Core;
@@ -27,7 +28,10 @@ internal static class PgTools
             ["Port"] = Escape(settings.Port),
             ["Username"] = Escape(settings.Username),
             ["TargetPath"] = Escape(targetPath),
-            ["SchemasArgs"] = hasSchemas ? string.Join(" ", schemas!.Select(x => $"--schema \"{Escape(x)}\"")) : string.Empty,
+            // --strict-names: a schema that matches nothing fails the dump instead of leaving it out
+            ["SchemasArgs"] = hasSchemas
+                ? "--strict-names " + string.Join(" ", schemas!.Select(x => $"--schema \"{Escape(LiteralPattern(x))}\""))
+                : string.Empty,
             ["SourceDb"] = Escape(sourceDb)
         });
     }
@@ -46,6 +50,13 @@ internal static class PgTools
         });
 
     /// <summary>
+    /// The connection that creates and drops the target database. It never joins the caller's ambient
+    /// <c>TransactionScope</c>: <c>CREATE DATABASE</c> and <c>DROP DATABASE</c> cannot run inside a transaction.
+    /// </summary>
+    public static string MaintenanceConnectionString(PgSettings settings)
+        => new NpgsqlConnectionStringBuilder(settings.BuildConnectionString()) { Enlist = false }.ConnectionString;
+
+    /// <summary>
     /// The password travels in the process environment — <c>pg_dump</c> and <c>pg_restore</c> read
     /// <c>PGPASSWORD</c> — so it never appears in the arguments.
     /// </summary>
@@ -58,6 +69,25 @@ internal static class PgTools
         }
         return environment;
     }
+
+    /// <summary>
+    /// The end of what a tool wrote, where its diagnosis is: <c>--verbose</c> output can run long, which no exception
+    /// message should carry whole.
+    /// </summary>
+    public static string Tail(string? text)
+    {
+        const int maxLength = 4000;
+        var trimmed = text?.Trim() ?? string.Empty;
+        return trimmed.Length <= maxLength ? trimmed : "…" + trimmed[^maxLength..];
+    }
+
+    /// <summary>
+    /// A name as <c>pg_dump</c> matches it exactly. Its <c>--schema</c> takes a pattern, which folds an unquoted name
+    /// to lower case and reads <c>*</c>, <c>?</c> and <c>.</c> as wildcards and separators; inside double quotes
+    /// every character is literal, and a double quote is written twice.
+    /// </summary>
+    internal static string LiteralPattern(string name)
+        => $"\"{name.Replace("\"", "\"\"")}\"";
 
     /// <summary>
     /// Escapes a value for use between the double quotes of a process argument string, as the C runtime on Windows

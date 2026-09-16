@@ -14,8 +14,8 @@ namespace Regira.Entities.EFcore.Primers;
 
 /// <summary>
 /// Runs the registered primers on every save — <c>SaveChanges()</c> and <c>SaveChangesAsync()</c> alike. On the
-/// synchronous call the primers are waited on without the caller's synchronization context, so a primer that awaits
-/// cannot deadlock it.
+/// synchronous call the primers are waited on without the caller's synchronization context, so a primer does not
+/// deadlock it on its own awaits.
 /// </summary>
 public class EntityPrimerContainerInterceptor(IServiceProvider serviceProvider, ILogger<EntityPrimerContainerInterceptor>? logger = null) : SaveChangesInterceptor
 {

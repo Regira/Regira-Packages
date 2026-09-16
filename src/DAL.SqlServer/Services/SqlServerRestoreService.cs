@@ -56,6 +56,19 @@ public class SqlServerRestoreService(SqlServerOptions options, ILogger<SqlServer
                 new { path = location.ServerPath }, commandTimeout: 0);
             var moves = await PlanFileMoves(cn, targetDb, backupFiles);
 
+            // a planned path another database still owns — renamed, detached-and-reattached, or offline — is its data:
+            // refuse before anything is dropped, since REPLACE would overwrite an offline database's file without a word
+            var taken = (await cn.QueryAsync<(string Database, string Path)>(
+                    "SELECT DB_NAME(database_id), physical_name FROM sys.master_files WHERE database_id <> ISNULL(DB_ID(@targetDb), 0)", new { targetDb }))
+                .Where(file => moves.Any(move => string.Equals(move.PhysicalName, file.Path, StringComparison.OrdinalIgnoreCase)))
+                .ToArray();
+            if (taken.Length > 0)
+            {
+                throw new InvalidOperationException(
+                    $"Restoring {targetDb} would write {string.Join(", ", taken.Select(file => $"{file.Path} (a file of database {file.Database})"))}. " +
+                    "Rename or remove that database's files first; this restore names its files after the target database.");
+            }
+
             if (exists)
             {
                 // an offline database is dropped without its files, so name the ones the restore will not overwrite
@@ -82,8 +95,9 @@ public class SqlServerRestoreService(SqlServerOptions options, ILogger<SqlServer
                 parameters.Add($"physical{i}", physicalName);
                 moveClauses.Add($"MOVE @logical{i} TO @physical{i}");
             }
-            // REPLACE also overwrites files left at the target paths, e.g. by a database that was offline when it was dropped
-            var replace = options.Overwrite ? ", REPLACE" : string.Empty;
+            // REPLACE overwrites the files the replaced database left behind — it was offline when it was dropped. A new
+            // database gets no REPLACE, so a stray file at a planned path fails the restore instead of being overwritten
+            var replace = exists ? ", REPLACE" : string.Empty;
 
             logger?.LogDebug("Restoring database {Database} from {Path}", targetDb, location.ServerPath);
             await cn.ExecuteAsync($"RESTORE DATABASE @targetDb FROM DISK = @path WITH {string.Join(", ", moveClauses)}{replace}",

@@ -18,7 +18,6 @@
   <ItemGroup>
     <!-- Commercial: without a licence the output is watermarked and truncated (see AsposeWordConfig) -->
     <PackageReference Include="Aspose.Words" Version="26.9.0" />
-    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.11" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.Office\Common.Office.csproj" />

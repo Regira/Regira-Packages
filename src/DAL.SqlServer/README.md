@@ -27,6 +27,7 @@ Regira DAL.SqlServer provides SQL Server backup/restore through the server's own
 | `Port` | `string` | Default `"1433"`; any other port is appended as `host,port` |
 | `UseSecure` | `bool` | Require an encrypted connection; default `false` |
 | `TrustServerCertificate` | `bool` | Accept the server's certificate without validating it |
+| `UseStrictEncryption` | `bool` | `Encrypt=Strict` — TLS before the login (TDS 8.0, SQL Server 2022) — instead of `Mandatory` |
 
 ```csharp
 var settings = new SqlServerSettings("localhost", "shop", "sa", "pass");
@@ -76,6 +77,7 @@ The instance's own backup folder (`MSSQL\Backup`) usually admits only the servic
 
 - An existing target database throws, unless `Overwrite = true`: then it is taken offline, rolling back its open sessions, and dropped. That happens only after SQL Server has read the backup's file list, so a file it cannot open never costs you the existing database. Offline, no application can reconnect before the drop; SQL Server keeps an offline database's files, and the restore overwrites them where they sit at the paths below — a file elsewhere is named in a logged warning.
 - The data and log files go to the server's default data and log directories, named after the target database (`shop_staging.mdf`, `shop_staging_log.ldf`), so a backup restores under a new name beside its source.
+- A planned file that belongs to another database — one renamed, or taken offline — fails the restore before anything is dropped. A target that did not exist is restored without `REPLACE`, so a stray file at a planned path fails the restore rather than being overwritten.
 
 `Exists` checks for a database on an open connection:
 

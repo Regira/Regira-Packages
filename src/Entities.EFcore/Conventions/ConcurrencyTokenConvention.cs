@@ -31,8 +31,9 @@ internal sealed class ConcurrencyTokenConvention : IModelFinalizingConvention
             {
                 continue;
             }
-            // declared on the type that maps it: a derived type shares its root's property, configured once
-            entityType.FindDeclaredProperty(nameof(IHasConcurrencyToken.ConcurrencyToken))?.Builder.IsConcurrencyToken(true);
+            // the property may be declared on a mapped base type that does not implement the marker; the hierarchy
+            // shares it either way, so it is configured wherever it is declared
+            entityType.FindProperty(nameof(IHasConcurrencyToken.ConcurrencyToken))?.Builder.IsConcurrencyToken(true);
         }
     }
 }

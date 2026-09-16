@@ -19,6 +19,18 @@ public class SqlServerSettingsTests
         });
     }
 
+    [TestCase("Encrypt=Strict", "Strict")]
+    [TestCase("Encrypt=Mandatory", "Mandatory")]
+    [TestCase("Encrypt=Optional", "Optional")]
+    public void The_Encryption_Mode_Survives_The_Round_Trip(string encrypt, string expected)
+    {
+        var settings = SqlServerSettings.FromConnectionString($"Server=db01;Database=shop;Integrated Security=true;{encrypt}");
+
+        var builder = new SqlConnectionStringBuilder(settings.Clone<SqlServerSettings>().BuildConnectionString());
+
+        Assert.That(builder.Encrypt, Is.EqualTo(SqlConnectionEncryptOption.Parse(expected)));
+    }
+
     [Test]
     public void Uses_A_Sql_Login_When_A_Username_Is_Given()
     {

@@ -17,8 +17,11 @@ public class BackupRestoreTests
 {
     private const string Password = "p@ss'w:rd";
 
+    private static readonly string ConfigWithPassword =
+        $"uri: 'mongodb://app@mongo.example.com:27018/shop?authSource=admin'{Environment.NewLine}password: 'p@ss''w:rd'{Environment.NewLine}";
+
     [Test]
-    public void Backup_Keeps_The_Password_Off_The_Command_Line()
+    public void Backup_Keeps_The_Connection_Off_The_Command_Line()
     {
         var process = new ToolStandIn { DumpPayload = [1, 2, 3] };
 
@@ -26,10 +29,53 @@ public class BackupRestoreTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(process.Arguments, Does.Contain(@"--uri=""mongodb://app@mongo.example.com:27018/shop?authSource=admin"""));
+            Assert.That(process.Arguments, Does.Not.Contain("--uri"));
             Assert.That(process.Arguments, Does.Not.Contain(Password));
-            Assert.That(process.ConfigFileContents, Is.EqualTo($"password: 'p@ss''w:rd'{Environment.NewLine}"));
+            Assert.That(process.ConfigFileContents, Is.EqualTo(ConfigWithPassword));
         });
+    }
+
+    [Test]
+    public void Backup_Keeps_Secret_Options_Off_The_Command_Line_And_Out_Of_The_Log()
+    {
+        var settings = Settings();
+        settings.UriOptions.Add(new KeyValuePair<string, string>("tlsCertificateKeyFilePassword", "key-secret"));
+        settings.UriOptions.Add(new KeyValuePair<string, string>("authMechanismProperties", "AWS_SESSION_TOKEN:token-secret"));
+        var process = new ToolStandIn { DumpPayload = [1, 2, 3] };
+        var logger = new CapturingLogger<MongoBackupService>();
+
+        new MongoBackupService(Options(settings), process, logger).Backup().Wait();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(process.Arguments, Does.Not.Contain("key-secret").And.Not.Contain("token-secret"));
+            Assert.That(logger.Messages, Is.Not.Empty);
+            Assert.That(string.Join("\n", logger.Messages), Does.Not.Contain("key-secret").And.Not.Contain("token-secret").And.Not.Contain(Password));
+            // the tool still gets them
+            Assert.That(process.ConfigFileContents, Does.Contain("tlsCertificateKeyFilePassword=key-secret").And.Contain("token-secret"));
+        });
+    }
+
+    [Test]
+    public void Backup_Rejects_A_Username_Without_A_Password()
+    {
+        // the tool would wait at its console prompt for the password it was not given
+        var settings = new MongoSettings("mongo.example.com", "shop", username: "app");
+        var service = new MongoBackupService(Options(settings), new ToolStandIn());
+
+        Assert.That(() => service.Backup().GetAwaiter().GetResult(), Throws.ArgumentException.With.Message.Contains("Password"));
+    }
+
+    [Test]
+    public void Backup_Takes_A_Username_Without_A_Password_For_A_Mechanism_That_Needs_None()
+    {
+        var settings = new MongoSettings("mongo.example.com", "shop", username: "CN=app,OU=ops");
+        settings.UriOptions.Add(new KeyValuePair<string, string>("authMechanism", "MONGODB-X509"));
+        var process = new ToolStandIn { DumpPayload = [1, 2, 3] };
+
+        new MongoBackupService(Options(settings), process).Backup().Wait();
+
+        Assert.That(process.ConfigFileContents, Does.Contain("authMechanism=MONGODB-X509").And.Not.Contain("password:"));
     }
 
     [Test]
@@ -75,18 +121,14 @@ public class BackupRestoreTests
     }
 
     [Test]
-    public void Backup_Passes_No_Config_File_Without_A_Password()
+    public void Backup_Passes_Only_The_Uri_Without_Credentials()
     {
         var settings = new MongoSettings("mongo.example.com", "shop");
         var process = new ToolStandIn { DumpPayload = [1, 2, 3] };
 
         new MongoBackupService(Options(settings), process).Backup().Wait();
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(process.Arguments, Does.Not.Contain("--config"));
-            Assert.That(process.Arguments, Does.Contain(@"--uri=""mongodb://mongo.example.com:27017/shop"""));
-        });
+        Assert.That(process.ConfigFileContents, Is.EqualTo($"uri: 'mongodb://mongo.example.com:27017/shop'{Environment.NewLine}"));
     }
 
     [Test]
@@ -141,7 +183,7 @@ public class BackupRestoreTests
     }
 
     [Test]
-    public async Task Restore_Keeps_The_Password_Off_The_Command_Line()
+    public async Task Restore_Keeps_The_Connection_Off_The_Command_Line()
     {
         var process = new ToolStandIn();
 
@@ -149,9 +191,9 @@ public class BackupRestoreTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(process.Arguments, Does.Contain(@"--uri=""mongodb://app@mongo.example.com:27018/shop?authSource=admin"""));
+            Assert.That(process.Arguments, Does.Not.Contain("--uri"));
             Assert.That(process.Arguments, Does.Not.Contain(Password));
-            Assert.That(process.ConfigFileContents, Is.EqualTo($"password: 'p@ss''w:rd'{Environment.NewLine}"));
+            Assert.That(process.ConfigFileContents, Is.EqualTo(ConfigWithPassword));
         });
     }
 
@@ -232,5 +274,14 @@ public class BackupRestoreTests
             var match = Regex.Match(arguments ?? string.Empty, $@"{Regex.Escape(option)}=""([^""]*)""");
             return match.Success ? match.Groups[1].Value : null;
         }
+    }
+
+    private sealed class CapturingLogger<T> : Microsoft.Extensions.Logging.ILogger<T>
+    {
+        public List<string> Messages { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Messages.Add(formatter(state, exception));
     }
 }

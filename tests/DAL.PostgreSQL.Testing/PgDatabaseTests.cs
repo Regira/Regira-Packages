@@ -219,6 +219,20 @@ public class PgDatabaseTests
         Assert.That(environment!["PGPASSWORD"], Is.EqualTo(_server.Password));
     }
 
+    [Test]
+    public async Task Restore_runs_inside_an_ambient_transaction()
+    {
+        // CREATE DATABASE refuses to run inside a transaction, so the service must not join the caller's
+        using (new System.Transactions.TransactionScope(System.Transactions.TransactionScopeAsyncFlowOption.Enabled))
+        {
+            await CreateService(HyphenatedDb, new CapturingProcessHelper()).Restore(Backup());
+            // not completed: anything that joined the transaction is rolled back
+        }
+
+        await using var cn = await OpenServerConnection();
+        Assert.That(await CreateService(HyphenatedDb).Exists(cn, HyphenatedDb), Is.True);
+    }
+
     private static IMemoryFile Backup() => new byte[] { 1, 2, 3, 4, 5 }.ToMemoryFile();
 
     private PgRestoreService CreateService(string targetDb, IProcessHelper? processHelper = null, bool overwrite = false)

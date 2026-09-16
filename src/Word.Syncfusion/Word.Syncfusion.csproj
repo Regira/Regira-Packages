@@ -19,7 +19,6 @@
     <PackageReference Include="Syncfusion.DocIO.Net.Core" Version="34.2.8" />
     <!-- SkiaSharp-based renderer: required for PDF conversion and page rasterization -->
     <PackageReference Include="Syncfusion.DocIORenderer.Net.Core" Version="34.2.8" />
-    <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.11" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.Office\Common.Office.csproj" />

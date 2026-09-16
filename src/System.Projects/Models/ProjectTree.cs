@@ -14,9 +14,9 @@ public class ProjectTree : TreeList<Project>
         var tree = new ProjectTree();
 
         // Children are indexed by the resolved absolute path of the dependency. A ProjectReference is
-        // relative to the project declaring it, so matching on the relative suffix alone made every copy of
-        // a project below the scan root -- a git worktree, an unpacked archive -- look like one and the same
-        // project. That cross-linked the copies into a single graph and multiplied the paths walked below.
+        // relative to the project declaring it, and its relative suffix alone matches the same project in
+        // every copy below the scan root -- a git worktree, an unpacked archive -- which would cross-link the
+        // copies into one graph and multiply the paths walked below.
         var childrenByDependency = new Dictionary<string, List<Project>>(StringComparer.OrdinalIgnoreCase);
         foreach (var project in collection)
         {

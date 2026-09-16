@@ -14,7 +14,7 @@ namespace Regira.Entities.EFcore.Normalizing;
 /// <summary>
 /// Runs the matching entity normalizers on every save — <c>SaveChanges()</c> and <c>SaveChangesAsync()</c> alike. On
 /// the synchronous call the normalizers are waited on without the caller's synchronization context, so a normalizer
-/// that awaits cannot deadlock it.
+/// does not deadlock it on its own awaits.
 /// </summary>
 public class EntityNormalizerContainerInterceptor(IServiceProvider serviceProvider) : SaveChangesInterceptor
 {

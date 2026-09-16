@@ -36,12 +36,13 @@ public class PgToolArgumentsTests
         // a quote would end the argument early, and a trailing backslash would escape the closing quote
         var settings = new PgSettings("localhost", "sales\"2026\\", "ops%USERNAME%", "secret");
 
-        await CreateService(settings, processHelper, schemas: ["pub\\\"lic"]).Backup();
+        await CreateService(settings, processHelper, schemas: ["Sa\"les"]).Backup();
 
         Assert.Multiple(() =>
         {
             Assert.That(processHelper.Arguments, Does.EndWith(" \"sales\\\"2026\\\\\""));
-            Assert.That(processHelper.Arguments, Does.Contain("--schema \"pub\\\\\\\"lic\""));
+            // the schema is a pg_dump pattern: quoted, with its own quote doubled, then escaped for the argument string
+            Assert.That(processHelper.Arguments, Does.Contain("--strict-names --schema \"\\\"Sa\\\"\\\"les\\\"\""));
             // started without a shell, so nothing expands it
             Assert.That(processHelper.Arguments, Does.Contain("--username \"ops%USERNAME%\""));
         });

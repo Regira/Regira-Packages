@@ -489,6 +489,35 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         });
     }
 
+    [TestCase("Aspose")]
+    [TestCase("Syncfusion")]
+    public async Task AddGotenbergWord_Renders_Templates_Through_A_Registered_Backend(string backend)
+    {
+        // a backend with a document model renders what Word.Mini cannot — headers, here
+        var handler = new StubHandler(_ => Pdf());
+        var services = new ServiceCollection();
+        if (backend == "Aspose")
+        {
+            services.AddSingleton(new Regira.Office.Word.Aspose.AsposeWordConfig { AllowEvaluation = true });
+            services.AddTransient<IWordCreator, Regira.Office.Word.Aspose.WordService>();
+        }
+        else
+        {
+            services.AddSingleton(new Regira.Office.Word.Syncfusion.SyncfusionWordConfig());
+            services.AddTransient<IWordCreator, Regira.Office.Word.Syncfusion.WordService>();
+        }
+        services.AddGotenbergWord(o => o.BaseUrl = "http://gotenberg.test:3000");
+        UseHandler(services, handler);
+        await using var provider = services.BuildServiceProvider();
+
+        var input = TemplateInput("parameters.docx");
+        input.GlobalParameters = new Dictionary<string, object> { ["title"] = "A title" };
+        input.Headers!.Add(new WordHeaderFooterInput { Template = TemplateInput("add_header.docx") });
+        using var _ = await provider.GetRequiredService<IWordConverter>().Convert(input, FileFormat.Pdf);
+
+        Assert.That(handler.Requests.Single().Uploads.Single().FileName, Is.EqualTo("document.docx"));
+    }
+
     [Test]
     public void AddGotenbergWord_Resolves_Without_The_Optional_Services()
     {

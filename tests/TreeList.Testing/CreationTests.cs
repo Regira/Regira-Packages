@@ -30,9 +30,9 @@ public class CreationTests
     private string _testDirectory = null!;
 
     // A synthetic project graph for the ProjectTree fixtures, plus a directory holding two copies of
-    // it. These used to run against the live repository, which meant they scanned whatever sat below
-    // the solution folder -- git worktrees under .claude/ put three more copies of every project there,
-    // and the tree grew to tens of thousands of nodes. The duplicate copy is now deliberate and small.
+    // it. Not the live repository: that scans whatever sits below the solution folder -- git worktrees
+    // under .claude/ put more copies of every project there -- so the tree size would depend on the
+    // machine. The duplicate copy here is deliberate and small.
     private string _projectDirectory = null!;
     private string _projectCopiesDirectory = null!;
 

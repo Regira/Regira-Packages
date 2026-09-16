@@ -12,7 +12,9 @@ namespace Regira.Entities.EFcore.Primers;
 /// two clients holding the same value would both pass the check.
 /// <para>
 /// A primer rather than a prepper on purpose: it runs on every save, so a domain service writing through the raw
-/// <c>DbContext</c> moves the token as well, and a client still holding the old value is refused.
+/// <c>DbContext</c> moves the token as well, and a client that read the row before that write is refused on its
+/// next one. The raw write itself is compared with the token its entity was loaded with, unless the service sets the
+/// original value to a client's token.
 /// </para>
 /// </summary>
 public class HasConcurrencyTokenDbPrimer : EntityPrimerBase<IHasConcurrencyToken>

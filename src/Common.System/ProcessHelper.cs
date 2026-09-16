@@ -92,9 +92,10 @@ public class ProcessHelper : IProcessHelper
         var errorBuilder = new StringBuilder();
         if (redirect)
         {
+            // the text is kept only when the caller asked for it: a callback alone must not hold a long run's output
             process.OutputDataReceived += (sender, e) =>
             {
-                if (e.Data != null)
+                if (waitForOutput && e.Data != null)
                 {
                     outputBuilder.AppendLine(e.Data);
                 }
@@ -103,7 +104,7 @@ public class ProcessHelper : IProcessHelper
             };
             process.ErrorDataReceived += (_, e) =>
             {
-                if (e.Data != null)
+                if (waitForOutput && e.Data != null)
                 {
                     errorBuilder.AppendLine(e.Data);
                 }

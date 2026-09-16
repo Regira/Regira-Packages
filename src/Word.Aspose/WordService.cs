@@ -282,7 +282,8 @@ public class WordService : IWordService
                 section.PageSetup.BottomMargin = settings.Margins.Bottom;
             }
 
-            var scaleFactor = GetClientWidth(section.PageSetup) / originalWidth;
+            // a page without text width has nothing to scale against
+            var scaleFactor = originalWidth > 0 ? GetClientWidth(section.PageSetup) / originalWidth : 1;
 
             if (options.AutoScaleTables)
             {

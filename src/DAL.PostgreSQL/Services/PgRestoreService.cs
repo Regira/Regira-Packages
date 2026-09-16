@@ -28,7 +28,7 @@ public class PgRestoreService(PgOptions options, IProcessHelper processHelper, I
             settings.Port
         );
 
-        await using var cn = new NpgsqlConnection(maintenanceSettings.BuildConnectionString());
+        await using var cn = new NpgsqlConnection(PgTools.MaintenanceConnectionString(maintenanceSettings));
         await cn.OpenAsync();
 
         var exists = await Exists(cn, targetDb);
@@ -67,7 +67,7 @@ public class PgRestoreService(PgOptions options, IProcessHelper processHelper, I
             if (output.ExitCode != 0)
             {
                 // failed
-                throw new Exception($"Restore failed (ExitCode {output.ExitCode}): {output.Error}");
+                throw new Exception($"Restore failed (ExitCode {output.ExitCode}): {PgTools.Tail(output.Error)}");
             }
         }
         finally
@@ -96,7 +96,7 @@ public class PgRestoreService(PgOptions options, IProcessHelper processHelper, I
 
         if (output.ExitCode != 0)
         {
-            throw new Exception($"Backup is not a readable archive (ExitCode {output.ExitCode}): {output.Error}");
+            throw new Exception($"Backup is not a readable archive (ExitCode {output.ExitCode}): {PgTools.Tail(output.Error)}");
         }
     }
 

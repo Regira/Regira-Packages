@@ -34,18 +34,16 @@ public class MongoRestoreService(MongoOptions options, IProcessHelper processHel
             }
 
             // execute restoring tool
-            // the password goes into a file of its own, the URI carries everything else
-            using var passwordFile = MongoPasswordFile.Create(settings);
+            // the connection travels in a file of its own: a URI can carry secrets besides the password
+            using var configFile = MongoToolConfigFile.Create(settings);
             var args = BackupCommands.Restore
                 .Inject(new
                 {
-                    Uri = settings.BuildConnectionString(includePassword: false),
                     SourcePath = sourcePath,
-                    ConfigArgs = passwordFile?.ConfigArgument
+                    ConfigPath = configFile.FilePath
                 })!;
 
-            // holds no password
-            logger?.LogDebug("Restoring backup with {ProcessPath} {Arguments}", _restoreProcessPath, args);
+            logger?.LogDebug("Restoring backup to {Uri} with {ProcessPath} {Arguments}", settings.BuildRedactedConnectionString(), _restoreProcessPath, args);
 
             // execute restore process, capturing what the tool has to say: without it a failure reports an exit code and nothing else
             var output = processHelper.ExecuteFile(_restoreProcessPath, waitForOutput: true, arguments: args);
@@ -53,7 +51,7 @@ public class MongoRestoreService(MongoOptions options, IProcessHelper processHel
             if (output.ExitCode != 0)
             {
                 // failed
-                throw new Exception($"Restore failed (ExitCode {output.ExitCode}): {output.Error}");
+                throw new Exception($"Restore failed (ExitCode {output.ExitCode}): {ToolOutput.Tail(output.Error)}");
             }
         }
         finally

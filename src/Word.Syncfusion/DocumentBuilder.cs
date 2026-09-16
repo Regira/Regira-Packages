@@ -54,14 +54,15 @@ public class DocumentBuilder(WordService service)
         using var doc = _inputs != null
             ? await service.MergeDocuments(_inputs)
             : new WordDocument();
+        if (doc.Sections.Count == 0)
+        {
+            // a new document has no section, and page settings, headers and footers all need one
+            doc.EnsureMinimal();
+        }
 
         // PageSettings
         if (_settings != null)
         {
-            if (doc.Sections.Count == 0)
-            {
-                doc.AddSection();
-            }
             foreach (var section in doc.Sections.OfType<WSection>())
             {
                 section.PageSetup.PageSize = service.GetPageSize(_settings.PageSize);

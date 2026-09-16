@@ -113,9 +113,9 @@ await new MongoRestoreService(options, processHelper).Restore(backup);
 
 ### Authentication
 
-The username reaches the tool in the connection URI, alongside `authSource` for `AuthenticationDatabase` and `tls=true` for `UseSecure`. The password travels separately: it is written to a temporary YAML file that the tool reads through `--config`, and deleted again once the tool has run. The tools take a password on the command line as well, but a command line is readable by every other process on the machine for as long as the dump runs — and they accept it nowhere else, reading no environment variable and answering their interactive prompt from the console rather than from stdin.
+The connection reaches the tool in a temporary YAML file it reads through `--config`, deleted again once the tool has run: the URI — username, `authSource` for `AuthenticationDatabase`, `tls=true` for `UseSecure`, and every `UriOptions` entry — and the password beside it. The tools take both on the command line as well, but a command line is readable by every other process on the machine for as long as the dump runs, and a URI can carry secrets of its own (`tlsCertificateKeyFilePassword`, an `AWS_SESSION_TOKEN` in `authMechanismProperties`). They accept the password nowhere else, reading no environment variable and answering their interactive prompt from the console rather than from stdin. The debug log shows the URI without the password and with those options masked.
 
-A `Password` without a `Username` is refused with an `ArgumentException`: there is nothing to authenticate as.
+A `Password` without a `Username` is refused with an `ArgumentException`: there is nothing to authenticate as. So is a `Username` without a `Password`, which would leave the tool waiting at its prompt — unless `UriOptions` names an `authMechanism` that needs no password (`MONGODB-X509`, `MONGODB-AWS`, `GSSAPI`, `MONGODB-OIDC`).
 
 Both services start the executable directly, without a shell in between, so an `IProcessHelper` of your own sees `ExecuteFile` rather than `ExecuteCommand`.
 

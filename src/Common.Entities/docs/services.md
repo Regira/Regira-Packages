@@ -242,7 +242,7 @@ e.Related<TRelated, TRelatedKey>(x => x.Collection,
 
 - Executed as EF Core `SaveChangesInterceptors` by DbContext 
 - Run on both `SaveChanges()` and `SaveChangesAsync()`. On the synchronous call a primer that awaits is waited on
-  without the caller's synchronization context — it cannot deadlock, but it holds the calling thread for its I/O, so
+  without the caller's synchronization context — its own awaits do not deadlock the caller, but it holds the calling thread for its I/O, so
   prefer `SaveChangesAsync()` when primers do I/O
 - The interceptor is wired into the DbContext options automatically by `UseEntities(e => e.UseDefaults())`;
   without `UseDefaults()`, select it with `e.WireDbContext(DbContextWiring.PrimerInterceptors)`

@@ -225,7 +225,7 @@ internal sealed class ConcurrencyTokenValidator : IEntityRegistrationValidator
     /// any other token — a data column needs none of it, and only a primer that moves the token makes it apply.
     /// </summary>
     private static EntityValidationIssue AsVersionStampIssue(Type entityType, IProperty token, EntityValidationIssue issue)
-        => token.IsDeclaredVersionStamp()
+        => token.IsDeclaredVersionStamp(entityType)
             ? issue
             : new EntityValidationIssue(EntityValidationSeverity.Info,
                 $"{entityType.Name}.{token.Name} is a concurrency token not declared a version stamp, so it is compared as a data column — with the stored row — " +

@@ -96,7 +96,7 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
 
                 images.Add(new WordImage
                 {
-                    // Matches how Word.Spire matches images: Alt-Text Title first, then Alt-Text Description.
+                    // A name the other backends find a picture by — its Alt-Text Title or Description — then the object name.
                     Name = FirstNotEmpty(properties?.Title?.Value, properties?.Description?.Value, properties?.Name?.Value)
                            ?? GetPartName(imagePart),
                     Size = extent == null
