@@ -6,7 +6,12 @@ using Regira.IO.Storage.Azure;
 namespace IO.Testing.Azure;
 
 [TestFixture]
-[Parallelizable(ParallelScope.Fixtures)]
+// Shares the "test-container" blob container with AzureStorageTests, and the shared teardown deletes
+// every file it can list there — so the two fixtures must never overlap. NUnit runs the parallel and
+// non-parallel shifts one at a time, so marking this one is what keeps them apart; AzureStorageTests
+// stays parallel and overlaps the GitHub fixture instead.
+[NonParallelizable]
+[Category("Network")]
 public class AzureFileProcessorTests
 {
     private const string TEST_FOLDER = "file_processor";

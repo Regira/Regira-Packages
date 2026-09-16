@@ -52,6 +52,7 @@ public static class ServiceCollectionPrimerExtensions
     ///     <item><see cref="HasCreatedDbPrimer"/></item>
     ///     <item><see cref="HasLastModifiedDbPrimer"/></item>
     ///     <item><see cref="ArchivablePrimer"/></item>
+    ///     <item><see cref="HasConcurrencyTokenDbPrimer"/></item>
     /// </list>
     /// </summary>
     /// <param name="options"></param>
@@ -62,6 +63,8 @@ public static class ServiceCollectionPrimerExtensions
         options.AddPrimer<ArchivablePrimer>();
         options.AddPrimer<HasCreatedDbPrimer>();
         options.AddPrimer<HasLastModifiedDbPrimer>();
+        // after ArchivablePrimer, so a soft delete (Deleted → Modified) moves the token too
+        options.AddPrimer<HasConcurrencyTokenDbPrimer>();
         return options;
     }
     public static EntityServiceCollectionOptions AddPrimer<TPrimer>(this EntityServiceCollectionOptions options)

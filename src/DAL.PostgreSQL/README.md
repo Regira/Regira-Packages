@@ -46,16 +46,44 @@ var options = new PgOptions
     Overwrite      = true
 };
 
-// third parameter is a nullable ILogger — pass null (or an injected logger)
-IMemoryFile backup = await new PgBackupService(options, processHelper, null).Backup();
-await new PgRestoreService(options, processHelper, null).Restore(backup);
+IMemoryFile backup = await new PgBackupService(options, processHelper).Backup();
+await new PgRestoreService(options, processHelper).Restore(backup);
 ```
 
-`PgRestoreService` can also create the target database if it does not exist:
+Both services start `pg_dump` / `pg_restore` directly, without a shell in between, so they run on Windows,
+Linux and macOS alike, and a database, user or schema name reaches the tool exactly as written. An
+`IProcessHelper` of your own sees `ExecuteFile` rather than `ExecuteCommand`.
+
+The password reaches the tools through the process environment (`PGPASSWORD`), never through the arguments —
+`ProcessHelper` sets it on the process itself. A custom `IProcessHelper` has to override the environment
+overload of `ExecuteFile` to pass it on; the default implementation throws `NotSupportedException` rather than
+start the tool without it.
+
+## PgOptions
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `DbSettings` | `PgSettings?` | Connection details, or use `ConnectionString` |
+| `ConnectionString` | `string?` | Alternative to `DbSettings` |
+| `ToolsDirectory` | `string` | Where `pg_dump` / `pg_restore` live |
+| `BackupSchemas` | `ICollection<string>?` | Backup these schemas only — each name matched exactly, case and all; a schema that does not exist fails the backup |
+| `Overwrite` | `bool` | Replace the target database if it exists |
+| `MaintenanceDatabase` | `string?` | Database to create/drop from, default `postgres` |
+
+`Restore` creates the target database itself, connecting to `MaintenanceDatabase` to do so —
+`CREATE DATABASE` cannot run from a connection to the database it creates. When the target already
+exists, `Overwrite` drops and recreates it (so anything the backup does not contain is lost) and
+without `Overwrite` the restore fails. PostgreSQL refuses to drop a database while other sessions are
+connected to it. That connection never joins an ambient `TransactionScope`, inside which PostgreSQL refuses
+to create or drop a database.
+
+The three database operations are also available on their own, against a connection to any *other*
+database on the same server:
 
 ```csharp no-compile
-await pgRestore.Create(connection, "new_database");
-bool exists = await pgRestore.Exists(connection, "new_database");
+bool exists = await pgRestore.Exists(connection, "staging-db");
+await pgRestore.Drop(connection, "staging-db");
+await pgRestore.Create(connection, "staging-db");
 ```
 
 ## BackupRestoreManager
@@ -64,12 +92,13 @@ Standalone manager — useful when you want both backup and restore from the sam
 
 ```csharp
 var settings = new PgSettings("localhost", "mydb", "postgres", "pass");
-var options  = new PgOptions { DbSettings = settings };
+var options  = new PgOptions { DbSettings = settings, ToolsDirectory = "/usr/lib/postgresql/16/bin" };
 IProcessHelper processHelper = new ProcessHelper();   // Regira.System
 
 var mgr = new BackupRestoreManager(processHelper, options);
-mgr.Backup(settings, "sourceDb", "/backups/snapshot.dump");   // synchronous (void)
-await mgr.Restore(settings, "targetDb", "/backups/snapshot.dump", overwrite: true);
+mgr.Backup(settings, "source-db", "/backups/snapshot.dump");   // synchronous (void)
+// overwrite: drops target-db and recreates it from the backup
+await mgr.Restore(settings, "target-db", "/backups/snapshot.dump", overwrite: true);
 ```
 
 ## Backup/Restore contracts
@@ -84,7 +113,7 @@ public interface IDbRestoreService { Task Restore(IMemoryFile file); }
 ## Overview
 
 1. **[Index](https://regira.github.io/Regira-Packages/src/DAL.PostgreSQL/)** — Settings, backup/restore, and BackupRestoreManager
-1. [Examples](https://regira.github.io/Regira-Packages/src/DAL.PostgreSQL/docs/examples.html) — Schema-specific backup, create and restore
+1. [Examples](https://regira.github.io/Regira-Packages/src/DAL.PostgreSQL/docs/examples.html) — Schema-specific backup, copying a database, managing it yourself
 
 ## License
 

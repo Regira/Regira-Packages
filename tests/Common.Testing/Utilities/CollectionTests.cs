@@ -1,8 +1,6 @@
 ﻿using Common.Testing.Models;
 using Regira.Utilities;
 
-[assembly: Parallelizable(ParallelScope.Fixtures)]
-
 namespace Common.Testing.Utilities;
 
 [TestFixture]

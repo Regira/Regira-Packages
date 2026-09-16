@@ -1,11 +1,18 @@
 ﻿namespace Regira.DAL.MongoDB.Constants;
 
-// Example: https://blog.devgenius.io/backup-and-restore-mongodb-database-gz-d4871b8f5059
+/// <summary>
+/// Argument templates for the MongoDB Database Tools. The executable itself is not part of the template:
+/// both services start it directly, so no shell reads these arguments.
+/// </summary>
+/// <remarks>
+/// <c>{ConfigPath}</c> is the YAML file holding the connection URI and the password — see <c>MongoToolConfigFile</c>
+/// — so neither appears among the arguments.
+/// </remarks>
 public class BackupCommands
 {
     // https://www.mongodb.com/docs/database-tools/mongodump/
-    public static string Backup => @"""{ProcessPath}"" --uri=""{Uri}"" --gzip --archive={TargetPath}";
+    public static string Backup => @"--gzip --archive=""{TargetPath}"" --config=""{ConfigPath}""";
 
     // https://www.mongodb.com/docs/database-tools/mongorestore/
-    public static string Restore => @"""{ProcessPath}"" --uri=""{Uri}"" --gzip --archive={SourcePath}";
+    public static string Restore => @"--gzip --archive=""{SourcePath}"" --config=""{ConfigPath}""";
 }

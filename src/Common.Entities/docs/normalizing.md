@@ -119,9 +119,9 @@ public string? NormalizedContent { get; set; }
 
 ### Auto retrieve normalizers
 
-Normalizers run as SaveChanges interceptors. `UseEntities<TContext>(e => e.UseDefaults())` wires the
-`EntityNormalizerContainerInterceptor` into the DbContext options automatically; without `UseDefaults()`,
-select it explicitly:
+Normalizers run as SaveChanges interceptors, on `SaveChanges()` and `SaveChangesAsync()` alike.
+`UseEntities<TContext>(e => e.UseDefaults())` wires the `EntityNormalizerContainerInterceptor` into the DbContext
+options automatically; without `UseDefaults()`, select it explicitly:
 ```csharp
 services.UseEntities<MyDbContext>(e => e.WireDbContext(DbContextWiring.NormalizerInterceptors));
 ```

@@ -116,10 +116,11 @@ public class TestFor1EntityAttachmentServices
         Assert.That(globalFilters.OfType<FilterHasCreatedQueryBuilder<int>>(), Is.Not.Empty);
         Assert.That(globalFilters.OfType<FilterHasLastModifiedQueryBuilder<int>>(), Is.Not.Empty);
 
-        Assert.That(primers.Length, Is.EqualTo(5));
+        Assert.That(primers.Length, Is.EqualTo(6));
         Assert.That(primers.OfType<HasCreatedDbPrimer>().Count(), Is.EqualTo(1));
         Assert.That(primers.OfType<HasLastModifiedDbPrimer>().Count(), Is.EqualTo(1));
         Assert.That(primers.OfType<ArchivablePrimer>().Count(), Is.EqualTo(1));
+        Assert.That(primers.OfType<HasConcurrencyTokenDbPrimer>().Count(), Is.EqualTo(1));
         Assert.That(primers.OfType<AttachmentPrimer>().Count(), Is.EqualTo(1));
         Assert.That(primers.OfType<EntityAttachmentPrimer>().Count(), Is.EqualTo(1));
 

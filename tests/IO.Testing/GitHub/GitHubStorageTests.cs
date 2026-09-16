@@ -8,6 +8,7 @@ using System.Text;
 namespace IO.Testing.GitHub;
 
 [TestFixture]
+[Category("Network")]
 public class GitHubStorageTests
 {
     public StorageTestHelper.StorageTestContext<GitHubService> StorageTestContext { get; set; } = null!;

@@ -21,4 +21,5 @@ public record PersonInputDto
 
     public int? SupervisorId { get; set; }
     public ICollection<DepartmentInputDto>? Departments { get; set; }
+    public ICollection<ReservationInputDto>? Reservations { get; set; }
 }

@@ -3,7 +3,6 @@ using Office.VCards.Testing.Samples;
 using Regira.Office.VCards.Abstractions;
 using Regira.Office.VCards.Exceptions;
 using Regira.Office.VCards.Models;
-[assembly: Parallelizable(ParallelScope.Fixtures)]
 
 namespace Office.VCards.Testing.Abstractions;
 

@@ -38,6 +38,7 @@
       ],
       "usings": [
         "System.ComponentModel.DataAnnotations",
+        "System.Threading",
         "Microsoft.EntityFrameworkCore",
         "Microsoft.Extensions.DependencyInjection",
         "Regira.Entities.Models",
@@ -332,18 +333,23 @@
         "src/DAL.MySQL/DAL.MySQL.csproj",
         "src/DAL.MySQL.MySqlBackup/DAL.MySQL.MySqlBackup.csproj",
         "src/DAL.PostgreSQL/DAL.PostgreSQL.csproj",
+        "src/DAL.SqlServer/DAL.SqlServer.csproj",
         "src/Common.System/Common.System.csproj"
       ],
       "guideFiles": [
         "src/DAL.EFcore/README.md",
         "src/DAL.MongoDB/README.md",
         "src/DAL.MySQL/README.md",
-        "src/DAL.PostgreSQL/README.md"
+        "src/DAL.PostgreSQL/README.md",
+        "src/DAL.PostgreSQL/docs/examples.md",
+        "src/DAL.SqlServer/README.md",
+        "src/DAL.SqlServer/docs/examples.md"
       ],
       "usings": [
         "System.IO",
         "MongoDB.Bson",
         "MongoDB.Driver",
+        "Npgsql",
         "Regira.DAL.MongoDB.Abstractions",
         "Regira.DAL.MongoDB.Core",
         "Regira.DAL.MongoDB.Services",
@@ -352,6 +358,8 @@
         "Regira.DAL.MySQL.Services",
         "Regira.DAL.PostgreSQL.Core",
         "Regira.DAL.PostgreSQL.Services",
+        "Regira.DAL.SqlServer.Core",
+        "Regira.DAL.SqlServer.Services",
         "Regira.IO.Abstractions",
         "Regira.Serializing.Abstractions",
         "Regira.System",
@@ -456,18 +464,28 @@
       "name": "office-word",
       "projects": [
         "src/Common.Office/Common.Office.csproj",
+        "src/Word.Aspose/Word.Aspose.csproj",
+        "src/Word.Gotenberg/Word.Gotenberg.csproj",
         "src/Word.Mini/Word.Mini.csproj",
-        "src/Word.Spire/Word.Spire.csproj"
+        "src/Word.Spire/Word.Spire.csproj",
+        "src/Word.Syncfusion/Word.Syncfusion.csproj",
+        "src/PDF.DocNET/PDF.DocNET.csproj",
+        "src/Drawing.SkiaSharp/Drawing.SkiaSharp.csproj"
       ],
       "guideFiles": [
         "src/Common.Office/docs/word/README.md"
       ],
       "usings": [
         "System.IO",
+        "Microsoft.Extensions.Configuration",
+        "Microsoft.Extensions.DependencyInjection",
         "Regira.IO.Abstractions",
         "Regira.IO.Extensions",
         "Regira.Office.Word.Abstractions",
         "Regira.Office.Word.Models"
+      ],
+      "frameworkReferences": [
+        "Microsoft.AspNetCore.App"
       ]
     },
     {

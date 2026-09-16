@@ -54,14 +54,15 @@ public class EntityWriteService<TContext, TEntity, TKey>(
 
         Logger?.LogDebug($"Modifying {typeof(TEntity).FullName} #{item.Id} {(original == null ? "" : " with original")}");
 
+        // The concurrency tokens the client sent, read before any prepper runs: a prepper may overwrite them
+        // ([ServerOwned] restores from the stored row), and the check has to compare the client's value.
+        var clientTokens = DbContext.CaptureClientTokens(item);
+
         await PrepareItem(item, original, token);
 
         if (original != null)
         {
-            DbContext.Entry(original).State = EntityState.Detached;
-            DbContext.Attach(item);
-            DbContext.Entry(item).OriginalValues.SetValues(original);
-            DbContext.Entry(item).State = EntityState.Modified;
+            DbContext.TrackAsUpdateOf(item, original, clientTokens);
         }
 
         return original;
@@ -108,10 +109,13 @@ public class EntityWriteService<TContext, TEntity, TKey>(
 
     /// <summary>
     /// Saves changes to DB, and detaches all entries in ChangeTracker to prevent issues with stale entries in future operations.<br />
+    /// A write built on a stale read — a concurrency token the row no longer holds, or a row another writer
+    /// removed — surfaces as <see cref="EntityConcurrencyException"/>; a database integrity-constraint violation
+    /// as <see cref="EntityConstraintException"/>. Transient faults (deadlocks, timeouts) are not wrapped.<br />
     /// The clear happens on <b>success only</b> — deliberately asymmetric: on failure (including
-    /// <see cref="EntityConstraintException"/>) the tracker keeps its entries, matching stock EF Core
-    /// semantics, so a direct caller (seeding, jobs) can fix or remove the offending entity and retry —
-    /// or discard the scope. Only a successful save deviates from stock EF Core by clearing.
+    /// <see cref="EntityConstraintException"/> and <see cref="EntityConcurrencyException"/>) the tracker keeps its
+    /// entries, matching stock EF Core semantics, so a direct caller (seeding, jobs) can fix or remove the
+    /// offending entity and retry — or discard the scope. Only a successful save deviates from stock EF Core by clearing.
     /// </summary>
     /// <param name="token"></param>
     /// <returns></returns>
@@ -125,6 +129,15 @@ public class EntityWriteService<TContext, TEntity, TKey>(
             var count = await DbContext.SaveChangesAsync(token);
             DbContext.ChangeTracker.Clear();
             return count;
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            // EF raises it for any UPDATE/DELETE that matched no row: the row no longer holds the concurrency token
+            // the client sent, or another writer removed it. Either way the change was built on a stale read, and
+            // the caller's answer is to reload rather than to fix its input — not a constraint violation.
+            Logger?.LogWarning(ex, "A concurrent write rejected the change for {EntityType} (conflicting: {ConflictingEntries})",
+                typeof(TEntity).FullName, string.Join(", ", ex.Entries.Select(e => e.Metadata.ClrType.Name).Distinct()));
+            throw new EntityConcurrencyException(EntityConcurrencyException.ClientMessage, ex);
         }
         catch (DbUpdateException ex) when (ex.IsConstraintViolation())
         {

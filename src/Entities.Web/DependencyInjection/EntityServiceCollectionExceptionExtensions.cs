@@ -10,7 +10,8 @@ public static class EntityServiceCollectionExceptionExtensions
     /// <summary>
     /// Adds <see cref="EntityExceptionFilter"/> to the MVC filter pipeline, so a hand-written action returns
     /// the same statuses the generated ones do: <c>EntityInputException</c> → 400 with its field errors,
-    /// <c>EntityConstraintException</c> → 409. Order-independent of <c>AddControllers()</c>, and idempotent
+    /// <c>EntityConstraintException</c> → 409 "Conflict", and <c>EntityConcurrencyException</c> → 409
+    /// "Concurrency conflict". Order-independent of <c>AddControllers()</c>, and idempotent
     /// however the filter reached <c>MvcOptions</c> — a second copy would add every model error twice.
     /// <para>
     /// Called by <see cref="EntityServiceCollectionJsonExtensions.ConfigureDefaultJsonOptions(IServiceCollection, Action{JsonOptions}, Action{Microsoft.AspNetCore.Http.Json.JsonOptions})"/>,

@@ -7,6 +7,7 @@ using Regira.Office.MimeTypes;
 using Regira.Office.Word.Abstractions;
 using Regira.Office.Word.Models;
 using Regira.Office.Word.Spire.Extensions;
+using Regira.Office.Word.Spire.Internal;
 using Regira.TreeList;
 using Regira.Utilities;
 using Spire.Doc;
@@ -29,10 +30,14 @@ using SpireParagraph = Spire.Doc.Documents.Paragraph;
 
 namespace Regira.Office.Word.Spire;
 
-public class WordManager : IWordService
+[Obsolete("Use WordService instead", false)]
+public class WordManager : WordService;
+
+/// <summary>
+/// Provides functionality for creating, merging, converting, and manipulating Word documents using the Spire.Doc library.
+/// </summary>
+public class WordService : IWordService
 {
-    private const int MAX_DOCUMENT_INSERTS = 100;
-    private int _insertDocumentCounter;
     private static readonly Regex ParamRegex = new("{{ *[a-zA-Z0-9._]+ *}}");
 
     public Task<IMemoryFile> Create(WordTemplateInput input, CancellationToken cancellationToken = default)
@@ -131,6 +136,9 @@ public class WordManager : IWordService
     }
     protected internal Document CreateDocument(WordTemplateInput input, Document? reference = null)
     {
+        // nested documents, headers and footers all build through here
+        using var nesting = NestedDocumentGuard.Enter();
+
         var doc = new Document();
         reference ??= doc;
 
@@ -161,22 +169,50 @@ public class WordManager : IWordService
             ReplaceGlobalParameters(doc, input.GlobalParameters);
         }
 
-        if (input.Headers?.Any() == true)
+        if (input.Headers?.Any() == true || input.Footers?.Any() == true)
         {
-            foreach (var inputHeader in input.Headers)
+            var pageSetup = doc.Sections[0].PageSetup;
+            var hadFirstPage = pageSetup.DifferentFirstPageHeaderFooter;
+            var hadEvenPages = pageSetup.DifferentOddAndEvenPagesHeaderFooter;
+
+            foreach (var inputHeader in input.Headers ?? [])
             {
                 AddHeader(doc, CreateDocument(inputHeader.Template, reference), inputHeader.Type);
             }
-        }
-        if (input.Footers?.Any() == true)
-        {
-            foreach (var inputFooter in input.Footers)
+            foreach (var inputFooter in input.Footers ?? [])
             {
                 AddFooter(doc, CreateDocument(inputFooter.Template, reference), inputFooter.Type);
             }
+
+            FillSwitchedOnStories(doc,
+                !hadFirstPage && pageSetup.DifferentFirstPageHeaderFooter,
+                !hadEvenPages && pageSetup.DifferentOddAndEvenPagesHeaderFooter);
         }
 
         return ProcessInputOptions(doc, input.Options, reference);
+    }
+
+    /// <summary>
+    /// A first-page or even-page header switches those pages to stories of their own — footers included — so the
+    /// footer the input left alone would vanish from them, and the other way round. Where adding the input switched
+    /// such stories on, an empty one takes the default story's content.
+    /// </summary>
+    private void FillSwitchedOnStories(Document doc, bool firstPage, bool evenPages)
+    {
+        var switchedOn = new[] { (firstPage, HeaderFooterType.FirstPage), (evenPages, HeaderFooterType.Even) };
+        foreach (var (_, type) in switchedOn.Where(x => x.Item1))
+        {
+            FillWhenEmpty(doc.GetHeader(type), doc.GetHeader());
+            FillWhenEmpty(doc.GetFooter(type), doc.GetFooter());
+        }
+    }
+
+    private void FillWhenEmpty(HeaderFooter target, HeaderFooter source)
+    {
+        if (IsEmpty(target) && !IsEmpty(source))
+        {
+            target.ReplaceChildObjects(source.ChildObjects);
+        }
     }
     protected internal Stream ConvertDocument(Document doc, ConversionOptions options)
     {
@@ -338,6 +374,11 @@ public class WordManager : IWordService
             var section = doc.Sections[0];
             section.PageSetup.DifferentFirstPageHeaderFooter = true;
         }
+        else if (type == HeaderFooterType.Even)
+        {
+            // even-page stories only render once the document tells odd and even pages apart
+            doc.Sections[0].PageSetup.DifferentOddAndEvenPagesHeaderFooter = true;
+        }
     }
     protected internal void AddFooter(Document doc, Document footerDoc, HeaderFooterType type)
     {
@@ -361,6 +402,11 @@ public class WordManager : IWordService
             var section = doc.Sections[0];
             section.PageSetup.DifferentFirstPageHeaderFooter = true;
         }
+        else if (type == HeaderFooterType.Even)
+        {
+            // even-page stories only render once the document tells odd and even pages apart
+            doc.Sections[0].PageSetup.DifferentOddAndEvenPagesHeaderFooter = true;
+        }
     }
     protected internal void ReplaceGlobalParameters(Document doc, IDictionary<string, object> parameters)
     {
@@ -370,13 +416,13 @@ public class WordManager : IWordService
         foreach (var parameter in parameters)
         {
             var parameterKey = parameter.Key;
-            var parameterValue = parameter.Value.ToString() ?? string.Empty;
+            var parameterValue = parameter.Value?.ToString() ?? string.Empty;
 
-            var keyPattern = $"{{{{ *{parameterKey} *}}}}";
+            var keyPattern = $"{{{{ *{Regex.Escape(parameterKey)} *}}}}";
             if (parameterKey.StartsWith("html_", StringComparison.InvariantCultureIgnoreCase))
             {
-                var sel = doc.FindPattern(new Regex(keyPattern, RegexOptions.IgnoreCase));
-                sel.GetAsOneRange().OwnerParagraph.InjectHtml(parameterValue);
+                // a template without the tag leaves the parameter unused, as for any other key
+                doc.FindPattern(new Regex(keyPattern, RegexOptions.IgnoreCase))?.GetAsOneRange().OwnerParagraph.InjectHtml(parameterValue);
             }
             else
             {
@@ -408,7 +454,8 @@ public class WordManager : IWordService
             var table = docTree.FindTable(name);
             if (table == null)
             {
-                return;
+                // a template without this table: the other collections still apply
+                continue;
             }
 
             var templateRow = table.Rows[1];
@@ -437,7 +484,7 @@ public class WordManager : IWordService
                                 itemDic.TryGetValue(key, out value);
                                 break;
                         }
-                        newRow.Cells[i].FirstParagraph.Replace(new Regex($"{{{{ *{key} *}}}}"), value?.ToString());
+                        newRow.Cells[i].FirstParagraph.Replace(new Regex($"{{{{ *{Regex.Escape(key)} *}}}}"), value?.ToString() ?? string.Empty);
                     }
                 }
 
@@ -467,19 +514,12 @@ public class WordManager : IWordService
     {
         reference ??= doc;
 
-        if (_insertDocumentCounter >= MAX_DOCUMENT_INSERTS)
-        {
-            // prevent infinite loops
-            throw new Exception("Maximum insertable documents reached");
-        }
-        _insertDocumentCounter++;
-
         var content = doc.GetText();
 
         foreach (var inputDocParameter in documentParameters)
         {
             var docKey = $"<{{ {inputDocParameter.Key} }}>";
-            var regex = new Regex($"<{{ *{inputDocParameter.Key} *}}>");
+            var regex = new Regex($"<{{ *{Regex.Escape(inputDocParameter.Key)} *}}>");
 
             if (regex.IsMatch(content))
             {

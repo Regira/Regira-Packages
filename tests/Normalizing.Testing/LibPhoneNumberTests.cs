@@ -1,7 +1,6 @@
 ﻿using System.Globalization;
 using Regira.Globalization.LibPhoneNumber;
 
-[assembly: Parallelizable(ParallelScope.Fixtures)]
 namespace Normalizing.Testing;
 
 [TestFixture]

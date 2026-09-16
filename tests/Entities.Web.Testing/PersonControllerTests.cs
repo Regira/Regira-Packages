@@ -16,13 +16,14 @@ using Testing.Library.Data;
 
 namespace Entities.Web.Testing;
 
-[Collection(nameof(NonParallelCollectionDefinition))]
-public class PersonControllerTests : IDisposable
+public class PersonControllerTests : IClassFixture<ContosoApiFactory>, IDisposable
 {
     private readonly ContosoContext _dbContext;
-    public PersonControllerTests()
+    private readonly ContosoApiFactory _factory;
+    public PersonControllerTests(ContosoApiFactory factory)
     {
-        _dbContext = new ContosoContext(new DbContextOptionsBuilder<ContosoContext>().UseSqlite(ApiConfiguration.ConnectionString).Options);
+        _factory = factory;
+        _dbContext = factory.CreateDbContext();
         _dbContext.Database.EnsureCreated();
     }
 
@@ -30,8 +31,7 @@ public class PersonControllerTests : IDisposable
     [Fact]
     public async Task Empty_Get()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
         var response = await client.GetAsync("/persons");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -43,8 +43,7 @@ public class PersonControllerTests : IDisposable
     [Fact]
     public async Task Get_404()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
         var personInput = new PersonInputDto
         {
             GivenName = "John",
@@ -63,8 +62,7 @@ public class PersonControllerTests : IDisposable
     [Fact]
     public async Task Insert_And_Get_Details()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         await CreateTestItems(_dbContext);
 
@@ -95,8 +93,7 @@ public class PersonControllerTests : IDisposable
     [Fact]
     public async Task Insert_And_Get_List()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var inputPersons = PersonNames.EN
             .Select(name => new PersonInputDto
@@ -126,8 +123,7 @@ public class PersonControllerTests : IDisposable
     [Fact]
     public async Task Insert_And_Force_404()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var personInput = new Person
         {
@@ -148,8 +144,7 @@ public class PersonControllerTests : IDisposable
     [Fact]
     public async Task Update()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var persons = await CreateTestItems(_dbContext);
         var personToUpdate = persons[1];
@@ -169,8 +164,7 @@ public class PersonControllerTests : IDisposable
     [Fact]
     public async Task Patch_Updates_Only_Provided_Fields()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var persons = await CreateTestItems(_dbContext);
         var personToPatch = persons[1];
@@ -188,8 +182,7 @@ public class PersonControllerTests : IDisposable
     [Fact]
     public async Task Patch_Null_Clears_Field()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var personInput = new PersonInputDto
         {
@@ -212,8 +205,7 @@ public class PersonControllerTests : IDisposable
     [Fact]
     public async Task Patch_Leaves_Related_Collection_Untouched()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var personInput = new PersonInputDto
         {
@@ -240,8 +232,7 @@ public class PersonControllerTests : IDisposable
     [Fact]
     public async Task Patch_Required_Field_Returns_BadRequest()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var persons = await CreateTestItems(_dbContext);
         var person = persons[0];
@@ -254,8 +245,7 @@ public class PersonControllerTests : IDisposable
     [Fact]
     public async Task Patch_404()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         await CreateTestItems(_dbContext);
 
@@ -265,8 +255,7 @@ public class PersonControllerTests : IDisposable
     [Fact]
     public async Task Delete()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var persons = await CreateTestItems(_dbContext);
         var personToDelete = persons[2];
@@ -285,8 +274,7 @@ public class PersonControllerTests : IDisposable
     [Fact]
     public async Task Filter_Partial_SearchObject()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         await client.PostAsync("/test-data", new StringContent(""));
 
@@ -356,8 +344,7 @@ public class PersonControllerTests : IDisposable
     [Fact]
     public async Task Filter_NormalizedContent()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         await client.PostAsync("/test-data", new StringContent(""));
 
@@ -423,8 +410,7 @@ public class PersonControllerTests : IDisposable
     [Fact]
     public async Task ModifyDepartmentCollection()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var personInput = new PersonInputDto
         {
@@ -459,8 +445,7 @@ public class PersonControllerTests : IDisposable
     [Fact]
     public async Task Search()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         // create dummy data
         var inputPersons = Enumerable.Shuffle(PersonNames.EN)
@@ -511,8 +496,7 @@ public class PersonControllerTests : IDisposable
     [Fact]
     public async Task Search_SimpleController_ReturnsCountAndPages()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         // seeds 50 courses (CourseController uses a simple EntityControllerBase)
         await client.PostAsync("/test-data", new StringContent(""));
@@ -531,8 +515,7 @@ public class PersonControllerTests : IDisposable
     [Fact]
     public async Task OrderBy_IdDesc()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var inputItems = await CreateTestItems(_dbContext);
 
@@ -558,8 +541,7 @@ public class PersonControllerTests : IDisposable
         _dbContext.Persons.AddRange(persons);
         await _dbContext.SaveChangesAsync();
 
-        var app = new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
                 services.AddSingleton(new EntityListOptions { DefaultPageSize = 2, MaxPageSize = 4 })));
         using var client = app.CreateClient();
 
@@ -596,8 +578,7 @@ public class PersonControllerTests : IDisposable
         await _dbContext.SaveChangesAsync();
 
         // only a max configured (no default) -> an omitted pageSize is capped at the max
-        var app = new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
                 services.AddSingleton(new EntityListOptions { MaxPageSize = 4 })));
         using var client = app.CreateClient();
 
@@ -618,8 +599,7 @@ public class PersonControllerTests : IDisposable
         await _dbContext.SaveChangesAsync();
 
         // global default 2, but Person overrides with 4 -> per-entity wins
-        var app = new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
             {
                 services.AddSingleton(new EntityListOptions { DefaultPageSize = 2 });
                 services.AddSingleton(new EntityListOptions<Person> { DefaultPageSize = 4 });
@@ -643,8 +623,7 @@ public class PersonControllerTests : IDisposable
         await _dbContext.SaveChangesAsync();
 
         // global default 2, but Person opts out (both null) -> full set returned
-        var app = new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
             {
                 services.AddSingleton(new EntityListOptions { DefaultPageSize = 2 });
                 services.AddSingleton(new EntityListOptions<Person>());
@@ -668,8 +647,7 @@ public class PersonControllerTests : IDisposable
         await _dbContext.SaveChangesAsync();
 
         // global opt-out (both null) -> SetPageSize() with no args / UseDefaults() then SetPageSize()
-        var app = new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
                 services.AddSingleton(new EntityListOptions())));
         using var client = app.CreateClient();
 

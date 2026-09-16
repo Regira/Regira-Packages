@@ -11,7 +11,7 @@
 
 ## Structure
 
-> **→ See:** [`entities.setup.md`](./entities.setup.md) — §Project Structure for the recommended per-entity folder layout this example follows.
+> **→ See:** [`entities.setup.md`](./entities.setup.md#project-structure) — §Project Structure for the per-entity folder layout this example follows (single project); in a layered solution the `// Entities/{Plural}/…` path comments below become `{Layer}/{Domain}/{Plural}/` as that section describes.
 
 ## Setup
 
@@ -768,7 +768,8 @@ reverting the other.
 
 **Simpler alternative:** put `IsDone` on `ChecklistItemInputDto` and drop the `e.Prepare(...)` guard entirely, letting
 the client send the current value with each save. Fewer moving parts, but it is last-write-wins — a stale snapshot
-reverts a concurrent toggle. Choose one or the other: registering the guard *and* carrying the field makes the DTO
+reverts a concurrent toggle, unless the child carries a concurrency token, which turns that save into a 409
+([`entities.patterns.md`](./entities.patterns.md) → Optimistic concurrency). Choose one or the other: registering the guard *and* carrying the field makes the DTO
 value inert, since the guard overwrites whatever the client sent.
 
 **Covariance note:** `item.Items?.SetSortOrder()` resolves because `ChecklistItem` statically implements `ISortable`.

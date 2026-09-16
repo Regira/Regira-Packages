@@ -61,4 +61,47 @@ public static class DbContextOptionsBuilderExtensions
     public static DbContextOptionsBuilder<TContext> AddArchivedQueryFilter<TContext>(this DbContextOptionsBuilder<TContext> optionsBuilder)
         where TContext : DbContext
         => (DbContextOptionsBuilder<TContext>)AddArchivedQueryFilter((DbContextOptionsBuilder)optionsBuilder);
+
+    /// <summary>
+    /// Declares <see cref="Regira.Entities.Models.Abstractions.IHasConcurrencyToken.ConcurrencyToken"/> an EF Core
+    /// concurrency token on every entity type implementing the interface, from the options builder. Applied at model
+    /// finalization, so an explicit <c>.IsConcurrencyToken(false)</c> in <c>OnModelCreating</c> still wins.
+    /// <code>
+    /// services.AddDbContext&lt;AppDbContext&gt;(options =&gt; options
+    ///     .UseSqlServer(connectionString)
+    ///     .AddConcurrencyTokenConvention());
+    /// </code>
+    /// <para>
+    /// <c>UseEntities&lt;TContext&gt;(o =&gt; o.UseDefaults())</c> already adds this to the context's options
+    /// (<c>DbContextWiring.ConcurrencyTokens</c>), so an app on the default wiring never calls it. Reach for it when a
+    /// context is built outside that wiring — a hand-constructed context in tests, a design-time factory, or a seeding
+    /// tool — because such a context builds its model without ever consulting the service collection. Declaring the
+    /// token is half of it; <c>HasConcurrencyTokenDbPrimer</c>, which <c>UseDefaults()</c> registers, is what moves it.
+    /// </para>
+    /// </summary>
+    /// <param name="optionsBuilder"></param>
+    /// <returns></returns>
+    public static DbContextOptionsBuilder AddConcurrencyTokenConvention(this DbContextOptionsBuilder optionsBuilder)
+    {
+        var extension = optionsBuilder.Options.FindExtension<ConcurrencyTokenOptionsExtension>() ?? new ConcurrencyTokenOptionsExtension();
+        ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);
+        return optionsBuilder;
+    }
+
+    /// <summary>
+    /// Typed overload of <see cref="AddConcurrencyTokenConvention(DbContextOptionsBuilder)"/>, so the call keeps a
+    /// <see cref="DbContextOptionsBuilder{TContext}"/> chain typed:
+    /// <code>
+    /// new AppDbContext(new DbContextOptionsBuilder&lt;AppDbContext&gt;()
+    ///     .UseSqlite(connection)
+    ///     .AddConcurrencyTokenConvention()
+    ///     .Options);
+    /// </code>
+    /// </summary>
+    /// <typeparam name="TContext"></typeparam>
+    /// <param name="optionsBuilder"></param>
+    /// <returns></returns>
+    public static DbContextOptionsBuilder<TContext> AddConcurrencyTokenConvention<TContext>(this DbContextOptionsBuilder<TContext> optionsBuilder)
+        where TContext : DbContext
+        => (DbContextOptionsBuilder<TContext>)AddConcurrencyTokenConvention((DbContextOptionsBuilder)optionsBuilder);
 }

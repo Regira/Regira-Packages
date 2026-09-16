@@ -87,3 +87,4 @@ Simple and complex controller bases expose different endpoint sets:
 |---|---|
 | `Regira.Entities.Web.Models` | `ListResult<>`, `DetailsResult<>`, `CountResult`, `SaveResult<>`, `DeleteResult<>`, `SearchResult<>` |
 | `Regira.Entities.Web.Models.Abstractions` | `IEntityResult<>` |
+| `Regira.Entities.Web` | `EntityConstraintProblem`, `EntityConcurrencyProblem` — the two 409 `ProblemDetails` bodies, titled "Conflict" and "Concurrency conflict" |

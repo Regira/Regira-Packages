@@ -12,18 +12,18 @@ using Testing.Library.Data;
 
 namespace Entities.Web.Testing;
 
-
-[Collection(nameof(NonParallelCollectionDefinition))]
-public class AttachmentTests : IDisposable
+public class AttachmentTests : IClassFixture<ContosoApiFactory>, IDisposable
 {
     Course[] Courses { get; }
     Person[] Persons { get; }
     private readonly ContosoContext _dbContext;
-    public AttachmentTests()
+    private readonly ContosoApiFactory _factory;
+    public AttachmentTests(ContosoApiFactory factory)
     {
-        Directory.CreateDirectory(ApiConfiguration.AttachmentsDirectory);
+        _factory = factory;
+        Directory.CreateDirectory(_factory.AttachmentsDirectory);
 
-        _dbContext = new ContosoContext(new DbContextOptionsBuilder<ContosoContext>().UseSqlite(ApiConfiguration.ConnectionString).Options);
+        _dbContext = factory.CreateDbContext();
         _dbContext.Database.EnsureCreated();
 
         var departments = Enumerable.Range(1, 5).Select((_, i) => new Department { Title = $"Department #{i}", Budget = i * 1000, StartDate = DateTime.Today.AddDays(i * 3) }).ToArray();
@@ -38,9 +38,7 @@ public class AttachmentTests : IDisposable
     [Fact]
     public async Task Insert_And_Get_Typed_List()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
-
+        using var client = _factory.CreateClient();
 
         var courseId = Enumerable.Shuffle(Courses).First().Id;
         var courseAttachments = new List<EntityAttachmentDto>();
@@ -96,7 +94,7 @@ public class AttachmentTests : IDisposable
     public void Dispose()
     {
         // delete all attachment files
-        Directory.Delete(ApiConfiguration.AttachmentsDirectory, true);
+        Directory.Delete(_factory.AttachmentsDirectory, true);
         // delete DB
         _dbContext.Database.EnsureDeleted();
     }

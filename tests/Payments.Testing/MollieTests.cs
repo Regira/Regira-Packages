@@ -5,12 +5,11 @@ using Regira.Payments.Mollie.Config;
 using Regira.Payments.Mollie.Services;
 using Regira.Utilities;
 
-[assembly: Parallelizable(ParallelScope.Fixtures)]
-
 namespace Payments.Testing;
 
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]
+[Category("Network")]
 public class MollieTests
 {
     private readonly PaymentService _repo;

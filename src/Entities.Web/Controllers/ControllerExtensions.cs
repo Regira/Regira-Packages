@@ -219,6 +219,10 @@ public static class ControllerExtensions
         {
             return ctrl.Conflict(EntityConstraintProblem.Create());
         }
+        catch (EntityConcurrencyException)
+        {
+            return ctrl.Conflict(EntityConcurrencyProblem.Create());
+        }
     }
     // Patch
     private static readonly JsonSerializerOptions DefaultPatchSerializerOptions = new(JsonSerializerDefaults.Web)
@@ -349,6 +353,10 @@ public static class ControllerExtensions
         catch (EntityConstraintException)
         {
             return ctrl.Conflict(EntityConstraintProblem.Create());
+        }
+        catch (EntityConcurrencyException)
+        {
+            return ctrl.Conflict(EntityConcurrencyProblem.Create());
         }
 
         var mapper = ctrl.HttpContext.RequestServices.GetRequiredService<IEntityMapper>();

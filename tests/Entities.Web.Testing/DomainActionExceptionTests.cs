@@ -1,3 +1,4 @@
+using Entities.Web.Testing.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using System.Net;
@@ -11,9 +12,9 @@ namespace Entities.Web.Testing;
 /// that it lands in <c>MvcOptions.Filters</c>, but only a request proves MVC actually runs it — which is the
 /// claim that matters, since the mapping used to reach the generated write actions alone.
 /// </summary>
-public class DomainActionExceptionTests
+public class DomainActionExceptionTests(ContosoApiFactory factory) : IClassFixture<ContosoApiFactory>
 {
-    private static HttpClient Client() => new WebApplicationFactory<Program>().CreateClient();
+    private HttpClient Client() => factory.CreateClient();
 
     [Fact]
     public async Task Input_Exception_From_A_Hand_Written_Action_Is_A_400_With_Its_Field_Errors()

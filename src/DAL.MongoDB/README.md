@@ -25,13 +25,20 @@ Regira DAL.MongoDB provides lightweight MongoDB connectivity using the MongoDB D
 | `Port` | `string` | Port (default `27017`) |
 | `Username` | `string?` | Auth username |
 | `Password` | `string?` | Auth password |
+| `AuthenticationDatabase` | `string?` | `authSource` — the database holding the credentials, when that is not `DatabaseName`. Left empty, MongoDB resolves it itself: `DatabaseName`, or `admin` when no database is named |
 | `UseSecure` (UseTls) | `bool` | TLS/SSL |
+| `UseSrv` | `bool` | The `mongodb+srv://` scheme, where DNS supplies the hosts and the port |
+| `UriOptions` | `IList<KeyValuePair<string, string>>` | Every other connection-string option — `authMechanism`, `replicaSet`, `directConnection`, `readPreference`, `tlsCAFile`, … — in order and unescaped, a repeated one once per occurrence; an explicit `tls=false` is kept too, and left out while `UseSecure` is on |
 
 ```csharp
 var settings = new MongoSettings("localhost", "mydb");
 // or parse from connection string:
-settings = MongoSettings.FromConnectionString("mongodb://user:pass@host:27017/mydb");
+settings = MongoSettings.FromConnectionString("mongodb://user:pass@host:27017/mydb?authSource=admin");
 ```
+
+A `Username` makes every connection an authenticated one — the communicator's and `mongodump`/`mongorestore`'s alike. Options kept in `UriOptions` reach both as well, so an X.509 login or a replica set reached through one member connects the way the connection string says.
+
+`BuildConnectionString()` composes the URI back, percent-encoding the credentials and every option; `BuildConnectionString(includePassword: false)` composes the same URI without the password, for a caller that passes the password through a channel of its own.
 
 ## MongoCommunicator
 
@@ -86,10 +93,13 @@ Task<long>                 Delete(TEntity item)   // deleted count
 
 ## MongoBackupService / MongoRestoreService
 
-Requires `mongodump` / `mongorestore` executables in `MongoOptions.ToolsDirectory`. Both services also take an `IProcessHelper` (e.g. `ProcessHelper` from `Regira.System`) to run those executables.
+Requires the `mongodump` / `mongorestore` executables of the [MongoDB Database Tools](https://www.mongodb.com/docs/database-tools/) 100.3.0 or later in `MongoOptions.ToolsDirectory`. Both services also take an `IProcessHelper` (e.g. `ProcessHelper` from `Regira.System`) to run those executables, and an optional `ILogger` that records the command without its password.
 
 ```csharp
-var settings = new MongoSettings("localhost", "mydb");
+var settings = new MongoSettings("mongo.example.com", "mydb", username: "app", password: "s3cret")
+{
+    AuthenticationDatabase = "admin"
+};
 var options = new MongoOptions
 {
     DbSettings     = settings,
@@ -100,6 +110,14 @@ IProcessHelper processHelper = new ProcessHelper();
 IMemoryFile backup = await new MongoBackupService(options, processHelper).Backup();
 await new MongoRestoreService(options, processHelper).Restore(backup);
 ```
+
+### Authentication
+
+The connection reaches the tool in a temporary YAML file it reads through `--config`, deleted again once the tool has run: the URI — username, `authSource` for `AuthenticationDatabase`, `tls=true` for `UseSecure`, and every `UriOptions` entry — and the password beside it. The tools take both on the command line as well, but a command line is readable by every other process on the machine for as long as the dump runs, and a URI can carry secrets of its own (`tlsCertificateKeyFilePassword`, an `AWS_SESSION_TOKEN` in `authMechanismProperties`). They accept the password nowhere else, reading no environment variable and answering their interactive prompt from the console rather than from stdin. The debug log shows the URI without the password and with those options masked.
+
+A `Password` without a `Username` is refused with an `ArgumentException`: there is nothing to authenticate as. So is a `Username` without a `Password`, which would leave the tool waiting at its prompt — unless `UriOptions` names an `authMechanism` that needs no password (`MONGODB-X509`, `MONGODB-AWS`, `GSSAPI`, `MONGODB-OIDC`).
+
+Both services start the executable directly, without a shell in between, so an `IProcessHelper` of your own sees `ExecuteFile` rather than `ExecuteCommand`.
 
 ## Backup/Restore contracts
 

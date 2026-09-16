@@ -22,6 +22,10 @@ public class PersonIncludableQueryBuilder : IIncludableQueryBuilder<Person, int,
             {
                 query = query.Include(x => x.Departments);
             }
+            if (includes.Value.HasFlag(PersonIncludes.Reservations))
+            {
+                query = query.Include(x => x.Reservations);
+            }
         }
 
         return query;

@@ -91,6 +91,13 @@ public interface IHasLastModified
 
 // Combined — most common choice
 public interface IHasTimestamps : IHasCreated, IHasLastModified;
+
+// Optimistic concurrency: UseDefaults() declares ConcurrencyToken a concurrency token and mints a new one on every
+// write (HasConcurrencyTokenDbPrimer). Guid.Empty from a client means "not sent" — that write is not checked.
+public interface IHasConcurrencyToken
+{
+    Guid ConcurrencyToken { get; set; }
+}
 ```
 
 ### Lifecycle Interface
@@ -496,6 +503,13 @@ public static class DbContextOptionsBuilderExtensions
     public static DbContextOptionsBuilder AddArchivedQueryFilter(this DbContextOptionsBuilder optionsBuilder);
     public static DbContextOptionsBuilder<TContext> AddArchivedQueryFilter<TContext>(
         this DbContextOptionsBuilder<TContext> optionsBuilder) where TContext : DbContext;
+
+    // Declares IHasConcurrencyToken.ConcurrencyToken a concurrency token on every implementing entity type, at
+    // model finalization (an explicit .IsConcurrencyToken(false) still wins). Auto-added by UseDefaults() — call
+    // it yourself for a DbContext constructed outside DI.
+    public static DbContextOptionsBuilder AddConcurrencyTokenConvention(this DbContextOptionsBuilder optionsBuilder);
+    public static DbContextOptionsBuilder<TContext> AddConcurrencyTokenConvention<TContext>(
+        this DbContextOptionsBuilder<TContext> optionsBuilder) where TContext : DbContext;
 }
 ```
 
@@ -510,7 +524,9 @@ public static class DeleteCycleExtensions
     // own children — are a save EF Core refuses with "a circular dependency was detected in the data to be
     // saved". Dropping the reference needs an UPDATE before the DELETEs, so it cannot happen inside one
     // SaveChanges: call these FROM the DbContext's own overrides, BOTH of them, passing base.SaveChanges as
-    // the delegate. A save with no such pair calls the delegate exactly once and opens no transaction.
+    // the delegate. A save with no such pair calls the delegate exactly once and opens no transaction; the
+    // change tracker is read only when the model has two entity types referencing each other and the
+    // provider is relational (the in-memory provider orders no deletes and is passed straight through).
     // Give acceptAllChangesOnSuccess to the EXTENSION and let the delegate take it as a parameter: the
     // reference is dropped with a direct UPDATE and the delegate then runs exactly once with that flag, so
     // nothing is accepted before the save returns and a failed save leaves every change pending for the
@@ -737,7 +753,7 @@ public static EntityServiceCollectionOptions AddPrimer<TPrimer>(
     this EntityServiceCollectionOptions options)
     where TPrimer : class, IEntityPrimer;
 
-// Registers ArchivablePrimer + HasCreatedDbPrimer + HasLastModifiedDbPrimer
+// Registers ArchivablePrimer + HasCreatedDbPrimer + HasLastModifiedDbPrimer + HasConcurrencyTokenDbPrimer
 public static EntityServiceCollectionOptions AddDefaultPrimers(
     this EntityServiceCollectionOptions options);
 ```
@@ -1558,10 +1574,26 @@ public class EntityInputException<T>(string message, Exception? innerException =
 {
     public T? Item { get; set; }
 }
+
+// HTTP 409, ProblemDetails title "Conflict": a database integrity constraint rejected the change.
+public class EntityConstraintException(string message, Exception? innerException = null)
+    : Exception(message, innerException)
+{
+    public const string ClientMessage = "A database constraint rejected the change.";
+}
+
+// HTTP 409, ProblemDetails title "Concurrency conflict": a stale concurrency token, or a row another writer
+// removed. InnerException is EF Core's DbUpdateConcurrencyException (the conflicting rows are in Entries).
+public class EntityConcurrencyException(string message, Exception? innerException = null)
+    : Exception(message, innerException)
+{
+    public const string ClientMessage = "The record was changed or removed since it was read. Reload it and try again.";
+}
 ```
 
-`ConfigureDefaultJsonOptions()` registers the filter that maps it — 400 with `InputErrors` as the body,
-409 for `EntityConstraintException` — so a **hand-written** action returns what the generated ones do.
+`ConfigureDefaultJsonOptions()` registers the filter that maps them — 400 with `InputErrors` as the body,
+409 for `EntityConstraintException` and `EntityConcurrencyException` — so a **hand-written** action returns
+what the generated ones do.
 Catch the non-generic base if you handle it yourself: the generated write actions catch their own closed
 generic, which misses the one a prepper threw for a related entity (`EntityInputException<Product>` inside
 an `Order` write).
@@ -1638,8 +1670,10 @@ public enum DbContextWiring
     UtcDateTimeConvention = 1 << 3,
     // e => !e.IsArchived on every IArchivable entity type — soft delete without a DbContext change
     ArchivedQueryFilter = 1 << 4,
+    // IHasConcurrencyToken.ConcurrencyToken declared a concurrency token — without a DbContext change
+    ConcurrencyTokens = 1 << 5,
     All = PrimerInterceptors | NormalizerInterceptors | AutoTruncateInterceptors | UtcDateTimeConvention
-        | ArchivedQueryFilter
+        | ArchivedQueryFilter | ConcurrencyTokens
 }
 ```
 

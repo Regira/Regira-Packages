@@ -65,8 +65,9 @@ public class AutoTruncateTests
         return Task.CompletedTask;
     }
 
-    [Test]
-    public async Task Test_AutoTruncate_Interceptor()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Test_AutoTruncate_Interceptor(bool synchronousSave)
     {
         // A real file (not :memory:) so the interceptor runs against a normal provider, but a unique one per
         // run so concurrent test processes never open the same database. EnsureDeleted below removes it.
@@ -97,7 +98,15 @@ public class AutoTruncateTests
         Assert.That(item.LastName.Length > 64, Is.True);
         Assert.That(item.Description, Is.EqualTo(description));
 
-        await dbContext.SaveChangesAsync();
+        // SaveChanges() and SaveChangesAsync() reach separate interceptor hooks
+        if (synchronousSave)
+        {
+            dbContext.SaveChanges();
+        }
+        else
+        {
+            await dbContext.SaveChangesAsync();
+        }
 
         Assert.That(item.GivenName.Length, Is.EqualTo(32));
         Assert.That(item.LastName.Length, Is.EqualTo(64));

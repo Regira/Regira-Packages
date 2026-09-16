@@ -11,6 +11,7 @@ namespace Office.Clients.Testing;
 /// </summary>
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]
+[Category("Network")]
 public class LicenseStatusClientTests
 {
     [Test]

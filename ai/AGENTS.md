@@ -193,7 +193,7 @@ When the consumer project already contains Regira packages, inspect the project'
 | `Regira.Office.Clients` | `Office.Clients` | No dedicated family guide | HTTP client extensions for consuming Regira Office services remotely | `Regira.Office.Clients` |
 | `Regira.Office.PDF*` | `Office.PDF` | Dedicated module guides | HTML to PDF, PDF operations, printing | `Regira.Office.PDF.SelectPdf` (preferred for HTML to PDF), `Regira.Office.PDF.DocNET` (preferred for PDF operations), `Regira.Office.PDF.Spire` (preferred when print and PDF ops are both needed); also `Regira.Office.PDF.Puppeteer`, `Regira.Office.PDF.MsPlaywright`, `Regira.Office.PDF.PDFtoPrinter`, `Regira.Office.PDF.PockyBum522` |
 | `Regira.Office.Excel*` | `Office.Excel` | Dedicated module guides | Excel read and write | `Regira.Office.Excel.MiniExcel` (preferred), `Regira.Office.Excel.ClosedXML`, `Regira.Office.Excel.EPPlus`, `Regira.Office.Excel.NpoiMapper` |
-| `Regira.Office.Word*` | `Office.Word` | Dedicated module guides | Word document generation | `Regira.Office.Word.Spire` (preferred), `Regira.Office.Word.Mini` |
+| `Regira.Office.Word*` | `Office.Word` | Dedicated module guides | Word document generation | `Regira.Office.Word.Spire` (preferred), `Regira.Office.Word.Syncfusion` (licence key, no size cap), `Regira.Office.Word.Aspose` (licence, loads ODT and writes EPUB), `Regira.Office.Word.Mini`, `Regira.Office.Word.Gotenberg` (PDF and page images through a Gotenberg server) |
 | `Regira.Office.Mail.*` | `Office.Mail` | Dedicated module guides | Email sending, mail DTOs for HTTP endpoints, or reading `.msg` and `.eml` files | `Regira.Office.Mail.SendGrid`, `Regira.Office.Mail.MailGun`, `Regira.Office.Mail.Web`, `Regira.Office.Mail.MSGReader` |
 | `Regira.Office.Csv*` | `Office.CSV` | Dedicated module guides | CSV read and write | `Regira.Office.Csv.CsvHelper` |
 | `Regira.Office.Barcodes*` | `Office.Barcodes` | Dedicated module guides | Barcode or QR code generation | `Regira.Office.Barcodes.ZXing` (preferred), `Regira.Office.Barcodes.Spire`, `Regira.Office.Barcodes.QRCoder`, `Regira.Office.Barcodes.UziGranot` |
@@ -213,6 +213,7 @@ When the consumer project already contains Regira packages, inspect the project'
 | `Regira.DAL.MongoDB` | `DAL.MongoDB` | No dedicated family guide | MongoDB connectivity and backup or restore workflows | `Regira.DAL.MongoDB` |
 | `Regira.DAL.MySQL*` | `DAL.MySQL` | No dedicated family guide | MySQL or MariaDB connectivity and backup workflows | `Regira.DAL.MySQL`, `Regira.DAL.MySQL.MySqlBackup` |
 | `Regira.DAL.PostgreSQL` | `DAL.PostgreSQL` | No dedicated family guide | PostgreSQL connectivity | `Regira.DAL.PostgreSQL` |
+| `Regira.DAL.SqlServer` | `DAL.SqlServer` | No dedicated family guide | SQL Server backup and restore (native `.bak`) | `Regira.DAL.SqlServer` |
 | `Regira.Globalization.LibPhoneNumber` | `Globalization` | No dedicated family guide | Phone number parsing and formatting | `Regira.Globalization.LibPhoneNumber` |
 | `Regira.Licensing` | `Licensing` | No dedicated family guide | License key registration and offline validation — `UseRegira(configuration)` or `UseRegira(licenseKey)` before any module setup calls (see the pre-flight checklist) | `Regira.Licensing` |
 | `Regira.Setup` | `Setup` | Shared setup guides | Shared project-template and setup-guide extraction for local AI guidance | `Regira.Setup` |
@@ -249,7 +250,7 @@ Apply these conventions when no narrower module guide exists, or as a supplement
 
 ### Following conventions
 
-Follow the prescribed conventions by default; deviate deliberately, not by defaulting to a remembered pattern, and declare any **intended deviations** and why. This applies especially to the **Serilog template** (`project.setup` → *Logging*) and the **per-entity file-per-class layout** (`entities.setup` → *Project Structure*).
+Follow the prescribed conventions by default; deviate deliberately, not by defaulting to a remembered pattern, and declare any **intended deviations** and why. This applies especially to the **Serilog template** (`project.setup` → *Logging*) and the **project layout** — per-entity folders in a single project, or the layered solution once its triggers apply — described in one place only: `entities.setup` → *Project Structure*.
 
 ### Project conventions
 

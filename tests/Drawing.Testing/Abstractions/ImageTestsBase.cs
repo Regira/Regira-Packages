@@ -1,7 +1,5 @@
 ﻿using Regira.Media.Drawing.Services.Abstractions;
 
-[assembly: Parallelizable(ParallelScope.Fixtures)]
-
 namespace Drawing.Testing.Abstractions;
 
 [TestFixture]

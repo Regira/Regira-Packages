@@ -16,7 +16,7 @@
 - **Database**: SQLite (`Microsoft.EntityFrameworkCore.Sqlite`)
 - **Database initialization**: prefer `Database.EnsureCreated()` for the default SQLite starter/test setup; keep the local database disposable and do not scaffold an initial migration unless the user explicitly asks for migrations or chooses a more mature database
 - **Mapping**: Mapster (`Regira.Entities.Mapping.Mapster`)
-- **Project structure**: Per-entity folder structure
+- **Project structure**: Per-entity folders in a single project; the layered solution once one of its triggers applies (§Project Structure)
 - **Service layer**: Default `EntityRepository` (unless complex logic requires wrapping)
 - **Many-to-many relationships**: prefer option A
 - **Web endpoints**: Controllers inheriting from `EntityControllerBase`
@@ -24,6 +24,10 @@
 ---
 
 ## Project Structure
+
+Two layouts, one file set. An entity is always the same files under the same names — model, DTOs, search object, `SortBy`/`Includes` enums, query builder, normalizer, manager/processor, `{Entity}ServiceConfiguration.cs` — and the two layouts differ only in which project and folder each file lives in. Start with the single project; move to the layered solution when one of its triggers applies.
+
+### Single project (default)
 
 The recommended **per-entity folder structure** — one folder per entity under `Entities/`, keeping its model, DTOs, search object, processor/manager, and service configuration together. Controllers live under `Controllers/` (one per entity), the DbContext under `Data/`, and DI wiring under `Extensions/`:
 
@@ -81,6 +85,96 @@ Webshop.API/
 │   └── ServiceCollectionExtensions.cs
 └── Program.cs
 ```
+
+### Layered solution
+
+The shape of an application that has outgrown the free tier. The free budget (5 simple + 2 complex registrations — Checklist 0) fits a single project by construction: none of the triggers below pays for a split at that size, and dividing a free-tier app into layer projects adds `.csproj` files and buys nothing.
+
+Split the single project into one project per **technical layer** once the domain has outgrown the free tier **and** one of these applies:
+
+- more than one host shares the domain — a second API, a worker, or a console tool that must stay independent of the web host (a seeding console alone does not qualify: the default setup seeds in the web host between `Build()` and `Run()`, and a console can reference the API project directly);
+- a second `DbContext` (accounts/identity beside the domain);
+- several domains, each with many entities;
+- the domain is consumed by more than one application.
+
+Two principles decide every file's home:
+
+1. **Projects by layer, mirroring the package stack.** Each layer project references only the package its layer needs, so the project graph is the package graph of §Packages: `Models` → `Data` → `Services` → `DependencyInjection` → host. Abstractions two stacks share — and no entities — go in an optional `Webshop.Core` any layer may reference.
+2. **Domain folders repeat across layers.** Inside every layer project the folders are per domain, then per entity — a folder per entity where it has several files (`Models`, `Services`), one file per entity where it has one (`DependencyInjection`). The same path recurs in every layer, and namespaces follow the folders (`Webshop.Models.Catalog.Products`).
+
+Layer projects live under `src/`, hosts and tools under `app/`. The Webshop example with two domains — `Catalog` (Products, Categories) and `Sales` (Customers, Orders):
+
+```
+src/
+├── Webshop.Models/                    → Regira.Entities
+│   ├── Catalog/
+│   │   ├── Categories/                Category.cs · CategoryDto.cs · CategoryInputDto.cs · CategorySearchObject.cs · RelatedCategory*.cs
+│   │   └── Products/                  Product.cs · ProductDto.cs · ProductInputDto.cs · ProductSearchObject.cs · ProductSortBy.cs · ProductCategory*.cs
+│   └── Sales/
+│       ├── Customers/                 Customer.cs · CustomerDto.cs · CustomerInputDto.cs
+│       └── Orders/                    Order.cs · OrderDto.cs · OrderInputDto.cs · OrderSearchObject.cs · OrderIncludes.cs · OrderStatus.cs · OrderLine*.cs
+├── Webshop.Data/                      → Regira.Entities.EFcore + the EF Core provider; references Models
+│   └── WebshopDbContext.cs
+├── Webshop.Services/                  references Data + Models (Regira.Entities.EFcore arrives through Data)
+│   ├── Catalog/
+│   │   ├── Categories/                CategoryProcessor.cs
+│   │   └── Products/                  ProductQueryBuilder.cs
+│   └── Sales/
+│       └── Orders/                    OrderQueryBuilder.cs · OrderNormalizer.cs · OrderManager.cs
+└── Webshop.DependencyInjection/       → Regira.Entities.DependencyInjection + Regira.Entities.Mapping.Mapster; references Services
+    ├── Catalog/                       CatalogServiceConfiguration.cs · CategoryServiceConfiguration.cs · ProductServiceConfiguration.cs
+    ├── Sales/                         SalesServiceConfiguration.cs · CustomerServiceConfiguration.cs · OrderServiceConfiguration.cs
+    └── Extensions/
+        └── ServiceCollectionExtensions.cs
+app/
+├── Webshop.API/                       → Regira.Entities.Web; references DependencyInjection
+│   ├── Controllers/                   CategoryController.cs · CustomerController.cs · OrderController.cs · ProductController.cs
+│   ├── Infrastructure/
+│   │   └── HostingExtensions.cs
+│   ├── Program.cs
+│   └── appsettings.json
+└── Webshop.Seeder/                    console (`ConsoleWithLogging`); references DependencyInjection only — no Regira.Entities.Web
+    └── Program.cs
+```
+
+DI has three levels, each a file in `Webshop.DependencyInjection`. The root also owns the license registration and `AddDbContext` — in the single project P3 and P4 put both in `Program.cs` — so every host, API or console, gets the same license, context and provider from one call:
+
+```csharp no-compile
+// Extensions/ServiceCollectionExtensions.cs — root: the one call every host makes
+public static IServiceCollection AddEntityServices(this IServiceCollection services, IConfiguration configuration)
+    => services
+        .UseRegira(configuration)   // Regira.Licensing.DependencyInjection — paid tier: this app is past the free budget by definition
+        .AddDbContext<WebshopDbContext>(o => o.UseSqlite(configuration.GetConnectionString("Default")))
+        .UseEntities<WebshopDbContext>(options =>
+        {
+            options.UseDefaults();
+            options.UseMapsterMapping();
+        })
+        .AddCatalog()
+        .AddSales();
+
+// Catalog/CatalogServiceConfiguration.cs — domain aggregator: one chain per domain
+public static EntityServiceCollection<WebshopDbContext> AddCatalog(this IEntityServiceCollection<WebshopDbContext> services)
+    => services
+        .AddProducts()
+        .AddCategories();
+
+// Catalog/ProductServiceConfiguration.cs — per entity: identical to the single-project file
+public static EntityServiceCollection<WebshopDbContext> AddProducts(this IEntityServiceCollection<WebshopDbContext> services)
+    => services.For<Product, ProductSearchObject, ProductSortBy, EntityIncludes>(e =>
+    {
+        e.AddFilter<ProductQueryBuilder>();
+        // …
+    });
+```
+
+**What does not change**
+
+- Every per-entity file keeps its name, content and `.For<>()` registration. Single project → layered is a move by suffix, not a rewrite: the entity and its plain domain enums (`OrderStatus.cs`), `*Dto.cs`, `*SearchObject.cs`, `*SortBy.cs`, `*Includes.cs` to `Models`; `*QueryBuilder.cs`, `*Normalizer.cs`, `*Manager.cs`, `*Processor.cs` to `Services`; `*ServiceConfiguration.cs` to `DependencyInjection`; `*Controller.cs` stays in the host.
+- The P4 signature rule (`this IEntityServiceCollection<TContext>` in, `EntityServiceCollection<TContext>` out) holds at all three levels, and the simple/complex budget (Checklist 0) counts the same entities.
+- P2–P4 apply as written: the web host still calls `ConfigureDefaultJsonOptions()` and keeps its controllers; a console host references only `DependencyInjection` (§Packages, console row) and seeds per [`entities.instructions.md`](./entities.instructions.md#seeding-via-ientityservice) — §Seeding via IEntityService.
+
+Controllers stay in the host; when a second host must serve the same endpoints, move `Controllers/` into a `Webshop.Web` class library (references `Regira.Entities.Web` + `DependencyInjection`) that both hosts reference.
 
 ---
 
@@ -312,8 +406,8 @@ builder.Services.AddEntityServices();
 > that configures its JSON itself.
 
 > **DbContext wiring is automatic.** `UseEntities<TContext>(e => e.UseDefaults())` contributes the
-> primer/normalizer/auto-truncate interceptors, the UTC date convention and the archived query filter to the
-> context's options itself
+> primer/normalizer/auto-truncate interceptors, the UTC date convention, the archived query filter and the
+> concurrency-token convention to the context's options itself
 > (via EF's `IDbContextOptionsConfiguration<TContext>`), regardless of `AddDbContext` ↔ `UseEntities()` call
 > order — `AddDbContext<AppDbContext>(options => …)` only needs the provider. The match is by assignability,
 > so `UseEntities<AppContextBase>()` (abstract base) also wires derived provider-specific contexts
@@ -323,7 +417,8 @@ builder.Services.AddEntityServices();
 > `e.WireDbContext(DbContextWiring.PrimerInterceptors | DbContextWiring.UtcDateTimeConvention)`.
 > ⚠️ It reaches contexts EF builds from the service collection. A `DbContext` you construct yourself
 > (`new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()…Options)`) gets none of it — add what that
-> context needs to its own options builder (`.AddArchivedQueryFilter()`, `.AddUtcDateTimeConvention()`, …).
+> context needs to its own options builder (`.AddArchivedQueryFilter()`, `.AddConcurrencyTokenConvention()`,
+> `.AddUtcDateTimeConvention()`, …).
 
 > **ValidateOnBuild:** turn it on — a `.For<>()` with a wrong generic argument, or one never added at all, then throws when the host builds instead of on some later request.
 >

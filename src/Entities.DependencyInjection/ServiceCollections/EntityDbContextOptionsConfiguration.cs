@@ -54,5 +54,9 @@ public class EntityDbContextOptionsConfiguration<TContext> : IDbContextOptionsCo
         {
             optionsBuilder.AddArchivedQueryFilter();
         }
+        if (wiring.HasFlag(DbContextWiring.ConcurrencyTokens))
+        {
+            optionsBuilder.AddConcurrencyTokenConvention();
+        }
     }
 }

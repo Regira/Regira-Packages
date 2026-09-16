@@ -43,7 +43,8 @@ Task<long> Count(IList<TSearchObject?> so, CancellationToken token = default)
 - Write methods (`Add`, `Modify`, `Save`, `Remove`) **do NOT automatically persist changes**
 - You **must call** `SaveChanges()` to commit all changes to the database
 - After a **successful** `SaveChanges()` the EF change tracker is cleared — all entities saved in that call are now detached. To update one later, pass it through `Modify()` or `Save()` again before the next `SaveChanges()`. A **failed** `SaveChanges()` leaves every entry tracked (stock EF Core semantics), so you can fix or remove the offending entity and retry the same call
-- A database **integrity-constraint violation** (unique index, foreign key, NOT NULL, check) surfaces as `EntityConstraintException` — catch that, not `DbUpdateException`, around direct `SaveChanges()` calls (seeding, jobs). Transient faults (deadlocks, timeouts, concurrency conflicts) are not wrapped and still throw `DbUpdateException` subtypes. See [Built-in Features → Constraint Exceptions](built-in-features.md#constraint-exceptions)
+- A database **integrity-constraint violation** (unique index, foreign key, NOT NULL, check) surfaces as `EntityConstraintException` — catch that, not `DbUpdateException`, around direct `SaveChanges()` calls (seeding, jobs). Transient faults (deadlocks, timeouts) are not wrapped and still throw `DbUpdateException` subtypes. See [Built-in Features → Constraint Exceptions](built-in-features.md#constraint-exceptions)
+- A write built on a **stale read** — a concurrency token the row no longer holds, or a row another writer removed — surfaces as `EntityConcurrencyException`; catch that, not `DbUpdateConcurrencyException`. See [Built-in Features → Concurrency Exceptions](built-in-features.md#concurrency-exceptions)
 
 ```csharp
 Task Save(TEntity item, CancellationToken token = default) // calls Add() or Modify() internally
@@ -240,6 +241,9 @@ e.Related<TRelated, TRelatedKey>(x => x.Collection,
 ### Entity Primers
 
 - Executed as EF Core `SaveChangesInterceptors` by DbContext 
+- Run on both `SaveChanges()` and `SaveChangesAsync()`. On the synchronous call a primer that awaits is waited on
+  without the caller's synchronization context — its own awaits do not deadlock the caller, but it holds the calling thread for its I/O, so
+  prefer `SaveChangesAsync()` when primers do I/O
 - The interceptor is wired into the DbContext options automatically by `UseEntities(e => e.UseDefaults())`;
   without `UseDefaults()`, select it with `e.WireDbContext(DbContextWiring.PrimerInterceptors)`
 - Can be registered **globally** (apply to an interface or base type) or **per entity**

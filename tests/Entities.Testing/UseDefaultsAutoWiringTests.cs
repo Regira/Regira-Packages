@@ -17,7 +17,11 @@ namespace Entities.Testing;
 /// interceptors and the UTC date convention are contributed to the context's options by
 /// <c>UseEntities&lt;TContext&gt;()</c>, so <c>AddDbContext</c> only needs the provider.
 /// </summary>
+// Writes the process-wide DateTimeDefaults.UseUtc policy, which every other fixture in this assembly
+// reads. NUnit runs the non-parallel shift on its own, so marking the writers is what keeps the
+// readers from ever observing a flipped flag.
 [TestFixture]
+[NonParallelizable]
 public class UseDefaultsAutoWiringTests
 {
     // deliberately NO ConfigureConventions and NO interceptor wiring — everything comes from UseDefaults()

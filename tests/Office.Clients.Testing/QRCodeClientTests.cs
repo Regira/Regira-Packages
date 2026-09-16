@@ -8,6 +8,7 @@ namespace Office.Clients.Testing;
 
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]
+[Category("Network")]
 public class QRCodeClientTests : OfficeClientTestsBase
 {
     private IQRCodeService _service = null!;

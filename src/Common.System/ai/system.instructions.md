@@ -6,6 +6,7 @@
 
 | Project | Package | Purpose |
 |---|---|---|
+| `Common.System` | `Regira.System` | Running external processes (`IProcessHelper`) |
 | `System.Hosting` | `Regira.System.Hosting` | Host config, background queues, Windows Service |
 | `System.Projects` | `Regira.System.Projects` | Parse and manage `.csproj` files |
 
@@ -98,6 +99,42 @@ app.AddWindowsServiceInstaller(new WindowsServiceOptions
 ```
 
 Generates `install.bat` / `uninstall.bat` scripts using `sc.exe`.
+
+---
+
+## Processes — `IProcessHelper`
+
+`ProcessHelper` (`Regira.System`) implements `IProcessHelper` (`Regira.System.Abstractions`).
+
+| Method | Runs |
+|---|---|
+| `ExecuteFile(filename, waitForOutput, arguments)` | the executable itself, no shell — on every platform |
+| `ExecuteFile(filename, environment, waitForOutput, arguments)` | the same, with extra environment variables on the process |
+| `ExecuteCommand(command, waitForOutput)` | the command as a temporary `.bat` file — Windows only |
+| `ExecuteCommand(command, environment, waitForOutput)` | the same, with extra environment variables |
+
+- **Pass a secret through `environment`,** never in the arguments or the command: a command line is readable by
+  every process on the machine, and `ExecuteCommand` writes its command to disk. A tool that reads its password
+  from a variable (`PGPASSWORD`) gets it that way.
+- **Prefer `ExecuteFile` with arguments** over `ExecuteCommand`: no shell reads them, so `%` and `&` reach the tool
+  as written. Quote a value that can hold spaces or quotes, escaping a `"` as `\"`.
+- `waitForOutput: true` fills `IProcessOutput.Output` and `Error`; both pipes are drained at the same time, so a
+  tool that logs to stderr cannot stall the call. Without it neither is kept.
+- A custom `IProcessHelper` that does not override the `environment` overloads: `ExecuteCommand` sets the
+  variables in its script (batch syntax), and `ExecuteFile` throws `NotSupportedException` rather than drop them.
+- There is no timeout: the call returns when the process exits.
+
+```csharp
+IProcessHelper processes = new ProcessHelper();
+var output = processes.ExecuteFile("/usr/bin/pg_dump",
+    new Dictionary<string, string> { ["PGPASSWORD"] = password },
+    waitForOutput: true,
+    arguments: "--host \"db01\" --username \"app\" --no-password --file \"/tmp/shop.dump\" \"shop\"");
+if (output.ExitCode != 0)
+{
+    throw new InvalidOperationException(output.Error);
+}
+```
 
 ---
 

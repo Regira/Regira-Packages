@@ -87,6 +87,9 @@ var products = await new CsvManager<Product>()
 IMemoryFile file = await new CsvManager<Order>()
     .WriteFile(orders, new CsvOptions { Delimiter = "\t" });
 
+// ⚠️ Read the result with GetBytes() (Regira.IO.Extensions), never .Bytes — see office.instructions → Reading a result
+byte[] bytes = file.GetBytes()!;
+
 // Write non-generic from a list of dictionaries
 string csv = await new CsvManager().Write(rows);
 ```

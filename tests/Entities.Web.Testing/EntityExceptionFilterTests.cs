@@ -76,6 +76,33 @@ public class EntityExceptionFilterTests
     }
 
     [Fact]
+    public void ConcurrencyException_Becomes_409_With_Its_Own_Problem_Body()
+    {
+        var context = ContextFor(new EntityConcurrencyException(EntityConcurrencyException.ClientMessage));
+
+        new EntityExceptionFilter().OnException(context);
+
+        Assert.True(context.ExceptionHandled);
+        var problem = Assert.IsType<ProblemDetails>(Assert.IsType<ConflictObjectResult>(context.Result).Value);
+        Assert.Equal(EntityConcurrencyException.ClientMessage, problem.Detail);
+        // both conflicts answer 409; the title is how a client tells "reload and retry" from "fix the input"
+        Assert.NotEqual(Regira.Entities.Web.EntityConstraintProblem.Create().Title, problem.Title);
+    }
+
+    // The attachment controller bases carry the attribute, so a host without the global filter still answers 409.
+    [Fact]
+    public void The_Conflict_Attribute_Maps_A_Concurrency_Conflict_Too()
+    {
+        var context = ContextFor(new EntityConcurrencyException(EntityConcurrencyException.ClientMessage));
+
+        new EntityConstraintConflictAttribute().OnException(context);
+
+        Assert.True(context.ExceptionHandled);
+        var problem = Assert.IsType<ProblemDetails>(Assert.IsType<ConflictObjectResult>(context.Result).Value);
+        Assert.Equal(Regira.Entities.Web.EntityConcurrencyProblem.Create().Title, problem.Title);
+    }
+
+    [Fact]
     public void Other_Exceptions_Are_Left_Alone()
     {
         var context = ContextFor(new InvalidOperationException("boom"));

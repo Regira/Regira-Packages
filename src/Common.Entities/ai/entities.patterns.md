@@ -511,6 +511,8 @@ the entity controller on the **same** resource route, as a second controller wit
 is supported, and keeps the guard off the hot path where every ordinary PATCH would pay for it:
 
 ```csharp
+using Regira.Entities.Web.Controllers;                                       // this.DetailsResult(...)
+
 public enum RequestStatus { Draft, Submitted, Approved }
 
 public class CreditRequest : IEntity<int>
@@ -540,7 +542,7 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
         item.DecidedOn = DateTime.UtcNow;
         await service.Modify(item);
         await service.SaveChanges();                                         // no base controller here — save explicitly
-        return Ok(item);
+        return this.DetailsResult(item);                                     // { "item": … } — the envelope every generated endpoint uses
     }
 }
 ```
@@ -555,6 +557,10 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
   `EntityInputException<Product>`.
 - **Write through `IEntityService`** — keeps preppers, primers and row security in play, so the action and the
   CRUD route cannot diverge.
+- **Answer in the same envelope as the generated endpoints.** `this.DetailsResult(item)`
+  (`Regira.Entities.Web.Controllers`) wraps it as `{ "item": … }`, so a client reads
+  `data.item` on every route it calls and the SPA service needs no per-action unwrapping. A bare
+  `Ok(item)` works but makes this one action the exception.
 - ⚠️ **Where the transitioned fields live depends on who may write them.** *May anyone with PATCH rights set
   the state?* Keep `Status`/`DecidedOn` on `TInputDto` and let this controller be their real writer —
   excluding them without a restore makes every ordinary PATCH reset them to `null`/default (§Server-owned /
@@ -808,6 +814,115 @@ entity (`null` on create); register with `e.AddPrepper<T>()`.
 prepper, so it never runs on that writer's save. Only the primer form above needs the warning; see *Primer vs
 prepper when a second writer exists* below.
 
+## Optimistic concurrency (stale-write detection)
+
+Two users open the same row and both save. Without a concurrency token the second save silently overwrites the
+first — last write wins, 200 OK. With one, the write built on the stale read answers **409 Conflict** and the
+first user's change survives.
+
+The write path compares every **version stamp** — a concurrency token the server moves on each write — with the
+value the **client sent** — the one it read — never with the row the update reloads. The token is an ordinary DTO field: `GET` returns it,
+`PUT`/`PATCH` send it back, the `SaveResult` returns the new one. A stale value matches no row, and the write
+service rethrows EF's concurrency failure as `EntityConcurrencyException` → 409.
+
+**1. Declare a token that moves on every write.** On any provider, SQLite included, the marker is the whole job:
+
+```csharp
+public class Order : IEntity<int>, IHasConcurrencyToken
+{
+    public int Id { get; set; }
+    public string? Status { get; set; }
+    public Guid ConcurrencyToken { get; set; }   // no initializer — see step 2
+}
+```
+
+`UseEntities<TContext>(o => o.UseDefaults())` declares `ConcurrencyToken` a concurrency token from the context's
+options (`DbContextWiring.ConcurrencyTokens` — no `DbContext` change) and registers `HasConcurrencyTokenDbPrimer`,
+which mints a new value on every insert and update, a soft delete and a raw-`DbContext` write included — so a
+client that read the row before such a write is refused afterwards (what the raw write itself is checked against is
+in the table below). A
+`DbContext` you construct yourself takes `.AddConcurrencyTokenConvention()` on its options builder; an explicit
+`.IsConcurrencyToken(false)` opts one entity type out. Adding the interface to an existing entity adds a column, so
+create a migration. Startup validation reports a marker whose context never got the wiring (error) and one that
+nothing mints (warning).
+
+A token you declare yourself goes through the same check:
+
+| Token | Declaration | What moves it |
+|---|---|---|
+| SQL Server `rowversion` | `[Timestamp] public byte[]? RowVersion { get; set; }` | the database, on every `UPDATE` |
+| PostgreSQL `xmin` | `[Timestamp] public uint Version { get; set; }` (Npgsql maps it to `xmin`) | the database |
+| Application-owned | `[ConcurrencyCheck, VersionStamp] public Guid Version { get; set; }` | **a primer you register** — `HasConcurrencyTokenDbPrimer` is the one to copy |
+| Data column | `[ConcurrencyCheck] public string? LastName { get; set; }` | nothing — the client edits it |
+
+A token is a **version stamp** when the database generates it on update, when it is the marker's
+`ConcurrencyToken`, or when it carries `[VersionStamp]` (`Regira.Entities.Attributes`). Declare an
+application-owned token so: the check then compares the client's value on every write, and startup validation
+checks its DTOs as below. An undeclared token is treated as a stamp only on a write where a prepper or primer
+changes it — which misses a primer that can produce the value the client already holds (a hash of the content: the
+stale client that sends back what it read is let through) — and startup validation reports its findings only as
+Info. **A token nothing moves is a data column:** the client's value is the edit itself, so it is written as sent — a
+change or a clear — and compared with nothing the client read: only a write racing the save is caught. That is also
+what an application-owned token without its primer gets, so two clients holding the same value both pass. The flip
+side: a primer that rewrites an undeclared data column in place (trimming, rounding) makes it look like a version
+stamp, and the edit it rewrote answers 409.
+
+**2. Carry it on both DTOs, uninitialized** — `public Guid ConcurrencyToken { get; set; }` on `OrderDto` and
+`OrderInputDto`. Startup validation reports the shapes that break the check:
+
+- A DTO **without** the property: the client never receives the token or can never send it back, so every write
+  is last-write-wins again (warning). For a token declared `[VersionStamp(Required = true)]` an input DTO without
+  it means every update answers 400 instead (error).
+- An **initializer** on the entity's token (`= Guid.NewGuid()`) with no input-DTO property to overwrite it: the
+  mapper builds a fresh entity per request, so every `PUT`/`PATCH` carries a token the row never held and
+  answers 409 (error). An initializer on the input DTO — or on the entity's token when the entity is its own input
+  DTO — does the same to a client that omits the token (warning).
+- `[VersionStamp]` on a property the model does not treat as a concurrency token: nothing is compared (warning).
+
+These apply to declared version stamps; a data column needs none of them, so an undeclared token only gets them as
+Info.
+
+**Deleting by key still works, at one read per row.** A hard delete is commonly issued from a stub —
+`Remove(new Order { Id = id })` — which carries no token, and comparing the stored row against `Guid.Empty` would
+match nothing and fail as a conflict forever. An absent token is read as the absence of a claim, so the primer reads
+the stored token and deletes against that: the delete goes through, while a caller that *does* supply a token keeps
+its check and an already-deleted row still reports a conflict. The cost is one extra `SELECT` per deleted row that
+carries the marker, so removing N stubs in a loop is N extra round trips — load the entities you are deleting (a
+single query) when that matters. On a synchronous `SaveChanges()` each of those reads blocks the calling thread.
+Two stubs still need the entity loaded: one of an `IArchivable` entity — the soft delete turns the stub into an
+update, which is checked like any other and answers 409 rather than overwriting the row with the stub's defaults —
+and one whose row references its own children, whose reference is dropped by a direct `UPDATE` before any primer
+runs.
+
+**3. Handle the 409 on the client.** The body is a `ProblemDetails` titled **"Concurrency conflict"** — the
+constraint 409 is titled "Conflict" — so the client can tell "reload and try again" from "fix the input". Reload
+the row, which brings its current token, and let the user re-apply the edit.
+
+What each write is checked against:
+
+| Write | Checked against |
+|---|---|
+| `PUT` carrying the token | the client's token — a stale one answers 409 |
+| `PUT` without it (`null`, empty, `Guid.Empty`, `0`) | nothing the client read: it writes, only a write racing it is caught, and the empty value never overwrites the token (the marker's primer still mints a new one). `[VersionStamp(Required = true)]` on the token refuses it instead — 400 with the token as the field, before anything is attached — for a client that must always prove what it read; on the marker, put the attribute on the implementing `ConcurrencyToken` property. An insert is never refused |
+| `PATCH` | the token in the body when it carries one; otherwise the merge base supplies the value read at `PATCH` time |
+| `DELETE`, and child rows a save drops | no client token reaches them — only a write racing them is caught |
+| Your own code on the raw `DbContext` (load, copy the DTO, `SaveChanges()`) | the token the entity was **loaded** with — copying the client's token onto a tracked entity changes only its current value, so a stale client wins. Set the original yourself: `db.Entry(order).Property(x => x.ConcurrencyToken).OriginalValue = dto.ConcurrencyToken` |
+| Owned children (`Related()`) | each child's own token, when it declares one; one stale child fails the whole save. A CLR type EF maps more than once — a shared-type entity, an owned type with several owners — has no single model to read its token from, so only a write racing it is caught |
+| A data-column token | the stored row — only a write racing the save is caught |
+
+- A token whose default is a legitimate value — an `int` version starting at `0` — cannot be told apart from an
+  absent one. Start it at `1`, or use a `Guid`. A primer that increments an application-owned token counts from
+  `entry.Property(...).OriginalValue`, the stored value, so a client that omits the token cannot reset it.
+- EF raises the same failure for any `UPDATE`/`DELETE` that matched no row, token or not: a row another writer
+  removed also answers 409.
+- Direct `IEntityService` callers (jobs, imports) catch `EntityConcurrencyException`; EF's
+  `DbUpdateConcurrencyException` is its `InnerException`, with the conflicting rows in `Entries`. Code calling
+  `SaveChanges()` on the `DbContext` itself gets EF's `DbUpdateConcurrencyException` unwrapped. A failed save
+  keeps the change tracker, so reload and retry in a fresh scope.
+- The token must not be restored from the stored row. `[ServerOwned]` on it is harmless — the client's value is
+  read before any prepper runs — but a parent prepper copying stored values onto incoming *children* before the
+  collection sync overwrites their tokens as well.
+
 ## Aggregates over a non-owned child collection
 
 The case above assumes the children ride the parent's DTO. When they don't — the **optional parent FK** row
@@ -1041,7 +1156,9 @@ drops the reference again and completes the whole unit of work. Direct pairs onl
 > **Only the pair matters.** A save without one calls the real save exactly once and opens no transaction. An
 > owner deleted without its children loaded has no edge and takes that path — the database cascade still removes
 > the child rows. Deleting only a child is untouched too: one row, no cycle, and EF's own `ClientSetNull` fixup
-> nulls the owner's reference.
+> nulls the owner's reference. The change tracker is read only when the model has two entity types referencing
+> each other and the provider is relational: a context without the shape pays a cached lookup per save, and the
+> in-memory provider — which enforces no foreign keys and orders no deletes — is passed straight through.
 
 ## Audit Trail with Custom Primer
 
@@ -1094,6 +1211,7 @@ full set with `e.AddDefaultInterceptors()` or select pieces à la carte with `e.
 | `AutoTruncateInterceptors` | Silently truncates `string` values to their `[MaxLength]` before `SaveChanges` to prevent DB exceptions |
 | `UtcDateTimeConvention` | Rounds all `DateTime` properties through the database as UTC |
 | `ArchivedQueryFilter` | Applies the soft-delete filter (`e => !e.IsArchived`) to every `IArchivable` entity type — see §Soft Delete |
+| `ConcurrencyTokens` | Declares `IHasConcurrencyToken.ConcurrencyToken` a concurrency token on every implementing entity type — see §Optimistic concurrency |
 
 > **À-la-carte pattern (no `UseDefaults()`):**
 > ```csharp
@@ -1106,6 +1224,6 @@ full set with `e.AddDefaultInterceptors()` or select pieces à la carte with `e.
 > ```
 >
 > `AddAutoTruncateInterceptors()` and `AddUtcDateTimeConvention()` also exist as plain
-> `DbContextOptionsBuilder` extensions (`Regira.DAL.EFcore`) for EF usage without the entities stack, as does
-> `AddArchivedQueryFilter()` (`Regira.Entities.EFcore.Extensions`) — the one to reach for on a `DbContext`
-> you construct yourself, which no service-collection wiring can reach.
+> `DbContextOptionsBuilder` extensions (`Regira.DAL.EFcore`) for EF usage without the entities stack, as do
+> `AddArchivedQueryFilter()` and `AddConcurrencyTokenConvention()` (`Regira.Entities.EFcore.Extensions`) — the
+> ones to reach for on a `DbContext` you construct yourself, which no service-collection wiring can reach.

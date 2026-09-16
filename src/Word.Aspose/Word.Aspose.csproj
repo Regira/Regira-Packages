@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Office.Word.Aspose</RootNamespace>
+    <PackageId>Regira.Office.Word.Aspose</PackageId>
+    <AssemblyName>Regira.Office.Word.Aspose</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.3.0</Version>
+    <Description>Word document processing using Aspose.Words for Regira Office.</Description>
+    <PackageTags>regira;office;word;aspose;docx</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Commercial: without a licence the output is watermarked and truncated (see AsposeWordConfig) -->
+    <PackageReference Include="Aspose.Words" Version="26.9.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Office.Word.testing" />
+  </ItemGroup>
+</Project>

@@ -7,6 +7,7 @@ namespace IO.Testing.SSH;
 [TestFixture]
 [Ignore("wait for proper config")]
 [Parallelizable(ParallelScope.Self)]
+[Category("Network")]
 public class SshFileProcessorTests
 {
     private const string TEST_FOLDER = "file_processor";

@@ -49,15 +49,21 @@ public class ProductRepository(MongoCommunicator comm)
 ```csharp
 var options = new MongoOptions
 {
-    DbSettings     = new MongoSettings("mongo.example.com", "prod-db", username: "admin", password: "pass"),
+    DbSettings     = new MongoSettings("mongo.example.com", "prod-db", username: "backup", password: "pass")
+    {
+        // omit when the credentials live in prod-db itself
+        AuthenticationDatabase = "admin"
+    },
     ToolsDirectory = "/usr/bin"
 };
 
-IMemoryFile backup = await new MongoBackupService(options).Backup();
+IMemoryFile backup = await new MongoBackupService(options, new ProcessHelper()).Backup();
 
 // Store the backup via IO.Storage
 await fileService.Save($"backups/{DateTime.Today:yyyyMMdd}.archive", backup.GetBytes()!);
 ```
+
+The password never reaches `mongodump`'s command line — it goes into a temporary `--config` file that is deleted again once the dump has run.
 
 ---
 

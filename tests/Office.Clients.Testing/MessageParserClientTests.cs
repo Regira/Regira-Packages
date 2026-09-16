@@ -7,6 +7,7 @@ namespace Office.Clients.Testing;
 
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]
+[Category("Network")]
 public class MessageParserClientTests : OfficeClientTestsBase
 {
     private readonly string _inputDir;

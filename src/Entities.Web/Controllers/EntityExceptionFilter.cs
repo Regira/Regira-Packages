@@ -7,7 +7,8 @@ namespace Regira.Entities.Web.Controllers;
 /// <summary>
 /// Gives every MVC action the entity write pipeline's status mapping: <see cref="EntityInputException"/> →
 /// <b>400</b> with its <c>InputErrors</c> as ModelState, <see cref="EntityConstraintException"/> → <b>409</b>
-/// with <see cref="EntityConstraintProblem"/>. Registered application-wide by
+/// with <see cref="EntityConstraintProblem"/>, <see cref="EntityConcurrencyException"/> → <b>409</b> with
+/// <see cref="EntityConcurrencyProblem"/>. Registered application-wide by
 /// <c>ConfigureDefaultJsonOptions()</c> (see <c>MapEntityExceptions()</c>).
 /// <para>
 /// Without it the mapping reaches only <see cref="ControllerExtensions"/>' <c>Save</c>/<c>Delete</c> helpers,
@@ -39,6 +40,10 @@ public class EntityExceptionFilter : IExceptionFilter
                 break;
             case EntityConstraintException:
                 context.Result = new ConflictObjectResult(EntityConstraintProblem.Create());
+                context.ExceptionHandled = true;
+                break;
+            case EntityConcurrencyException:
+                context.Result = new ConflictObjectResult(EntityConcurrencyProblem.Create());
                 context.ExceptionHandled = true;
                 break;
         }

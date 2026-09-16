@@ -4,7 +4,7 @@ using Regira.Normalizing;
 
 namespace Testing.Library.Contoso;
 
-public class Department : IEntityWithSerial, IHasNormalizedTitle, IHasNormalizedContent, IHasCourses, IHasCreated
+public class Department : IEntityWithSerial, IHasNormalizedTitle, IHasNormalizedContent, IHasCourses, IHasCreated, IHasConcurrencyToken
 {
     public int Id { get; set; }
     public int? AdministratorId { get; set; }
@@ -24,7 +24,7 @@ public class Department : IEntityWithSerial, IHasNormalizedTitle, IHasNormalized
     public DateTime Created { get; set; } = DateTime.Now;
 
 
-    public Guid ConcurrencyToken { get; set; } = Guid.NewGuid();
+    public Guid ConcurrencyToken { get; set; }
 
     public Person? Administrator { get; set; }
     public ICollection<Course>? Courses { get; set; }

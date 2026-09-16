@@ -19,44 +19,174 @@ public class MongoSettings(
     {
     }
 
+    /// <summary>
+    /// Database holding the user's credentials (<c>authSource</c>), when that is not <see cref="DbSettingsBase.DatabaseName"/>.
+    /// Credentials are commonly created in <c>admin</c> while the application reads another database.
+    /// </summary>
+    /// <remarks>
+    /// Left empty, MongoDB resolves the source itself: <see cref="DbSettingsBase.DatabaseName"/>, or <c>admin</c> when no database is named.
+    /// </remarks>
+    public string? AuthenticationDatabase { get; set; }
+
+    /// <summary>
+    /// The connection uses the <c>mongodb+srv://</c> scheme (Atlas and other DNS-seeded deployments), where DNS
+    /// supplies the hosts and the port rather than the URI.
+    /// </summary>
+    /// <remarks>
+    /// Read from the connection string and written back out again, so a URI survives
+    /// <see cref="FromConnectionString"/> followed by <see cref="DbSettingsBase.BuildConnectionString"/> — which is
+    /// what <see cref="Clone{T}"/> and the backup services do. Emitting <c>mongodb://</c> for an SRV deployment names
+    /// one host that need not exist, and no port that DNS would have supplied.
+    /// </remarks>
+    public bool UseSrv { get; set; }
+
+    /// <summary>
+    /// Every other option of the connection string — <c>authMechanism</c>, <c>replicaSet</c>, <c>directConnection</c>,
+    /// <c>readPreference</c>, <c>tlsCAFile</c>, … — in order, unescaped, a repeated one (<c>readPreferenceTags</c>)
+    /// once per occurrence.
+    /// </summary>
+    /// <remarks>
+    /// Read by <see cref="FromConnectionString"/> and written back by
+    /// <see cref="BuildConnectionString(bool, KeyValuePair{string, string}[])"/>, so the tools and the driver connect the
+    /// way the connection string says — an X.509 login, a replica set reached through one member. <c>authSource</c> is
+    /// not kept here, <see cref="AuthenticationDatabase"/> holds it, and neither is a <c>tls</c> that turns TLS on,
+    /// which <see cref="DbSettingsBase.UseSecure"/> holds. A <c>tls=false</c> is kept — an SRV connection uses TLS
+    /// unless told otherwise — and is left out while <see cref="DbSettingsBase.UseSecure"/> is on.
+    /// </remarks>
+    public IList<KeyValuePair<string, string>> UriOptions { get; } = new List<KeyValuePair<string, string>>();
+
+    private static readonly HashSet<string> TlsOptions = new(StringComparer.OrdinalIgnoreCase) { "tls", "ssl" };
+
 
     public static MongoSettings FromConnectionString(string connectionString)
     {
         var mongoUrl = MongoUrl.Create(connectionString);
-        var host = mongoUrl.Url.Split(':').First();
-        var port = mongoUrl.Url.Split(':').LastOrDefault() ?? MongoDefaults.Port;
+        var servers = mongoUrl.Servers?.ToList() ?? [];
+        var server = servers.FirstOrDefault();
+        var useSrv = connectionString.StartsWith("mongodb+srv://", StringComparison.OrdinalIgnoreCase);
 
-        return new MongoSettings(host, mongoUrl.DatabaseName)
+        // an SRV URI names a single DNS seed and no port; a replica set names every member, each with its own port
+        var host = useSrv || servers.Count <= 1
+            ? server?.Host
+            : string.Join(",", servers.Select(x => $"{BracketIPv6(x.Host)}:{x.Port}"));
+
+        var settings = new MongoSettings(host, mongoUrl.DatabaseName)
         {
-            Host = host,
-            DatabaseName = mongoUrl.DatabaseName,
+            Port = server != null ? server.Port.ToString() : MongoDefaults.Port,
             Username = mongoUrl.Username,
             Password = mongoUrl.Password,
-            Port = port,
-            UseSecure = mongoUrl.UseTls
+            AuthenticationDatabase = mongoUrl.AuthenticationSource,
+            UseSecure = mongoUrl.UseTls,
+            UseSrv = useSrv
         };
+        foreach (var (name, value) in ReadQuery(connectionString))
+        {
+            var modelled = name.Equals("authSource", StringComparison.OrdinalIgnoreCase)
+                           || (TlsOptions.Contains(name) && !value.Equals("false", StringComparison.OrdinalIgnoreCase));
+            if (!modelled)
+            {
+                settings.UriOptions.Add(new KeyValuePair<string, string>(name, value));
+            }
+        }
+        return settings;
+    }
+
+    /// <summary>
+    /// The URI's options in their order, unescaped. The connection string format allows <c>;</c> as a separator too.
+    /// </summary>
+    private static IEnumerable<(string Name, string Value)> ReadQuery(string connectionString)
+    {
+        var start = connectionString.IndexOf('?');
+        if (start < 0)
+        {
+            yield break;
+        }
+        foreach (var option in connectionString[(start + 1)..].Split('&', ';'))
+        {
+            var separator = option.IndexOf('=');
+            if (separator > 0)
+            {
+                yield return (Uri.UnescapeDataString(option[..separator]), Uri.UnescapeDataString(option[(separator + 1)..]));
+            }
+        }
     }
     public override string BuildConnectionString(params KeyValuePair<string, string>[] extraOptions)
+        => BuildConnectionString(true, extraOptions);
+    /// <summary>
+    /// Builds the connection URI, with or without the password.
+    /// </summary>
+    /// <param name="includePassword">
+    /// <c>false</c> leaves the password out and keeps the rest of the URI intact, for a consumer that passes the password
+    /// through a channel of its own — a command line and a log are both readable by other processes.
+    /// </param>
+    /// <param name="extraOptions">Appended to the URI's query string after <see cref="UriOptions"/>, escaped</param>
+    public string BuildConnectionString(bool includePassword, params KeyValuePair<string, string>[] extraOptions)
+        => Build(includePassword, false, extraOptions);
+
+    /// <summary>
+    /// The URI for a log: without the password, and with the value of every option that can carry a secret masked.
+    /// </summary>
+    internal string BuildRedactedConnectionString() => Build(false, true);
+
+    /// <summary>
+    /// The value of the first <see cref="UriOptions"/> entry named <paramref name="name"/>, ignoring case.
+    /// </summary>
+    internal string? GetUriOption(string name)
+        => UriOptions.Where(option => option.Key.Equals(name, StringComparison.OrdinalIgnoreCase)).Select(option => option.Value).FirstOrDefault();
+
+    /// <summary>
+    /// Options whose value can be a secret: a key file's password, and the mechanism properties that carry an
+    /// <c>AWS_SESSION_TOKEN</c>.
+    /// </summary>
+    private static readonly HashSet<string> SecretOptions = new(StringComparer.OrdinalIgnoreCase)
     {
-        //mongodb[+srv]://[username:password@]host[:port][/[database]]
-        var connectionString = "mongodb";
-        if (UseSecure)
-        {
-            connectionString += "+serv";
-        }
-        connectionString += "://";
+        "tlsCertificateKeyFilePassword", "sslPEMKeyPassword", "authMechanismProperties"
+    };
+
+    private string Build(bool includePassword, bool redactSecrets, params KeyValuePair<string, string>[] extraOptions)
+    {
+        // mongodb://[username[:password]@]host[:port]/[database][?options]
+        var connectionString = UseSrv ? "mongodb+srv://" : "mongodb://";
         if (!string.IsNullOrEmpty(Username))
         {
-            connectionString += $"{Username}:{Password}@";
+            connectionString += Uri.EscapeDataString(Username!);
+            if (includePassword && !string.IsNullOrEmpty(Password))
+            {
+                connectionString += $":{Uri.EscapeDataString(Password!)}";
+            }
+            connectionString += "@";
         }
-        connectionString += $"{Host}:{Port}";
-        if (DatabaseName != null)
+        // an SRV seed carries no port (DNS supplies it), and a replica-set host list carries a port per member
+        connectionString += UseSrv || Host.Contains(',') ? $"{Host}/" : $"{BracketIPv6(Host)}:{Port}/";
+        if (!string.IsNullOrEmpty(DatabaseName))
         {
-            connectionString += $"/{DatabaseName};";
+            connectionString += Uri.EscapeDataString(DatabaseName!);
+        }
+
+        var options = new List<KeyValuePair<string, string>>();
+        if (!string.IsNullOrEmpty(AuthenticationDatabase))
+        {
+            options.Add(new KeyValuePair<string, string>("authSource", AuthenticationDatabase!));
+        }
+        if (UseSecure)
+        {
+            options.Add(new KeyValuePair<string, string>("tls", "true"));
+        }
+        options.AddRange(UriOptions.Where(option => !(UseSecure && TlsOptions.Contains(option.Key))));
+        options.AddRange(extraOptions);
+        if (options.Any())
+        {
+            connectionString += $"?{string.Join("&", options.Select(x => $"{Uri.EscapeDataString(x.Key)}={(redactSecrets && SecretOptions.Contains(x.Key) ? "***" : Uri.EscapeDataString(x.Value))}"))}";
         }
 
         return connectionString;
     }
+
+    /// <summary>
+    /// An IPv6 address as a URI names it: in brackets, so its colons are not read as the port separator.
+    /// </summary>
+    private static string BracketIPv6(string host)
+        => host.Contains(':') && !host.StartsWith('[') ? $"[{host}]" : host;
     public override T Clone<T>()
     {
         var cn = BuildConnectionString();

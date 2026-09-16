@@ -882,6 +882,8 @@ factory. To carry an Identity role into the token and through every gate:
    `authStore.hasRole("Manager")` (`regira_modules.vue.auth`) — it probes `role`, `roles` and the
    `ClaimTypes.Role` URI, mirroring `FindRoles()`. ⚠️ `hasPermission(...)` reads a `permissions` claim this
    recipe never mints — it is not a role check.
+   Gate the UI on the same roles, or the SPA offers writes the API answers 403 for:
+   `regira_modules.vue.entities` → `entities.patterns` → *Permission-gated UI*.
 5. **Mid-session role changes** reach the SPA on the next `POST auth/refresh` (still-valid bearer): the token
    is re-minted from a fresh claims-factory run.
 

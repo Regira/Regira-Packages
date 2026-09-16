@@ -167,7 +167,7 @@ public static class DrawingPositionExtensions
         };
 
         using var resultImg = await service.Draw([imgToAdd], target);
-        await service.SaveImage(resultImg, "add-image-right-vcenter.jpg");
+        await service.SaveImage(resultImg, "add-image-left-vcenter.jpg");
 
         AssertColor("#00FF00", await service.GetPixelColor(resultImg, 10, 110));
         AssertColor("#00FF00", await service.GetPixelColor(resultImg, 10, 190));

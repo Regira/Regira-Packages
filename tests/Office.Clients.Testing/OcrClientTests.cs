@@ -7,6 +7,7 @@ namespace Office.Clients.Testing;
 
 [TestFixture]
 [Parallelizable(ParallelScope.Self)]
+[Category("Network")]
 public class OcrClientTests : OfficeClientTestsBase
 {
     private readonly string _assetsDir;

@@ -1,9 +1,9 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
+using System.Text;
 using Regira.IO.Storage.FileSystem;
+using Regira.System.Projects.Models;
 using Regira.System.Projects.Services;
 using Regira.TreeList;
-
-[assembly: Parallelizable(ParallelScope.Fixtures)]
 
 namespace TreeList.Testing;
 
@@ -29,6 +29,13 @@ public class CreationTests
     // shape below is what the assertions need: nested directories, files at several depths, an empty leaf.
     private string _testDirectory = null!;
 
+    // A synthetic project graph for the ProjectTree fixtures, plus a directory holding two copies of
+    // it. Not the live repository: that scans whatever sits below the solution folder -- git worktrees
+    // under .claude/ put more copies of every project there -- so the tree size would depend on the
+    // machine. The duplicate copy here is deliberate and small.
+    private string _projectDirectory = null!;
+    private string _projectCopiesDirectory = null!;
+
     [OneTimeSetUp]
     public void CreateTestDirectory()
     {
@@ -41,14 +48,27 @@ public class CreationTests
         {
             File.WriteAllText(Path.Combine(_testDirectory, relative.Replace('/', Path.DirectorySeparatorChar)), relative);
         }
+
+        _projectDirectory = NewTempDirectory();
+        CreateProjectGraph(_projectDirectory);
+
+        _projectCopiesDirectory = NewTempDirectory();
+        CreateProjectGraph(Path.Combine(_projectCopiesDirectory, "main"));
+        CreateProjectGraph(Path.Combine(_projectCopiesDirectory, "copy"));
     }
+
+    private static string NewTempDirectory()
+        => Path.Combine(Path.GetTempPath(), "regira-treelist-tests", Guid.NewGuid().ToString("n"));
 
     [OneTimeTearDown]
     public void RemoveTestDirectory()
     {
-        if (Directory.Exists(_testDirectory))
+        foreach (var directory in new[] { _testDirectory, _projectDirectory, _projectCopiesDirectory })
         {
-            Directory.Delete(_testDirectory, recursive: true);
+            if (!string.IsNullOrEmpty(directory) && Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
         }
     }
 
@@ -73,7 +93,7 @@ public class CreationTests
                 Assert.That(Path.GetDirectoryName(node.Value), Is.EqualTo(node.Parent.Value));
             }
 
-            var subDirectories = Directory.GetDirectories(node.Value).ToArray();
+            var subDirectories = Directory.GetDirectories(node.Value);
             var childDirectories = node.Children.Select(n => n.Value).ToArray();
             Assert.That(childDirectories, Is.EquivalentTo(subDirectories));
         }
@@ -180,29 +200,52 @@ public class CreationTests
         Assert.That(treeItems, Is.EquivalentTo(sortedItems));
     }
 
-    string? FindSolutionFolder(string? folder = null)
-    {
-        folder ??= AppContext.BaseDirectory;
-        do
-        {
-            var solutionFiles = Directory.GetFiles(folder, "*.sln", SearchOption.TopDirectoryOnly)
-                .Concat(Directory.GetFiles(folder, "*.slnx", SearchOption.TopDirectoryOnly))
-                .ToArray();
-            if (solutionFiles.Any())
-            {
-                return Path.GetDirectoryName(solutionFiles.First());
-            }
-            folder = Path.GetDirectoryName(folder);
-        } while (folder != null);
+    static Task<ProjectTree> BuildProjectTree(string root)
+        => new ProjectManager(new ProjectService(new ProjectParser(),
+            new TextFileService(new FileSystemOptions { RootFolder = root }))).BuildTree();
 
-        return null;
+    /// <summary>
+    /// Writes a small class-library graph: Core depends on nothing, Data and Web depend on Core, and App
+    /// depends on both. Each project sits in its own folder, so the ProjectReferences are relative paths
+    /// the way they are in a real solution.
+    /// </summary>
+    static void CreateProjectGraph(string root)
+    {
+        var graph = new Dictionary<string, string[]>
+        {
+            ["Core"] = [],
+            ["Data"] = ["Core"],
+            ["Web"] = ["Core"],
+            ["App"] = ["Data", "Web"]
+        };
+
+        foreach (var (name, dependencies) in graph)
+        {
+            var folder = Path.Combine(root, name);
+            Directory.CreateDirectory(folder);
+
+            var xml = new StringBuilder();
+            xml.AppendLine("<Project Sdk='Microsoft.NET.Sdk'>");
+            xml.AppendLine("  <PropertyGroup>");
+            xml.AppendLine("    <TargetFramework>net10.0</TargetFramework>");
+            xml.AppendLine("  </PropertyGroup>");
+            xml.AppendLine("  <ItemGroup>");
+            foreach (var dependency in dependencies)
+            {
+                var reference = Path.Combine("..", dependency, dependency + ".csproj");
+                xml.AppendLine($"    <ProjectReference Include='{reference}' />");
+            }
+            xml.AppendLine("  </ItemGroup>");
+            xml.AppendLine("</Project>");
+
+            File.WriteAllText(Path.Combine(folder, name + ".csproj"), xml.ToString());
+        }
     }
 
     [Test]
     public async Task ReverseTree()
     {
-        var pm = new ProjectManager(new ProjectService(new ProjectParser(), new TextFileService(new FileSystemOptions { RootFolder = FindSolutionFolder() ?? "" })));
-        var tree = await pm.BuildTree();
+        var tree = await BuildProjectTree(_projectDirectory);
         var reverseTree = tree.ReverseTree();
         // print tree
         Debug.Print("TREE");
@@ -227,6 +270,18 @@ public class CreationTests
         Assert.That(reverseTreeNodes.All(n => n.Parent != null), Is.True);
         var reverseTreeBottomNodes = reverseTree.Where(n => !n.Children.Any()).Select(n => n.Value).Distinct();
         Assert.That(reverseTreeBottomNodes, Is.EquivalentTo(treeRootValues));
+    }
+
+    [Test]
+    public async Task ProjectTree_KeepsIdenticalProjectCopiesApart()
+    {
+        var single = await BuildProjectTree(_projectDirectory);
+        var copies = await BuildProjectTree(_projectCopiesDirectory);
+
+        // Two copies of one graph below a single scan root are two graphs, not one. Matching a
+        // ProjectReference on its relative suffix rather than its resolved path linked every copy to
+        // every other, so the paths enumerated here grew combinatorially with the number of copies.
+        Assert.That(copies.Count(), Is.EqualTo(single.Count() * 2));
     }
 
     [Test]
@@ -266,8 +321,10 @@ public class CreationTests
         var files = Directory.GetFiles(_testDirectory, string.Empty, SearchOption.AllDirectories)
             .Select(f => new FsItem { Path = f, ParentDirectory = Path.GetDirectoryName(f)! });
         var items = directories.Concat(files)
-            // shuffle
-            .OrderBy(_ => Guid.NewGuid())
+            // Reverse of the order the tests sort back into, so the input is guaranteed not to be
+            // path-sorted already. A random shuffle also has to satisfy that, but on a fixture this
+            // small it lands sorted often enough to fail the precondition on its own.
+            .OrderByDescending(x => x.Path)
             .ToArray();
 
         var sw = new Stopwatch();

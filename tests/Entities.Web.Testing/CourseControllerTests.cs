@@ -1,4 +1,5 @@
-﻿using Entities.TestApi.Infrastructure;
+﻿using Entities.Web.Testing.Infrastructure;
+using Entities.TestApi.Infrastructure;
 using Entities.TestApi.Infrastructure.Courses;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -10,13 +11,14 @@ using Testing.Library.Data;
 
 namespace Entities.Web.Testing;
 
-[Collection(nameof(NonParallelCollectionDefinition))]
-public class CourseControllerTests : IDisposable
+public class CourseControllerTests : IClassFixture<ContosoApiFactory>, IDisposable
 {
     private readonly ContosoContext _dbContext;
-    public CourseControllerTests()
+    private readonly ContosoApiFactory _factory;
+    public CourseControllerTests(ContosoApiFactory factory)
     {
-        _dbContext = new ContosoContext(new DbContextOptionsBuilder<ContosoContext>().UseSqlite(ApiConfiguration.ConnectionString).Options);
+        _factory = factory;
+        _dbContext = factory.CreateDbContext();
         _dbContext.Database.EnsureCreated();
 
         _dbContext.Departments.AddRange(Enumerable.Range(1, 5).Select((_, i) => new Department { Title = $"Department #{i}", Budget = i * 1000, StartDate = DateTime.Today.AddDays(i * 3) }));
@@ -27,8 +29,7 @@ public class CourseControllerTests : IDisposable
     [Fact]
     public async Task Empty_Get()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
         var response = await client.GetAsync("/courses");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -40,8 +41,7 @@ public class CourseControllerTests : IDisposable
     [Fact]
     public async Task Get_404()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
         var courseInput = new CourseInputDto
         {
             Title = "Course (test)",
@@ -61,8 +61,7 @@ public class CourseControllerTests : IDisposable
     [Fact]
     public async Task Insert_And_Get_Details()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         await CreateTestItems(_dbContext);
 
@@ -93,8 +92,7 @@ public class CourseControllerTests : IDisposable
     [Fact]
     public async Task Insert_And_Get_List()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var inputCourses = Enumerable.Range(1, 100)
             .Select((_, i) => new CourseInputDto
@@ -126,8 +124,7 @@ public class CourseControllerTests : IDisposable
     [Fact]
     public async Task Insert_And_Force_404()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var courseInput = new Course
         {
@@ -148,8 +145,7 @@ public class CourseControllerTests : IDisposable
     [Fact]
     public async Task Update()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
         var courseInput = new CourseInputDto
         {
             Title = "Course (new)",
@@ -187,8 +183,7 @@ public class CourseControllerTests : IDisposable
     [Fact]
     public async Task Delete()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
         var courseInput = new CourseInputDto
         {
             Title = "Course (new)",
@@ -215,8 +210,7 @@ public class CourseControllerTests : IDisposable
     [Fact]
     public async Task Insert_And_FilterExclude()
     {
-        var app = new WebApplicationFactory<Program>();
-        using var client = app.CreateClient();
+        using var client = _factory.CreateClient();
 
         var inputCourses = Enumerable.Range(1, 10)
             .Select((_, i) => new CourseInputDto

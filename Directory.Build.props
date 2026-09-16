@@ -1,7 +1,7 @@
 <Project>
     <PropertyGroup>
         <!-- Point dotnet test and VS Test Explorer at the shared run settings. -->
-        <VSTestRunSettingsFile>$(MSBuildThisFileDirectory)Regira.runsettings</VSTestRunSettingsFile>
+        <RunSettingsFilePath>$(MSBuildThisFileDirectory)Regira.runsettings</RunSettingsFilePath>
     </PropertyGroup>
 
     <!--

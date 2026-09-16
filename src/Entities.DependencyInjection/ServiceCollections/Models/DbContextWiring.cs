@@ -27,6 +27,14 @@ public enum DbContextWiring
     /// filters) and the flag does nothing.
     /// </summary>
     ArchivedQueryFilter = 1 << 4,
+    /// <summary>
+    /// Declares <c>IHasConcurrencyToken.ConcurrencyToken</c> an EF Core concurrency token on every entity type
+    /// implementing the interface, so the marker needs no <c>DbContext</c> change. Equivalent to
+    /// <c>.IsConcurrencyToken()</c> in <c>OnModelCreating</c>; a context built outside DI takes
+    /// <c>.AddConcurrencyTokenConvention()</c> on its options builder. The token is minted by
+    /// <c>HasConcurrencyTokenDbPrimer</c>, which <c>UseDefaults()</c> registers.
+    /// </summary>
+    ConcurrencyTokens = 1 << 5,
 
-    All = PrimerInterceptors | NormalizerInterceptors | AutoTruncateInterceptors | UtcDateTimeConvention | ArchivedQueryFilter
+    All = PrimerInterceptors | NormalizerInterceptors | AutoTruncateInterceptors | UtcDateTimeConvention | ArchivedQueryFilter | ConcurrencyTokens
 }

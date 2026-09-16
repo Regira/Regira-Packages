@@ -38,6 +38,12 @@ public sealed class ProviderHarness(DbProvider provider) : IAsyncDisposable
     private MsSqlContainer? _mssqlContainer;
     private string? _connectionString;
 
+    // Opt-in container reuse: with REGIRA_CONTAINER_REUSE=1 the container is left running between runs,
+    // so a repeat run attaches to it instead of starting a fresh one. It also needs
+    // testcontainers.reuse.enable=true in ~/.testcontainers.properties. Off by default, because a reused
+    // container carries its previous state into the next run. See CONTRIBUTING.md.
+    private static bool ReuseContainers => Environment.GetEnvironmentVariable("REGIRA_CONTAINER_REUSE") == "1";
+
     public static bool ContainersEnabled =>
         string.Equals(
             Environment.GetEnvironmentVariable(EnvVar),
@@ -63,6 +69,7 @@ public sealed class ProviderHarness(DbProvider provider) : IAsyncDisposable
                 try
                 {
                     _postgresContainer = new PostgreSqlBuilder("postgres:16-alpine")
+                        .WithReuse(ReuseContainers)
                         .Build();
                     await _postgresContainer.StartAsync();
                     _connectionString = _postgresContainer.GetConnectionString();
@@ -78,6 +85,7 @@ public sealed class ProviderHarness(DbProvider provider) : IAsyncDisposable
                 try
                 {
                     _mssqlContainer = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest")
+                        .WithReuse(ReuseContainers)
                         .Build();
                     await _mssqlContainer.StartAsync();
                     _connectionString = _mssqlContainer.GetConnectionString();

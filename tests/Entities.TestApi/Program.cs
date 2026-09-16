@@ -78,7 +78,7 @@ builder.Services
     .AddDbContext<ContosoContext>(db =>
     {
         // interceptors + UTC convention are auto-wired by UseEntities(o => o.UseDefaults()) below
-        db.UseSqlite(ApiConfiguration.ConnectionString)
+        db.UseSqlite(ApiConfiguration.ResolveConnectionString(builder.Configuration))
             .EnableSensitiveDataLogging();
     })
     .UseRegira(builder.Configuration)
@@ -91,7 +91,13 @@ builder.Services
         o.SetPageSize();
         o.AddGlobalFilterQueryBuilder<FilterHasNormalizedContentQueryBuilder>();
         o.AddPrepper<IHasAggregateKey>(x => x.AggregateKey ??= Guid.NewGuid());
-        o.UseAutoMapper();
+        // Reservation rides along inside Person's DTOs (e.Related) and has no For<>() of its own, so its maps are
+        // declared here rather than through a UseMapping call
+        o.UseAutoMapper((_, cfg) =>
+        {
+            cfg.CreateMap<ReservationInputDto, Reservation>();
+            cfg.CreateMap<Reservation, ReservationDto>();
+        });
         //o.UseMapsterMapping();
     })
     // Entity types
@@ -101,7 +107,7 @@ builder.Services
     .AddPersons()
     // Attachments
     // FileSystem storage
-    .WithAttachments(_ => new BinaryFileService(new FileSystemOptions { RootFolder = ApiConfiguration.AttachmentsDirectory }))
+    .WithAttachments(_ => new BinaryFileService(new FileSystemOptions { RootFolder = ApiConfiguration.ResolveAttachmentsDirectory(builder.Configuration) }))
     // Azure storage
     /*
     .ConfigureAttachmentService(_ => new BinaryBlobService(new AzureCommunicator(new AzureConfig

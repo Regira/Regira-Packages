@@ -25,6 +25,7 @@
     <Project Path="src/DAL.MySQL.MySqlBackup/DAL.MySQL.MySqlBackup.csproj" />
     <Project Path="src/DAL.MySQL/DAL.MySQL.csproj" />
     <Project Path="src/DAL.PostgreSQL/DAL.PostgreSQL.csproj" />
+    <Project Path="src/DAL.SqlServer/DAL.SqlServer.csproj" />
   </Folder>
   <Folder Name="/src/Entities/">
     <Project Path="src/Common.Entities/Common.Entities.csproj" />
@@ -108,8 +109,11 @@
     <Project Path="src/VCards.FolkerKinzel/VCards.FolkerKinzel.csproj" />
   </Folder>
   <Folder Name="/src/Office/Word/">
+    <Project Path="src/Word.Aspose/Word.Aspose.csproj" />
+    <Project Path="src/Word.Gotenberg/Word.Gotenberg.csproj" />
     <Project Path="src/Word.Mini/Word.Mini.csproj" />
     <Project Path="src/Word.Spire/Word.Spire.csproj" />
+    <Project Path="src/Word.Syncfusion/Word.Syncfusion.csproj" />
   </Folder>
   <Folder Name="/src/Security/">
     <Project Path="src/Common.Security/Common.Security.csproj" />
@@ -140,6 +144,8 @@
     <Project Path="tests/Common.Testing/Common.Testing.csproj" />
     <Project Path="tests/DAL.EFcore.Testing/DAL.EFcore.Testing.csproj" />
     <Project Path="tests/DAL.MongoDB.Testing/DAL.MongoDB.Testing.csproj" />
+    <Project Path="tests/DAL.PostgreSQL.Testing/DAL.PostgreSQL.Testing.csproj" />
+    <Project Path="tests/DAL.SqlServer.Testing/DAL.SqlServer.Testing.csproj" />
     <Project Path="tests/Drawing.Testing/Drawing.Testing.csproj" />
     <Project Path="tests/Entities.DependencyInjection.Testing/Entities.DependencyInjection.Testing.csproj" />
     <Project Path="tests/Entities.Mapping.Mapster.Testing/Entities.Mapping.Mapster.Testing.csproj" />
@@ -163,6 +169,7 @@
     <Project Path="tests/Payments.Testing/Payments.Testing.csproj" />
     <Project Path="tests/Security.Testing/Security.Testing.csproj" />
     <Project Path="tests/Serializing.Testing/Serializing.Testing.csproj" />
+    <Project Path="tests/System.Testing/System.Testing.csproj" />
     <Project Path="tests/Testing.Library/_Testing.Library.csproj" />
     <Project Path="tests/TreeList.Testing/TreeList.Testing.csproj" />
     <Project Path="tests/Web.Analytics.GeoIP2.Testing/Web.Analytics.GeoIP2.Testing.csproj" />

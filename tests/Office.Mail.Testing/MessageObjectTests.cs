@@ -7,8 +7,6 @@ using Regira.Office.Mail.Web;
 using Regira.Serializing.Abstractions;
 using Regira.Serializing.Newtonsoft.Json;
 
-[assembly: Parallelizable(ParallelScope.Fixtures)]
-
 namespace Office.Mail.Testing;
 
 [TestFixture]
@@ -16,7 +14,6 @@ namespace Office.Mail.Testing;
 public class MessageObjectTests
 {
     private readonly ISerializer _serializer = new JsonSerializer();
-
 
     [TestCase(null)]
     [TestCase("")]
