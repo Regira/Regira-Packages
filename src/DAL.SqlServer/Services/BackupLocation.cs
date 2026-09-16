@@ -21,19 +21,27 @@ internal sealed record BackupLocation(string ServerPath, string LocalPath)
         return new BackupLocation(ServerPaths.Combine(options.BackupDirectory, fileName), Path.Combine(localDirectory, fileName));
     }
 
-    public void DeleteLocalFile(ILogger? logger)
+    /// <summary>
+    /// Deletes the file through <see cref="LocalPath"/>.
+    /// </summary>
+    /// <returns>Whether this process finds the file at that path — <c>false</c> when it is missing there, which for a
+    /// file SQL Server wrote means this process does not reach the directory through <see cref="LocalPath"/></returns>
+    public bool DeleteLocalFile(ILogger? logger)
     {
         try
         {
-            if (File.Exists(LocalPath))
+            if (!File.Exists(LocalPath))
             {
-                File.Delete(LocalPath);
+                return false;
             }
+            File.Delete(LocalPath);
+            return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // cleanup must never hide the outcome of the backup or restore itself
             logger?.LogWarning(ex, "Could not delete backup file {Path}", LocalPath);
+            return true;
         }
     }
 }

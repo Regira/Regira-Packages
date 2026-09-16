@@ -12,13 +12,14 @@ public static class ServiceCollectionExtensions
     /// </summary>
     /// <remarks>
     /// Named <c>AddSyncfusionWord</c> rather than <c>AddSyncfusion</c> because Syncfusion also
-    /// ships Excel and PDF libraries.
+    /// ships Excel and PDF libraries. The configuration is read through <see cref="IOptions{TOptions}"/>, so the
+    /// service resolves from a singleton or a hosted service as well as from a request scope.
     /// </remarks>
     public static IServiceCollection AddSyncfusionWord(this IServiceCollection services, Action<SyncfusionWordConfig> configure)
     {
         services
             .Configure<SyncfusionWordConfig>(configure.Invoke)
-            .AddTransient(p => p.GetRequiredService<IOptionsSnapshot<SyncfusionWordConfig>>().Value)
+            .AddTransient(p => p.GetRequiredService<IOptions<SyncfusionWordConfig>>().Value)
             .AddTransient<IWordService, WordService>();
 
         return services;

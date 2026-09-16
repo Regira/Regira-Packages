@@ -9,6 +9,14 @@ namespace Regira.Office.Word.Spire;
 
 public class DocumentBuilder(WordService manager)
 {
+    /// <summary>
+    /// Keeps code compiled against the <see cref="WordManager"/> signature running.
+    /// </summary>
+    [Obsolete("Use the WordService constructor instead", false)]
+    public DocumentBuilder(WordManager manager) : this((WordService)manager)
+    {
+    }
+
     private WordDocumentSettings? _settings;
     private WordTemplateInput[]? _inputs;
     private ConversionOptions? _conversionOptions;

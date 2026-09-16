@@ -40,6 +40,21 @@ public class MongoSettings(
     /// </remarks>
     public bool UseSrv { get; set; }
 
+    /// <summary>
+    /// Every other option of the connection string — <c>authMechanism</c>, <c>replicaSet</c>, <c>directConnection</c>,
+    /// <c>readPreference</c>, <c>tlsCAFile</c>, … — by name, unescaped.
+    /// </summary>
+    /// <remarks>
+    /// Read by <see cref="FromConnectionString"/> and written back by
+    /// <see cref="BuildConnectionString(bool, KeyValuePair{string, string}[])"/>, so the tools and the driver connect the
+    /// way the connection string says — an X.509 login, a replica set reached through one member. <c>authSource</c>
+    /// and <c>tls</c> are not kept here: <see cref="AuthenticationDatabase"/> and
+    /// <see cref="DbSettingsBase.UseSecure"/> hold them.
+    /// </remarks>
+    public IDictionary<string, string> UriOptions { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly HashSet<string> ModelledOptions = new(StringComparer.OrdinalIgnoreCase) { "authSource", "tls", "ssl" };
+
 
     public static MongoSettings FromConnectionString(string connectionString)
     {
@@ -53,7 +68,7 @@ public class MongoSettings(
             ? server?.Host
             : string.Join(",", servers.Select(x => $"{x.Host}:{x.Port}"));
 
-        return new MongoSettings(host, mongoUrl.DatabaseName)
+        var settings = new MongoSettings(host, mongoUrl.DatabaseName)
         {
             Port = server != null ? server.Port.ToString() : MongoDefaults.Port,
             Username = mongoUrl.Username,
@@ -62,6 +77,34 @@ public class MongoSettings(
             UseSecure = mongoUrl.UseTls,
             UseSrv = useSrv
         };
+        foreach (var (name, value) in ReadQuery(connectionString))
+        {
+            if (!ModelledOptions.Contains(name))
+            {
+                settings.UriOptions[name] = value;
+            }
+        }
+        return settings;
+    }
+
+    /// <summary>
+    /// The URI's options in their order, unescaped. The connection string format allows <c>;</c> as a separator too.
+    /// </summary>
+    private static IEnumerable<(string Name, string Value)> ReadQuery(string connectionString)
+    {
+        var start = connectionString.IndexOf('?');
+        if (start < 0)
+        {
+            yield break;
+        }
+        foreach (var option in connectionString[(start + 1)..].Split('&', ';'))
+        {
+            var separator = option.IndexOf('=');
+            if (separator > 0)
+            {
+                yield return (Uri.UnescapeDataString(option[..separator]), Uri.UnescapeDataString(option[(separator + 1)..]));
+            }
+        }
     }
     public override string BuildConnectionString(params KeyValuePair<string, string>[] extraOptions)
         => BuildConnectionString(true, extraOptions);
@@ -72,7 +115,7 @@ public class MongoSettings(
     /// <c>false</c> leaves the password out and keeps the rest of the URI intact, for a consumer that passes the password
     /// through a channel of its own — a command line and a log are both readable by other processes.
     /// </param>
-    /// <param name="extraOptions">Appended to the URI's query string as-is</param>
+    /// <param name="extraOptions">Appended to the URI's query string after <see cref="UriOptions"/>, escaped</param>
     public string BuildConnectionString(bool includePassword, params KeyValuePair<string, string>[] extraOptions)
     {
         // mongodb://[username[:password]@]host[:port]/[database][?options]
@@ -102,10 +145,11 @@ public class MongoSettings(
         {
             options.Add(new KeyValuePair<string, string>("tls", "true"));
         }
+        options.AddRange(UriOptions);
         options.AddRange(extraOptions);
         if (options.Any())
         {
-            connectionString += $"?{string.Join("&", options.Select(x => $"{x.Key}={x.Value}"))}";
+            connectionString += $"?{string.Join("&", options.Select(x => $"{Uri.EscapeDataString(x.Key)}={Uri.EscapeDataString(x.Value)}"))}";
         }
 
         return connectionString;

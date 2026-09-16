@@ -10,6 +10,7 @@ using Regira.Office.MimeTypes;
 using Regira.Office.Word.Abstractions;
 using Regira.Office.Word.Models;
 using Regira.Office.Word.Syncfusion.Extensions;
+using Regira.Office.Word.Syncfusion.Internal;
 using Regira.Utilities;
 using Syncfusion.DocIO;
 using Syncfusion.DocIO.DLS;
@@ -32,10 +33,7 @@ namespace Regira.Office.Word.Syncfusion;
 /// </summary>
 public class WordService : IWordService
 {
-    private const int MAX_DOCUMENT_INSERTS = 100;
     private static readonly Regex ParamRegex = new("{{ *[a-zA-Z0-9._]+ *}}");
-
-    private int _insertDocumentCounter;
 
     public WordService(SyncfusionWordConfig? config = null)
     {
@@ -123,27 +121,49 @@ public class WordService : IWordService
     {
         var doc = new WordDocument();
 
+        // the first input stays open as the style reference for the others
         WordDocument? firstDoc = null;
-        foreach (var input in inputs.AsList())
+        try
         {
-            using var newFile = await Create(input);
-            await using var newStream = newFile.GetStream()!;
-
-            var inputDoc = new WordDocument(newStream, FormatType.Docx);
-            firstDoc ??= inputDoc;
-
-            if (input.Options != null)
+            foreach (var input in inputs.AsList())
             {
-                inputDoc = ProcessInputOptions(inputDoc, input.Options, firstDoc);
-            }
+                using var newFile = await Create(input);
+                await using var newStream = newFile.GetStream()!;
 
-            foreach (var section in inputDoc.Sections.OfType<WSection>())
-            {
-                // without this DocIO starts every imported section on a new page
-                section.BreakCode = SectionBreakCode.NoBreak;
-            }
+                var inputDoc = new WordDocument(newStream, FormatType.Docx);
+                firstDoc ??= inputDoc;
+                try
+                {
+                    if (input.Options != null)
+                    {
+                        ProcessInputOptions(inputDoc, input.Options, firstDoc);
+                    }
 
-            doc.ImportContent(inputDoc, ImportOptions.UseDestinationStyles);
+                    foreach (var section in inputDoc.Sections.OfType<WSection>())
+                    {
+                        // without this DocIO starts every imported section on a new page
+                        section.BreakCode = SectionBreakCode.NoBreak;
+                    }
+
+                    doc.ImportContent(inputDoc, ImportOptions.UseDestinationStyles);
+                }
+                finally
+                {
+                    if (inputDoc != firstDoc)
+                    {
+                        inputDoc.Dispose();
+                    }
+                }
+            }
+        }
+        catch
+        {
+            doc.Dispose();
+            throw;
+        }
+        finally
+        {
+            firstDoc?.Dispose();
         }
 
         return doc;
@@ -151,6 +171,9 @@ public class WordService : IWordService
 
     protected internal WordDocument CreateDocument(WordTemplateInput input, WordDocument? reference = null)
     {
+        // nested documents, headers and footers all build through here
+        using var nesting = NestedDocumentGuard.Enter();
+
         var doc = LoadDocument(input.Template);
         reference ??= doc;
 
@@ -176,14 +199,17 @@ public class WordService : IWordService
         {
             foreach (var inputHeader in input.Headers)
             {
-                AddHeader(doc, CreateDocument(inputHeader.Template, reference), inputHeader.Type);
+                // AddHeader clones what it takes, so the source can go
+                using var headerDoc = CreateDocument(inputHeader.Template, reference);
+                AddHeader(doc, headerDoc, inputHeader.Type);
             }
         }
         if (input.Footers?.Any() == true)
         {
             foreach (var inputFooter in input.Footers)
             {
-                AddFooter(doc, CreateDocument(inputFooter.Template, reference), inputFooter.Type);
+                using var footerDoc = CreateDocument(inputFooter.Template, reference);
+                AddFooter(doc, footerDoc, inputFooter.Type);
             }
         }
 
@@ -374,6 +400,11 @@ public class WordService : IWordService
         {
             doc.Sections[0].PageSetup.DifferentFirstPage = true;
         }
+        else if (type == HeaderFooterType.Even)
+        {
+            // even-page stories only render once the document tells odd and even pages apart
+            doc.Sections[0].PageSetup.DifferentOddAndEvenPages = true;
+        }
     }
 
     protected internal void AddFooter(WordDocument doc, WordDocument footerDoc, HeaderFooterType type)
@@ -391,6 +422,11 @@ public class WordService : IWordService
         {
             doc.Sections[0].PageSetup.DifferentFirstPage = true;
         }
+        else if (type == HeaderFooterType.Even)
+        {
+            // even-page stories only render once the document tells odd and even pages apart
+            doc.Sections[0].PageSetup.DifferentOddAndEvenPages = true;
+        }
     }
 
     protected internal void ReplaceGlobalParameters(WordDocument doc, IDictionary<string, object> parameters)
@@ -405,13 +441,13 @@ public class WordService : IWordService
         foreach (var parameter in parameters)
         {
             var parameterKey = parameter.Key;
-            var parameterValue = parameter.Value.ToString() ?? string.Empty;
+            var parameterValue = parameter.Value?.ToString() ?? string.Empty;
 
             var keyPattern = $"{{{{ *{parameterKey} *}}}}";
             if (parameterKey.StartsWith("html_", StringComparison.InvariantCultureIgnoreCase))
             {
-                var selection = doc.Find(new Regex(keyPattern, RegexOptions.IgnoreCase));
-                selection.GetAsOneRange().OwnerParagraph.InjectHtml(parameterValue);
+                // a template without the tag leaves the parameter unused, as for any other key
+                doc.Find(new Regex(keyPattern, RegexOptions.IgnoreCase))?.GetAsOneRange().OwnerParagraph.InjectHtml(parameterValue);
             }
             else
             {
@@ -438,7 +474,8 @@ public class WordService : IWordService
             var table = doc.FindTable(collectionEntry.Key);
             if (table == null)
             {
-                return;
+                // a template without this table: the other collections still apply
+                continue;
             }
 
             var data = collectionEntry.Value.ToList();
@@ -501,13 +538,6 @@ public class WordService : IWordService
     protected internal void InsertDocuments(WordDocument doc, IDictionary<string, WordTemplateInput> documentParameters, WordDocument? reference = null)
     {
         reference ??= doc;
-
-        if (_insertDocumentCounter >= MAX_DOCUMENT_INSERTS)
-        {
-            // prevent infinite loops
-            throw new InvalidOperationException("Maximum insertable documents reached");
-        }
-        _insertDocumentCounter++;
 
         var content = doc.GetText();
 
@@ -597,14 +627,14 @@ public class WordService : IWordService
     }
 
 
+    /// <summary>
+    /// The portrait size in points. Every <see cref="RegiraPageSize"/> is honoured, A0 to A10.
+    /// </summary>
     protected internal global::Syncfusion.Drawing.SizeF GetPageSize(RegiraPageSize size)
-        => size switch
-        {
-            RegiraPageSize.A3 => PageSize.A3,
-            RegiraPageSize.A5 => PageSize.A5,
-            RegiraPageSize.A6 => PageSize.A6,
-            _ => PageSize.A4
-        };
+    {
+        var (width, height) = PageSizes.Points(size);
+        return new global::Syncfusion.Drawing.SizeF((float)width, (float)height);
+    }
 
     protected internal PageOrientation GetPageOrientation(RegiraPageOrientation orientation)
         => Enum.Parse<PageOrientation>(orientation.ToString());

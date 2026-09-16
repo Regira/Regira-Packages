@@ -1,4 +1,5 @@
 using Regira.IO.Extensions;
+using Syncfusion.DocIO;
 using Syncfusion.DocIO.DLS;
 using RegiraHorizontalAlignment = Regira.Office.Word.Models.HorizontalAlignment;
 using RegiraParagraph = Regira.Office.Word.Models.Paragraph;
@@ -59,7 +60,7 @@ internal static class ParagraphExtensions
             }
             if (src.Image.HorizontalAlignment.HasValue)
             {
-                picture.HorizontalAlignment = Enum.Parse<global::Syncfusion.DocIO.ShapeHorizontalAlignment>(src.Image.HorizontalAlignment.Value.ToString());
+                picture.HorizontalAlignment = src.Image.HorizontalAlignment.Value.ToDocIOShape();
             }
 
             picture.TextWrappingStyle = TextWrappingStyle.Square;
@@ -76,6 +77,18 @@ internal static class ParagraphExtensions
     /// </summary>
     public static HorizontalAlignment ToDocIO(this RegiraHorizontalAlignment alignment)
         => Enum.Parse<HorizontalAlignment>(alignment.ToString());
+
+    /// <summary>
+    /// A shape cannot be justified; that value keeps the default position.
+    /// </summary>
+    public static ShapeHorizontalAlignment ToDocIOShape(this RegiraHorizontalAlignment alignment)
+        => alignment switch
+        {
+            RegiraHorizontalAlignment.Left => ShapeHorizontalAlignment.Left,
+            RegiraHorizontalAlignment.Center => ShapeHorizontalAlignment.Center,
+            RegiraHorizontalAlignment.Right => ShapeHorizontalAlignment.Right,
+            _ => ShapeHorizontalAlignment.None
+        };
 
     public static bool IsEmpty(this WParagraph paragraph)
         => paragraph.ChildEntities.Count == 0;

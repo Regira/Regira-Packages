@@ -19,7 +19,7 @@ namespace Office.Word.testing.Abstractions;
 /// </summary>
 public abstract class WordTestsBase : WordAssetsTestsBase
 {
-    protected readonly IWordCreator Creator;
+    protected readonly IWordCreator? Creator;
     protected readonly IWordConverter? Converter;
     protected readonly IWordMerger? Merger;
     protected readonly IWordTextExtractor? TextExtractor;
@@ -29,12 +29,18 @@ public abstract class WordTestsBase : WordAssetsTestsBase
     /// <summary>
     /// Backends implement different subsets of <see cref="IWordService"/>, so the capabilities are
     /// probed rather than demanded: a scenario whose capability is absent ignores itself, the way
-    /// <c>BarcodeTestsBase</c> handles a write-only or read-only barcode backend. Creating is the
-    /// one thing every Word backend does.
+    /// <c>BarcodeTestsBase</c> handles a write-only or read-only barcode backend. Not even creating
+    /// is common to all of them — a conversion-only backend implements none of the model side.
     /// </summary>
-    protected WordTestsBase(IWordCreator service, string outputFolderName) : base(outputFolderName)
+    /// <param name="service">
+    /// The backend. Typed <see cref="object"/> because no single Word interface is common to every
+    /// backend, and one overload per interface would be ambiguous for a backend that implements several.
+    /// </param>
+    /// <param name="outputFolderName">The backend's folder under <c>Assets/Output</c>.</param>
+    protected WordTestsBase(object service, string outputFolderName) : base(outputFolderName)
     {
-        Creator = service;
+        Backend = service;
+        Creator = service as IWordCreator;
         Converter = service as IWordConverter;
         Merger = service as IWordMerger;
         TextExtractor = service as IWordTextExtractor;
@@ -43,10 +49,15 @@ public abstract class WordTestsBase : WordAssetsTestsBase
     }
 
     /// <summary>
+    /// The backend as the fixture handed it over, for casting to its concrete type.
+    /// </summary>
+    protected object Backend { get; }
+
+    /// <summary>
     /// The backend as a full <see cref="IWordService"/>. Only valid for a fixture whose backend
     /// implements the composite; a partial backend uses the individual capabilities instead.
     /// </summary>
-    protected IWordService Service => (IWordService)Creator;
+    protected IWordService Service => (IWordService)Backend;
 
     /// <summary>
     /// Reads back the text of a produced document. Skips the calling test when the backend cannot
@@ -72,7 +83,7 @@ public abstract class WordTestsBase : WordAssetsTestsBase
 
     public virtual async Task From_File(string filename)
     {
-        using var output = await Creator.Create(TemplateInput(filename));
+        using var output = await RequireCreator().Create(TemplateInput(filename));
         await AssertSaved(output, OutputPath($"from_{Path.GetExtension(filename).TrimStart('.')}.docx"));
     }
 
@@ -82,7 +93,7 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         var input = TemplateInput("bookmarks.dot");
         input.GlobalParameters = new Dictionary<string, object> { ["rs_Pi"] = pi };
 
-        using var output = await Creator.Create(input);
+        using var output = await RequireCreator().Create(input);
         await AssertSaved(output, OutputPath("bookmarks.docx"));
 
         Assert.That(await HasContent(output, pi), Is.True);
@@ -104,7 +115,7 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         headerFooterInput.Headers!.Add(new WordHeaderFooterInput { Template = TemplateInput("header_footer.docx") });
         headerFooterInput.Footers!.Add(new WordHeaderFooterInput { Template = TemplateInput("header_footer.docx") });
 
-        using var output = await Creator.Create(headerFooterInput);
+        using var output = await RequireCreator().Create(headerFooterInput);
         await AssertSaved(output, OutputPath("merged.docx"));
 
         // content from both source documents must survive the merge
@@ -122,7 +133,7 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         input.Headers!.Add(new WordHeaderFooterInput { Template = TemplateInput("add_header.docx"), Type = type });
         input.Footers!.Add(new WordHeaderFooterInput { Template = TemplateInput("add_footer.docx"), Type = type });
 
-        using var output = await Creator.Create(input);
+        using var output = await RequireCreator().Create(input);
         await AssertSaved(output, OutputPath(outputName));
 
         Assert.That(await HasContent(output, "Header"), Is.True);
@@ -141,7 +152,7 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         var input = TemplateInput("parameters.docx");
         input.GlobalParameters = parameters;
 
-        using var output = await Creator.Create(input);
+        using var output = await RequireCreator().Create(input);
         await AssertSaved(output, OutputPath("parameters.docx"));
 
         foreach (var value in parameters.Values)
@@ -160,7 +171,7 @@ public abstract class WordTestsBase : WordAssetsTestsBase
             File = ReadAsset("sample1.jpg")
         });
 
-        using var output = await Creator.Create(input);
+        using var output = await RequireCreator().Create(input);
         await AssertSaved(output, OutputPath("template_image.docx"));
     }
 
@@ -169,7 +180,7 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         var input = TemplateInput("template_row.docx");
         input.CollectionParameters!.Add("Template_Table", TemplateRows());
 
-        using var output = await Creator.Create(input);
+        using var output = await RequireCreator().Create(input);
         await AssertSaved(output, OutputPath("template_row.docx"));
 
         Assert.That(await HasContent(output, "Item #12"), Is.True);
@@ -192,11 +203,81 @@ public abstract class WordTestsBase : WordAssetsTestsBase
             ["doc2"] = doc2
         };
 
-        using var output = await Creator.Create(input);
+        using var output = await RequireCreator().Create(input);
         await AssertSaved(output, OutputPath("nested_templates.docx"));
 
         Assert.That(await HasContent(output, "Item #12"), Is.True);
         Assert.That(await HasContent(output, "<{ doc2  }>"), Is.False);
+    }
+
+    /// <summary>
+    /// The self-inclusion guard is per call: one long-lived instance keeps inserting documents past the
+    /// nesting limit, summed over its calls.
+    /// </summary>
+    public virtual async Task Nested_Documents_Do_Not_Wear_Out_The_Service()
+    {
+        var creator = RequireCreator();
+        for (var i = 0; i < 101; i++)
+        {
+            var input = TemplateInput("nested_templates.docx");
+            input.DocumentParameters = new Dictionary<string, WordTemplateInput>
+            {
+                ["doc1"] = TemplateInput("parameters.docx"),
+                ["doc2"] = TemplateInput("parameters.docx")
+            };
+
+            using var output = await creator.Create(input);
+        }
+    }
+
+    public virtual void A_Template_That_Includes_Itself_Fails()
+    {
+        var creator = RequireCreator();
+        var nested = TemplateInput("nested_templates.docx");
+        nested.DocumentParameters = new Dictionary<string, WordTemplateInput> { ["doc1"] = nested };
+        var header = TemplateInput("lorem_ipsum.docx");
+        header.Headers!.Add(new WordHeaderFooterInput { Template = header });
+
+        var viaNesting = Assert.ThrowsAsync<InvalidOperationException>(() => creator.Create(nested));
+        var viaHeader = Assert.ThrowsAsync<InvalidOperationException>(() => creator.Create(header));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(viaNesting!.Message, Does.Contain("Maximum insertable documents"));
+            Assert.That(viaHeader!.Message, Does.Contain("Maximum insertable documents"));
+        });
+    }
+
+    public virtual async Task A_Missing_Collection_Table_Leaves_The_Others()
+    {
+        var input = TemplateInput("template_row.docx");
+        input.CollectionParameters!.Add("Not_In_The_Template", TemplateRows());
+        input.CollectionParameters!.Add("Template_Table", TemplateRows());
+
+        using var output = await RequireCreator().Create(input);
+
+        Assert.That(await HasContent(output, "Item #12"), Is.True);
+    }
+
+    public virtual async Task A_Null_Or_Unused_Parameter_Is_Harmless()
+    {
+        var input = TemplateInput("parameters.docx");
+        input.GlobalParameters = new Dictionary<string, object>
+        {
+            ["title"] = null!,
+            ["date"] = "16/09/2026",
+            ["html_not_in_the_template"] = "<b>unused</b>"
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var tagLeft = await HasContent(output, "{{ title }}");
+        var dateWritten = await HasContent(output, "16/09/2026");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(tagLeft, Is.False, "a null value is written as empty text");
+            Assert.That(dateWritten, Is.True);
+        });
     }
 
     public virtual async Task Convert_To(FileFormat format, string outputName)
@@ -261,6 +342,11 @@ public abstract class WordTestsBase : WordAssetsTestsBase
     {
         if (Merger == null) Assert.Ignore("Merging not supported");
         return Merger!;
+    }
+    private IWordCreator RequireCreator()
+    {
+        if (Creator == null) Assert.Ignore("Creating not supported");
+        return Creator!;
     }
     private IWordToImagesService RequireToImages()
     {

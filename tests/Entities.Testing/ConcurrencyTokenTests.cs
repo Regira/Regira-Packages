@@ -1,8 +1,11 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.Extensions.DependencyInjection;
 using Regira.Entities.Attributes;
 using Regira.Entities.DependencyInjection.Extensions;
+using Regira.Entities.DependencyInjection.Primers;
+using Regira.Entities.EFcore.Primers.Abstractions;
 using Regira.Entities.Models;
 using Regira.Entities.Models.Abstractions;
 using Regira.Entities.Services.Abstractions;
@@ -11,31 +14,59 @@ using System.ComponentModel.DataAnnotations;
 namespace Entities.Testing;
 
 /// <summary>
-/// Optimistic concurrency through the write path: every concurrency token the model declares is compared with the
-/// value the client sent — not with the row the update just reloaded, which would make the check compare the
-/// database with itself. The other writer is a context of its own (or raw SQL where the store moves the token), and
-/// each refusal is paired with the same write carrying the current token, which must go through: a check that never
-/// runs passes every "current token" case too, so only the pair proves it.
+/// Optimistic concurrency through the write path: every version stamp — a concurrency token the server moves on the
+/// write — is compared with the value the client sent, not with the row the update just reloaded, which would make
+/// the check compare the database with itself. A token nothing moves is a data column the client edits, and is
+/// compared with the stored row. The other writer is a context of its own (or raw SQL where the store moves the
+/// token), and each refusal is paired with the same write carrying the current token, which must go through: a check
+/// that never runs passes every "current token" case too, so only the pair proves it.
 /// </summary>
 [TestFixture]
 public class ConcurrencyTokenTests
 {
-    public class Order : IEntity<int>
+    public interface IVersioned
+    {
+        Guid Version { get; set; }
+    }
+
+    /// Mints an application-owned token as <c>HasConcurrencyTokenDbPrimer</c> does: on every update, and on an
+    /// insert that carries none.
+    public class VersionPrimer : EntityPrimerBase<IVersioned>
+    {
+        public override Task PrepareAsync(IVersioned entity, EntityEntry entry, CancellationToken token = default)
+        {
+            if (entry.State == EntityState.Modified || (entry.State == EntityState.Added && entity.Version == Guid.Empty))
+            {
+                entity.Version = Guid.NewGuid();
+            }
+            return Task.CompletedTask;
+        }
+    }
+
+    public class Order : IEntity<int>, IVersioned
     {
         public int Id { get; set; }
         public string? Status { get; set; }
-        /// An application-owned token: nothing moves it but a writer that sets it.
+        /// An application-owned token, minted by <see cref="VersionPrimer"/>.
         [ConcurrencyCheck] public Guid Version { get; set; }
         public ICollection<OrderLine>? Lines { get; set; }
     }
 
-    public class OrderLine : IEntity<int>
+    public class OrderLine : IEntity<int>, IVersioned
     {
         public int Id { get; set; }
         public int OrderId { get; set; }
         public string? Product { get; set; }
         public int Quantity { get; set; }
         [ConcurrencyCheck] public Guid Version { get; set; }
+    }
+
+    /// A token on a data column: the client edits it, and nothing on the server moves it.
+    public class Customer : IEntity<int>
+    {
+        public int Id { get; set; }
+        [ConcurrencyCheck] public string? LastName { get; set; }
+        public string? City { get; set; }
     }
 
     /// A token a prepper restores from the stored row before the entity is attached.
@@ -60,6 +91,7 @@ public class ConcurrencyTokenTests
         public DbSet<OrderLine> OrderLines => Set<OrderLine>();
         public DbSet<Ticket> Tickets => Set<Ticket>();
         public DbSet<Article> Articles => Set<Article>();
+        public DbSet<Customer> Customers => Set<Customer>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -85,12 +117,13 @@ public class ConcurrencyTokenTests
 
         var services = new ServiceCollection();
         services.AddDbContext<ShopContext>(db => db.UseSqlite(_connection));
-        services.UseEntities<ShopContext>(o => o.UseDefaults())
+        services.UseEntities<ShopContext>(o => o.UseDefaults().AddPrimer<VersionPrimer>())
             .For<Order>(e => e
                 .Related(x => x.Lines)
                 .Includes((query, _) => query.Include(x => x.Lines)))
             .For<Ticket>()
-            .For<Article>();
+            .For<Article>()
+            .For<Customer>();
         _sp = services.BuildServiceProvider();
 
         await using var db = Raw();
@@ -189,7 +222,7 @@ public class ConcurrencyTokenTests
         Assert.Multiple(() =>
         {
             Assert.That(stored.Status, Is.EqualTo("Shipped"));
-            Assert.That(stored.Version, Is.EqualTo(current), "Guid.Empty stood for 'not sent' and must not overwrite the token");
+            Assert.That(stored.Version, Is.Not.EqualTo(Guid.Empty).And.Not.EqualTo(current), "Guid.Empty stood for 'not sent': the primer mints the token");
         });
     }
 
@@ -278,7 +311,7 @@ public class ConcurrencyTokenTests
         Assert.Multiple(() =>
         {
             Assert.That(line.Quantity, Is.EqualTo(3));
-            Assert.That(line.Version, Is.EqualTo(lineCurrent));
+            Assert.That(line.Version, Is.Not.EqualTo(Guid.Empty).And.Not.EqualTo(lineCurrent));
         });
     }
 
@@ -305,6 +338,48 @@ public class ConcurrencyTokenTests
             Assert.That(stored.Title, Is.EqualTo("Fresh"));
             Assert.That(stored.RowVersion, Is.EqualTo(current + 1), "the store owns the token: the write must not set it");
         });
+    }
+
+    // ── a token on a data column ───────────────────────────────────────────────
+
+    [Test]
+    public async Task A_Data_Column_Token_Takes_The_Clients_Edit()
+    {
+        var customer = new Customer { LastName = "Peeters", City = "Gent" };
+        await Write(customer);
+
+        // the client's value is new data, not what it read: comparing the row with it would refuse every change
+        await Write(new Customer { Id = customer.Id, LastName = "Janssens", City = "Gent" });
+
+        Assert.That((await Find<Customer>(customer.Id)).LastName, Is.EqualTo("Janssens"));
+    }
+
+    [TestCase(null)]
+    [TestCase("")]
+    public async Task A_Data_Column_Token_Takes_The_Clients_Clear(string? cleared)
+    {
+        var customer = new Customer { LastName = "Peeters", City = "Gent" };
+        await Write(customer);
+
+        // an empty value is the edit itself here, not a token left out
+        await Write(new Customer { Id = customer.Id, LastName = cleared, City = "Gent" });
+
+        Assert.That((await Find<Customer>(customer.Id)).LastName, Is.EqualTo(cleared));
+    }
+
+    [Test]
+    public async Task A_Data_Column_Token_Is_Compared_With_The_Stored_Row()
+    {
+        var customer = new Customer { LastName = "Peeters", City = "Gent" };
+        await Write(customer);
+
+        using var scope = _sp.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Customer, int>>();
+        await service.Modify(new Customer { Id = customer.Id, LastName = "Peeters", City = "Brugge" });
+        await OtherWriter<Customer>(customer.Id, x => x.LastName = "Maes");
+
+        Assert.ThrowsAsync<EntityConcurrencyException>(() => service.SaveChanges());
+        Assert.That((await Find<Customer>(customer.Id)).LastName, Is.EqualTo("Maes"), "the other writer's change must survive");
     }
 
     // ── what EF reports as a concurrency failure, token or not ─────────────────

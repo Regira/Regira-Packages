@@ -1,4 +1,5 @@
-﻿using Regira.DAL.MongoDB.Core;
+﻿using MongoDB.Driver;
+using Regira.DAL.MongoDB.Core;
 
 namespace DAL.MongoDB.Testing;
 
@@ -72,6 +73,54 @@ public class MongoSettingsTests
 
         Assert.That(settings.BuildConnectionString(new KeyValuePair<string, string>("readPreference", "secondary")),
             Is.EqualTo("mongodb://mongo.example.com:27017/shop?readPreference=secondary"));
+    }
+
+    [Test]
+    public void FromConnectionString_Keeps_The_Options_It_Does_Not_Model()
+    {
+        const string uri = "mongodb://mongo-1.example.com:27017/shop?authMechanism=MONGODB-X509&authSource=%24external" +
+                           "&replicaSet=rs0&directConnection=true&readPreference=secondaryPreferred&tls=true&tlsCAFile=C%3A%5Ccerts%5Cca.pem";
+
+        var settings = MongoSettings.FromConnectionString(uri);
+        var client = settings.ToMongoClientSettings();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(settings.UriOptions, Is.EquivalentTo(new Dictionary<string, string>
+            {
+                ["authMechanism"] = "MONGODB-X509",
+                ["replicaSet"] = "rs0",
+                ["directConnection"] = "true",
+                ["readPreference"] = "secondaryPreferred",
+                ["tlsCAFile"] = @"C:\certs\ca.pem"
+            }));
+            Assert.That(settings.AuthenticationDatabase, Is.EqualTo("$external"));
+            // what the driver makes of the URI the settings write back
+            Assert.That(client.Credential.Mechanism, Is.EqualTo("MONGODB-X509"));
+            Assert.That(client.Credential.Source, Is.EqualTo("$external"));
+            Assert.That(client.ReplicaSetName, Is.EqualTo("rs0"));
+            Assert.That(client.DirectConnection, Is.True);
+            Assert.That(client.ReadPreference.ReadPreferenceMode, Is.EqualTo(ReadPreferenceMode.SecondaryPreferred));
+            Assert.That(client.UseTls, Is.True);
+        });
+    }
+
+    [Test]
+    public void BuildConnectionString_Escapes_Option_Values()
+    {
+        var settings = new MongoSettings("mongo.example.com", "shop") { AuthenticationDatabase = "$external" };
+        settings.UriOptions["appName"] = "orders & invoices";
+
+        var uri = settings.BuildConnectionString(new KeyValuePair<string, string>("replicaSet", "rs=0;eu"));
+        var url = MongoUrl.Create(uri);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(uri, Is.EqualTo("mongodb://mongo.example.com:27017/shop?authSource=%24external&appName=orders%20%26%20invoices&replicaSet=rs%3D0%3Beu"));
+            Assert.That(url.AuthenticationSource, Is.EqualTo("$external"));
+            Assert.That(url.ApplicationName, Is.EqualTo("orders & invoices"));
+            Assert.That(url.ReplicaSetName, Is.EqualTo("rs=0;eu"));
+        });
     }
 
     [Test]

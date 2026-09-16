@@ -109,6 +109,8 @@
     <Project Path="src/VCards.FolkerKinzel/VCards.FolkerKinzel.csproj" />
   </Folder>
   <Folder Name="/src/Office/Word/">
+    <Project Path="src/Word.Aspose/Word.Aspose.csproj" />
+    <Project Path="src/Word.Gotenberg/Word.Gotenberg.csproj" />
     <Project Path="src/Word.Mini/Word.Mini.csproj" />
     <Project Path="src/Word.Spire/Word.Spire.csproj" />
     <Project Path="src/Word.Syncfusion/Word.Syncfusion.csproj" />

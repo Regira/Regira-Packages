@@ -13,7 +13,9 @@ public interface IProcessHelper
     /// Use this for values that must not appear in the command itself — a password, say, which
     /// <see cref="ExecuteCommand(string, bool)"/> would write to the temporary script it generates.
     /// An implementation that does not override this sets them from the script instead, which reaches the process
-    /// just as well but writes the values wherever the implementation writes the command.
+    /// just as well but writes the values wherever the implementation writes the command. Those lines are Windows
+    /// batch syntax (<c>set "KEY=VALUE"</c>), so the fallback assumes an implementation that runs the command as a
+    /// <c>.bat</c> file, as <c>ProcessHelper</c> does; any other shell has to override this.
     /// </remarks>
     IProcessOutput ExecuteCommand(string command, IDictionary<string, string> environment, bool waitForOutput = false)
     {

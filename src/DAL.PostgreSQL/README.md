@@ -50,10 +50,14 @@ IMemoryFile backup = await new PgBackupService(options, processHelper).Backup();
 await new PgRestoreService(options, processHelper).Restore(backup);
 ```
 
-The password reaches `pg_dump` / `pg_restore` through the process environment (`PGPASSWORD`), never through
-the command line — `ProcessHelper` sets it on the process itself. A custom `IProcessHelper` that does not
-override the environment overload of `ExecuteCommand` still authenticates, but by setting the variable from
-the command, so the password lands wherever that implementation writes it.
+Both services start `pg_dump` / `pg_restore` directly, without a shell in between, so they run on Windows,
+Linux and macOS alike, and a database, user or schema name reaches the tool exactly as written. An
+`IProcessHelper` of your own sees `ExecuteFile` rather than `ExecuteCommand`.
+
+The password reaches the tools through the process environment (`PGPASSWORD`), never through the arguments —
+`ProcessHelper` sets it on the process itself. A custom `IProcessHelper` has to override the environment
+overload of `ExecuteFile` to pass it on; the default implementation throws `NotSupportedException` rather than
+start the tool without it.
 
 ## PgOptions
 

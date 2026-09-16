@@ -2,18 +2,13 @@
 using Dapper;
 using Microsoft.Extensions.Logging;
 using Npgsql;
-using Regira.DAL.PostgreSQL.Constants;
 using Regira.DAL.PostgreSQL.Core;
 using Regira.System.Abstractions;
-using Regira.Utilities;
 
 namespace Regira.DAL.PostgreSQL.Services;
 
 public class BackupRestoreManager
 {
-
-    private static readonly string BackupProcessFile = OperatingSystem.IsWindows() ? "pg_dump.exe" : "pg_dump";
-    private static readonly string RestoreProcessFile = OperatingSystem.IsWindows() ? "pg_restore.exe" : "pg_restore";
     private readonly IProcessHelper _processHelper;
     private readonly ILogger<BackupRestoreManager>? _logger;
     private readonly string _backupProcessPath;
@@ -42,8 +37,8 @@ public class BackupRestoreManager
             throw new DirectoryNotFoundException(options.ToolsDirectory);
         }
 
-        _backupProcessPath = Path.Combine(options.ToolsDirectory, BackupProcessFile);
-        _restoreProcessPath = Path.Combine(options.ToolsDirectory, RestoreProcessFile);
+        _backupProcessPath = PgTools.DumpPath(options.ToolsDirectory);
+        _restoreProcessPath = PgTools.RestorePath(options.ToolsDirectory);
     }
 
 
@@ -57,35 +52,18 @@ public class BackupRestoreManager
     /// <exception cref="Exception"></exception>
     public void Backup(PgSettings settings, string sourceDb, string targetPath, IList<string>? schemas = null)
     {
-        // compose command with args
-        var schemasArgs = schemas?.Any() ?? false ? string.Join(" ", schemas.Select(x => $"--schema \"{x}\"")) : null;
-        var cmd = (schemas?.Any() ?? false ? BackupCommands.SchemaBackup : BackupCommands.FullBackup)
-            .Inject(new
-            {
-                ProcessPath = _backupProcessPath,
-                settings.Host,
-                settings.Port,
-                settings.Username,
-                TargetPath = targetPath,
-                SchemasArgs = schemasArgs,
-                SourceDb = sourceDb
-            })!;
+        var args = PgTools.BackupArguments(settings, sourceDb, targetPath, schemas);
 
         // create directory
         var backupDir = Path.GetDirectoryName(targetPath)!;
         // ReSharper disable once AssignNullToNotNullAttribute
         Directory.CreateDirectory(backupDir);
 
-        _logger?.LogDebug($"Creating backup...{Environment.NewLine}{cmd}");
+        // holds no password
+        _logger?.LogDebug("Creating backup with {ProcessPath} {Arguments}", _backupProcessPath, args);
 
-        // the password travels in the process environment, so it never reaches the generated script
-        var environment = new Dictionary<string, string>();
-        if (!string.IsNullOrEmpty(settings.Password))
-        {
-            environment["PGPASSWORD"] = settings.Password;
-        }
         // execute backup process, capturing what pg_dump has to say: without it a failure reports an exit code and nothing else
-        var output = _processHelper.ExecuteCommand(cmd, environment, waitForOutput: true);
+        var output = _processHelper.ExecuteFile(_backupProcessPath, PgTools.Environment(settings), waitForOutput: true, arguments: args);
 
         if (output.ExitCode != 0)
         {
@@ -136,28 +114,13 @@ public class BackupRestoreManager
         await Create(cn, targetDb);
 
         // execute restoring tool
-        var cmd = BackupCommands.Restore
-            .Inject(new
-            {
-                ProcessPath = _restoreProcessPath,
-                settings.Host,
-                settings.Port,
-                settings.Username,
-                TargetDb = targetDb,
-                SourcePath = sourcePath
-            })!;
+        var args = PgTools.RestoreArguments(settings, targetDb, sourcePath);
 
-        _logger?.LogDebug($"Restoring backup...{Environment.NewLine}{cmd}");
-
-        // the password travels in the process environment, so it never reaches the generated script
-        var environment = new Dictionary<string, string>();
-        if (!string.IsNullOrEmpty(settings.Password))
-        {
-            environment["PGPASSWORD"] = settings.Password;
-        }
+        // holds no password
+        _logger?.LogDebug("Restoring backup with {ProcessPath} {Arguments}", _restoreProcessPath, args);
 
         // execute restore process, capturing what pg_restore has to say: without it a failure reports an exit code and nothing else
-        var output = _processHelper.ExecuteCommand(cmd, environment, waitForOutput: true);
+        var output = _processHelper.ExecuteFile(_restoreProcessPath, PgTools.Environment(settings), waitForOutput: true, arguments: args);
 
         if (output.ExitCode != 0)
         {
@@ -175,14 +138,7 @@ public class BackupRestoreManager
     /// <exception cref="Exception">The file is not an archive <c>pg_restore</c> can read</exception>
     private void ValidateArchive(string sourcePath)
     {
-        var cmd = BackupCommands.ListArchive
-            .Inject(new
-            {
-                ProcessPath = _restoreProcessPath,
-                SourcePath = sourcePath
-            })!;
-
-        var output = _processHelper.ExecuteCommand(cmd, waitForOutput: true);
+        var output = _processHelper.ExecuteFile(_restoreProcessPath, waitForOutput: true, arguments: PgTools.ListArchiveArguments(sourcePath));
 
         if (output.ExitCode != 0)
         {

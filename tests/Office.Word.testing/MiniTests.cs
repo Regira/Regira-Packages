@@ -1,9 +1,12 @@
+using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
 using NUnit.Framework.Legacy;
 using Office.Word.testing.Abstractions;
 using Regira.IO.Extensions;
 using Regira.Office.MimeTypes;
 using Regira.Office.Word.Mini;
 using Regira.Office.Word.Models;
+using W = DocumentFormat.OpenXml.Wordprocessing;
 
 namespace Office.Word.testing;
 
@@ -15,7 +18,7 @@ namespace Office.Word.testing;
 [TestFixture]
 public class MiniTests() : WordTestsBase(new WordService(), "Mini")
 {
-    private WordService Mini => (WordService)Creator;
+    private WordService Mini => (WordService)Backend;
 
 
     // MiniWord reads .docx only, so the .dot/.doc/.odt cases the other backends run are absent.
@@ -149,5 +152,59 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
 
         var ex = Assert.ThrowsAsync<ArgumentException>(() => Mini.Create(input));
         Assert.That(ex!.Message, Does.Contain("logo"));
+    }
+
+    [Test]
+    public async Task Create_Matches_Spaced_Tags_In_Collection_Rows_And_Across_Runs()
+    {
+        var input = new WordTemplateInput { Template = SpacedTagsTemplate().ToBinaryFile(ContentTypes.DOCX) };
+        input.GlobalParameters = new Dictionary<string, object> { ["title"] = "Order 42" };
+        input.CollectionParameters!.Add("Items", new List<IDictionary<string, object>>
+        {
+            new Dictionary<string, object> { ["Name"] = "Pen" },
+            new Dictionary<string, object> { ["Name"] = "Ink" }
+        });
+
+        var text = await Mini.GetText(input);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Does.Contain("Order 42"));
+            Assert.That(text, Does.Contain("Pen"));
+            Assert.That(text, Does.Contain("Ink"));
+            Assert.That(text, Does.Not.Contain("{{"));
+        });
+    }
+
+    [Test]
+    public async Task Create_Still_Takes_A_Key_Spelled_With_Spaces()
+    {
+        var input = TemplateInput("parameters.docx");
+        input.GlobalParameters = new Dictionary<string, object> { [" title "] = "A spaced key" };
+
+        var text = await Mini.GetText(input);
+
+        Assert.That(text, Does.Contain("A spaced key"));
+    }
+
+    /// <summary>
+    /// <c>{{ title }}</c> split over two runs the way Word saves an edited tag, and a table row holding
+    /// <c>{{ Items.Name }}</c>.
+    /// </summary>
+    private static byte[] SpacedTagsTemplate()
+    {
+        using var stream = new MemoryStream();
+        using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
+        {
+            var main = doc.AddMainDocumentPart();
+            var row = new W.TableRow(new W.TableCell(new W.Paragraph(new W.Run(new W.Text("{{ Items.Name }}")))));
+            main.Document = new W.Document(new W.Body(
+                new W.Paragraph(
+                    new W.Run(new W.Text("Title: {{ ") { Space = SpaceProcessingModeValues.Preserve }),
+                    new W.Run(new W.Text("title }}"))),
+                new W.Table(new W.TableProperties(), row),
+                new W.Paragraph(new W.Run(new W.Text("End")))));
+        }
+        return stream.ToArray();
     }
 }

@@ -122,6 +122,33 @@ for (int i = 0; i < images.Count; i++)
 
 ---
 
+## Example 8: Fill a template and convert it to PDF without a vendor licence
+
+Word.Mini fills the template and a Gotenberg server lays it out. Register both, with a PDF rasteriser for page previews:
+
+```csharp
+services.AddSingleton<IImageService, Regira.Drawing.SkiaSharp.Services.ImageService>();
+services.AddSingleton<IPdfToImageService, Regira.Office.PDF.DocNET.PdfManager>();
+services.AddSingleton<IWordCreator, Regira.Office.Word.Mini.WordService>();
+services.AddGotenbergWord(o => o.BaseUrl = configuration["Gotenberg:BaseUrl"]!);
+```
+
+The converter renders the template input through Word.Mini before it uploads it:
+
+```csharp
+// IWordConverter converter, IWordToImagesService previews — injected
+var input = new WordTemplateInput
+{
+    Template         = templateBytes.ToMemoryFile(),
+    GlobalParameters = new Dictionary<string, object> { ["CustomerName"] = "Alice" }
+};
+
+IMemoryFile pdf = await converter.Convert(input, FileFormat.Pdf);
+IEnumerable<IImageFile> pages = await previews.ToImages(input);
+```
+
+---
+
 ## Overview
 
 1. [Index](README.md) — Overview, interfaces, models, and implementation notes

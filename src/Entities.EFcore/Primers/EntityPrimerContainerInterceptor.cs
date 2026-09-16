@@ -70,6 +70,9 @@ public class EntityPrimerContainerInterceptor(IServiceProvider serviceProvider, 
                 }
             }
         }
+
+        // only now is it known which concurrency tokens a primer moves — those are compared with the client's value
+        context.ApplyUndecidedClientTokens();
     }
 }
 

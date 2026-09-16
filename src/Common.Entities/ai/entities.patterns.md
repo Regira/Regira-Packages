@@ -820,8 +820,8 @@ Two users open the same row and both save. Without a concurrency token the secon
 first — last write wins, 200 OK. With one, the write built on the stale read answers **409 Conflict** and the
 first user's change survives.
 
-The write path compares every concurrency token the EF model declares with the value the **client sent** — the
-one it read — never with the row the update reloads. The token is an ordinary DTO field: `GET` returns it,
+The write path compares every **version stamp** — a concurrency token the server moves on each write — with the
+value the **client sent** — the one it read — never with the row the update reloads. The token is an ordinary DTO field: `GET` returns it,
 `PUT`/`PATCH` send it back, the `SaveResult` returns the new one. A stale value matches no row, and the write
 service rethrows EF's concurrency failure as `EntityConcurrencyException` → 409.
 
@@ -851,8 +851,14 @@ A token you declare yourself goes through the same check:
 | SQL Server `rowversion` | `[Timestamp] public byte[]? RowVersion { get; set; }` | the database, on every `UPDATE` |
 | PostgreSQL `xmin` | `[Timestamp] public uint Version { get; set; }` (Npgsql maps it to `xmin`) | the database |
 | Application-owned | `[ConcurrencyCheck] public Guid Version { get; set; }` | **a primer you register** — `HasConcurrencyTokenDbPrimer` is the one to copy |
+| Data column | `[ConcurrencyCheck] public string? LastName { get; set; }` | nothing — the client edits it |
 
-Nothing else changes an application-owned token, so without a primer two clients holding the same value both pass.
+A token counts as a version stamp when the database generates it on update, when it is the marker's
+`ConcurrencyToken`, or when a prepper or primer changes it on the write. **A token nothing moves is a data column:**
+the client's value is the edit itself, so it is written as sent — a change or a clear — and compared with nothing
+the client read: only a write racing the save is caught. That is also what an application-owned token without its
+primer gets, so two clients holding the same value both pass. The flip side: a primer that rewrites a data column
+in place (trimming, rounding) makes it look like a version stamp, and the edit it rewrote answers 409.
 
 **2. Carry it on both DTOs, uninitialized** — `public Guid ConcurrencyToken { get; set; }` on `OrderDto` and
 `OrderInputDto`. Startup validation reports the shapes that break the check:
@@ -870,7 +876,7 @@ match nothing and fail as a conflict forever. An absent token is read as the abs
 the stored token and deletes against that: the delete goes through, while a caller that *does* supply a token keeps
 its check and an already-deleted row still reports a conflict. The cost is one extra `SELECT` per deleted row that
 carries the marker, so removing N stubs in a loop is N extra round trips — load the entities you are deleting (a
-single query) when that matters.
+single query) when that matters. On a synchronous `SaveChanges()` each of those reads blocks the calling thread.
 
 **3. Handle the 409 on the client.** The body is a `ProblemDetails` titled **"Concurrency conflict"** — the
 constraint 409 is titled "Conflict" — so the client can tell "reload and try again" from "fix the input". Reload
@@ -884,10 +890,12 @@ What each write is checked against:
 | `PUT` without it (`null`, empty, `Guid.Empty`, `0`) | nothing the client read: it writes, only a write racing it is caught, and the empty value never overwrites the token (the marker's primer still mints a new one) |
 | `PATCH` | the token in the body when it carries one; otherwise the merge base supplies the value read at `PATCH` time |
 | `DELETE`, and child rows a save drops | no client token reaches them — only a write racing them is caught |
-| Owned children (`Related()`) | each child's own token, when it declares one; one stale child fails the whole save |
+| Owned children (`Related()`) | each child's own token, when it declares one; one stale child fails the whole save. A CLR type EF maps more than once — a shared-type entity, an owned type with several owners — has no single model to read its token from, so only a write racing it is caught |
+| A data-column token | the stored row — only a write racing the save is caught |
 
 - A token whose default is a legitimate value — an `int` version starting at `0` — cannot be told apart from an
-  absent one. Start it at `1`, or use a `Guid`.
+  absent one. Start it at `1`, or use a `Guid`. A primer that increments an application-owned token counts from
+  `entry.Property(...).OriginalValue`, the stored value, so a client that omits the token cannot reset it.
 - EF raises the same failure for any `UPDATE`/`DELETE` that matched no row, token or not: a row another writer
   removed also answers 409.
 - Direct `IEntityService` callers (jobs, imports) catch `EntityConcurrencyException`; EF's

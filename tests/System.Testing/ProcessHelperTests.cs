@@ -85,6 +85,37 @@ public class ProcessHelperTests
         });
     }
 
+    [Test]
+    public void Concurrent_Commands_On_One_Instance_Keep_Their_Own_Scripts()
+    {
+        var folder = Directory.CreateTempSubdirectory("regira-process-").FullName;
+        try
+        {
+            // one instance, as a singleton registration shares it, with a folder the first call has to create; the pause
+            // keeps every script running while others end
+            var scripts = Path.Combine(folder, "scripts");
+            var helper = new ProcessHelper(new ProcessHelper.Options { TempFolder = scripts });
+            var runs = Enumerable.Range(0, 8)
+                .Select(i => Task.Run(() => helper.ExecuteCommand($"ping -n {1 + i % 3} 127.0.0.1 >nul{Environment.NewLine}echo run {i}", waitForOutput: true)))
+                .ToArray();
+
+            Assert.That(Task.WaitAll(runs, TimeSpan.FromSeconds(60)), Is.True);
+            Assert.Multiple(() =>
+            {
+                for (var i = 0; i < runs.Length; i++)
+                {
+                    Assert.That(runs[i].Result.ExitCode, Is.Zero, runs[i].Result.Error);
+                    Assert.That(runs[i].Result.Output!.Trim(), Is.EqualTo($"run {i}"));
+                }
+                Assert.That(Directory.GetFiles(scripts), Is.Empty, "every script is removed again");
+            });
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
+
     /// <summary>
     /// Bounded, so a helper that stops draining concurrently fails the test instead of hanging the run
     /// </summary>

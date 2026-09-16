@@ -27,6 +27,8 @@ Regira DAL.MongoDB provides lightweight MongoDB connectivity using the MongoDB D
 | `Password` | `string?` | Auth password |
 | `AuthenticationDatabase` | `string?` | `authSource` — the database holding the credentials, when that is not `DatabaseName`. Left empty, MongoDB resolves it itself: `DatabaseName`, or `admin` when no database is named |
 | `UseSecure` (UseTls) | `bool` | TLS/SSL |
+| `UseSrv` | `bool` | The `mongodb+srv://` scheme, where DNS supplies the hosts and the port |
+| `UriOptions` | `IDictionary<string, string>` | Every other connection-string option — `authMechanism`, `replicaSet`, `directConnection`, `readPreference`, `tlsCAFile`, … — unescaped |
 
 ```csharp
 var settings = new MongoSettings("localhost", "mydb");
@@ -34,9 +36,9 @@ var settings = new MongoSettings("localhost", "mydb");
 settings = MongoSettings.FromConnectionString("mongodb://user:pass@host:27017/mydb?authSource=admin");
 ```
 
-A `Username` makes every connection an authenticated one — the communicator's and `mongodump`/`mongorestore`'s alike.
+A `Username` makes every connection an authenticated one — the communicator's and `mongodump`/`mongorestore`'s alike. Options kept in `UriOptions` reach both as well, so an X.509 login or a replica set reached through one member connects the way the connection string says.
 
-`BuildConnectionString()` composes the URI back, percent-encoding the credentials; `BuildConnectionString(includePassword: false)` composes the same URI without the password, for a caller that passes the password through a channel of its own.
+`BuildConnectionString()` composes the URI back, percent-encoding the credentials and every option; `BuildConnectionString(includePassword: false)` composes the same URI without the password, for a caller that passes the password through a channel of its own.
 
 ## MongoCommunicator
 

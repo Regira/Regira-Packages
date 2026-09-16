@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Regira.DAL.EFcore.Extensions;
+using Regira.Entities.EFcore.Extensions;
 using Regira.Entities.EFcore.Primers.Abstractions;
 using Regira.Utilities;
 
@@ -55,6 +56,9 @@ public class EntityPrimerContainer
                 }
             }
         }
+
+        // only now is it known which concurrency tokens a primer moves — those are compared with the client's value
+        _dbContext.ApplyUndecidedClientTokens(entityType);
     }
     /// <summary>
     /// 

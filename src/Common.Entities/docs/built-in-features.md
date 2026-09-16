@@ -110,10 +110,14 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
 }
 ```
 
-- **The client's token is what gets compared.** Every concurrency token the EF model declares — `[Timestamp]` /
-  `IsRowVersion()`, `[ConcurrencyCheck]`, `IsConcurrencyToken()` — is checked against the value that arrived with
-  the write, not against the row the update reloads. The token travels as an ordinary DTO field: put it on both
-  the read and the input DTO, without an initializer.
+- **The client's token is what gets compared.** Every version stamp — a concurrency token the server moves on the
+  write, declared with `[Timestamp]` / `IsRowVersion()`, `[ConcurrencyCheck]` or `IsConcurrencyToken()` — is
+  checked against the value that arrived with the write, not against the row the update reloads. The token travels
+  as an ordinary DTO field: put it on both the read and the input DTO, without an initializer.
+- **A token nothing moves is a data column** (`[ConcurrencyCheck] public string? LastName`). The client's value is
+  the edit itself, so it is written as sent — a change or a clear — and the check compares the stored row: only a
+  write racing the save is caught. A token is a version stamp when the database generates it on update, when it is
+  `IHasConcurrencyToken.ConcurrencyToken`, or when a prepper or primer changes it on the write.
 - **A token the client leaves out is not compared** (`null`, empty, or the CLR default): the write goes through,
   only a write racing it is caught, and the empty value never overwrites the token — with `IHasConcurrencyToken`
   the primer still mints a new one. `PATCH` carries the stored value unless its body sets the token; `DELETE`

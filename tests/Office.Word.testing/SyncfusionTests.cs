@@ -1,6 +1,11 @@
+using Docnet.Core;
+using Docnet.Core.Models;
 using Office.Word.testing.Abstractions;
+using Regira.Drawing.SkiaSharp.Services;
 using Regira.IO.Extensions;
 using Regira.Office.Models;
+using Regira.Office.PDF.DocNET;
+using Regira.Office.Word.Models;
 using Regira.Office.Word.Syncfusion;
 
 namespace Office.Word.testing;
@@ -77,6 +82,18 @@ public class SyncfusionTests() : WordTestsBase(CreateService(), "Syncfusion")
     [Test]
     public override Task Nested_Documents() => base.Nested_Documents();
 
+    [Test]
+    public override Task Nested_Documents_Do_Not_Wear_Out_The_Service() => base.Nested_Documents_Do_Not_Wear_Out_The_Service();
+
+    [Test]
+    public override void A_Template_That_Includes_Itself_Fails() => base.A_Template_That_Includes_Itself_Fails();
+
+    [Test]
+    public override Task A_Missing_Collection_Table_Leaves_The_Others() => base.A_Missing_Collection_Table_Leaves_The_Others();
+
+    [Test]
+    public override Task A_Null_Or_Unused_Parameter_Is_Harmless() => base.A_Null_Or_Unused_Parameter_Is_Harmless();
+
     // EPub is absent: unavailable on .NET Core (see Convert_To_EPub_Is_Not_Supported).
     [TestCase(FileFormat.Pdf, "converted.pdf")]
     [TestCase(FileFormat.Html, "converted.html")]
@@ -136,6 +153,65 @@ public class SyncfusionTests() : WordTestsBase(CreateService(), "Syncfusion")
         {
             Assert.That(pdf.ContentType, Is.EqualTo("application/pdf"));
             Assert.That(html.ContentType, Does.Contain("html"));
+        });
+    }
+
+    [TestCase(PageSize.A3, PageOrientation.Portrait, 842, 1191)]
+    [TestCase(PageSize.A4, PageOrientation.Landscape, 842, 595)]
+    // sizes DocIO's own PageSize list does not name
+    [TestCase(PageSize.A2, PageOrientation.Portrait, 1191, 1684)]
+    [TestCase(PageSize.A7, PageOrientation.Portrait, 210, 298)]
+    public async Task Page_Settings_Set_The_Rendered_Page_Size(PageSize size, PageOrientation orientation, int width, int height)
+    {
+        var options = new ConversionOptions
+        {
+            OutputFormat = FileFormat.Pdf,
+            Settings = new DocumentSettings { PageSize = size, PageOrientation = orientation }
+        };
+
+        using var pdf = await Service.Convert(TemplateInput("template.docx"), options);
+        using var reader = DocLib.Instance.GetDocReader(pdf.GetBytes()!, new PageDimensions(1d));
+        using var page = reader.GetPageReader(0);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(page.GetPageWidth(), Is.EqualTo(width).Within(2));
+            Assert.That(page.GetPageHeight(), Is.EqualTo(height).Within(2));
+        });
+    }
+
+    [Test]
+    public async Task DocumentBuilder_Builds_Paragraphs_And_Headers()
+    {
+        var image = ReadAsset("sample1.jpg");
+        var paragraphs = new List<Paragraph>
+        {
+            new() { Text = "Lorem Ipsum", Style = ParagraphStyle.Heading1 },
+            new() { Text = LoremIpsum.Paragraphs.First(), PageBreakAfter = true, HorizontalAlignment = HorizontalAlignment.Justify },
+            // a picture cannot be justified; it keeps its default position
+            new() { Text = "Second page", PageBreakAfter = true, Image = new WordImage { Name = "sample", File = image, Size = new(300, 169), HorizontalAlignment = HorizontalAlignment.Justify } },
+            new() { Text = "Third page" }
+        };
+
+        var builder = new DocumentBuilder((WordService)Backend);
+        using var docx = await builder.WithParagraphs(paragraphs)
+            .AddHeader(new WordHeaderFooterInput { Template = TemplateInput("firstpage_header.docx"), Type = HeaderFooterType.FirstPage })
+            .AddHeader(new WordHeaderFooterInput { Template = TemplateInput("add_header.docx") })
+            .Build();
+        await docx.SaveAs(OutputPath("document_builder.docx"));
+
+        using var pdf = await Service.Convert(new WordTemplateInput { Template = docx }, FileFormat.Pdf);
+        var pageCount = await new PdfManager(new ImageService()).GetPageCount(pdf);
+        var text = await Service.GetText(new WordTemplateInput { Template = docx });
+        var images = await Service.GetImages(new WordTemplateInput { Template = docx });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Does.Contain("Lorem Ipsum"));
+            Assert.That(text, Does.Contain("Header"));
+            // the two page breaks after a paragraph
+            Assert.That(pageCount, Is.EqualTo(3));
+            Assert.That(images.Select(i => i.Name), Does.Contain("sample"));
         });
     }
 

@@ -41,7 +41,7 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
             ?? throw new ArgumentException("Template has no content.", nameof(input));
 
         var ms = new MemoryStream();
-        await ms.SaveAsByTemplateAsync(templateBytes, GetMiniValue(input), cancellationToken);
+        await ms.SaveAsByTemplateAsync(TrimTags(templateBytes), GetMiniValue(input), cancellationToken);
         // SaveAsByTemplateAsync leaves the stream at its end; rewind so consumers reading
         // Stream directly (rather than through GetStream()) see the content.
         ms.Position = 0;
@@ -154,56 +154,106 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
             Add(collection.Key, collection.Value);
         }
 
-        AddSpacedTagAliases(values, input.Template);
+        // the template's tags are trimmed (TrimTags), so a key spelled with spaces is reached by its trimmed form;
+        // TryAdd, so a key the caller supplied itself is never displaced
+        foreach (var spaced in values.Where(v => v.Key != v.Key.Trim()).ToArray())
+        {
+            values.TryAdd(spaced.Key.Trim(), spaced.Value);
+        }
 
         return values;
     }
 
     /// <summary>
-    /// MiniWord looks a tag up by the text between the braces <em>verbatim</em> — it does not trim.
-    /// A template written <c>{{ title }}</c> therefore never matches the key <c>title</c>, while
-    /// Word.Spire and Word.Syncfusion match on <c>{{ *key *}}</c> and replace it. Registering the
-    /// spellings the template actually uses closes that gap without changing MiniWord.
+    /// Writes every tag in the template whole and without the spaces just inside its braces — <c>{{ title }}</c>
+    /// becomes <c>{{title}}</c> and <c>{{ Items.Name }}</c> becomes <c>{{Items.Name}}</c> — in the body, headers
+    /// and footers.
+    /// <para>
+    /// MiniWord matches a tag only when the text between the braces is the key itself, dotted collection and
+    /// property tags included, and only when the tag sits in one run; a spaced tag, or one Word split over runs
+    /// while it was edited, was left in the document as literal text, while Word.Spire, Word.Syncfusion and
+    /// Word.Aspose match <c>{{ *key *}}</c> across runs. A split tag moves into the run it starts in, taking that
+    /// run's formatting. The spaces inside a tag (<c>{{if(a == b)}}</c>) are MiniWord's own syntax and stay.
+    /// </para>
     /// </summary>
-    private static void AddSpacedTagAliases(IDictionary<string, object> values, IMemoryFile? template)
+    internal static byte[] TrimTags(byte[] template)
     {
-        foreach (var tag in FindTemplateTags(template))
+        using var stream = new MemoryStream();
+        stream.Write(template, 0, template.Length);
+        var changed = false;
+        using (var doc = WordprocessingDocument.Open(stream, true))
         {
-            var key = tag.Trim();
-            if (tag != key && values.TryGetValue(key, out var value))
+            foreach (var (_, root) in ContentRoots(doc.MainDocumentPart))
             {
-                // TryAdd: a template may spell the same key several ways, and an alias must never
-                // displace a key the caller supplied itself.
-                values.TryAdd(tag, value);
+                foreach (var paragraph in root.Descendants<W.Paragraph>())
+                {
+                    changed |= TrimTags(paragraph.Descendants<W.Text>().ToList());
+                }
             }
         }
+
+        // disposing an editable document writes it back to the stream
+        return changed ? stream.ToArray() : template;
     }
 
-    private static HashSet<string> FindTemplateTags(IMemoryFile? template)
+    /// <summary>
+    /// Rewrites the tags in one paragraph's text elements, read as one string so a tag split over runs is found.
+    /// </summary>
+    private static bool TrimTags(IReadOnlyList<W.Text> texts)
     {
-        var tags = new HashSet<string>(StringComparer.Ordinal);
-
-        var bytes = template?.GetBytes();
-        if (bytes == null)
+        // the paragraph's text, and for each character the element it came from
+        var combined = new StringBuilder();
+        var owner = new List<int>();
+        for (var e = 0; e < texts.Count; e++)
         {
-            return tags;
+            combined.Append(texts[e].Text);
+            owner.AddRange(Enumerable.Repeat(e, texts[e].Text.Length));
         }
 
-        using var stream = new MemoryStream(bytes);
-        using var doc = WordprocessingDocument.Open(stream, false);
-
-        var sb = new StringBuilder();
-        foreach (var (_, root) in ContentRoots(doc.MainDocumentPart))
+        // a rewritten tag: its first character becomes the whole tag, the rest of its characters go
+        var rewrites = new Dictionary<int, string>();
+        var dropped = new HashSet<int>();
+        foreach (Match match in TagRegex.Matches(combined.ToString()))
         {
-            AppendText(sb, root);
+            var key = match.Groups[1].Value.Trim();
+            var last = match.Index + match.Length - 1;
+            var intact = key.Length == match.Groups[1].Length && owner[match.Index] == owner[last];
+            if (intact || key.Length == 0)
+            {
+                continue;
+            }
+            rewrites[match.Index] = $"{{{{{key}}}}}";
+            dropped.UnionWith(Enumerable.Range(match.Index + 1, match.Length - 1));
+        }
+        if (rewrites.Count == 0)
+        {
+            return false;
         }
 
-        foreach (Match match in TagRegex.Matches(sb.ToString()))
+        var rebuilt = texts.Select(_ => new StringBuilder()).ToArray();
+        for (var i = 0; i < combined.Length; i++)
         {
-            tags.Add(match.Groups[1].Value);
+            if (rewrites.TryGetValue(i, out var tag))
+            {
+                rebuilt[owner[i]].Append(tag);
+            }
+            else if (!dropped.Contains(i))
+            {
+                rebuilt[owner[i]].Append(combined[i]);
+            }
+        }
+        for (var e = 0; e < texts.Count; e++)
+        {
+            var value = rebuilt[e].ToString();
+            if (value != texts[e].Text)
+            {
+                texts[e].Text = value;
+                // a run may now start or end with a space that belongs to the surrounding text
+                texts[e].Space = SpaceProcessingModeValues.Preserve;
+            }
         }
 
-        return tags;
+        return true;
     }
 
     /// <summary>

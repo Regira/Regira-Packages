@@ -11,6 +11,13 @@ namespace Regira.DAL.MongoDB.Services;
 
 public class MongoRestoreService(MongoOptions options, IProcessHelper processHelper, ILogger<MongoRestoreService>? logger = null) : IDbRestoreService
 {
+    /// <summary>
+    /// Keeps code compiled against the constructor without a logger running.
+    /// </summary>
+    public MongoRestoreService(MongoOptions options, IProcessHelper processHelper) : this(options, processHelper, null)
+    {
+    }
+
     private readonly string _restoreProcessPath = Path.Combine(options.ToolsDirectory, OperatingSystem.IsWindows() ? "mongorestore.exe" : "mongorestore");
     public async Task Restore(IMemoryFile file)
     {

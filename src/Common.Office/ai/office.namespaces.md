@@ -71,7 +71,7 @@ size or error correction.
 | `Regira.Office.Word.Abstractions` | `IWordService`, `IWordManager`, `IWordCreator`, `IWordConverter`, `IWordMerger`, `IWordTextExtractor`, `IWordImageExtractor`, `IWordToImagesService` |
 | `Regira.Office.Word.Models` | `WordTemplateInput`, `WordHeaderFooterInput`, `WordImage`, `WordTable`, `Paragraph`, `ParagraphStyle`, `DocumentSettings`, `ConversionOptions`, `InputOptions`, `HeaderFooterType`, `HorizontalAlignment` |
 | `Regira.Office.Word.Drawing` | `WordImageCreator`, `WordToImageLayerOptions` |
-| **Providers** | `Regira.Office.Word.Spire` → `WordService`, `DocumentBuilder`, `WordDocumentSettings`; `Regira.Office.Word.Syncfusion` → `WordService`, `DocumentBuilder`, `WordDocumentSettings`, `SyncfusionWordConfig`; `Regira.Office.Word.Syncfusion.DependencyInjection` → `ServiceCollectionExtensions`; `Regira.Office.Word.Mini` → `WordService` |
+| **Providers** | `Regira.Office.Word.Spire` → `WordService`, `DocumentBuilder`, `WordDocumentSettings`; `Regira.Office.Word.Syncfusion` → `WordService`, `DocumentBuilder`, `WordDocumentSettings`, `SyncfusionWordConfig`; `Regira.Office.Word.Syncfusion.DependencyInjection` → `ServiceCollectionExtensions`; `Regira.Office.Word.Aspose` → `WordService`, `DocumentBuilder`, `WordDocumentSettings`, `AsposeWordConfig`; `Regira.Office.Word.Aspose.DependencyInjection` → `ServiceCollectionExtensions`; `Regira.Office.Word.Mini` → `WordService`; `Regira.Office.Word.Gotenberg` → `WordService`, `GotenbergWordConfig`; `Regira.Office.Word.Gotenberg.DependencyInjection` → `ServiceCollectionExtensions` |
 
 ## Mail
 
@@ -153,6 +153,10 @@ Regira.Office.Word.Models        → WordTemplateInput, WordImage, WordTable, Do
 Regira.Office.Word.Spire         → WordService          (registration only)
 Regira.Office.Word.Syncfusion    → WordService          (registration only)
 Regira.Office.Word.Syncfusion.DependencyInjection → ServiceCollectionExtensions
+Regira.Office.Word.Aspose        → WordService          (registration only)
+Regira.Office.Word.Aspose.DependencyInjection → ServiceCollectionExtensions
+Regira.Office.Word.Gotenberg     → WordService          (PDF and page images only)
+Regira.Office.Word.Gotenberg.DependencyInjection → ServiceCollectionExtensions
 ```
 
 ### Send mail

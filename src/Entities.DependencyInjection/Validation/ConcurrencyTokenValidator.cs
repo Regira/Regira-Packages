@@ -13,9 +13,11 @@ namespace Regira.Entities.DependencyInjection.Validation;
 
 /// <summary>
 /// Reports a concurrency token that is never checked, never moves, or cannot make the round trip to the client. The
-/// write path compares every concurrency token the model declares with the value the client sent, so the check
-/// exists only when the model declares the token, holds only when every write moves it, and reaches the client only
-/// through the DTOs:
+/// write path compares every version stamp — a concurrency token the server moves on the write — with the value the
+/// client sent, so the check exists only when the model declares the token, holds only when every write moves it,
+/// and reaches the client only through the DTOs. A token nothing moves is a data column, compared with the stored
+/// row; whether a primer moves an application-owned token is not visible statically, so the DTO checks below judge
+/// every token as a version stamp:
 /// <list type="bullet">
 /// <item><b>Error</b> — an <see cref="IHasConcurrencyToken"/> entity whose model does not treat <c>ConcurrencyToken</c>
 /// as a concurrency token, because the wiring that declares it never reached the context (a non-generic
@@ -226,16 +228,23 @@ internal sealed class ConcurrencyTokenValidator : IEntityRegistrationValidator
                 $"ACTION: remove the initializer from {inputDto}.{name}. {SeeAlso}");
         }
 
-        var missingOn = new[] { inputProperty == null ? mapping.InputDtoType : null, readProperty == null ? mapping.DtoType : null }
+        var missingTypes = new[] { inputProperty == null ? mapping.InputDtoType : null, readProperty == null ? mapping.DtoType : null }
             .OfType<Type>()
             .Distinct()
-            .Select(t => t.Name)
             .ToArray();
-        if (missingOn.Length > 0)
+        if (missingTypes.Length > 0)
         {
-            var dtos = string.Join(" and ", missingOn);
+            var dtos = string.Join(" and ", missingTypes.Select(t => t.Name));
+            var miscased = missingTypes
+                .Select(t => (Type: t, Property: FindProperty(t, name, StringComparison.OrdinalIgnoreCase)))
+                .Where(x => x.Property != null)
+                .Select(x => $"{x.Type.Name}.{x.Property!.Name}")
+                .ToArray();
+            var casing = miscased.Length > 0
+                ? $" ({string.Join(" and ", miscased)} differ{(miscased.Length == 1 ? "s" : "")} only in case, and Mapster matches names exactly)"
+                : "";
             return new EntityValidationIssue(EntityValidationSeverity.Warning,
-                $"{entity}.{name} is a concurrency token, but {dtos} {(missingOn.Length == 1 ? "has" : "have")} no {name} property. " +
+                $"{entity}.{name} is a concurrency token, but {dtos} {(missingTypes.Length == 1 ? "has" : "have")} no {name} property{casing}. " +
                 "The client never gets the version it read back to the server, so every write through the entity controller is last-write-wins: 200 OK, no conflict, no log. " +
                 $"ACTION: add {declaration} to {dtos}, without an initializer. {SeeAlso}");
         }
@@ -293,9 +302,13 @@ internal sealed class ConcurrencyTokenValidator : IEntityRegistrationValidator
                 || (value.GetType().IsValueType && value.Equals(Activator.CreateInstance(value.GetType()))));
     }
 
-    private static PropertyInfo? FindProperty(Type type, string name)
+    /// <summary>
+    /// The DTO property a mapper would bind to <paramref name="name"/>. Exact by default, as Mapster — the default
+    /// mapper — matches names.
+    /// </summary>
+    private static PropertyInfo? FindProperty(Type type, string name, StringComparison comparison = StringComparison.Ordinal)
         => type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .FirstOrDefault(p => p.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && p.GetIndexParameters().Length == 0);
+            .FirstOrDefault(p => p.Name.Equals(name, comparison) && p.GetIndexParameters().Length == 0);
 
     private static string TypeName(Type type)
     {

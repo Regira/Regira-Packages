@@ -6,8 +6,8 @@ using Regira.Utilities;
 namespace Office.Word.testing.Abstractions;
 
 /// <summary>
-/// Asset and output paths shared by every Word fixture, including the backends that implement only
-/// part of <c>IWordService</c> and so cannot use <see cref="WordTestsBase"/>.
+/// Asset and output paths shared by every Word fixture: the backend fixtures through
+/// <see cref="WordTestsBase"/>, and fixtures that exercise a helper rather than a backend directly.
 /// </summary>
 public abstract class WordAssetsTestsBase
 {

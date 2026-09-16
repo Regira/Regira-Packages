@@ -11,6 +11,13 @@ namespace Regira.DAL.MongoDB.Services;
 
 public class MongoBackupService(MongoOptions options, IProcessHelper processHelper, ILogger<MongoBackupService>? logger = null) : IDbBackupService
 {
+    /// <summary>
+    /// Keeps code compiled against the constructor without a logger running.
+    /// </summary>
+    public MongoBackupService(MongoOptions options, IProcessHelper processHelper) : this(options, processHelper, null)
+    {
+    }
+
     private readonly string _backupProcessPath = Path.Combine(options.ToolsDirectory, OperatingSystem.IsWindows() ? "mongodump.exe" : "mongodump");
 
     public async Task<IMemoryFile> Backup()

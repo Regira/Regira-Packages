@@ -9,7 +9,8 @@ public class ProcessHelper : IProcessHelper
     public class Options
     {
         /// <summary>
-        /// Folder to store temporary .bat-file which is removed after execution
+        /// Folder for the temporary .bat file <see cref="ExecuteCommand(string, bool)"/> writes and removes again.
+        /// Created when missing, and left in place. Defaults to the system's temp folder.
         /// </summary>
         public string? TempFolder { get; set; }
         public Action<object, DataReceivedEventArgs>? OnOutputDataReceived { get; set; }
@@ -23,22 +24,22 @@ public class ProcessHelper : IProcessHelper
     /// <param name="options"></param>
     public ProcessHelper(Options? options = null)
     {
-        _tempFolder = options?.TempFolder ?? Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+        _tempFolder = options?.TempFolder ?? Path.GetTempPath();
         _onOutputDataReceived = options?.OnOutputDataReceived;
     }
 
+    /// <summary>
+    /// Runs <paramref name="command"/> as a Windows batch file, written to <see cref="Options.TempFolder"/> and removed
+    /// again. Every call has a file of its own and removes only that file, so concurrent calls on one instance never
+    /// touch each other's script.
+    /// </summary>
     public IProcessOutput ExecuteCommand(string command, bool waitForOutput = false)
         => ExecuteCommand(command, new Dictionary<string, string>(), waitForOutput);
+    /// <inheritdoc cref="ExecuteCommand(string, bool)"/>
     public IProcessOutput ExecuteCommand(string command, IDictionary<string, string> environment, bool waitForOutput = false)
     {
-        var batFilePath = Path.Combine(_tempFolder, $"{Path.GetFileNameWithoutExtension(Path.GetTempFileName())}.bat");
-        var directory = Path.GetDirectoryName(batFilePath) ?? throw new Exception("Invalid tempFolder for temporary batFile");
-        var deleteDir = false;
-        if (!Directory.Exists(directory))
-        {
-            Directory.CreateDirectory(directory);
-            deleteDir = true;
-        }
+        Directory.CreateDirectory(_tempFolder);
+        var batFilePath = Path.Combine(_tempFolder, $"regira-{Guid.NewGuid():N}.bat");
         // @echo off, or cmd repeats every line of the script back on stdout before the command's own output —
         // noise when the output is captured, and a disclosure when a line carries a secret (`set PGPASSWORD=...`)
         try
@@ -48,17 +49,10 @@ public class ProcessHelper : IProcessHelper
         }
         finally
         {
-            // the script goes whether or not the process ran: a throw used to leave it, and the directory, behind
+            // the script goes whether or not the process ran
             try
             {
-                if (deleteDir)
-                {
-                    Directory.Delete(directory, true);
-                }
-                else
-                {
-                    File.Delete(batFilePath);
-                }
+                File.Delete(batFilePath);
             }
             catch (Exception)
             {

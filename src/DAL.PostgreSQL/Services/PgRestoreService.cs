@@ -3,18 +3,16 @@ using Dapper;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using Regira.DAL.Abstractions;
-using Regira.DAL.PostgreSQL.Constants;
 using Regira.DAL.PostgreSQL.Core;
 using Regira.IO.Abstractions;
 using Regira.IO.Extensions;
 using Regira.System.Abstractions;
-using Regira.Utilities;
 
 namespace Regira.DAL.PostgreSQL.Services;
 
 public class PgRestoreService(PgOptions options, IProcessHelper processHelper, ILogger<PgRestoreService>? logger = null) : IDbRestoreService
 {
-    private readonly string _restoreProcessPath = Path.Combine(options.ToolsDirectory, OperatingSystem.IsWindows() ? "pg_restore.exe" : "pg_restore");
+    private readonly string _restoreProcessPath = PgTools.RestorePath(options.ToolsDirectory);
 
     public async Task Restore(IMemoryFile file)
     {
@@ -58,28 +56,13 @@ public class PgRestoreService(PgOptions options, IProcessHelper processHelper, I
             await Create(cn, targetDb);
 
             // execute restoring tool
-            var cmd = BackupCommands.Restore
-                .Inject(new
-                {
-                    ProcessPath = _restoreProcessPath,
-                    settings.Host,
-                    settings.Port,
-                    settings.Username,
-                    TargetDb = targetDb,
-                    SourcePath = sourcePath
-                })!;
+            var args = PgTools.RestoreArguments(settings, targetDb, sourcePath);
 
-            logger?.LogDebug($"Restoring backup...{Environment.NewLine}{cmd}");
-
-            // the password travels in the process environment, so it never reaches the generated script
-            var environment = new Dictionary<string, string>();
-            if (!string.IsNullOrEmpty(settings.Password))
-            {
-                environment["PGPASSWORD"] = settings.Password;
-            }
+            // holds no password
+            logger?.LogDebug("Restoring backup with {ProcessPath} {Arguments}", _restoreProcessPath, args);
 
             // execute restore process, capturing what pg_restore has to say: without it a failure reports an exit code and nothing else
-            var output = processHelper.ExecuteCommand(cmd, environment, waitForOutput: true);
+            var output = processHelper.ExecuteFile(_restoreProcessPath, PgTools.Environment(settings), waitForOutput: true, arguments: args);
 
             if (output.ExitCode != 0)
             {
@@ -109,14 +92,7 @@ public class PgRestoreService(PgOptions options, IProcessHelper processHelper, I
     /// <exception cref="Exception">The file is not an archive <c>pg_restore</c> can read</exception>
     private void ValidateArchive(string sourcePath)
     {
-        var cmd = BackupCommands.ListArchive
-            .Inject(new
-            {
-                ProcessPath = _restoreProcessPath,
-                SourcePath = sourcePath
-            })!;
-
-        var output = processHelper.ExecuteCommand(cmd, waitForOutput: true);
+        var output = processHelper.ExecuteFile(_restoreProcessPath, waitForOutput: true, arguments: PgTools.ListArchiveArguments(sourcePath));
 
         if (output.ExitCode != 0)
         {

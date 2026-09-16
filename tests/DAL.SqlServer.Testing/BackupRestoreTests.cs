@@ -40,6 +40,12 @@ public class BackupRestoreTests
         }
         _connectionString = connectionString;
 
+        if (LocalDbInstanceName() != null && !LocalDbInstalled())
+        {
+            // the repository's runsettings point here by default, and not every machine has LocalDB
+            Assert.Ignore($"Skipped: {ConnectionVariable} names a LocalDB instance, and LocalDB is not installed. Point it at another SQL Server to run the backup/restore tests.");
+        }
+
         var backupDirectory = Environment.GetEnvironmentVariable(BackupDirectoryVariable);
         _ownsBackupDirectory = string.IsNullOrWhiteSpace(backupDirectory);
         _backupDirectory = _ownsBackupDirectory ? Directory.CreateTempSubdirectory("regira-sqlserver-").FullName : backupDirectory!;
@@ -164,6 +170,65 @@ public class BackupRestoreTests
     }
 
 
+    /// <summary>
+    /// Replaces a database while an application keeps reconnecting to it. A reconnect that lands between ending the
+    /// sessions and the drop would take the database and fail the drop; that window sits inside one batch and has
+    /// not been hit on LocalDB, so this guards the restore under that load rather than reproducing the race.
+    /// </summary>
+    [Test]
+    public async Task Overwrite_Replaces_A_Database_An_Application_Keeps_Reconnecting_To()
+    {
+        var copy = NewDatabaseName();
+        await new SqlServerRestoreService(Options(copy)).Restore(_backup);
+        await Execute(copy, "INSERT dbo.Products (Title) VALUES (N'Quince')");
+
+        // an application's pool, reconnecting the moment a session is refused or killed
+        using var stop = new CancellationTokenSource();
+        var pooled = new SqlConnectionStringBuilder(_connectionString) { InitialCatalog = copy, ConnectTimeout = 1 }.ConnectionString;
+        var application = Enumerable.Range(0, 16).Select(_ => Task.Run(async () =>
+        {
+            while (!stop.IsCancellationRequested)
+            {
+                try
+                {
+                    await using var cn = new SqlConnection(pooled);
+                    await cn.OpenAsync(stop.Token);
+                    await cn.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM dbo.Products");
+                }
+                catch (Exception ex) when (ex is SqlException or OperationCanceledException or InvalidOperationException)
+                {
+                    // refused while the database is being replaced
+                }
+            }
+        })).ToArray();
+
+        try
+        {
+            await new SqlServerRestoreService(Options(copy, overwrite: true)).Restore(_backup);
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            await Task.WhenAll(application);
+            SqlConnection.ClearPool(new SqlConnection(pooled));
+        }
+
+        Assert.That(await CountProducts(copy), Is.EqualTo(3));
+    }
+
+    [Test]
+    public async Task A_Backup_This_Process_Cannot_Read_Is_Removed_From_The_Server()
+    {
+        var options = Options(_sourceDb);
+        // the misconfiguration the error message is written for
+        options.LocalBackupDirectory = Path.Combine(_backupDirectory, "not-where-sql-server-writes");
+
+        Assert.ThrowsAsync<IOException>(() => new SqlServerBackupService(options).Backup());
+
+        Assert.That(Directory.GetFiles(_backupDirectory, $"{_sourceDb}*"), Is.Empty);
+    }
+
+
     private SqlServerOptions Options(string database, bool overwrite = false) => new()
     {
         ConnectionString = new SqlConnectionStringBuilder(_connectionString) { InitialCatalog = database }.ConnectionString,
@@ -217,6 +282,27 @@ public class BackupRestoreTests
         return dataSource.StartsWith(LocalDbPrefix, StringComparison.OrdinalIgnoreCase)
             ? dataSource[LocalDbPrefix.Length..]
             : null;
+    }
+
+    /// <summary>Whether the <c>sqllocaldb</c> tool that comes with every LocalDB installation can be started.</summary>
+    private static bool LocalDbInstalled()
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo("sqllocaldb", "versions")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true
+            });
+            process?.StandardOutput.ReadToEnd();
+            process?.WaitForExit(milliseconds: 60_000);
+            return process is { ExitCode: 0 };
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return false;
+        }
     }
 
     /// <summary>

@@ -47,6 +47,18 @@ public class SpireTests() : WordTestsBase(new WordService(), "Spire")
     [Test]
     public override Task Nested_Documents() => base.Nested_Documents();
 
+    [Test]
+    public override Task Nested_Documents_Do_Not_Wear_Out_The_Service() => base.Nested_Documents_Do_Not_Wear_Out_The_Service();
+
+    [Test]
+    public override void A_Template_That_Includes_Itself_Fails() => base.A_Template_That_Includes_Itself_Fails();
+
+    [Test]
+    public override Task A_Missing_Collection_Table_Leaves_The_Others() => base.A_Missing_Collection_Table_Leaves_The_Others();
+
+    [Test]
+    public override Task A_Null_Or_Unused_Parameter_Is_Harmless() => base.A_Null_Or_Unused_Parameter_Is_Harmless();
+
     [TestCase(FileFormat.Pdf, "converted.pdf")]
     [TestCase(FileFormat.Html, "converted.html")]
     [TestCase(FileFormat.Rtf, "converted.rtf")]

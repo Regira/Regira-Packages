@@ -44,7 +44,7 @@ public class SqlServerRestoreService(SqlServerOptions options, ILogger<SqlServer
                 await using var target = File.Create(location.LocalPath);
                 await source.CopyToAsync(target);
             }
-            catch (Exception ex) when (ex is DirectoryNotFoundException or UnauthorizedAccessException or IOException)
+            catch (Exception ex) when (ex is DirectoryNotFoundException or UnauthorizedAccessException)
             {
                 // the same failure the backup path names, from the other direction
                 throw new IOException($"SQL Server reads the backup from {location.ServerPath}, but this process cannot write it at {location.LocalPath}. " +
@@ -58,8 +58,19 @@ public class SqlServerRestoreService(SqlServerOptions options, ILogger<SqlServer
 
             if (exists)
             {
+                // an offline database is dropped without its files, so name the ones the restore will not overwrite
+                var existingFiles = await cn.QueryAsync<string>("SELECT physical_name FROM sys.master_files WHERE database_id = DB_ID(@targetDb)", new { targetDb });
+                var leftOver = existingFiles
+                    .Where(path => !moves.Any(move => string.Equals(move.PhysicalName, path, StringComparison.OrdinalIgnoreCase)))
+                    .ToArray();
+
                 logger?.LogDebug("Dropping database {Database} to restore over it", targetDb);
                 await Drop(cn, targetDb);
+
+                if (leftOver.Length > 0)
+                {
+                    logger?.LogWarning("Database {Database} was replaced; SQL Server keeps its former files {Files}, which the restore does not reuse", targetDb, leftOver);
+                }
             }
 
             var parameters = new DynamicParameters(new { targetDb, path = location.ServerPath });
@@ -122,12 +133,21 @@ public class SqlServerRestoreService(SqlServerOptions options, ILogger<SqlServer
         return moves;
     }
 
+    /// <summary>
+    /// Takes the database offline, ending the sessions still using it, and drops it.
+    /// </summary>
+    /// <remarks>
+    /// OFFLINE rather than SINGLE_USER: this connection is on master, so the single session SINGLE_USER leaves
+    /// is free for an application's pool to take before the DROP runs, which then fails and leaves the database
+    /// in single-user mode. Nothing can connect to an offline database. The price is that SQL Server keeps an
+    /// offline database's files when it drops it — the restore overwrites them where it writes to the same paths
+    /// (REPLACE). A database stuck RESTORING has no sessions and refuses ALTER, so it is dropped as it is.
+    /// </remarks>
     private static Task Drop(IDbConnection cn, string databaseName)
-        // ROLLBACK IMMEDIATE ends the sessions still using it; a database stuck RESTORING has none and refuses ALTER
         => cn.ExecuteAsync("""
             DECLARE @quoted nvarchar(258) = QUOTENAME(@databaseName);
             IF DATABASEPROPERTYEX(@databaseName, 'Status') = N'ONLINE'
-                EXEC (N'ALTER DATABASE ' + @quoted + N' SET SINGLE_USER WITH ROLLBACK IMMEDIATE');
+                EXEC (N'ALTER DATABASE ' + @quoted + N' SET OFFLINE WITH ROLLBACK IMMEDIATE');
             EXEC (N'DROP DATABASE ' + @quoted);
             """, new { databaseName }, commandTimeout: 0);
 
