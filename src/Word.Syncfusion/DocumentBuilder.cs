@@ -1,13 +1,11 @@
-﻿using Regira.IO.Abstractions;
+using Regira.IO.Abstractions;
 using Regira.IO.Extensions;
-using Regira.Office.MimeTypes;
 using Regira.Office.Word.Models;
-using Spire.Doc;
-using RegiraFileFormat = Regira.Office.Models.FileFormat;
+using Syncfusion.DocIO.DLS;
 
-namespace Regira.Office.Word.Spire;
+namespace Regira.Office.Word.Syncfusion;
 
-public class DocumentBuilder(WordService manager)
+public class DocumentBuilder(WordService service)
 {
     private WordDocumentSettings? _settings;
     private WordTemplateInput[]? _inputs;
@@ -53,10 +51,9 @@ public class DocumentBuilder(WordService manager)
 
     public async Task<IMemoryFile> Build()
     {
-        // Create Document
         using var doc = _inputs != null
-            ? await manager.MergeDocuments(_inputs)
-            : new Document();
+            ? await service.MergeDocuments(_inputs)
+            : new WordDocument();
 
         // PageSettings
         if (_settings != null)
@@ -65,17 +62,17 @@ public class DocumentBuilder(WordService manager)
             {
                 doc.AddSection();
             }
-            foreach (Section section in doc.Sections)
+            foreach (var section in doc.Sections.OfType<WSection>())
             {
-                section.PageSetup.PageSize = manager.GetPageSize(_settings.PageSize);
-                section.PageSetup.Orientation = manager.GetPageOrientation(_settings.PageOrientation);
+                section.PageSetup.PageSize = service.GetPageSize(_settings.PageSize);
+                section.PageSetup.Orientation = service.GetPageOrientation(_settings.PageOrientation);
             }
         }
 
         // Paragraphs
         if (_paragraphs?.Any() ?? false)
         {
-            manager.AddParagraphs(doc, _paragraphs);
+            service.AddParagraphs(doc, _paragraphs);
         }
 
         // Headers
@@ -83,8 +80,8 @@ public class DocumentBuilder(WordService manager)
         {
             foreach (var headerInput in _headers)
             {
-                using var headerDoc = manager.CreateDocument(headerInput.Template);
-                manager.AddHeader(doc, headerDoc, headerInput.Type);
+                using var headerDoc = service.CreateDocument(headerInput.Template);
+                service.AddHeader(doc, headerDoc, headerInput.Type);
             }
         }
         // Footers
@@ -92,14 +89,13 @@ public class DocumentBuilder(WordService manager)
         {
             foreach (var footerInput in _footers)
             {
-                using var footerDoc = manager.CreateDocument(footerInput.Template);
-                manager.AddFooter(doc, footerDoc, footerInput.Type);
+                using var footerDoc = service.CreateDocument(footerInput.Template);
+                service.AddFooter(doc, footerDoc, footerInput.Type);
             }
         }
 
-        // ConversionOptions
         _conversionOptions ??= new ConversionOptions();
-        var stream = manager.ConvertDocument(doc, _conversionOptions);
-        return stream.ToMemoryFile(_conversionOptions.OutputFormat == RegiraFileFormat.Doc ? ContentTypes.DOC : ContentTypes.DOCX);
+        var stream = service.ConvertDocument(doc, _conversionOptions);
+        return stream.ToMemoryFile(WordService.GetContentType(_conversionOptions.OutputFormat));
     }
 }

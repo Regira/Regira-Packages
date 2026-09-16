@@ -29,7 +29,13 @@ using SpireParagraph = Spire.Doc.Documents.Paragraph;
 
 namespace Regira.Office.Word.Spire;
 
-public class WordManager : IWordService
+[Obsolete("Use WordService instead", false)]
+public class WordManager : WordService;
+
+/// <summary>
+/// Provides functionality for creating, merging, converting, and manipulating Word documents using the Spire.Doc library.
+/// </summary>
+public class WordService : IWordService
 {
     private const int MAX_DOCUMENT_INSERTS = 100;
     private int _insertDocumentCounter;

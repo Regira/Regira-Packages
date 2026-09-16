@@ -27,5 +27,6 @@
     <ProjectReference Include="..\..\src\Common.IO.Storage\Common.IO.Storage.csproj" />
     <ProjectReference Include="..\..\src\Word.Mini\Word.Mini.csproj" />
     <ProjectReference Include="..\..\src\Word.Spire\Word.Spire.csproj" />
+    <ProjectReference Include="..\..\src\Word.Syncfusion\Word.Syncfusion.csproj" />
   </ItemGroup>
 </Project>

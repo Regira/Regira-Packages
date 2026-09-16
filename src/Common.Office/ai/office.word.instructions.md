@@ -22,7 +22,10 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 <!-- Full-featured: create, convert, merge, extract (recommended) -->
 <PackageReference Include="Regira.Office.Word.Spire" Version="6.*" />
 
-<!-- Lightweight create-only -->
+<!-- Full-featured, commercial licence -->
+<PackageReference Include="Regira.Office.Word.Syncfusion" Version="6.*" />
+
+<!-- Lightweight: create and extract, no vendor licence -->
 <PackageReference Include="Regira.Office.Word.Mini" Version="6.*" />
 ```
 
@@ -30,14 +33,19 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 ## Backend Comparison
 
-| Package | Backend | Create | Convert | Merge | Extract |
-|---|---|---|---|---|---|
-| `Word.Spire` | FreeSpire.Doc | ✓ | ✓ | ✓ | ✓ |
-| `Word.Mini` | MiniWord | ✓ | — | — | — |
+| Package | Backend | Create | Convert | Merge | Extract | Licence / limits |
+|---|---|---|---|---|---|---|
+| `Word.Spire` | FreeSpire.Doc | ✓ | ✓ | ✓ | ✓ | Free edition: 500 paragraphs or 25 tables per document |
+| `Word.Syncfusion` | Syncfusion DocIO | ✓ | ✓ except EPub | ✓ | ✓ | Commercial licence key required; no size cap |
+| `Word.Mini` | MiniWord | partial | — | — | text, images | MIT, no key, no size cap |
 
-**Recommendation:** Use **Word.Spire** for all operations. Use **Word.Mini** only when a lightweight create-only solution is required (net10.0+).
+**Recommendation:** Use **Word.Spire** by default — the widest format coverage, and no vendor key. Use **Word.Syncfusion** when documents exceed the FreeSpire size cap and a Syncfusion licence is already in place. Use **Word.Mini** when conversion and merging are not needed.
 
 > **FreeSpire.Doc limit:** Up to 500 paragraphs or 25 tables per document.
+
+> **Word.Syncfusion limits:** ODT templates cannot be **loaded** (saving to ODT works), and EPUB export is unavailable on .NET Core. `Convert` throws `NotSupportedException` for both, and for `Png`/`Jpeg` (use `ToImages`). Without a valid licence key DocIO prepends *"Created with a trial version of Syncfusion Word library or registered the wrong key in your application"* to every document it produces — including conversions and rendered pages. It is ordinary body text, so a containment check on your own content still passes; assert the banner is **absent** if you need to know the key works. Syncfusion prices Document Solutions at $1,199 per developer per year with a five-developer minimum; their Community Licence page names Document Solution SDKs among the products it covers, but the Document Solutions pages do not corroborate that and mention only a 30-day evaluation — confirm eligibility with Syncfusion before relying on a free tier.
+
+> **Word.Mini limits:** `Create` honours `GlobalParameters`, `CollectionParameters` and `Images`. It throws `NotSupportedException` for `DocumentParameters`, `Headers`, `Footers` and any non-default `InputOptions` — MiniWord has no API for them. A key may appear in only one of `GlobalParameters`, `Images` and `CollectionParameters`; they share one `{{tag}}` namespace and a duplicate throws `ArgumentException`. `GetText` and `GetImages` run against the rendered document, and `ToImages` is unavailable (no layout engine).
 
 ---
 
@@ -72,7 +80,7 @@ Task<IEnumerable<IImageFile>>   ToImages(WordTemplateInput input, CancellationTo
 
 ### `IWordService`
 
-Composite of all the above. `Word.Spire.WordManager` implements this. `IWordManager` is an obsolete alias (`[Obsolete]`, inherits `IWordService`) — resolve `IWordService`.
+Composite of all the above. `Word.Spire.WordService` and `Word.Syncfusion.WordService` implement this; `Word.Mini.WordService` implements `IWordCreator`, `IWordTextExtractor` and `IWordImageExtractor` only — resolve the narrowest interface you need. `IWordManager` is an obsolete alias (`[Obsolete]`, inherits `IWordService`) — resolve `IWordService`.
 
 ---
 
@@ -143,7 +151,7 @@ Docx  Doc  Dotx  Dot  Docm  Dotm  Pdf  Html  Rtf  Odt  EPub  Jpeg  Png
 ## Usage
 
 ```csharp
-IWordService word = new Regira.Office.Word.Spire.WordManager();
+IWordService word = new Regira.Office.Word.Spire.WordService();
 
 // Create from template
 IMemoryFile doc = await word.Create(new WordTemplateInput
@@ -163,7 +171,7 @@ IMemoryFile pdf = await word.Convert(new WordTemplateInput { Template = doc }, F
 string text = await word.GetText(new WordTemplateInput { Template = doc });
 ```
 
-### HTML Parameters (Word.Spire only)
+### HTML Parameters (Word.Spire and Word.Syncfusion)
 
 Prefix `GlobalParameters` keys with `html_` to inject raw HTML:
 
@@ -175,3 +183,21 @@ GlobalParameters = new Dictionary<string, object>
 ```
 
 ---
+
+## Registration
+
+`Word.Syncfusion` is the only Word backend with a DI extension, because DocIO needs its licence key
+before the first document is touched:
+
+```csharp
+services.AddSyncfusionWord(o => o.LicenseKey = builder.Configuration["Syncfusion:LicenseKey"]);
+```
+
+The key also resolves from the `SYNCFUSION_LICENSE_KEY` environment variable, so a host that already
+sets it needs no configuration. It is registered once per process.
+
+The other backends are constructed directly:
+
+```csharp
+IWordService word = new Regira.Office.Word.Spire.WordService();
+```

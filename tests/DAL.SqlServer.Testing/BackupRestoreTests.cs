@@ -38,7 +38,7 @@ public class BackupRestoreTests
         {
             Assert.Ignore($"Skipped: set {ConnectionVariable} to a SQL Server connection string to run the backup/restore tests.");
         }
-        _connectionString = connectionString!;
+        _connectionString = connectionString;
 
         var backupDirectory = Environment.GetEnvironmentVariable(BackupDirectoryVariable);
         _ownsBackupDirectory = string.IsNullOrWhiteSpace(backupDirectory);

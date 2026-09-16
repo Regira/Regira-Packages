@@ -93,7 +93,7 @@ public class CreationTests
                 Assert.That(Path.GetDirectoryName(node.Value), Is.EqualTo(node.Parent.Value));
             }
 
-            var subDirectories = Directory.GetDirectories(node.Value).ToArray();
+            var subDirectories = Directory.GetDirectories(node.Value);
             var childDirectories = node.Children.Select(n => n.Value).ToArray();
             Assert.That(childDirectories, Is.EquivalentTo(subDirectories));
         }

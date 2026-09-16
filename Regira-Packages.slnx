@@ -111,6 +111,7 @@
   <Folder Name="/src/Office/Word/">
     <Project Path="src/Word.Mini/Word.Mini.csproj" />
     <Project Path="src/Word.Spire/Word.Spire.csproj" />
+    <Project Path="src/Word.Syncfusion/Word.Syncfusion.csproj" />
   </Folder>
   <Folder Name="/src/Security/">
     <Project Path="src/Common.Security/Common.Security.csproj" />

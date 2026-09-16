@@ -1,4 +1,5 @@
-﻿using Regira.IO.Extensions;
+using Office.Word.testing.Abstractions;
+using Regira.IO.Extensions;
 using Regira.Office.Word.Models;
 using Regira.Office.Word.Spire;
 using Regira.Utilities;
@@ -7,27 +8,16 @@ namespace Office.Word.testing;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class DocumentBuilderTests
+public class DocumentBuilderTests() : WordAssetsTestsBase("Spire")
 {
-    private readonly string _assetsDir;
-    public DocumentBuilderTests()
-    {
-        var assemblyDir = AssemblyUtility.GetAssemblyDirectory()!;
-        _assetsDir = Path.Combine(assemblyDir, "../../../", "Assets");
-        Directory.CreateDirectory(Path.Combine(_assetsDir, "Output"));
-    }
 
     [Test]
     public async Task Create()
     {
-        var img = await File.ReadAllBytesAsync(Path.Combine(_assetsDir, "Input", "sample1.jpg"));
-        var fpHeaderPath = Path.Combine(_assetsDir, "Input", "firstpage_header.docx");
-        var headerPath = Path.Combine(_assetsDir, "Input", "add_header.docx");
-        var outputPath = Path.Combine(_assetsDir, "Output", "lorem-ipsum.docx");
-        if (File.Exists(outputPath))
-        {
-            File.Delete(outputPath);
-        }
+        var img = await File.ReadAllBytesAsync(InputPath("sample1.jpg"));
+        var fpHeaderPath = InputPath("firstpage_header.docx");
+        var headerPath = InputPath("add_header.docx");
+        var outputPath = OutputPath("lorem-ipsum.docx");
 
         var paragraphs = LoremIpsum.Paragraphs
             .Select((s, i) => new Paragraph
@@ -57,7 +47,7 @@ public class DocumentBuilderTests
         using var headerFile = File.OpenRead(headerPath).ToBinaryFile();
         var header = new WordTemplateInput { Template = headerFile };
 
-        var manager = new WordManager();
+        var manager = new WordService();
         var builder = new DocumentBuilder(manager);
         using var docFile = await builder.WithParagraphs(paragraphs)
             .AddHeader(new WordHeaderFooterInput { Template = fpHeader, Type = HeaderFooterType.FirstPage })

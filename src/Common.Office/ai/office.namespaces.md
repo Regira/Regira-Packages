@@ -71,7 +71,7 @@ size or error correction.
 | `Regira.Office.Word.Abstractions` | `IWordService`, `IWordManager`, `IWordCreator`, `IWordConverter`, `IWordMerger`, `IWordTextExtractor`, `IWordImageExtractor`, `IWordToImagesService` |
 | `Regira.Office.Word.Models` | `WordTemplateInput`, `WordHeaderFooterInput`, `WordImage`, `WordTable`, `Paragraph`, `ParagraphStyle`, `DocumentSettings`, `ConversionOptions`, `InputOptions`, `HeaderFooterType`, `HorizontalAlignment` |
 | `Regira.Office.Word.Drawing` | `WordImageCreator`, `WordToImageLayerOptions` |
-| **Providers** | `Regira.Office.Word.Spire` → `WordManager`, `DocumentBuilder`, `WordDocumentSettings`; `Regira.Office.Word.Mini` → `WordCreator` |
+| **Providers** | `Regira.Office.Word.Spire` → `WordService`, `DocumentBuilder`, `WordDocumentSettings`; `Regira.Office.Word.Syncfusion` → `WordService`, `DocumentBuilder`, `WordDocumentSettings`, `SyncfusionWordConfig`; `Regira.Office.Word.Syncfusion.DependencyInjection` → `ServiceCollectionExtensions`; `Regira.Office.Word.Mini` → `WordService` |
 
 ## Mail
 
@@ -150,7 +150,9 @@ Regira.Office.PDF.DocNET         → PdfManager           (registration only)
 ```
 Regira.Office.Word.Abstractions  → IWordService, IWordManager
 Regira.Office.Word.Models        → WordTemplateInput, WordImage, WordTable, DocumentSettings
-Regira.Office.Word.Spire         → WordManager          (registration only)
+Regira.Office.Word.Spire         → WordService          (registration only)
+Regira.Office.Word.Syncfusion    → WordService          (registration only)
+Regira.Office.Word.Syncfusion.DependencyInjection → ServiceCollectionExtensions
 ```
 
 ### Send mail

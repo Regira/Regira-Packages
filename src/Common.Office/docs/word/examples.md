@@ -5,7 +5,7 @@
 Replace `{{CustomerName}}`, `{{InvoiceDate}}`, and other placeholders in a .docx template.
 
 ```csharp
-IWordService word = new Regira.Office.Word.Spire.WordManager();
+IWordService word = new Regira.Office.Word.Spire.WordService();
 
 byte[] templateBytes = await File.ReadAllBytesAsync("Templates/Invoice.docx");
 

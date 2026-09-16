@@ -5,7 +5,7 @@
 ## Generate a contract from a template
 
 ```csharp
-IWordService word = new Regira.Office.Word.Spire.WordManager();
+IWordService word = new Regira.Office.Word.Spire.WordService();
 
 var templateBytes = await _fileService.GetBytes("templates/contract.docx");
 

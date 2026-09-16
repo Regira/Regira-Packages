@@ -24,6 +24,10 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Npoi.Mapper" Version="6.2.2" />
+    <!-- Don't upgrade NPOI past 2.7.x; from 2.8.0 the binaries on nuget.org carry an Open Source
+         Maintenance Fee EULA requiring a paid subscription above $10k annual revenue. Pinned to an
+         exact version so a transitive bump fails the restore instead of pulling the EULA in silently. -->
+    <PackageReference Include="NPOI" Version="[2.7.1]" />
   </ItemGroup>
   <ItemGroup>
     <!-- License required from v4 -->
