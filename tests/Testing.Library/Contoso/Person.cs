@@ -47,6 +47,7 @@ public class Person : IEntityWithSerial, IHasAggregateKey, IHasNormalizedTitle, 
     public Person? Supervisor { get; set; }
     public ICollection<Person>? Subordinates { get; set; }
     public ICollection<Department>? Departments { get; set; }
+    public ICollection<Reservation>? Reservations { get; set; }
 
     public bool? HasAttachment { get; set; }
     public ICollection<PersonAttachment>? Attachments { get; set; }

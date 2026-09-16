@@ -2,7 +2,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Regira.Entities.Attributes;
+using Regira.Entities.Models;
 using Regira.Entities.Models.Abstractions;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 
 namespace Regira.Entities.EFcore.Extensions;
@@ -48,6 +50,15 @@ internal static class ConcurrencyTokenExtensions
     /// <summary>
     /// Tokens whose kind only the save can tell, per context and entity: a primer that moves one makes it a version
     /// stamp. Weak on the context, so a context that is never saved takes them with it.
+    /// <para>
+    /// State the change tracker cannot hold for us, so its lifecycle is spelled out: an entry is added by
+    /// <see cref="TrackAsUpdateOf"/> and removed by <see cref="ApplyUndecidedClientTokens"/>, which the primer
+    /// interceptor calls on every save and <c>ApplyPrimers</c> on demand. A context wired without the primer
+    /// interceptor and never primed by hand keeps its entries — and the entities they reference — until it is
+    /// collected; a pooled context keeps them until its next save, which drops any entry whose entity is no longer
+    /// tracked. Nothing here outlives the context, and nothing is keyed on the entity's identity, so a fresh entity
+    /// of the next request can never inherit a decision.
+    /// </para>
     /// </summary>
     private static readonly ConditionalWeakTable<DbContext, Dictionary<object, ClientConcurrencyTokens>> Undecided = new();
 
@@ -66,14 +77,37 @@ internal static class ConcurrencyTokenExtensions
     /// token is a version stamp only on a write that moves it, which the model cannot tell.
     /// </summary>
     /// <param name="token">The concurrency token.</param>
-    /// <param name="entityType">The entity the token is read from — a derived type may carry the marker its mapped
-    /// base, which declares the property, does not.</param>
+    /// <param name="entityType">The entity the token is read from — a derived type may carry the marker that its
+    /// mapped base, which declares the property, does not.</param>
     internal static bool IsDeclaredVersionStamp(this IProperty token, Type entityType)
-        => (token.ValueGenerated & ValueGenerated.OnUpdate) != 0
-           || token.ValueGenerated == ValueGenerated.OnUpdateSometimes
+        => token.IsStoreGeneratedOnUpdate()
            || (token.Name == nameof(IHasConcurrencyToken.ConcurrencyToken)
                && typeof(IHasConcurrencyToken).IsAssignableFrom(entityType))
-           || token.PropertyInfo?.IsDefined(typeof(VersionStampAttribute), inherit: true) == true;
+           || token.VersionStamp() != null;
+
+    /// <summary>
+    /// Whether the store moves <paramref name="property"/> on an <c>UPDATE</c>: a rowversion (<c>[Timestamp]</c>,
+    /// <c>IsRowVersion()</c>), or a computed column, which may change on any update. Such a token is a version stamp
+    /// by construction, and the only kind whose stored value is safe to re-read after a write of one's own — an
+    /// application-owned token never moves on its own, so re-reading it would adopt another writer's value.
+    /// </summary>
+    internal static bool IsStoreGeneratedOnUpdate(this IProperty property)
+        => (property.ValueGenerated & ValueGenerated.OnUpdate) != 0
+           || property.ValueGenerated == ValueGenerated.OnUpdateSometimes;
+
+    /// <summary>
+    /// The <see cref="VersionStampAttribute"/> on <paramref name="token"/>'s CLR property, inherited ones included;
+    /// <c>null</c> when it carries none.
+    /// </summary>
+    internal static VersionStampAttribute? VersionStamp(this IProperty token)
+        => token.PropertyInfo?.GetCustomAttribute<VersionStampAttribute>(inherit: true);
+
+    /// <summary>
+    /// Whether an update must carry <paramref name="token"/>: <c>[VersionStamp(Required = true)]</c>. Only a declared
+    /// stamp can be required — the attribute declares it — so the rule never touches a data column.
+    /// </summary>
+    internal static bool IsRequiredVersionStamp(this IProperty token)
+        => token.VersionStamp()?.Required == true;
 
     /// <summary>
     /// Reads the client's value of every concurrency token of <paramref name="incoming"/>'s entity type. Call it
@@ -108,8 +142,13 @@ internal static class ConcurrencyTokenExtensions
     /// <see cref="ApplyUndecidedClientTokens"/> once the primers have run.
     /// </para>
     /// </summary>
-    internal static EntityEntry TrackAsUpdateOf(this DbContext dbContext, object incoming, object stored, ClientConcurrencyTokens clientTokens)
+    /// <exception cref="EntityInputException{T}">A required version stamp (<see cref="IsRequiredVersionStamp"/>) the
+    /// client left out. Thrown before anything is attached, so the tracker is as the caller left it.</exception>
+    internal static EntityEntry TrackAsUpdateOf<TEntity>(this DbContext dbContext, TEntity incoming, TEntity stored, ClientConcurrencyTokens clientTokens)
+        where TEntity : class
     {
+        RequireSuppliedStamps(incoming, clientTokens);
+
         dbContext.Entry(stored).State = EntityState.Detached;
         dbContext.Attach(incoming);
         var entry = dbContext.Entry(incoming);
@@ -148,6 +187,34 @@ internal static class ConcurrencyTokenExtensions
         }
 
         return entry;
+    }
+
+    /// <summary>
+    /// Refuses the update when a required version stamp was not supplied, naming every such stamp as a field error —
+    /// the shape the web layers return as a 400 — with the incoming entity as the exception's item.
+    /// </summary>
+    private static void RequireSuppliedStamps<TEntity>(TEntity incoming, ClientConcurrencyTokens clientTokens)
+        where TEntity : class
+    {
+        var missing = clientTokens.Values
+            .Where(t => t.Property.IsRequiredVersionStamp() && !IsSupplied(t.Property, t.Value))
+            .Select(t => t.Property.Name)
+            .ToArray();
+        if (missing.Length == 0)
+        {
+            return;
+        }
+
+        var exception = new EntityInputException<TEntity>(
+            $"{typeof(TEntity).Name} requires {string.Join(", ", missing)} on an update: send the value read with the record.")
+        {
+            Item = incoming
+        };
+        foreach (var name in missing)
+        {
+            exception.InputErrors[name] = "Required on an update: send the value read with the record.";
+        }
+        throw exception;
     }
 
     /// <summary>

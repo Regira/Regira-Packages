@@ -871,7 +871,8 @@ stamp, and the edit it rewrote answers 409.
 `OrderInputDto`. Startup validation reports the shapes that break the check:
 
 - A DTO **without** the property: the client never receives the token or can never send it back, so every write
-  is last-write-wins again (warning).
+  is last-write-wins again (warning). For a token declared `[VersionStamp(Required = true)]` an input DTO without
+  it means every update answers 400 instead (error).
 - An **initializer** on the entity's token (`= Guid.NewGuid()`) with no input-DTO property to overwrite it: the
   mapper builds a fresh entity per request, so every `PUT`/`PATCH` carries a token the row never held and
   answers 409 (error). An initializer on the input DTO — or on the entity's token when the entity is its own input
@@ -902,7 +903,7 @@ What each write is checked against:
 | Write | Checked against |
 |---|---|
 | `PUT` carrying the token | the client's token — a stale one answers 409 |
-| `PUT` without it (`null`, empty, `Guid.Empty`, `0`) | nothing the client read: it writes, only a write racing it is caught, and the empty value never overwrites the token (the marker's primer still mints a new one) |
+| `PUT` without it (`null`, empty, `Guid.Empty`, `0`) | nothing the client read: it writes, only a write racing it is caught, and the empty value never overwrites the token (the marker's primer still mints a new one). `[VersionStamp(Required = true)]` on the token refuses it instead — 400 with the token as the field, before anything is attached — for a client that must always prove what it read; on the marker, put the attribute on the implementing `ConcurrencyToken` property. An insert is never refused |
 | `PATCH` | the token in the body when it carries one; otherwise the merge base supplies the value read at `PATCH` time |
 | `DELETE`, and child rows a save drops | no client token reaches them — only a write racing them is caught |
 | Your own code on the raw `DbContext` (load, copy the DTO, `SaveChanges()`) | the token the entity was **loaded** with — copying the client's token onto a tracked entity changes only its current value, so a stale client wins. Set the original yourself: `db.Entry(order).Property(x => x.ConcurrencyToken).OriginalValue = dto.ConcurrencyToken` |
@@ -1155,7 +1156,9 @@ drops the reference again and completes the whole unit of work. Direct pairs onl
 > **Only the pair matters.** A save without one calls the real save exactly once and opens no transaction. An
 > owner deleted without its children loaded has no edge and takes that path — the database cascade still removes
 > the child rows. Deleting only a child is untouched too: one row, no cycle, and EF's own `ClientSetNull` fixup
-> nulls the owner's reference.
+> nulls the owner's reference. The change tracker is read only when the model has two entity types referencing
+> each other and the provider is relational: a context without the shape pays a cached lookup per save, and the
+> in-memory provider — which enforces no foreign keys and orders no deletes — is passed straight through.
 
 ## Audit Trail with Custom Primer
 

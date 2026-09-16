@@ -112,9 +112,13 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
     /// <remarks>
     /// A stub (<c>new TAttachment { Id = ... }</c>) is enough to delete a row by key, but it carries no concurrency
     /// token: once the attachment type implements <see cref="IHasConcurrencyToken"/>, EF compares the stored row
-    /// against <see cref="Guid.Empty"/>, matches nothing, and every such delete fails as a conflict, for good. For
-    /// those types the row is read first, so the delete is issued against the token the database holds. Types without
-    /// the marker keep the stub and its saved round trip.
+    /// against <see cref="Guid.Empty"/>, matches nothing, and every such delete fails as a conflict, for good.
+    /// <c>HasConcurrencyTokenDbPrimer</c> is the general answer — it points any stub delete at the stored token during
+    /// the save — and this prepper keeps a read of its own for two reasons that primer cannot give: it holds without
+    /// the primer registered, and an attachment row that is already gone is skipped rather than reported as a
+    /// conflict, since the join row being removed is the point and the file it pointed at is simply no longer there.
+    /// Same cost either way — one query, or none when the attachment is already tracked. Types without the marker
+    /// keep the stub and its saved round trip.
     /// </remarks>
     private async Task<TAttachment?> ResolveAttachment(TAttachmentKey? attachmentId, CancellationToken token)
     {

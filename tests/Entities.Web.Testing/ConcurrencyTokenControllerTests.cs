@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Http.Json;
 using Entities.TestApi.Infrastructure;
 using Entities.TestApi.Infrastructure.Departments;
+using Entities.TestApi.Infrastructure.Persons;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -128,5 +129,48 @@ public class ConcurrencyTokenControllerTests : IClassFixture<ContosoApiFactory>,
         var response = await client.DeleteAsync($"/departments/{department.Id}");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    /// <summary>
+    /// <c>Reservation</c> declares its token <c>[VersionStamp(Required = true)]</c> and is owned through
+    /// <c>Person.Reservations</c>, so the check runs while the person's own <c>PUT</c> syncs the collection, and
+    /// what it throws names <c>Reservation</c>, not <c>Person</c>. The generated actions catch their own entity's
+    /// input exception only; this one reaches the client as 400 through the application-wide
+    /// <c>EntityExceptionFilter</c> that <c>ConfigureDefaultJsonOptions()</c> registers. A host without the filter
+    /// answers 500 here, as it does for any rule a related entity's write breaks.
+    /// </summary>
+    [Fact]
+    public async Task A_Required_Stamp_Left_Out_Of_A_Child_Row_Is_A_400_Naming_The_Token()
+    {
+        using var client = _factory.CreateClient();
+        // the insert is never refused: there is nothing read yet to prove
+        var created = await client.PostAsJsonAsync("/persons", new PersonInputDto
+        {
+            GivenName = "Ada",
+            LastName = "Lovelace",
+            Reservations = [new ReservationInputDto { Room = "A1" }]
+        });
+        created.EnsureSuccessStatusCode();
+        var person = (await created.Content.ReadFromJsonAsync<SaveResult<PersonDto>>())!.Item;
+        var stored = await _dbContext.Reservations.AsNoTracking().SingleAsync(x => x.PersonId == person.Id);
+
+        PersonInputDto Update(Guid token) => new()
+        {
+            Id = person.Id,
+            GivenName = "Ada",
+            LastName = "Lovelace",
+            Reservations = [new ReservationInputDto { Id = stored.Id, Room = "B2", ConcurrencyToken = token }]
+        };
+        var withoutToken = await client.PutAsJsonAsync($"/persons/{person.Id}", Update(Guid.Empty));
+        var withToken = await client.PutAsJsonAsync($"/persons/{person.Id}", Update(stored.ConcurrencyToken));
+
+        Assert.NotEqual(Guid.Empty, stored.ConcurrencyToken);
+        Assert.Equal(HttpStatusCode.BadRequest, withoutToken.StatusCode);
+        // the same flat map ControllerExtensions.Save returns for the action's own entity, keys camelCased
+        var errors = await withoutToken.Content.ReadFromJsonAsync<Dictionary<string, string[]>>();
+        Assert.Contains("concurrencyToken", errors!.Keys);
+        Assert.Equal(HttpStatusCode.OK, withToken.StatusCode);
+        var room = (await _dbContext.Reservations.AsNoTracking().SingleAsync(x => x.Id == stored.Id)).Room;
+        Assert.Equal("B2", room);
     }
 }

@@ -44,6 +44,11 @@ public class HasConcurrencyTokenDbPrimer : EntityPrimerBase<IHasConcurrencyToken
     /// retried: opting an entity into the marker would otherwise make such deletes impossible. An empty token is the
     /// absence of a claim rather than a claim of emptiness, so the delete goes ahead unconditionally, as it did before
     /// the entity carried the marker. A caller that *does* hold a token keeps its check: a non-empty value is compared.
+    /// <para>
+    /// One read per stub row, so removing N stubs in a loop is N round trips — a caller deleting many rows by key
+    /// loads them in one query instead. The attachments prepper resolves its own attachment stubs before this runs,
+    /// for the case of a file row that is already gone, which is a skip there and a conflict here.
+    /// </para>
     /// </remarks>
     private static async Task DeleteUnconditionally(EntityEntry entry, CancellationToken token)
     {

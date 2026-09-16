@@ -15,6 +15,7 @@ public class ContosoContext(DbContextOptions<ContosoContext> options) : DbContex
     public DbSet<OfficeAssignment> OfficeAssignments { get; set; } = null!;
     public DbSet<Person> Persons { get; set; } = null!;
     public DbSet<PersonAttachment> PersonAttachments { get; set; } = null!;
+    public DbSet<Reservation> Reservations { get; set; } = null!;
     public DbSet<Student> Students { get; set; } = null!;
 
 
@@ -38,6 +39,10 @@ public class ContosoContext(DbContextOptions<ContosoContext> options) : DbContex
             entity.HasMany(e => e.Departments)
                 .WithOne(e => e.Administrator)
                 .HasForeignKey(e => e.AdministratorId)
+                .HasPrincipalKey(e => e.Id);
+            entity.HasMany(e => e.Reservations)
+                .WithOne(e => e.Person)
+                .HasForeignKey(e => e.PersonId)
                 .HasPrincipalKey(e => e.Id);
         });
     }

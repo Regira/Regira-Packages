@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Regira.Entities.EFcore.Primers.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
+using Regira.Entities.Attributes;
 using Regira.Entities.DependencyInjection.Extensions;
 using Regira.Entities.DependencyInjection.Primers;
 using Regira.Entities.DependencyInjection.ServiceCollections.Models;
@@ -46,6 +47,14 @@ public class ConcurrencyTokenMarkerTests
         public Guid ConcurrencyToken { get; set; }
     }
 
+    /// The marker with its stamp required: a client that leaves it out is refused instead of let through unchecked.
+    public class Reservation : IEntity<int>, IHasConcurrencyToken
+    {
+        public int Id { get; set; }
+        public string? Room { get; set; }
+        [VersionStamp(Required = true)] public Guid ConcurrencyToken { get; set; }
+    }
+
     /// Awaits before throwing, so the failure travels back through the synchronous SaveChanges bridge.
     public class ThrowingPrimer : EntityPrimerBase<Order>
     {
@@ -61,6 +70,7 @@ public class ConcurrencyTokenMarkerTests
         public DbSet<Order> Orders => Set<Order>();
         public DbSet<Draft> Drafts => Set<Draft>();
         public DbSet<Receipt> Receipts => Set<Receipt>();
+        public DbSet<Reservation> Reservations => Set<Reservation>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -88,7 +98,8 @@ public class ConcurrencyTokenMarkerTests
         services.UseEntities<ShopContext>(configure)
             .For<Order>()
             .For<Draft>()
-            .For<Receipt>();
+            .For<Receipt>()
+            .For<Reservation>();
         return services.BuildServiceProvider();
     }
 
@@ -106,10 +117,12 @@ public class ConcurrencyTokenMarkerTests
     /// A context outside the Regira pipeline, to read what was committed.
     private ShopContext Raw() => new(new DbContextOptionsBuilder<ShopContext>().UseSqlite(_connection).Options);
 
-    private static async Task Write(IServiceProvider sp, Order item)
+    private static Task Write(IServiceProvider sp, Order item) => Write<Order>(sp, item);
+
+    private static async Task Write<TEntity>(IServiceProvider sp, TEntity item) where TEntity : class, IEntity<int>
     {
         using var scope = sp.CreateScope();
-        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order, int>>();
+        var service = scope.ServiceProvider.GetRequiredService<IEntityService<TEntity, int>>();
         await service.Save(item);
         await service.SaveChanges();
     }
@@ -276,6 +289,52 @@ public class ConcurrencyTokenMarkerTests
 
         Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(sp, new Order { Id = order.Id, Status = "Cancelled", ConcurrencyToken = read }));
         Assert.That((await Stored(order.Id)).Status, Is.EqualTo("Picked"));
+    }
+
+    // ── a stamp the client must send ───────────────────────────────────────────
+
+    [Test]
+    public async Task A_Required_Stamp_The_Client_Leaves_Out_Is_Refused_As_Input()
+    {
+        using var sp = await Defaults();
+        // the insert carries no token and is not refused: there is nothing read yet to prove
+        var reservation = new Reservation { Room = "A1" };
+        await Write(sp, reservation);
+
+        using var scope = sp.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Reservation, int>>();
+        var ex = Assert.ThrowsAsync<EntityInputException<Reservation>>(() => service.Modify(new Reservation { Id = reservation.Id, Room = "B2" }));
+
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        await using var raw = Raw();
+        var stored = await raw.Reservations.FindAsync(reservation.Id);
+        Assert.Multiple(() =>
+        {
+            Assert.That(reservation.ConcurrencyToken, Is.Not.EqualTo(Guid.Empty), "the insert minted a token");
+            Assert.That(ex!.InputErrors.Keys, Is.EquivalentTo(new[] { nameof(Reservation.ConcurrencyToken) }), "the field a 400 names");
+            Assert.That(ex.Item, Is.Not.Null.And.Property(nameof(Reservation.Room)).EqualTo("B2"));
+            Assert.That(db.ChangeTracker.Entries<Reservation>().Where(e => e.State == EntityState.Modified), Is.Empty, "refused before anything is attached");
+            Assert.That(stored!.Room, Is.EqualTo("A1"));
+        });
+    }
+
+    [Test]
+    public async Task A_Required_Stamp_Is_Checked_Like_Any_Other()
+    {
+        using var sp = await Defaults();
+        var reservation = new Reservation { Room = "A1" };
+        await Write(sp, reservation);
+        var read = reservation.ConcurrencyToken;
+        // the first client's save moves the token under the second
+        await Write(sp, new Reservation { Id = reservation.Id, Room = "Edited elsewhere", ConcurrencyToken = read });
+
+        Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(sp, new Reservation { Id = reservation.Id, Room = "Stale", ConcurrencyToken = read }));
+
+        await using var raw = Raw();
+        var current = (await raw.Reservations.FindAsync(reservation.Id))!.ConcurrencyToken;
+        await Write(sp, new Reservation { Id = reservation.Id, Room = "Fresh", ConcurrencyToken = current });
+        raw.ChangeTracker.Clear();
+        Assert.That((await raw.Reservations.FindAsync(reservation.Id))!.Room, Is.EqualTo("Fresh"));
     }
 
     // ── hard deletes and stubs ─────────────────────────────────────────────────

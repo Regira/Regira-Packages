@@ -32,7 +32,8 @@ namespace Regira.Entities.DependencyInjection.Validation;
 /// holding the same value both pass.</item>
 /// <item><b>Warning</b> — the read DTO or the input DTO has no property for a token. The client never receives it,
 /// or can never send it back, so every write through the entity controller is last-write-wins: 200 OK, no
-/// conflict, no log.</item>
+/// conflict, no log. <b>Error</b> when the input DTO lacks a token declared <c>[VersionStamp(Required = true)]</c>:
+/// the write path refuses an update without it, so every PUT and PATCH answers 400.</item>
 /// <item><b>Warning</b> — the input DTO initializes its token property, or an entity that is its own input DTO
 /// initializes its token. A client that leaves the token out sends that value instead of none, so its write answers
 /// 409 where an absent token skips the check.</item>
@@ -275,9 +276,14 @@ internal sealed class ConcurrencyTokenValidator : IEntityRegistrationValidator
             var casing = miscased.Length > 0
                 ? $" ({string.Join(" and ", miscased)} differ{(miscased.Length == 1 ? "s" : "")} only in case, and Mapster matches names exactly)"
                 : "";
-            return new EntityValidationIssue(EntityValidationSeverity.Warning,
+            // a required stamp the input DTO cannot carry is never supplied, so the write path refuses every update
+            var required = inputProperty == null && token.IsRequiredVersionStamp();
+            var symptom = required
+                ? "The token is required ([VersionStamp(Required = true)]) and the client can never send it, so every PUT and PATCH through the entity controller answers 400. "
+                : "The client never gets the version it read back to the server, so every write through the entity controller is last-write-wins: 200 OK, no conflict, no log. ";
+            return new EntityValidationIssue(required ? EntityValidationSeverity.Error : EntityValidationSeverity.Warning,
                 $"{entity}.{name} is a concurrency token, but {dtos} {(missingTypes.Length == 1 ? "has" : "have")} no {name} property{casing}. " +
-                "The client never gets the version it read back to the server, so every write through the entity controller is last-write-wins: 200 OK, no conflict, no log. " +
+                symptom +
                 $"ACTION: add {declaration} to {dtos}, without an initializer. {SeeAlso}");
         }
 

@@ -1,6 +1,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Regira.Entities.DependencyInjection.Extensions;
@@ -8,6 +9,7 @@ using Regira.Entities.EFcore.Extensions;
 using Regira.Entities.Models.Abstractions;
 using Regira.Entities.Services.Abstractions;
 using System.ComponentModel.DataAnnotations;
+using System.Data.Common;
 
 namespace Entities.Testing;
 
@@ -25,6 +27,8 @@ public class DeleteCycleTests
         public string? Title { get; set; }
         /// The marked child — optional, which is what makes the cycle breakable.
         public int? CoverImageId { get; set; }
+        /// A second reference at the same child type: two cycles through one row, dropped in one UPDATE.
+        public int? ThumbnailImageId { get; set; }
         public ICollection<ArticleImage>? Images { get; set; }
         /// A store-generated token, moved by a trigger on every UPDATE — what a SQL Server rowversion does.
         public int RowVersion { get; set; }
@@ -60,6 +64,9 @@ public class DeleteCycleTests
                 // SQL Server rejects at migration time with "may cause cycles or multiple cascade paths".
                 entity.HasOne<ArticleImage>().WithMany()
                     .HasForeignKey(x => x.CoverImageId)
+                    .OnDelete(DeleteBehavior.ClientSetNull);
+                entity.HasOne<ArticleImage>().WithMany()
+                    .HasForeignKey(x => x.ThumbnailImageId)
                     .OnDelete(DeleteBehavior.ClientSetNull);
                 // SQLite has no rowversion; the trigger created in Seed plays its part on every UPDATE.
                 entity.Property(x => x.RowVersion).HasDefaultValue(1).ValueGeneratedOnAddOrUpdate().IsConcurrencyToken();
@@ -114,8 +121,32 @@ public class DeleteCycleTests
     }
 
 
+    /// <summary>
+    /// Records every non-query statement. The reference-dropping <c>UPDATE</c> is sent that way, while EF's
+    /// own batch goes through a reader, so the list is exactly what the extension sent.
+    /// </summary>
+    private sealed class StatementRecorder : DbCommandInterceptor
+    {
+        public List<string> NonQueries { get; } = [];
+
+        public override InterceptionResult<int> NonQueryExecuting(DbCommand command, CommandEventData eventData, InterceptionResult<int> result)
+        {
+            NonQueries.Add(command.CommandText);
+            return result;
+        }
+
+        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(DbCommand command, CommandEventData eventData,
+            InterceptionResult<int> result, CancellationToken cancellationToken = default)
+        {
+            NonQueries.Add(command.CommandText);
+            return ValueTask.FromResult(result);
+        }
+    }
+
+
     private SqliteConnection _connection = null!;
     private ServiceProvider _serviceProvider = null!;
+    private StatementRecorder _statements = null!;
 
     [SetUp]
     public void Setup() => Setup(retryOnFailure: false);
@@ -126,6 +157,7 @@ public class DeleteCycleTests
         _connection?.Close();
         _connection = new SqliteConnection("Filename=:memory:");
         _connection.Open();
+        _statements = new StatementRecorder();
 
         IServiceCollection services = new ServiceCollection();
         services.AddDbContext<ArticleContext>(db => db.UseSqlite(_connection, sqlite =>
@@ -134,7 +166,7 @@ public class DeleteCycleTests
             {
                 sqlite.ExecutionStrategy(dependencies => new RetryingStrategy(dependencies));
             }
-        }));
+        }).AddInterceptors(_statements));
         services.UseEntities<ArticleContext>()
             // eager-loading the children is what puts them in the change tracker, and the delete cycle with them
             .For<Article>(e => e.Includes((query, _) => query.Include(x => x.Images!)));
@@ -591,13 +623,77 @@ public class DeleteCycleTests
     }
 
 
+    [Test]
+    public async Task Two_References_To_The_Same_Child_Are_Dropped_In_One_Statement()
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ArticleContext>();
+        var id = await Seed(db);
+        // The thumbnail points at the same child as the cover: two cycles through one row. Each is a break
+        // of its own, but the row is updated once.
+        var owner = await db.Articles.FirstAsync(x => x.Id == id);
+        owner.ThumbnailImageId = owner.CoverImageId;
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+        db.BreakDeleteCycles = true;
+
+        var article = await db.Articles.Include(x => x.Images!).FirstAsync(x => x.Id == id);
+        db.Articles.Remove(article);
+        _statements.NonQueries.Clear();
+        await db.SaveChangesAsync();
+
+        var updates = _statements.NonQueries.Where(s => s.StartsWith("UPDATE")).ToList();
+        Assert.That(updates, Has.Count.EqualTo(1), "both references on one row are dropped by one UPDATE");
+        Assert.Multiple(async () =>
+        {
+            Assert.That(updates[0], Does.Contain("CoverImageId").And.Contain("ThumbnailImageId"));
+            Assert.That(await db.Articles.CountAsync(), Is.Zero);
+            Assert.That(await db.ArticleImages.CountAsync(), Is.Zero);
+        });
+    }
+
+    [Test]
+    public async Task A_Non_Relational_Provider_Is_Passed_Straight_Through()
+    {
+        // The in-memory provider enforces no foreign keys and orders no deletes, so EF saves the pair there on
+        // its own — and it has no connection for the UPDATE either. The extension must step aside rather than
+        // turn a delete that works into one that throws.
+        var options = new DbContextOptionsBuilder<ArticleContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options;
+        int id;
+        await using (var seed = new ArticleContext(options))
+        {
+            var article = new Article { Title = "Release notes" };
+            seed.Articles.Add(article);
+            await seed.SaveChangesAsync();
+            var image = new ArticleImage { ArticleId = article.Id, FileName = "cover.png" };
+            seed.ArticleImages.Add(image);
+            await seed.SaveChangesAsync();
+            article.CoverImageId = image.Id;
+            await seed.SaveChangesAsync();
+            id = article.Id;
+        }
+
+        await using var db = new ArticleContext(options) { BreakDeleteCycles = true };
+        var owner = await db.Articles.Include(x => x.Images!).FirstAsync(x => x.Id == id);
+        db.Articles.Remove(owner);
+
+        Assert.DoesNotThrowAsync(() => db.SaveChangesAsync());
+        Assert.Multiple(async () =>
+        {
+            Assert.That(await db.Articles.CountAsync(), Is.Zero);
+            Assert.That(await db.ArticleImages.CountAsync(), Is.Zero);
+        });
+    }
+
+
     /// <summary>An owner with one child, and a reference pointing at it.</summary>
     private static async Task<int> Seed(ArticleContext db)
     {
         await db.Database.EnsureCreatedAsync();
         // Stands in for a rowversion: the store moves the token on every UPDATE the application makes.
         await db.Database.ExecuteSqlRawAsync(
-            "CREATE TRIGGER IF NOT EXISTS Articles_RowVersion AFTER UPDATE OF Title, CoverImageId, Version ON Articles " +
+            "CREATE TRIGGER IF NOT EXISTS Articles_RowVersion AFTER UPDATE OF Title, CoverImageId, ThumbnailImageId, Version ON Articles " +
             "BEGIN UPDATE Articles SET RowVersion = OLD.RowVersion + 1 WHERE Id = NEW.Id; END;");
         var article = new Article { Title = "Release notes" };
         db.Articles.Add(article);

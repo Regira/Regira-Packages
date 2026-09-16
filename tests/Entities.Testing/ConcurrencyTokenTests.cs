@@ -429,6 +429,51 @@ public class ConcurrencyTokenTests
         Assert.That((await Find<Customer>(customer.Id)).LastName, Is.EqualTo("Maes"), "the other writer's change must survive");
     }
 
+    // ── the tokens decided at save time live and die with the context ──────────
+
+    [Test]
+    public async Task An_Update_Abandoned_On_A_Pooled_Context_Does_Not_Reach_The_Next_Request()
+    {
+        // a pooled context is reused by the next request with its change tracker reset; an update whose token is
+        // decided only at save time, left unsaved by a request that died, must neither be written then nor break it
+        var services = new ServiceCollection();
+        services.AddDbContextPool<ShopContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<ShopContext>(o => o.UseDefaults().AddPrimer<VersionPrimer>())
+            .For<Order>();
+        await using var sp = services.BuildServiceProvider();
+
+        var abandoned = new Order { Status = "New", Version = Guid.NewGuid() };
+        var other = new Order { Status = "New", Version = Guid.NewGuid() };
+        using (var scope = sp.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order, int>>();
+            await service.Save(abandoned);
+            await service.Save(other);
+            await service.SaveChanges();
+        }
+
+        using (var scope = sp.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order, int>>();
+            await service.Modify(new Order { Id = abandoned.Id, Status = "Abandoned", Version = abandoned.Version });
+        }
+
+        using (var scope = sp.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order, int>>();
+            await service.Save(new Order { Id = other.Id, Status = "Shipped", Version = other.Version });
+            await service.SaveChanges();
+        }
+
+        var abandonedStored = await Find<Order>(abandoned.Id);
+        var otherStored = await Find<Order>(other.Id);
+        Assert.Multiple(() =>
+        {
+            Assert.That(abandonedStored.Status, Is.EqualTo("New"));
+            Assert.That(otherStored.Status, Is.EqualTo("Shipped"));
+        });
+    }
+
     // ── what EF reports as a concurrency failure, token or not ─────────────────
 
     [Test]

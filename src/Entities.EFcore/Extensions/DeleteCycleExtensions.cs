@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Update;
+using System.Collections;
+using System.Runtime.CompilerServices;
 using System.Transactions;
 
 namespace Regira.Entities.EFcore.Extensions;
@@ -37,7 +39,9 @@ public static class DeleteCycleExtensions
     /// <summary>
     /// Runs <paramref name="save"/> once, first dropping with a direct <c>UPDATE</c> any reference that would
     /// make EF Core reject the delete as a circular dependency. A save with no such pair opens no transaction
-    /// and starts no execution strategy — the common path costs one change-tracker scan.
+    /// and starts no execution strategy. The change tracker is read only when the model has a pair of entity
+    /// types referencing each other and the provider is relational — on any other context, and that is most
+    /// of them, the call costs a cached lookup and nothing else.
     /// </summary>
     /// <param name="dbContext">The context whose change tracker holds the pending delete.</param>
     /// <param name="save">The real save — <c>base.SaveChanges</c> from an override. Called exactly once; the
@@ -104,16 +108,14 @@ public static class DeleteCycleExtensions
     /// <para>
     /// The ambient half is the one that cannot be inferred: <c>Database.CurrentTransaction</c> is null inside a
     /// <see cref="TransactionScope"/>, so without <see cref="Transaction.Current"/> this would begin a
-    /// transaction on a connection already enlisted in one, which EF refuses. It is not covered by the test
-    /// suite — SQLite rejects ambient transactions outright, whatever the code under test does.
+    /// transaction on a connection already enlisted in one, which EF refuses.
     /// </para>
     /// <para>
-    /// The execution strategy is not what the check protects, in either arrangement a caller's transaction can
-    /// arrive in. Inside the caller's own strategy a nested one is suspended: it neither retries nor throws.
-    /// Under a bare <c>BeginTransaction()</c> with no strategy around it, a retrying strategy refuses to start —
-    /// and so does EF's own <c>SaveChanges</c>, so that arrangement fails identically with or without this
-    /// method. Both are pinned in the test suite. Skipping the strategy is a tidiness; skipping the transaction
-    /// is not.
+    /// The execution strategy is not what the check protects. Inside the caller's own strategy a nested one is
+    /// suspended: it neither retries nor throws. Under a bare <c>BeginTransaction()</c> with no strategy around
+    /// it, a retrying strategy refuses to start — and so does EF's own <c>SaveChanges</c>, so that arrangement
+    /// fails identically with or without this method. Skipping the strategy is a tidiness; skipping the
+    /// transaction is not.
     /// </para>
     /// </summary>
     private static bool CallerOwnsTheTransaction(DbContext dbContext)
@@ -171,6 +173,8 @@ public static class DeleteCycleExtensions
         }
     }
 
+    /// <summary>One <c>UPDATE</c> per row: an owner pointing at the same child through two references
+    /// (a cover and a thumbnail) drops both in a single statement.</summary>
     private static IEnumerable<(EntityEntry Entry, IReadOnlyList<IProperty> Properties)> GroupByEntry(IReadOnlyList<CycleBreak> breaks)
         => breaks.GroupBy(b => b.Entry).Select(g => (g.Key, (IReadOnlyList<IProperty>)g.SelectMany(b => b.Properties).Distinct().ToList()));
 
@@ -181,7 +185,7 @@ public static class DeleteCycleExtensions
     /// very check the column exists for.
     /// </summary>
     private static bool IsStoreGeneratedToken(IProperty property)
-        => property.IsConcurrencyToken && property.ValueGenerated.HasFlag(ValueGenerated.OnUpdate);
+        => property.IsConcurrencyToken && property.IsStoreGeneratedOnUpdate();
 
     private static bool HasStoreGeneratedToken(EntityEntry entry)
         => entry.Metadata.GetProperties().Any(IsStoreGeneratedToken);
@@ -230,10 +234,12 @@ public static class DeleteCycleExtensions
             // The entries collection takes EF's internal entry type, reached through the infrastructure
             // accessor. That type has implemented IUpdateEntry since EF Core 2; if a major ever changes that,
             // this cast is the one line to revisit, and the message stays the whole signal in the meantime.
+#pragma warning disable EF1001
             throw new DbUpdateConcurrencyException(
                 $"The {entry.Metadata.DisplayName()} row being deleted was modified or deleted since it was loaded, "
                 + "so the reference to its child could not be dropped. Reload the entity and retry.",
                 [(IUpdateEntry)entry.GetInfrastructure()]);
+#pragma warning restore EF1001
         }
     }
 
@@ -243,8 +249,10 @@ public static class DeleteCycleExtensions
     /// carries the row's concurrency tokens from their original values, as EF's own <c>UPDATE</c> would, so
     /// another writer's change is detected here rather than overwritten — which is also what makes refreshing
     /// a store-generated token afterwards sound: the row was proven untouched before its new value is adopted.
+    /// A column the statement needs that is not mapped to that table (a token declared on a derived type in a
+    /// TPT hierarchy) is refused rather than guessed at.
     /// </summary>
-    private static (string Sql, object?[] Parameters) DropReferenceStatement(DbContext dbContext, EntityEntry entry, IReadOnlyList<IProperty> properties)
+    private static (string Sql, object[] Parameters) DropReferenceStatement(DbContext dbContext, EntityEntry entry, IReadOnlyList<IProperty> properties)
     {
         var entityType = properties[0].DeclaringType as IEntityType ?? entry.Metadata;
         var tableName = entityType.GetTableName()
@@ -255,12 +263,14 @@ public static class DeleteCycleExtensions
             ?? throw new InvalidOperationException($"{entry.Metadata.DisplayName()} has no primary key, so a delete cycle through it cannot be broken.");
 
         var helper = dbContext.GetService<ISqlGenerationHelper>();
-        string Column(IProperty property) => helper.DelimitIdentifier(property.GetColumnName(table) ?? property.Name);
+        string Column(IProperty property) => helper.DelimitIdentifier(property.GetColumnName(table)
+            ?? throw new InvalidOperationException(
+                $"{property.DeclaringType.DisplayName()}.{property.Name} is not mapped to table {tableName}, so a delete cycle through it cannot be broken."));
 
         var set = string.Join(", ", properties.Select(p => $"{Column(p)} = NULL"));
 
         var guards = key.Properties.Concat(entry.Metadata.GetProperties().Where(p => p.IsConcurrencyToken && !p.IsKey()));
-        var parameters = new List<object?>();
+        var parameters = new List<object>();
         var where = string.Join(" AND ", guards.Select(p =>
         {
             var value = ToProviderValue(p, entry.Property(p.Name).OriginalValue);
@@ -280,9 +290,10 @@ public static class DeleteCycleExtensions
 
 
     /// <summary>
-    /// The foreign keys to null before the delete: one per pair of entries that are both being deleted and
-    /// both reference the other. Only an <b>optional</b> foreign key can be dropped, which is also the one to
-    /// drop — the required side is the child's link to its owner, and that row is going away anyway.
+    /// The foreign keys to null before the delete: for each pair of entries that are both being deleted and
+    /// both reference the other, every reference in the one direction that can be dropped. Only an
+    /// <b>optional</b> foreign key can be, which is also the one to drop — the required side is the child's
+    /// link to its owner, and that row is going away anyway.
     /// <para>
     /// Deliberately limited to direct pairs. A longer ring (<c>A → B → C → A</c>) is left to EF's own
     /// exception rather than resolved by a guess at which link is the incidental one.
@@ -290,6 +301,20 @@ public static class DeleteCycleExtensions
     /// </summary>
     private static IReadOnlyList<CycleBreak> FindBreakableDeleteCycles(DbContext dbContext)
     {
+        // Settled before the change tracker is read, which runs DetectChanges over every tracked entity: a
+        // pair can only form between entity types the model links both ways, and only a relational store
+        // holds the reference the UPDATE drops — the in-memory provider enforces no foreign keys and orders
+        // no deletes, so EF saves the pair there on its own.
+        if (!dbContext.Database.IsRelational())
+        {
+            return [];
+        }
+        var cyclable = CyclableTypes.GetValue(dbContext.Model, FindCyclableTypes);
+        if (cyclable.Count == 0)
+        {
+            return [];
+        }
+
         // Under the default Immediate timing the cascade already ran inside Remove(); under OnSaveChanges the
         // dependents are still Unchanged at this point and there would be no cycle to find yet.
         if (dbContext.ChangeTracker.CascadeDeleteTiming == CascadeTiming.OnSaveChanges)
@@ -297,31 +322,44 @@ public static class DeleteCycleExtensions
             dbContext.ChangeTracker.CascadeChanges();
         }
 
-        var deleted = dbContext.ChangeTracker.Entries().Where(e => e.State == EntityState.Deleted).ToArray();
+        var deleted = dbContext.ChangeTracker.Entries()
+            .Where(e => e.State == EntityState.Deleted && cyclable.Contains(e.Metadata.Name))
+            .ToArray();
         if (deleted.Length < 2)
         {
             return [];
         }
 
-        var edges = deleted.SelectMany(entry => OutgoingEdges(entry, deleted)).ToArray();
+        var index = new DeletedIndex(deleted);
+        var edges = deleted.SelectMany(entry => OutgoingEdges(entry, index)).ToArray();
+        var byDirection = edges
+            .GroupBy(e => new Pair(e.Dependent.Entity, e.Principal.Entity))
+            .ToDictionary(g => g.Key, g => g.ToArray());
+        var handled = new HashSet<Pair>();
         var breaks = new List<CycleBreak>();
-        var broken = new List<(object A, object B)>();
-        // Optional first: where both directions are optional either would do, and taking the first keeps the
-        // choice deterministic (change-tracker order, then the entity type's foreign keys).
-        foreach (var edge in edges.Where(e => e.ForeignKey.Properties.All(p => p.IsNullable)))
+        foreach (var edge in edges)
         {
-            var isCycle = edges.Any(other =>
-                ReferenceEquals(other.Dependent.Entity, edge.Principal.Entity)
-                && ReferenceEquals(other.Principal.Entity, edge.Dependent.Entity));
-            var alreadyBroken = broken.Any(pair =>
-                (ReferenceEquals(pair.A, edge.Dependent.Entity) && ReferenceEquals(pair.B, edge.Principal.Entity))
-                || (ReferenceEquals(pair.A, edge.Principal.Entity) && ReferenceEquals(pair.B, edge.Dependent.Entity)));
-            if (!isCycle || alreadyBroken)
+            var forward = new Pair(edge.Dependent.Entity, edge.Principal.Entity);
+            if (handled.Contains(forward) || !byDirection.TryGetValue(forward.Reversed, out var back))
             {
                 continue;
             }
-            broken.Add((edge.Dependent.Entity, edge.Principal.Entity));
-            breaks.Add(new CycleBreak(edge.Dependent, edge.ForeignKey.Properties));
+            handled.Add(forward);
+            handled.Add(forward.Reversed);
+
+            // Every reference in one direction goes, or the pair stays linked: an owner pointing at the same
+            // child twice (a cover and a thumbnail) is two cycles, and dropping one reference leaves the other.
+            // The direction whose references are all optional is the one that can go; where both qualify the
+            // first encountered is taken, which keeps the choice deterministic (change-tracker order, then the
+            // entity type's foreign keys). A pair required both ways is left to EF's own exception.
+            var ahead = byDirection[forward];
+            var side = ahead.All(e => IsOptional(e.ForeignKey)) ? ahead
+                : back.All(e => IsOptional(e.ForeignKey)) ? back
+                : null;
+            if (side != null)
+            {
+                breaks.AddRange(side.Select(e => new CycleBreak(e.Dependent, e.ForeignKey.Properties)));
+            }
         }
 
         return breaks;
@@ -332,7 +370,7 @@ public static class DeleteCycleExtensions
     /// row still holds in the database — the current values are what a primer would have changed, and what EF
     /// ignores when it orders the deletes.
     /// </summary>
-    private static IEnumerable<Edge> OutgoingEdges(EntityEntry dependent, EntityEntry[] deleted)
+    private static IEnumerable<Edge> OutgoingEdges(EntityEntry dependent, DeletedIndex index)
     {
         foreach (var foreignKey in dependent.Metadata.GetForeignKeys())
         {
@@ -342,19 +380,131 @@ public static class DeleteCycleExtensions
                 continue;
             }
 
-            var principal = deleted.FirstOrDefault(candidate =>
-                !ReferenceEquals(candidate.Entity, dependent.Entity)
-                && foreignKey.PrincipalEntityType.ClrType.IsInstanceOfType(candidate.Entity)
-                && foreignKey.PrincipalKey.Properties
-                    .Select(p => candidate.Property(p.Name).OriginalValue)
-                    .SequenceEqual(values));
-            if (principal != null)
+            var principal = index.Find(foreignKey.PrincipalKey, values);
+            if (principal != null
+                && !ReferenceEquals(principal.Entity, dependent.Entity)
+                && foreignKey.PrincipalEntityType.ClrType.IsInstanceOfType(principal.Entity))
             {
                 yield return new Edge(dependent, principal, foreignKey);
             }
         }
     }
 
+
+    private static readonly ConditionalWeakTable<IModel, HashSet<string>> CyclableTypes = new();
+
+    /// <summary>
+    /// The entity types (by name) a breakable pair can form between: two non-owned types each carrying a
+    /// foreign key to the other — or one type carrying one to itself — where at least one of the two keys is
+    /// optional, together with every type deriving from them. Computed once per model; a model without such
+    /// a pair, which is most models, makes every save skip the change tracker entirely.
+    /// </summary>
+    private static HashSet<string> FindCyclableTypes(IModel model)
+    {
+        var cyclable = new HashSet<string>();
+        foreach (var entityType in model.GetEntityTypes().Where(t => !t.IsOwned()))
+        {
+            foreach (var reference in entityType.GetForeignKeys())
+            {
+                var principal = reference.PrincipalEntityType;
+                if (principal.IsOwned())
+                {
+                    continue;
+                }
+                var mutual = principal.GetForeignKeys().Any(back =>
+                    Related(back.PrincipalEntityType, entityType) && (IsOptional(reference) || IsOptional(back)));
+                if (!mutual)
+                {
+                    continue;
+                }
+                foreach (var type in entityType.GetDerivedTypesInclusive().Concat(principal.GetDerivedTypesInclusive()))
+                {
+                    cyclable.Add(type.Name);
+                }
+            }
+        }
+        return cyclable;
+    }
+
+    private static bool IsOptional(IForeignKey foreignKey)
+        => foreignKey.Properties.All(p => p.IsNullable);
+
+    /// <summary>Same type, or one derived from the other — an entry of a derived type is an instance of the
+    /// principal type a foreign key names, which is how the edges are matched at save time.</summary>
+    private static bool Related(IEntityType a, IEntityType b)
+        => a.ClrType.IsAssignableFrom(b.ClrType) || b.ClrType.IsAssignableFrom(a.ClrType);
+
+
+    /// <summary>The pending deletes by key, so that each foreign key finds its principal in one lookup.</summary>
+    private sealed class DeletedIndex
+    {
+        private readonly Dictionary<IKey, Dictionary<KeyValues, EntityEntry>> _byKey = [];
+
+        public DeletedIndex(EntityEntry[] deleted)
+        {
+            foreach (var entry in deleted)
+            {
+                foreach (var key in entry.Metadata.GetKeys())
+                {
+                    if (!_byKey.TryGetValue(key, out var entries))
+                    {
+                        _byKey[key] = entries = [];
+                    }
+                    entries.TryAdd(new KeyValues(key.Properties.Select(p => entry.Property(p.Name).OriginalValue).ToArray()), entry);
+                }
+            }
+        }
+
+        public EntityEntry? Find(IKey key, object?[] values)
+            => _byKey.TryGetValue(key, out var entries) && entries.TryGetValue(new KeyValues(values), out var entry) ? entry : null;
+    }
+
+    /// <summary>Key values compared element-wise, structurally (a <c>byte[]</c> key compares by content).</summary>
+    private readonly struct KeyValues(object?[] values) : IEquatable<KeyValues>
+    {
+        private static readonly IEqualityComparer Comparer = StructuralComparisons.StructuralEqualityComparer;
+        private readonly object?[] _values = values;
+
+        public bool Equals(KeyValues other)
+        {
+            if (_values.Length != other._values.Length)
+            {
+                return false;
+            }
+            for (var i = 0; i < _values.Length; i++)
+            {
+                if (!Comparer.Equals(_values[i], other._values[i]))
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        public override bool Equals(object? obj) => obj is KeyValues other && Equals(other);
+
+        public override int GetHashCode()
+        {
+            var hash = new HashCode();
+            foreach (var value in _values)
+            {
+                hash.Add(value is null ? 0 : Comparer.GetHashCode(value));
+            }
+            return hash.ToHashCode();
+        }
+    }
+
+    /// <summary>Two tracked entities, compared by reference.</summary>
+    private readonly record struct Pair(object Dependent, object Principal)
+    {
+        public Pair Reversed => new(Principal, Dependent);
+
+        public bool Equals(Pair other)
+            => ReferenceEquals(Dependent, other.Dependent) && ReferenceEquals(Principal, other.Principal);
+
+        public override int GetHashCode()
+            => HashCode.Combine(RuntimeHelpers.GetHashCode(Dependent), RuntimeHelpers.GetHashCode(Principal));
+    }
 
     private sealed record Edge(EntityEntry Dependent, EntityEntry Principal, IForeignKey ForeignKey);
     private sealed record CycleBreak(EntityEntry Entry, IReadOnlyList<IProperty> Properties);

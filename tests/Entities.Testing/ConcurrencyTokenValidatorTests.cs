@@ -35,6 +35,13 @@ public class ConcurrencyTokenValidatorTests
         [ConcurrencyCheck, VersionStamp] public Guid Version { get; set; }
     }
 
+    /// A stamp the client must send: an input DTO that cannot carry it refuses every update.
+    public class Booking : IEntity<int>
+    {
+        public int Id { get; set; }
+        [ConcurrencyCheck, VersionStamp(Required = true)] public Guid Version { get; set; }
+    }
+
     /// The trap: a token initializer, which a fresh mapped entity keeps when no DTO property overwrites it.
     public class Invoice : IEntity<int>
     {
@@ -122,6 +129,7 @@ public class ConcurrencyTokenValidatorTests
     public class ShopContext(DbContextOptions<ShopContext> options) : DbContext(options)
     {
         public DbSet<Order> Orders => Set<Order>();
+        public DbSet<Booking> Bookings => Set<Booking>();
         public DbSet<Invoice> Invoices => Set<Invoice>();
         public DbSet<Basket> Baskets => Set<Basket>();
         public DbSet<Note> Notes => Set<Note>();
@@ -214,6 +222,21 @@ public class ConcurrencyTokenValidatorTests
             Assert.That(issues[0].Message, Does.Contain("Order.Version").And.Contain(nameof(BareDto)));
             Assert.That(issues[0].Message, Does.Contain("last-write-wins"), "the message must carry the symptom");
             Assert.That(issues[0].Message, Does.Contain("public Guid Version { get; set; }"), "the message must carry the remedy");
+        });
+    }
+
+    [Test]
+    public async Task A_Required_Stamp_The_Input_Dto_Cannot_Carry_Is_An_Error()
+    {
+        // the write path refuses every update without the stamp, so the missing property is not a silent overwrite
+        // but a controller that answers 400 to every PUT and PATCH
+        var issues = await Issues<Booking>(new EntityMappingRegistration(typeof(Booking), typeof(OrderDto), typeof(BareDto)));
+
+        Assert.That(issues, Has.Count.EqualTo(1));
+        Assert.Multiple(() =>
+        {
+            Assert.That(issues[0].Level, Is.EqualTo(LogLevel.Error));
+            Assert.That(issues[0].Message, Does.Contain("Booking.Version").And.Contain(nameof(BareDto)).And.Contain("answers 400"));
         });
     }
 

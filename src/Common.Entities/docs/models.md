@@ -42,17 +42,20 @@ public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, Cance
     => this.SaveChangesBreakingDeleteCyclesAsync(base.SaveChangesAsync, acceptAllChangesOnSuccess, token);
 ```
 
-Pass `acceptAllChangesOnSuccess` to the extension and `base.SaveChanges` itself as the delegate: the extension
-decides what each phase may accept. It always accepts the reference-dropping `UPDATE`, because EF reads the
-delete order back from those entries; your `false` is honoured on the final save, so the deletes stay pending
-until you call `AcceptAllChanges()`. A lambda that closes over the flag instead re-raises the circular
-dependency the extension exists to prevent.
+Pass `acceptAllChangesOnSuccess` to the extension and `base.SaveChanges` itself as the delegate. The extension
+nulls the optional side with a direct `UPDATE`, tells the change tracker the database no longer holds the
+reference, and then runs the save exactly once with your flag, all inside one transaction. Nothing is accepted
+before that save returns: a save the database rejects leaves every change pending, and the retry (EF's own or
+yours) drops the reference again. `SaveChanges(false)` + `AcceptAllChanges()` therefore behaves exactly as it
+does without the extension, and the count returned is the save's own — the `UPDATE` is not counted.
 
-They null the optional side, save, and delete in a second save, inside one transaction. A save without such a
-pair is a single round trip and opens no transaction. Already inside a transaction of your own — or a
-`TransactionScope` — the two saves join it rather than opening a second one, which is what lets the pattern
-work under `EnableRetryOnFailure()` inside EF's own `CreateExecutionStrategy().Execute(...)` recipe. A bare
-`BeginTransaction()` under a retrying strategy is refused by EF's own `SaveChanges`, extension or not.
+A save without such a pair is a single round trip and opens no transaction. The change tracker is read only
+when the model has two entity types referencing each other and the provider is relational; any other context
+pays a cached lookup and nothing else, and the in-memory provider, which orders no deletes, saves the pair on
+its own. Already inside a transaction of your own — or a `TransactionScope` — the extension joins it rather
+than opening a second one, which is what lets the pattern work under `EnableRetryOnFailure()` inside EF's own
+`CreateExecutionStrategy().Execute(...)` recipe. A bare `BeginTransaction()` under a retrying strategy is
+refused by EF's own `SaveChanges`, extension or not.
 
 ## SearchObject
 

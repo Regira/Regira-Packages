@@ -91,7 +91,13 @@ builder.Services
         o.SetPageSize();
         o.AddGlobalFilterQueryBuilder<FilterHasNormalizedContentQueryBuilder>();
         o.AddPrepper<IHasAggregateKey>(x => x.AggregateKey ??= Guid.NewGuid());
-        o.UseAutoMapper();
+        // Reservation rides along inside Person's DTOs (e.Related) and has no For<>() of its own, so its maps are
+        // declared here rather than through a UseMapping call
+        o.UseAutoMapper((_, cfg) =>
+        {
+            cfg.CreateMap<ReservationInputDto, Reservation>();
+            cfg.CreateMap<Reservation, ReservationDto>();
+        });
         //o.UseMapsterMapping();
     })
     // Entity types

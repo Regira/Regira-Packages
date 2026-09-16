@@ -524,7 +524,9 @@ public static class DeleteCycleExtensions
     // own children — are a save EF Core refuses with "a circular dependency was detected in the data to be
     // saved". Dropping the reference needs an UPDATE before the DELETEs, so it cannot happen inside one
     // SaveChanges: call these FROM the DbContext's own overrides, BOTH of them, passing base.SaveChanges as
-    // the delegate. A save with no such pair calls the delegate exactly once and opens no transaction.
+    // the delegate. A save with no such pair calls the delegate exactly once and opens no transaction; the
+    // change tracker is read only when the model has two entity types referencing each other and the
+    // provider is relational (the in-memory provider orders no deletes and is passed straight through).
     // Give acceptAllChangesOnSuccess to the EXTENSION and let the delegate take it as a parameter: the
     // reference is dropped with a direct UPDATE and the delegate then runs exactly once with that flag, so
     // nothing is accepted before the save returns and a failed save leaves every change pending for the

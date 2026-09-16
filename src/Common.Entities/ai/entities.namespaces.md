@@ -247,7 +247,7 @@ Regira.Entities.Preppers.Abstractions   → EntityPrepperBase<TEntity>, IEntityP
 ### Marking a field server-owned
 ```
 Regira.Entities.Attributes   → ServerOwnedAttribute   // [ServerOwned] on the entity property
-                             → VersionStampAttribute  // [VersionStamp] beside [ConcurrencyCheck] on a token a primer sets
+                             → VersionStampAttribute  // [VersionStamp] beside [ConcurrencyCheck] on a token a primer sets; Required = true refuses an update without it (400)
 ```
 
 ### Creating a primer

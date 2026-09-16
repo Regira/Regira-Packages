@@ -14,6 +14,7 @@ public static class PersonServiceCollectionExtensions
             .For<Person, PersonSearchObject, PersonSortBy, PersonIncludes>(e =>
             {
                 e.Related(x => x.Departments);
+                e.Related(x => x.Reservations);
                 //e.Related(x => x.Subordinates);
                 e.HasAttachments(x => x.Attachments);
                 e.AddFilter<PersonQueryFilter>();

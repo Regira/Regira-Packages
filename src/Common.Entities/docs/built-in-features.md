@@ -124,7 +124,9 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
 - **A token the client leaves out is not compared** (`null`, empty, or the CLR default): the write goes through,
   only a write racing it is caught, and the empty value never overwrites the token — with `IHasConcurrencyToken`
   the primer still mints a new one. `PATCH` carries the stored value unless its body sets the token; `DELETE`
-  carries none.
+  carries none. `[VersionStamp(Required = true)]` refuses such an update instead: `EntityInputException` → 400
+  with the token as the field, thrown before anything is attached. It serves on the marker's implementing
+  `ConcurrencyToken` property too. An insert is never refused, and `PATCH` still passes on the merge base.
 - **The token must move on every write.** `IHasConcurrencyToken` takes care of it: `UseDefaults()` declares its
   `ConcurrencyToken` a concurrency token and `HasConcurrencyTokenDbPrimer` mints a new one on every insert and
   update. A token the database moves (SQL Server `rowversion`, PostgreSQL `xmin`) needs nothing; an
@@ -142,8 +144,9 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
 - Startup validation warns when a DTO has no property for a version stamp, and when the input DTO — or an entity
   that is its own input DTO — initializes it, so a client that omits the stamp gets a 409 instead of an unchecked
   write. It reports an error when the entity initializes its stamp while the input DTO has no property to overwrite
-  it — every write would answer 409 — and warns about `[VersionStamp]` on a property the model does not treat as a
-  concurrency token. A data column needs none of this, so an undeclared token gets these findings only as Info.
+  it — every write would answer 409 — or when the input DTO has no property for a required stamp — every update
+  would answer 400 — and warns about `[VersionStamp]` on a property the model does not treat as a concurrency
+  token. A data column needs none of this, so an undeclared token gets these findings only as Info.
 
 
 ## DbContext

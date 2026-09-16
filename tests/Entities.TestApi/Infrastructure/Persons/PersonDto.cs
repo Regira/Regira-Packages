@@ -19,6 +19,7 @@ public record PersonDto
     public PersonDto? Supervisor { get; set; }
     public ICollection<PersonDto>? Subordinates { get; set; }
     public ICollection<DepartmentDto>? Departments { get; set; }
+    public ICollection<ReservationDto>? Reservations { get; set; }
 
     public bool? HasAttachment { get; set; }
 }

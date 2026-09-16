@@ -12,6 +12,20 @@ namespace Regira.Entities.Attributes;
 /// racing the save is caught. Declare it whenever the primer can produce the value the client already holds, such as
 /// a hash of the content: a stale client sending back what it read would otherwise overwrite the newer row.
 /// </para>
+/// <para>
+/// A stamp the client leaves out (<c>null</c>, empty, the CLR default) is not compared: the write goes through, and
+/// only a write racing it is caught. <see cref="Required"/> refuses such a write instead. The attribute also serves
+/// on the implementing property of <c>IHasConcurrencyToken</c>, which is a stamp already, for that purpose alone.
+/// </para>
 /// </summary>
 [AttributeUsage(AttributeTargets.Property, AllowMultiple = false, Inherited = true)]
-public sealed class VersionStampAttribute : Attribute;
+public sealed class VersionStampAttribute : Attribute
+{
+    /// <summary>
+    /// Refuses an update whose client left the stamp out, with <c>EntityInputException</c> — HTTP 400, the property
+    /// name as the field — instead of writing unchecked. For a client that must always prove what it read. A
+    /// <c>PATCH</c> without the token in its body still passes: the merge base supplies the value read at
+    /// <c>PATCH</c> time. An insert is never refused, and a delete carries no client token to require.
+    /// </summary>
+    public bool Required { get; set; }
+}
