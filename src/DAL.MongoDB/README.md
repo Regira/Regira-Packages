@@ -28,7 +28,7 @@ Regira DAL.MongoDB provides lightweight MongoDB connectivity using the MongoDB D
 | `AuthenticationDatabase` | `string?` | `authSource` — the database holding the credentials, when that is not `DatabaseName`. Left empty, MongoDB resolves it itself: `DatabaseName`, or `admin` when no database is named |
 | `UseSecure` (UseTls) | `bool` | TLS/SSL |
 | `UseSrv` | `bool` | The `mongodb+srv://` scheme, where DNS supplies the hosts and the port |
-| `UriOptions` | `IDictionary<string, string>` | Every other connection-string option — `authMechanism`, `replicaSet`, `directConnection`, `readPreference`, `tlsCAFile`, … — unescaped |
+| `UriOptions` | `IList<KeyValuePair<string, string>>` | Every other connection-string option — `authMechanism`, `replicaSet`, `directConnection`, `readPreference`, `tlsCAFile`, … — in order and unescaped, a repeated one once per occurrence; an explicit `tls=false` is kept too, and left out while `UseSecure` is on |
 
 ```csharp
 var settings = new MongoSettings("localhost", "mydb");

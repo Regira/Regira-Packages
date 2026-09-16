@@ -850,15 +850,20 @@ A token you declare yourself goes through the same check:
 |---|---|---|
 | SQL Server `rowversion` | `[Timestamp] public byte[]? RowVersion { get; set; }` | the database, on every `UPDATE` |
 | PostgreSQL `xmin` | `[Timestamp] public uint Version { get; set; }` (Npgsql maps it to `xmin`) | the database |
-| Application-owned | `[ConcurrencyCheck] public Guid Version { get; set; }` | **a primer you register** — `HasConcurrencyTokenDbPrimer` is the one to copy |
+| Application-owned | `[ConcurrencyCheck, VersionStamp] public Guid Version { get; set; }` | **a primer you register** — `HasConcurrencyTokenDbPrimer` is the one to copy |
 | Data column | `[ConcurrencyCheck] public string? LastName { get; set; }` | nothing — the client edits it |
 
-A token counts as a version stamp when the database generates it on update, when it is the marker's
-`ConcurrencyToken`, or when a prepper or primer changes it on the write. **A token nothing moves is a data column:**
-the client's value is the edit itself, so it is written as sent — a change or a clear — and compared with nothing
-the client read: only a write racing the save is caught. That is also what an application-owned token without its
-primer gets, so two clients holding the same value both pass. The flip side: a primer that rewrites a data column
-in place (trimming, rounding) makes it look like a version stamp, and the edit it rewrote answers 409.
+A token is a **version stamp** when the database generates it on update, when it is the marker's
+`ConcurrencyToken`, or when it carries `[VersionStamp]` (`Regira.Entities.Attributes`). Declare an
+application-owned token so: the check then compares the client's value on every write, and startup validation
+checks its DTOs as below. An undeclared token is treated as a stamp only on a write where a prepper or primer
+changes it — which misses a primer that can produce the value the client already holds (a hash of the content: the
+stale client that sends back what it read is let through) — and startup validation reports its findings only as
+Info. **A token nothing moves is a data column:** the client's value is the edit itself, so it is written as sent — a
+change or a clear — and compared with nothing the client read: only a write racing the save is caught. That is also
+what an application-owned token without its primer gets, so two clients holding the same value both pass. The flip
+side: a primer that rewrites an undeclared data column in place (trimming, rounding) makes it look like a version
+stamp, and the edit it rewrote answers 409.
 
 **2. Carry it on both DTOs, uninitialized** — `public Guid ConcurrencyToken { get; set; }` on `OrderDto` and
 `OrderInputDto`. Startup validation reports the shapes that break the check:
@@ -869,6 +874,10 @@ in place (trimming, rounding) makes it look like a version stamp, and the edit i
   mapper builds a fresh entity per request, so every `PUT`/`PATCH` carries a token the row never held and
   answers 409 (error). An initializer on the input DTO — or on the entity's token when the entity is its own input
   DTO — does the same to a client that omits the token (warning).
+- `[VersionStamp]` on a property the model does not treat as a concurrency token: nothing is compared (warning).
+
+These apply to declared version stamps; a data column needs none of them, so an undeclared token only gets them as
+Info.
 
 **Deleting by key still works, at one read per row.** A hard delete is commonly issued from a stub —
 `Remove(new Order { Id = id })` — which carries no token, and comparing the stored row against `Guid.Empty` would

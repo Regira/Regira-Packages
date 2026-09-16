@@ -75,6 +75,8 @@ internal static class AsposeLicense
             }
             catch (Exception ex)
             {
+                // a rejected licence can leave Aspose in evaluation mode, so an earlier one no longer counts as applied
+                _registered = null;
                 throw new InvalidOperationException($"Aspose.Words rejected the licence from {location.Source}: {ex.Message}", ex);
             }
             _registered = key;

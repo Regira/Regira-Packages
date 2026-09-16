@@ -86,14 +86,14 @@ public class MongoSettingsTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(settings.UriOptions, Is.EquivalentTo(new Dictionary<string, string>
+            Assert.That(settings.UriOptions, Is.EqualTo(new Dictionary<string, string>
             {
                 ["authMechanism"] = "MONGODB-X509",
                 ["replicaSet"] = "rs0",
                 ["directConnection"] = "true",
                 ["readPreference"] = "secondaryPreferred",
                 ["tlsCAFile"] = @"C:\certs\ca.pem"
-            }));
+            }.ToList()));
             Assert.That(settings.AuthenticationDatabase, Is.EqualTo("$external"));
             // what the driver makes of the URI the settings write back
             Assert.That(client.Credential.Mechanism, Is.EqualTo("MONGODB-X509"));
@@ -109,7 +109,7 @@ public class MongoSettingsTests
     public void BuildConnectionString_Escapes_Option_Values()
     {
         var settings = new MongoSettings("mongo.example.com", "shop") { AuthenticationDatabase = "$external" };
-        settings.UriOptions["appName"] = "orders & invoices";
+        settings.UriOptions.Add(new KeyValuePair<string, string>("appName", "orders & invoices"));
 
         var uri = settings.BuildConnectionString(new KeyValuePair<string, string>("replicaSet", "rs=0;eu"));
         var url = MongoUrl.Create(uri);
@@ -120,6 +120,34 @@ public class MongoSettingsTests
             Assert.That(url.AuthenticationSource, Is.EqualTo("$external"));
             Assert.That(url.ApplicationName, Is.EqualTo("orders & invoices"));
             Assert.That(url.ReplicaSetName, Is.EqualTo("rs=0;eu"));
+        });
+    }
+
+    [Test]
+    public void A_Repeated_Option_Survives_The_Round_Trip()
+    {
+        const string uri = "mongodb://mongo.example.com:27017/shop?readPreference=secondary&readPreferenceTags=dc%3Any&readPreferenceTags=dc%3Aeu";
+
+        var clone = MongoSettings.FromConnectionString(uri).Clone<MongoSettings>();
+        var tagSets = MongoUrl.Create(clone.BuildConnectionString()).ReadPreference.TagSets;
+
+        Assert.That(tagSets.Select(set => string.Join(",", set.Tags.Select(t => $"{t.Name}:{t.Value}"))), Is.EqualTo(new[] { "dc:ny", "dc:eu" }));
+    }
+
+    [Test]
+    public void An_Srv_Uri_That_Turns_Tls_Off_Keeps_It_Off()
+    {
+        // an SRV connection uses TLS unless told otherwise, so dropping tls=false would turn it back on
+        var clone = MongoSettings.FromConnectionString("mongodb+srv://cluster0.abcde.mongodb.net/shop?tls=false").Clone<MongoSettings>();
+        var tlsOn = new MongoSettings("cluster0.abcde.mongodb.net", "shop") { UseSrv = true, UseSecure = true };
+        tlsOn.UriOptions.Add(new KeyValuePair<string, string>("tls", "false"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(clone.UseSecure, Is.False);
+            Assert.That(clone.BuildConnectionString(), Does.EndWith("/shop?tls=false"));
+            // UseSecure wins over a kept tls=false
+            Assert.That(tlsOn.BuildConnectionString(), Does.EndWith("/shop?tls=true"));
         });
     }
 

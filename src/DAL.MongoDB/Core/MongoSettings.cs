@@ -42,18 +42,20 @@ public class MongoSettings(
 
     /// <summary>
     /// Every other option of the connection string — <c>authMechanism</c>, <c>replicaSet</c>, <c>directConnection</c>,
-    /// <c>readPreference</c>, <c>tlsCAFile</c>, … — by name, unescaped.
+    /// <c>readPreference</c>, <c>tlsCAFile</c>, … — in order, unescaped, a repeated one (<c>readPreferenceTags</c>)
+    /// once per occurrence.
     /// </summary>
     /// <remarks>
     /// Read by <see cref="FromConnectionString"/> and written back by
     /// <see cref="BuildConnectionString(bool, KeyValuePair{string, string}[])"/>, so the tools and the driver connect the
-    /// way the connection string says — an X.509 login, a replica set reached through one member. <c>authSource</c>
-    /// and <c>tls</c> are not kept here: <see cref="AuthenticationDatabase"/> and
-    /// <see cref="DbSettingsBase.UseSecure"/> hold them.
+    /// way the connection string says — an X.509 login, a replica set reached through one member. <c>authSource</c> is
+    /// not kept here, <see cref="AuthenticationDatabase"/> holds it, and neither is a <c>tls</c> that turns TLS on,
+    /// which <see cref="DbSettingsBase.UseSecure"/> holds. A <c>tls=false</c> is kept — an SRV connection uses TLS
+    /// unless told otherwise — and is left out while <see cref="DbSettingsBase.UseSecure"/> is on.
     /// </remarks>
-    public IDictionary<string, string> UriOptions { get; } = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    public IList<KeyValuePair<string, string>> UriOptions { get; } = new List<KeyValuePair<string, string>>();
 
-    private static readonly HashSet<string> ModelledOptions = new(StringComparer.OrdinalIgnoreCase) { "authSource", "tls", "ssl" };
+    private static readonly HashSet<string> TlsOptions = new(StringComparer.OrdinalIgnoreCase) { "tls", "ssl" };
 
 
     public static MongoSettings FromConnectionString(string connectionString)
@@ -79,9 +81,11 @@ public class MongoSettings(
         };
         foreach (var (name, value) in ReadQuery(connectionString))
         {
-            if (!ModelledOptions.Contains(name))
+            var modelled = name.Equals("authSource", StringComparison.OrdinalIgnoreCase)
+                           || (TlsOptions.Contains(name) && !value.Equals("false", StringComparison.OrdinalIgnoreCase));
+            if (!modelled)
             {
-                settings.UriOptions[name] = value;
+                settings.UriOptions.Add(new KeyValuePair<string, string>(name, value));
             }
         }
         return settings;
@@ -145,7 +149,7 @@ public class MongoSettings(
         {
             options.Add(new KeyValuePair<string, string>("tls", "true"));
         }
-        options.AddRange(UriOptions);
+        options.AddRange(UriOptions.Where(option => !(UseSecure && TlsOptions.Contains(option.Key))));
         options.AddRange(extraOptions);
         if (options.Any())
         {

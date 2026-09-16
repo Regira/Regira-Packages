@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.DependencyInjection;
+using Regira.Entities.Attributes;
 using Regira.Entities.DependencyInjection.Mapping;
 using Regira.Entities.EFcore.Conventions;
 using Regira.Entities.EFcore.Extensions;
@@ -16,8 +17,10 @@ namespace Regira.Entities.DependencyInjection.Validation;
 /// write path compares every version stamp — a concurrency token the server moves on the write — with the value the
 /// client sent, so the check exists only when the model declares the token, holds only when every write moves it,
 /// and reaches the client only through the DTOs. A token nothing moves is a data column, compared with the stored
-/// row; whether a primer moves an application-owned token is not visible statically, so the DTO checks below judge
-/// every token as a version stamp:
+/// row, and none of the DTO checks below applies to it. Whether a primer moves a token is not visible statically, so
+/// the DTO checks judge declared stamps only — a token the database generates on update,
+/// <see cref="IHasConcurrencyToken"/>'s, or one carrying <c>[VersionStamp]</c> — and report their findings for any
+/// other token as Info, in case a primer does make it a stamp:
 /// <list type="bullet">
 /// <item><b>Error</b> — an <see cref="IHasConcurrencyToken"/> entity whose model does not treat <c>ConcurrencyToken</c>
 /// as a concurrency token, because the wiring that declares it never reached the context (a non-generic
@@ -36,6 +39,8 @@ namespace Regira.Entities.DependencyInjection.Validation;
 /// <item><b>Error</b> — the entity initializes its token (<c>= Guid.NewGuid()</c>) and a separate input DTO has no
 /// property for it. The mapper builds a fresh entity for every request, so every PUT and PATCH carries a token the
 /// row never held and answers 409.</item>
+/// <item><b>Warning</b> — a property carries <c>[VersionStamp]</c> but the model does not treat it as a concurrency
+/// token, so nothing is compared.</item>
 /// </list>
 /// <para>
 /// Detected statically, from the model DI builds, the last <c>UseMapping&lt;TDto, TInputDto&gt;()</c> registration and
@@ -170,7 +175,7 @@ internal sealed class ConcurrencyTokenValidator : IEntityRegistrationValidator
                 var issue = InspectDtos(mapping, token);
                 if (issue != null)
                 {
-                    yield return issue;
+                    yield return AsVersionStampIssue(mapping.EntityType, token, issue);
                 }
             }
         }
@@ -190,14 +195,41 @@ internal sealed class ConcurrencyTokenValidator : IEntityRegistrationValidator
                 }
 
                 var entity = entityClrType.Name;
-                yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
+                yield return AsVersionStampIssue(entityClrType, token, new EntityValidationIssue(EntityValidationSeverity.Warning,
                     $"{entity}.{token.Name} is a concurrency token with an initializer, and {entity} is its own input DTO. " +
                     $"A request that leaves the token out — or code that modifies a new {entity} without setting it — carries the initializer's value instead of none, " +
                     "so it answers 409 where an absent token skips the check. " +
-                    $"ACTION: remove the initializer from {entity}.{token.Name} and mint the token in a primer instead. {SeeAlso}");
+                    $"ACTION: remove the initializer from {entity}.{token.Name} and mint the token in a primer instead. {SeeAlso}"));
+            }
+        }
+
+        foreach (var entityClrType in registered)
+        {
+            foreach (var owner in contexts.Where(c => c.Model.FindEntityType(entityClrType) != null))
+            {
+                var declared = owner.Model.FindEntityType(entityClrType)!.GetProperties()
+                    .Where(p => !p.IsConcurrencyToken && p.PropertyInfo?.IsDefined(typeof(VersionStampAttribute), inherit: true) == true);
+                foreach (var property in declared)
+                {
+                    yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
+                        $"{entityClrType.Name}.{property.Name} carries [VersionStamp], but {owner.ContextType.Name}'s model does not treat it as a concurrency token, " +
+                        "so nothing is compared and every write is last-write-wins. " +
+                        $"ACTION: add [ConcurrencyCheck] to {entityClrType.Name}.{property.Name}, or .IsConcurrencyToken() in OnModelCreating. {SeeAlso}");
+                }
             }
         }
     }
+
+    /// <summary>
+    /// A DTO finding as it applies to <paramref name="token"/>: as found for a declared version stamp, and as Info for
+    /// any other token — a data column needs none of it, and only a primer that moves the token makes it apply.
+    /// </summary>
+    private static EntityValidationIssue AsVersionStampIssue(Type entityType, IProperty token, EntityValidationIssue issue)
+        => token.IsDeclaredVersionStamp()
+            ? issue
+            : new EntityValidationIssue(EntityValidationSeverity.Info,
+                $"{entityType.Name}.{token.Name} is a concurrency token not declared a version stamp, so it is compared as a data column — with the stored row — " +
+                "unless a primer or prepper changes it on the write. If one does, declare it [VersionStamp], and then this applies: " + issue.Message);
 
     private static IEntityType? FindEntityType(IEnumerable<InspectedContext> contexts, Type entityType)
         => contexts.Select(c => c.Model.FindEntityType(entityType)).FirstOrDefault(t => t != null);

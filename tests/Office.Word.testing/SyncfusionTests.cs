@@ -94,6 +94,13 @@ public class SyncfusionTests() : WordTestsBase(CreateService(), "Syncfusion")
     [Test]
     public override Task A_Null_Or_Unused_Parameter_Is_Harmless() => base.A_Null_Or_Unused_Parameter_Is_Harmless();
 
+    [TestCase(HeaderFooterType.Even, true)]
+    [TestCase(HeaderFooterType.Even, false)]
+    [TestCase(HeaderFooterType.FirstPage, true)]
+    [TestCase(HeaderFooterType.FirstPage, false)]
+    public override Task A_Story_Given_For_Some_Pages_Leaves_The_Other_Story_On_Them(HeaderFooterType type, bool specialHeader)
+        => base.A_Story_Given_For_Some_Pages_Leaves_The_Other_Story_On_Them(type, specialHeader);
+
     // EPub is absent: unavailable on .NET Core (see Convert_To_EPub_Is_Not_Supported).
     [TestCase(FileFormat.Pdf, "converted.pdf")]
     [TestCase(FileFormat.Html, "converted.html")]

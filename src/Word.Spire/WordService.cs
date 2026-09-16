@@ -169,22 +169,50 @@ public class WordService : IWordService
             ReplaceGlobalParameters(doc, input.GlobalParameters);
         }
 
-        if (input.Headers?.Any() == true)
+        if (input.Headers?.Any() == true || input.Footers?.Any() == true)
         {
-            foreach (var inputHeader in input.Headers)
+            var pageSetup = doc.Sections[0].PageSetup;
+            var hadFirstPage = pageSetup.DifferentFirstPageHeaderFooter;
+            var hadEvenPages = pageSetup.DifferentOddAndEvenPagesHeaderFooter;
+
+            foreach (var inputHeader in input.Headers ?? [])
             {
                 AddHeader(doc, CreateDocument(inputHeader.Template, reference), inputHeader.Type);
             }
-        }
-        if (input.Footers?.Any() == true)
-        {
-            foreach (var inputFooter in input.Footers)
+            foreach (var inputFooter in input.Footers ?? [])
             {
                 AddFooter(doc, CreateDocument(inputFooter.Template, reference), inputFooter.Type);
             }
+
+            FillSwitchedOnStories(doc,
+                !hadFirstPage && pageSetup.DifferentFirstPageHeaderFooter,
+                !hadEvenPages && pageSetup.DifferentOddAndEvenPagesHeaderFooter);
         }
 
         return ProcessInputOptions(doc, input.Options, reference);
+    }
+
+    /// <summary>
+    /// A first-page or even-page header switches those pages to stories of their own — footers included — so the
+    /// footer the input left alone would vanish from them, and the other way round. Where adding the input switched
+    /// such stories on, an empty one takes the default story's content.
+    /// </summary>
+    private void FillSwitchedOnStories(Document doc, bool firstPage, bool evenPages)
+    {
+        var switchedOn = new[] { (firstPage, HeaderFooterType.FirstPage), (evenPages, HeaderFooterType.Even) };
+        foreach (var (_, type) in switchedOn.Where(x => x.Item1))
+        {
+            FillWhenEmpty(doc.GetHeader(type), doc.GetHeader());
+            FillWhenEmpty(doc.GetFooter(type), doc.GetFooter());
+        }
+    }
+
+    private void FillWhenEmpty(HeaderFooter target, HeaderFooter source)
+    {
+        if (IsEmpty(target) && !IsEmpty(source))
+        {
+            target.ReplaceChildObjects(source.ChildObjects);
+        }
     }
     protected internal Stream ConvertDocument(Document doc, ConversionOptions options)
     {

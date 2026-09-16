@@ -22,7 +22,7 @@ public class PgToolArgumentsTests
         Assert.Multiple(() =>
         {
             Assert.That(Path.GetFileNameWithoutExtension(processHelper.FileName), Is.EqualTo("pg_dump"));
-            Assert.That(processHelper.Arguments, Does.StartWith("--host \"db.internal\" --port 5433 --username \"ops\""));
+            Assert.That(processHelper.Arguments, Does.StartWith("--host \"db.internal\" --port \"5433\" --username \"ops\""));
             Assert.That(processHelper.Arguments, Does.EndWith(" \"sales\""));
             Assert.That(processHelper.Arguments, Does.Not.Contain("s3cr%t"));
             Assert.That(processHelper.EnvironmentVariables!["PGPASSWORD"], Is.EqualTo("s3cr%t"));

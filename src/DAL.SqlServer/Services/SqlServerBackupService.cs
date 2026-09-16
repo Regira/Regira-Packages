@@ -49,22 +49,32 @@ public class SqlServerBackupService(SqlServerOptions options, ILogger<SqlServerB
     /// </summary>
     private async Task DeleteServerFile(SqlConnection cn, BackupLocation location)
     {
+        Exception? failure = null;
         try
         {
-            // xp_delete_files exists from SQL Server 2019; xp_delete_file, before it, is the only way, though a
-            // later server's backup does not pass its format check
-            await cn.ExecuteAsync("""
+            // xp_delete_files exists from SQL Server 2019; xp_delete_file, before it, is the only way, and can pass
+            // over a file without an error — so the outcome is read back with xp_fileexist rather than assumed
+            var stillThere = await cn.ExecuteScalarAsync<int>("""
                 IF OBJECT_ID(N'master.sys.xp_delete_files') IS NOT NULL
                     EXEC master.sys.xp_delete_files @path;
                 ELSE
                     EXEC master.sys.xp_delete_file 0, @path;
+                DECLARE @file TABLE (FileExists int, IsDirectory int, ParentDirectoryExists int);
+                INSERT @file EXEC master.sys.xp_fileexist @path;
+                SELECT FileExists FROM @file;
                 """, new { path = location.ServerPath });
+            if (stillThere == 0)
+            {
+                return;
+            }
         }
         catch (SqlException ex)
         {
-            logger?.LogWarning(ex, "The backup file {Path} is left on the server: this process cannot reach it at {LocalPath}, and SQL Server did not delete it",
-                location.ServerPath, location.LocalPath);
+            failure = ex;
         }
+
+        logger?.LogWarning(failure, "The backup file {Path} is left on the server: this process cannot reach it at {LocalPath}, and SQL Server did not delete it",
+            location.ServerPath, location.LocalPath);
     }
 
     private static async Task<byte[]> ReadBackupFile(BackupLocation location)

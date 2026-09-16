@@ -117,7 +117,9 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
 - **A token nothing moves is a data column** (`[ConcurrencyCheck] public string? LastName`). The client's value is
   the edit itself, so it is written as sent — a change or a clear — and the check compares the stored row: only a
   write racing the save is caught. A token is a version stamp when the database generates it on update, when it is
-  `IHasConcurrencyToken.ConcurrencyToken`, or when a prepper or primer changes it on the write.
+  `IHasConcurrencyToken.ConcurrencyToken`, or when it carries `[VersionStamp]` (`Regira.Entities.Attributes`) —
+  declare an application-owned token so. An undeclared token counts as one only on a write where a prepper or primer
+  changes it, which misses a primer that reproduces the client's value (a content hash).
 - **A token the client leaves out is not compared** (`null`, empty, or the CLR default): the write goes through,
   only a write racing it is caught, and the empty value never overwrites the token — with `IHasConcurrencyToken`
   the primer still mints a new one. `PATCH` carries the stored value unless its body sets the token; `DELETE`
@@ -132,10 +134,11 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
   `[EntityConstraintConflict]` attribute.
 - **Direct `SaveChanges()` callers** (seeding, jobs, custom services): catch `EntityConcurrencyException`, not
   `DbUpdateConcurrencyException`. A failed save keeps the change tracker; reload and retry in a fresh scope.
-- Startup validation warns when a DTO has no property for a token, and when the input DTO — or an entity that is
-  its own input DTO — initializes it, so a client that omits the token gets a 409 instead of an unchecked write. It
-  reports an error when the entity initializes its token while the input DTO has no property to overwrite it —
-  every write would answer 409.
+- Startup validation warns when a DTO has no property for a version stamp, and when the input DTO — or an entity
+  that is its own input DTO — initializes it, so a client that omits the stamp gets a 409 instead of an unchecked
+  write. It reports an error when the entity initializes its stamp while the input DTO has no property to overwrite
+  it — every write would answer 409 — and warns about `[VersionStamp]` on a property the model does not treat as a
+  concurrency token. A data column needs none of this, so an undeclared token gets these findings only as Info.
 
 
 ## DbContext

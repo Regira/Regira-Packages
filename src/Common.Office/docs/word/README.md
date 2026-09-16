@@ -141,7 +141,7 @@ Docx  Doc  Dotx  Dot  Docm  Dotm  Pdf  Html  Rtf  Odt  EPub  Jpeg  Png
 | Property | Type | Description |
 |----------|------|-------------|
 | `Template` | `IMemoryFile` | Template fragment for the header/footer |
-| `Type` | `HeaderFooterType` | `Default`, `FirstPage`, `Even`, `Odd` — `Even` also switches the document to separate odd and even pages, so the `Default` header then serves odd pages only |
+| `Type` | `HeaderFooterType` | `Default`, `FirstPage`, `Even`, `Odd` — `FirstPage` and `Even` give those pages stories of their own, headers and footers alike: the `Default` story then serves the other pages, and a story given no `FirstPage`/`Even` version repeats its default on those pages |
 
 ## Implementation notes
 
@@ -193,7 +193,7 @@ services.AddAsposeWord(o => o.LicensePath = configuration["Aspose:LicensePath"])
 
 When none of the four resolves — a configuration key that is missing, say — constructing `WordService` throws rather than produce evaluation output unnoticed. Set `AllowEvaluation` to accept that output, for a trial or a test run; a process that already holds a licence needs neither.
 
-> **Licence:** required. Without one Aspose.Words runs in evaluation mode: it puts *"Created with an evaluation copy of Aspose.Words…"* at the top of every document and *"Evaluation Only. Created with Aspose.Words…"* in its header — conversions and rendered pages included — and cuts documents short after a few hundred paragraphs. The banners are ordinary text, so check for their absence, and that the end of a long document survives, to confirm a licence works. Aspose sells developer, site and metered licences, which differ in the number of developers and locations and in whether public-facing web apps and SaaS are covered ([Aspose.Words for .NET pricing](https://purchase.aspose.com/pricing/words/net/)). A free 30-day temporary licence is available on request.
+> **Licence:** required. Without one Aspose.Words runs in evaluation mode: it puts *"Created with an evaluation copy of Aspose.Words…"* at the top of every document and *"Evaluation Only. Created with Aspose.Words…"* in place of its own headers and footers — conversions and rendered pages included — and cuts documents short after a few hundred paragraphs. The banners are ordinary text, so check for their absence, and that the end of a long document survives, to confirm a licence works. Aspose sells developer, site and metered licences, which differ in the number of developers and locations and in whether public-facing web apps and SaaS are covered ([Aspose.Words for .NET pricing](https://purchase.aspose.com/pricing/words/net/)). A free 30-day temporary licence is available on request.
 
 > **Format limits:** `Convert` throws `NotSupportedException` only for `Png`/`Jpeg` output (use `ToImages`).
 

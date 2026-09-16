@@ -47,7 +47,8 @@ public class ConcurrencyTokenTests
     {
         public int Id { get; set; }
         public string? Status { get; set; }
-        /// An application-owned token, minted by <see cref="VersionPrimer"/>.
+        /// An application-owned token, minted by <see cref="VersionPrimer"/> — left undeclared, so it is a stamp because
+        /// the primer moves it; <see cref="Page"/> covers the declared form.
         [ConcurrencyCheck] public Guid Version { get; set; }
         public ICollection<OrderLine>? Lines { get; set; }
     }
@@ -59,6 +60,28 @@ public class ConcurrencyTokenTests
         public string? Product { get; set; }
         public int Quantity { get; set; }
         [ConcurrencyCheck] public Guid Version { get; set; }
+    }
+
+    /// A stamp the primer derives from the content: a client sending back what it read gets the same value.
+    public class Page : IEntity<int>
+    {
+        public int Id { get; set; }
+        public string? Content { get; set; }
+        [ConcurrencyCheck, VersionStamp] public string? ETag { get; set; }
+    }
+
+    public class ETagPrimer : EntityPrimerBase<Page>
+    {
+        public static string Hash(string? content) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(content ?? "")));
+
+        public override Task PrepareAsync(Page entity, EntityEntry entry, CancellationToken token = default)
+        {
+            if (entry.State is EntityState.Modified or EntityState.Added)
+            {
+                entity.ETag = Hash(entity.Content);
+            }
+            return Task.CompletedTask;
+        }
     }
 
     /// A token on a data column: the client edits it, and nothing on the server moves it.
@@ -92,6 +115,7 @@ public class ConcurrencyTokenTests
         public DbSet<Ticket> Tickets => Set<Ticket>();
         public DbSet<Article> Articles => Set<Article>();
         public DbSet<Customer> Customers => Set<Customer>();
+        public DbSet<Page> Pages => Set<Page>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -117,13 +141,14 @@ public class ConcurrencyTokenTests
 
         var services = new ServiceCollection();
         services.AddDbContext<ShopContext>(db => db.UseSqlite(_connection));
-        services.UseEntities<ShopContext>(o => o.UseDefaults().AddPrimer<VersionPrimer>())
+        services.UseEntities<ShopContext>(o => o.UseDefaults().AddPrimer<VersionPrimer>().AddPrimer<ETagPrimer>())
             .For<Order>(e => e
                 .Related(x => x.Lines)
                 .Includes((query, _) => query.Include(x => x.Lines)))
             .For<Ticket>()
             .For<Article>()
-            .For<Customer>();
+            .For<Customer>()
+            .For<Page>();
         _sp = services.BuildServiceProvider();
 
         await using var db = Raw();
@@ -337,6 +362,28 @@ public class ConcurrencyTokenTests
             Assert.That(current, Is.Not.EqualTo(read), "the trigger must have moved the token, or the refusal proves nothing");
             Assert.That(stored.Title, Is.EqualTo("Fresh"));
             Assert.That(stored.RowVersion, Is.EqualTo(current + 1), "the store owns the token: the write must not set it");
+        });
+    }
+
+    [Test]
+    public async Task A_Declared_Stamp_Is_Compared_When_The_Primer_Reproduces_The_Clients_Value()
+    {
+        var page = new Page { Content = "Draft" };
+        await Write(page);
+        var read = page.ETag;
+        await OtherWriter<Page>(page.Id, x => { x.Content = "Edited elsewhere"; x.ETag = ETagPrimer.Hash(x.Content); });
+
+        // the stale client writes back exactly what it read: the primer computes the ETag it already holds
+        Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(new Page { Id = page.Id, Content = "Draft", ETag = read }));
+        var afterRefusal = (await Find<Page>(page.Id)).Content;
+        await Write(new Page { Id = page.Id, Content = "Fresh", ETag = ETagPrimer.Hash("Edited elsewhere") });
+        var afterCurrentWrite = (await Find<Page>(page.Id)).Content;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(read, Is.EqualTo(ETagPrimer.Hash("Draft")));
+            Assert.That(afterRefusal, Is.EqualTo("Edited elsewhere"), "the other writer's change must survive");
+            Assert.That(afterCurrentWrite, Is.EqualTo("Fresh"));
         });
     }
 

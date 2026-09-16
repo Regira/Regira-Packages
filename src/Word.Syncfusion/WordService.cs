@@ -175,8 +175,20 @@ public class WordService : IWordService
         using var nesting = NestedDocumentGuard.Enter();
 
         var doc = LoadDocument(input.Template);
-        reference ??= doc;
+        try
+        {
+            return FillDocument(doc, input, reference ?? doc);
+        }
+        catch
+        {
+            // the caller never receives it, so nothing else would release it
+            doc.Dispose();
+            throw;
+        }
+    }
 
+    private WordDocument FillDocument(WordDocument doc, WordTemplateInput input, WordDocument reference)
+    {
         if (input.DocumentParameters?.Any() == true)
         {
             InsertDocuments(doc, input.DocumentParameters);
@@ -195,25 +207,53 @@ public class WordService : IWordService
             ReplaceGlobalParameters(doc, input.GlobalParameters);
         }
 
-        if (input.Headers?.Any() == true)
+        if (input.Headers?.Any() == true || input.Footers?.Any() == true)
         {
-            foreach (var inputHeader in input.Headers)
+            var pageSetup = doc.Sections[0].PageSetup;
+            var hadFirstPage = pageSetup.DifferentFirstPage;
+            var hadEvenPages = pageSetup.DifferentOddAndEvenPages;
+
+            foreach (var inputHeader in input.Headers ?? [])
             {
                 // AddHeader clones what it takes, so the source can go
                 using var headerDoc = CreateDocument(inputHeader.Template, reference);
                 AddHeader(doc, headerDoc, inputHeader.Type);
             }
-        }
-        if (input.Footers?.Any() == true)
-        {
-            foreach (var inputFooter in input.Footers)
+            foreach (var inputFooter in input.Footers ?? [])
             {
                 using var footerDoc = CreateDocument(inputFooter.Template, reference);
                 AddFooter(doc, footerDoc, inputFooter.Type);
             }
+
+            FillSwitchedOnStories(doc,
+                !hadFirstPage && pageSetup.DifferentFirstPage,
+                !hadEvenPages && pageSetup.DifferentOddAndEvenPages);
         }
 
         return ProcessInputOptions(doc, input.Options, reference);
+    }
+
+    /// <summary>
+    /// A first-page or even-page header switches those pages to stories of their own — footers included — so the
+    /// footer the input left alone would vanish from them, and the other way round. Where adding the input switched
+    /// such stories on, an empty one takes the default story's content.
+    /// </summary>
+    private static void FillSwitchedOnStories(WordDocument doc, bool firstPage, bool evenPages)
+    {
+        var switchedOn = new[] { (firstPage, HeaderFooterType.FirstPage), (evenPages, HeaderFooterType.Even) };
+        foreach (var (_, type) in switchedOn.Where(x => x.Item1))
+        {
+            FillWhenEmpty(doc.GetHeader(type), doc.GetHeader());
+            FillWhenEmpty(doc.GetFooter(type), doc.GetFooter());
+        }
+    }
+
+    private static void FillWhenEmpty(WTextBody target, WTextBody source)
+    {
+        if (target.IsEmpty() && !source.IsEmpty())
+        {
+            target.ReplaceChildEntities(source.ChildEntities);
+        }
     }
 
     protected internal WordDocument LoadDocument(IMemoryFile? template)

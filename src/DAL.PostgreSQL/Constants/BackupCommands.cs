@@ -7,12 +7,12 @@ namespace Regira.DAL.PostgreSQL.Constants;
 /// </summary>
 public class BackupCommands
 {
-    public static string SchemaBackup => @"--host ""{Host}"" --port {Port} --username ""{Username}"" --no-password --format custom --verbose --file ""{TargetPath}"" {SchemasArgs} ""{SourceDb}""";
-    public static string FullBackup => @"--host ""{Host}"" --port {Port} --username ""{Username}"" --no-password --format custom --blobs --verbose --file ""{TargetPath}"" ""{SourceDb}""";
+    public static string SchemaBackup => @"--host ""{Host}"" --port ""{Port}"" --username ""{Username}"" --no-password --format custom --verbose --file ""{TargetPath}"" {SchemasArgs} ""{SourceDb}""";
+    public static string FullBackup => @"--host ""{Host}"" --port ""{Port}"" --username ""{Username}"" --no-password --format custom --blobs --verbose --file ""{TargetPath}"" ""{SourceDb}""";
     /// <summary>
     /// Reads an archive's table of contents. Touches no server, so it answers whether the file is a readable
     /// archive before anything is done to the target database.
     /// </summary>
     public static string ListArchive => @"--list ""{SourcePath}""";
-    public static string Restore => @"--host ""{Host}"" --port {Port} --username ""{Username}"" --dbname ""{TargetDb}"" --no-password --verbose ""{SourcePath}""";
+    public static string Restore => @"--host ""{Host}"" --port ""{Port}"" --username ""{Username}"" --dbname ""{TargetDb}"" --no-password --verbose ""{SourcePath}""";
 }

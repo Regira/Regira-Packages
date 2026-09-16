@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Regira.Entities.Attributes;
 using Regira.Entities.Models.Abstractions;
 using System.Runtime.CompilerServices;
 
@@ -30,9 +31,11 @@ internal sealed record ClientConcurrencyTokens(IReadOnlyList<(IProperty Property
 /// (<c>[ConcurrencyCheck] public string LastName</c>); there the client's value is the new data, not a claim about
 /// what it read, and making it the original would refuse every change and undo every clear. So a token counts as a
 /// version stamp when the database generates it on update, when it is
-/// <see cref="IHasConcurrencyToken.ConcurrencyToken"/>, or when the write path moves it — a prepper before the
-/// entity is attached, a primer during the save. Any other token is a data column: it keeps the stored value as its
-/// original and the client's value as the one written, so only a write racing the save is caught.
+/// <see cref="IHasConcurrencyToken.ConcurrencyToken"/>, when it carries <see cref="VersionStampAttribute"/>, or when
+/// the write path moves it — a prepper before the entity is attached, a primer during the save. Any other token is a
+/// data column: it keeps the stored value as its original and the client's value as the one written, so only a write
+/// racing the save is caught. The last rule judges one write at a time: a primer that produces the value the client
+/// sent leaves an undeclared token looking like a data column, which is what the attribute is for.
 /// </para>
 /// <para>
 /// Shared by every place the write path attaches an update — the entity itself, owned children synced by
@@ -58,15 +61,16 @@ internal static class ConcurrencyTokenExtensions
 
     /// <summary>
     /// Whether the model alone says <paramref name="token"/> is a version stamp: the database generates it on update
-    /// (<c>[Timestamp]</c>, <c>IsRowVersion()</c>, a computed column), or it is
-    /// <see cref="IHasConcurrencyToken.ConcurrencyToken"/>. Any other token is a version stamp only when the write
-    /// path moves it, which the model cannot tell.
+    /// (<c>[Timestamp]</c>, <c>IsRowVersion()</c>, a computed column), it is
+    /// <see cref="IHasConcurrencyToken.ConcurrencyToken"/>, or it carries <see cref="VersionStampAttribute"/>. Any other
+    /// token is a version stamp only on a write that moves it, which the model cannot tell.
     /// </summary>
     internal static bool IsDeclaredVersionStamp(this IProperty token)
         => (token.ValueGenerated & ValueGenerated.OnUpdate) != 0
            || token.ValueGenerated == ValueGenerated.OnUpdateSometimes
            || (token.Name == nameof(IHasConcurrencyToken.ConcurrencyToken)
-               && typeof(IHasConcurrencyToken).IsAssignableFrom(token.DeclaringType.ClrType));
+               && typeof(IHasConcurrencyToken).IsAssignableFrom(token.DeclaringType.ClrType))
+           || token.PropertyInfo?.IsDefined(typeof(VersionStampAttribute), inherit: true) == true;
 
     /// <summary>
     /// Reads the client's value of every concurrency token of <paramref name="incoming"/>'s entity type. Call it

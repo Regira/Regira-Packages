@@ -222,10 +222,30 @@ public class BackupRestoreTests
         var options = Options(_sourceDb);
         // the misconfiguration the error message is written for
         options.LocalBackupDirectory = Path.Combine(_backupDirectory, "not-where-sql-server-writes");
+        var logger = new WarningLogger<SqlServerBackupService>();
 
-        Assert.ThrowsAsync<IOException>(() => new SqlServerBackupService(options).Backup());
+        Assert.ThrowsAsync<IOException>(() => new SqlServerBackupService(options, logger).Backup());
 
-        Assert.That(Directory.GetFiles(_backupDirectory, $"{_sourceDb}*"), Is.Empty);
+        Assert.Multiple(() =>
+        {
+            Assert.That(Directory.GetFiles(_backupDirectory, $"{_sourceDb}*"), Is.Empty);
+            // the service read the deletion back and found the file gone
+            Assert.That(logger.Warnings, Is.Empty);
+        });
+    }
+
+    private sealed class WarningLogger<T> : Microsoft.Extensions.Logging.ILogger<T>
+    {
+        public List<string> Warnings { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (logLevel >= Microsoft.Extensions.Logging.LogLevel.Warning)
+            {
+                Warnings.Add(formatter(state, exception));
+            }
+        }
     }
 
 

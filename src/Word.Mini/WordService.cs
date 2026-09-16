@@ -187,7 +187,11 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
             {
                 foreach (var paragraph in root.Descendants<W.Paragraph>())
                 {
-                    changed |= TrimTags(paragraph.Descendants<W.Text>().ToList());
+                    // a text box inside the paragraph holds paragraphs of its own, rewritten on their own turn
+                    var texts = paragraph.Descendants<W.Text>()
+                        .Where(text => text.Ancestors<W.Paragraph>().First() == paragraph)
+                        .ToList();
+                    changed |= TrimTags(texts);
                 }
             }
         }

@@ -6,6 +6,7 @@ using Regira.Office.Word.Abstractions;
 using Regira.Office.Word.Models;
 using Regira.Utilities;
 using System.Globalization;
+using W = DocumentFormat.OpenXml.Wordprocessing;
 
 namespace Office.Word.testing.Abstractions;
 
@@ -208,6 +209,69 @@ public abstract class WordTestsBase : WordAssetsTestsBase
 
         Assert.That(await HasContent(output, "Item #12"), Is.True);
         Assert.That(await HasContent(output, "<{ doc2  }>"), Is.False);
+    }
+
+    /// <summary>
+    /// A first-page or even-page version of one story switches those pages to stories of their own; the other story,
+    /// given only a default version, must still appear on them — page numbers in a footer, say, under an even header.
+    /// </summary>
+    /// <param name="type"><see cref="HeaderFooterType.FirstPage"/> (page 1) or <see cref="HeaderFooterType.Even"/> (page 2)</param>
+    /// <param name="specialHeader">Whether the header gets the special version, rather than the footer</param>
+    public virtual async Task A_Story_Given_For_Some_Pages_Leaves_The_Other_Story_On_Them(HeaderFooterType type, bool specialHeader)
+    {
+        var input = new WordTemplateInput { Template = Document(("One", true), ("Two", false)) };
+        var given = specialHeader ? input.Headers! : input.Footers!;
+        var other = specialHeader ? input.Footers! : input.Headers!;
+        given.Add(new WordHeaderFooterInput { Template = new WordTemplateInput { Template = Document(("GIVENDEFAULT", false)) } });
+        given.Add(new WordHeaderFooterInput { Template = new WordTemplateInput { Template = Document(("GIVENSPECIAL", false)) }, Type = type });
+        other.Add(new WordHeaderFooterInput { Template = new WordTemplateInput { Template = Document(("OTHERDEFAULT", false)) } });
+
+        using var pdf = await RequireConverter().Convert(input, FileFormat.Pdf);
+        var pages = PageTexts(pdf.GetBytes()!);
+        var special = type == HeaderFooterType.FirstPage ? 0 : 1;
+        var regular = 1 - special;
+
+        Assert.That(pages, Has.Length.GreaterThanOrEqualTo(2));
+        Assert.Multiple(() =>
+        {
+            Assert.That(pages[special], Does.Contain("GIVENSPECIAL"));
+            Assert.That(pages[special], Does.Contain("OTHERDEFAULT"), "the story given no special version must stay on the special page");
+            Assert.That(pages[regular], Does.Contain("GIVENDEFAULT"));
+            Assert.That(pages[regular], Does.Contain("OTHERDEFAULT"));
+        });
+    }
+
+    /// <summary>A .docx of the given paragraphs, each optionally followed by a page break.</summary>
+    private static IMemoryFile Document(params (string Text, bool PageBreakAfter)[] paragraphs)
+    {
+        using var stream = new MemoryStream();
+        using (var doc = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Create(stream, DocumentFormat.OpenXml.WordprocessingDocumentType.Document))
+        {
+            var body = new W.Body();
+            foreach (var (text, pageBreakAfter) in paragraphs)
+            {
+                var run = new W.Run(new W.Text(text));
+                if (pageBreakAfter)
+                {
+                    run.AppendChild(new W.Break { Type = W.BreakValues.Page });
+                }
+                body.AppendChild(new W.Paragraph(run));
+            }
+            doc.AddMainDocumentPart().Document = new W.Document(body);
+        }
+        return stream.ToArray().ToMemoryFile(Regira.Office.MimeTypes.ContentTypes.DOCX);
+    }
+
+    private static string[] PageTexts(byte[] pdf)
+    {
+        using var reader = Docnet.Core.DocLib.Instance.GetDocReader(pdf, new Docnet.Core.Models.PageDimensions(1d));
+        return Enumerable.Range(0, reader.GetPageCount())
+            .Select(i =>
+            {
+                using var page = reader.GetPageReader(i);
+                return page.GetText();
+            })
+            .ToArray();
     }
 
     /// <summary>

@@ -53,7 +53,7 @@
 | `Regira.Entities.Preppers.Abstractions` | `IEntityPrepper<>`, `EntityPrepperBase<>` |
 | `Regira.Entities.Preppers` | `ServerOwnedPrepper<,>`, `AutoServerOwnedPrepper` |
 | `Regira.Entities.EFcore.Preppers` | `EntityPrepper<>`, `RelatedCollectionPrepper<>` |
-| `Regira.Entities.Attributes` | `ServerOwnedAttribute` (`[ServerOwned]`) |
+| `Regira.Entities.Attributes` | `ServerOwnedAttribute` (`[ServerOwned]`), `VersionStampAttribute` (`[VersionStamp]`) |
 
 ---
 
@@ -247,6 +247,7 @@ Regira.Entities.Preppers.Abstractions   → EntityPrepperBase<TEntity>, IEntityP
 ### Marking a field server-owned
 ```
 Regira.Entities.Attributes   → ServerOwnedAttribute   // [ServerOwned] on the entity property
+                             → VersionStampAttribute  // [VersionStamp] beside [ConcurrencyCheck] on a token a primer sets
 ```
 
 ### Creating a primer
