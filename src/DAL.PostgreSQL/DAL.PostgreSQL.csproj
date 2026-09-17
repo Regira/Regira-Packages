@@ -11,18 +11,18 @@
     <AssemblyName>Regira.DAL.PostgreSQL</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.3.0</Version>
+    <Version>6.3.1</Version>
     <Description>PostgreSQL data access layer for Regira using Dapper and Npgsql.</Description>
     <PackageTags>regira;dal;postgresql;dapper;npgsql</PackageTags>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Dapper" Version="2.1.79" />
+    <PackageReference Include="Dapper" Version="2.1.86" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Npgsql" Version="10.0.3" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.System\Common.System.csproj" />

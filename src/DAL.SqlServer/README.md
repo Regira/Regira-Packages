@@ -34,7 +34,7 @@ var settings = new SqlServerSettings("localhost", "shop", "sa", "pass");
 string cs    = settings.BuildConnectionString();
 ```
 
-For any other authentication mode (Microsoft Entra ID, a managed identity), set `SqlServerOptions.ConnectionString` instead of `DbSettings`.
+For any other authentication mode (Microsoft Entra ID, a managed identity), set `SqlServerOptions.ConnectionString` instead of `DbSettings`. `Microsoft.Data.SqlClient` 7 ships those `Authentication=Active Directory …` modes in a separate package, so the application also references `Microsoft.Data.SqlClient.Extensions.Azure`.
 
 ## SqlServerBackupService / SqlServerRestoreService
 

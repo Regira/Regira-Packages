@@ -334,12 +334,12 @@ authentication middleware.
 ```
 
 > `Regira.Security.Authentication.Web` references `Microsoft.AspNetCore.OpenApi` and thereby **floors** it
-> (and, through it, `Microsoft.OpenApi`) — 6.1.2+ floors them at `10.0.11` and `2.11.0`. Pinning either
+> (and, through it, `Microsoft.OpenApi`) — 6.3.1 floors them at `10.0.12` and `2.12.2`. Pinning either
 > lower than the resolved version fails restore with **NU1605 (package downgrade)** — resolve
 > `Microsoft.AspNetCore.OpenApi` to the latest stable patch and leave `Microsoft.OpenApi` transitive.
 >
-> ⚠️ `dotnet new webapi` pins the patch its SDK shipped with, which can sit below that floor (`10.0.10` from a
-> 10.0.3xx SDK), so **raise `Microsoft.AspNetCore.OpenApi` before adding the auth packages**. Hit it anyway and nothing restores or
+> ⚠️ `dotnet new webapi` pins the patch its SDK shipped with, which can sit below that floor (SDK 10.0.400
+> writes `10.0.11`), so **raise `Microsoft.AspNetCore.OpenApi` before adding the auth packages**. Hit it anyway and nothing restores or
 > builds until it is cleared — but `dotnet add package` edits still land, so
 > `dotnet add package Microsoft.AspNetCore.OpenApi` fixes it in place; no hand-editing needed.
 

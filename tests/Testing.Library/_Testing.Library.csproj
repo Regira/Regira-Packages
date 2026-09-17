@@ -13,10 +13,10 @@
 	<PackageTags>regira;testing;library</PackageTags>
 </PropertyGroup>
   <ItemGroup Condition="$(TargetFramework) == 'net8.0'">
-	<PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.17" />
+	<PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.20" />
   </ItemGroup>
   <ItemGroup Condition="$(TargetFramework) == 'net10.0'">
-	<PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
+	<PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
   </ItemGroup>
   <ItemGroup>
 	<ProjectReference Include="..\..\src\Common.Entities\Common.Entities.csproj" />
