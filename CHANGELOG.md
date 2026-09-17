@@ -5,6 +5,14 @@ adds one bullet under **Unreleased** in the same change (format: `` `PackageId` 
 and leaves that package's `<Version>` higher than its last published version. At publish time the
 Unreleased block becomes a dated release heading.
 
+## Unreleased
+
+- `Regira.Entities.EFcore` 6.3.1 — `Modify()` no longer loses a foreign-key change to the loaded graph. An entity read with `Details(id)` and given a new key saved the old one, because EF's attach fixup copied it back from a still-loaded reference navigation, or from the old principal's inverse collection when that principal was still in the graph. Before attaching, the write path drops the stale navigation and removes the row from those inverse collections, for the entity and its `Related()` children alike. A collection being saved is never changed, so a child stays with the parent that lists it. An empty key beside a navigation still defers to the navigation. The attachment sync materializes the links it updates before tracking them.
+- `Regira.Entities` 6.3.1 — packed guides: `Microsoft.OpenApi` is left transitive (the exact 2.11.0 pin failed restore with NU1605 against `Microsoft.AspNetCore.OpenApi` 10.0.12). `[ServerOwned]` has no bypass for domain actions, and a `Details(id)` result goes straight into `Modify()` (clear a relation's navigation along with its key). Row-scoping filters also blind seeders and hosted jobs. The attachments snippet declares `[NotMapped] HasAttachment`, and the attachment routes are listed with the link id. 400 keys are verbatim under System.Text.Json, and the dev-proxy example forwards the SPA's origin.
+- `Regira.Setup` 6.3.1 — packed `project.setup`: `Microsoft.OpenApi` stays transitive on the native OpenAPI path, and an override is pinned at the version restore already resolves. `dotnet new webapi`'s `Microsoft.AspNetCore.OpenApi` pin depends on the SDK.
+- `Regira.Security.Authentication.Web` 6.3.1 — packed card: the version-floor bullet leaves `Microsoft.OpenApi` transitive instead of pinning 2.11.0, and `IdentityMailer` names its namespace and the `IMailService` it sends through.
+- `Regira.Office` 6.3.1 — packed `office.mail.instructions`: the ASP.NET Identity snippet names the package and namespaces of `IdentityMailer`.
+
 ## 6.3.0 — 2026-09-16
 
 - `Regira.Entities` 6.3.0 — `[VersionStamp]` gains `Required`: `[VersionStamp(Required = true)]` refuses an update whose client left the stamp out, where an absent stamp otherwise writes unchecked — for a client that must always prove what it read. It serves on the implementing `ConcurrencyToken` property of `IHasConcurrencyToken` too, which is a stamp already, for that purpose alone. `entities.patterns` (the DTO rules and the *what each write is checked against* table), `entities.card` and `entities.namespaces` say so, and the developer docs in `built-in-features`.

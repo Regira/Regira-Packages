@@ -203,7 +203,13 @@ Use `Regira.Office.Mail.MSGReader` when the task is reading existing `.msg` or `
 
 ## ASP.NET Identity Integration
 
+`IdentityMailer` ships in `Regira.Security.Authentication.Web` and adapts any registered `IMailService` to
+Identity's `IEmailSender`:
+
 ```csharp
+using Microsoft.AspNetCore.Identity.UI.Services;          // IEmailSender
+using Regira.Security.Authentication.Web.Mail;            // IdentityMailer, IdentityMailerOptions
+
 services.AddSingleton<IEmailSender>(provider =>
     new IdentityMailer(
         provider.GetRequiredService<IMailService>(),

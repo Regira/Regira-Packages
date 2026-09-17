@@ -215,12 +215,14 @@ app.MapScalarApiReference(options =>
 <PackageReference Include="Scalar.AspNetCore" Version="*" />
 ```
 
-> **⚠️ On the native `Microsoft.AspNetCore.OpenApi`/Scalar path, `Microsoft.OpenApi` must stay on 2.x** _(while on .NET 10 — remove once the OpenAPI source generator supports 3.x)_. It comes in transitively via `Microsoft.AspNetCore.OpenApi`. (This does **not** apply to a Swashbuckle setup, which supports 3.x.)
-> When pinning it directly (e.g. to clear the security advisory on 2.0.0), add the reference **by hand**:
-> `<PackageReference Include="Microsoft.OpenApi" Version="2.11.*" />` — 2.11 is also the floor
-> `Regira.Security.Authentication.Web` sets, so a lower pin fails restore with NU1605 when that package is
-> referenced. Never `dotnet add package Microsoft.OpenApi` — that resolves the latest 3.x, which breaks the
-> .NET 10 OpenAPI source generator.
+> **⚠️ On the native `Microsoft.AspNetCore.OpenApi`/Scalar path, `Microsoft.OpenApi` must stay on 2.x** _(while on .NET 10 — remove once the OpenAPI source generator supports 3.x)_. (This does **not** apply to a Swashbuckle setup, which supports 3.x.)
+> Leave it **transitive**: from **10.0.11** on, `Microsoft.AspNetCore.OpenApi` declares the 2.x range its generator
+> is compatible with, already past the 2.x security advisory (10.0.12 → `[2.12.0, 3.0.0)`), so no direct reference
+> is needed; 10.0.10 and earlier pull the vulnerable 2.0.0 — raise that pin instead. Never
+> `dotnet add package Microsoft.OpenApi` — that resolves the latest 3.x with at most an NU1608 warning. Overriding it
+> anyway? Add the reference **by hand** at the version restore already resolves
+> (`dotnet list package --include-transitive`): a lower pin fails restore with NU1605 as soon as
+> `Microsoft.AspNetCore.OpenApi` floors above it.
 
 ### Launch API
 
@@ -333,11 +335,11 @@ authentication middleware.
 
 > `Regira.Security.Authentication.Web` references `Microsoft.AspNetCore.OpenApi` and thereby **floors** it
 > (and, through it, `Microsoft.OpenApi`) — 6.1.2+ floors them at `10.0.11` and `2.11.0`. Pinning either
-> lower than the floor fails restore with **NU1605 (package downgrade)** — resolve them to the latest
-> stable patch instead of an older pin.
+> lower than the resolved version fails restore with **NU1605 (package downgrade)** — resolve
+> `Microsoft.AspNetCore.OpenApi` to the latest stable patch and leave `Microsoft.OpenApi` transitive.
 >
-> ⚠️ `dotnet new webapi` leaves a pin below that floor (`10.0.10`), so **raise
-> `Microsoft.AspNetCore.OpenApi` before adding the auth packages**. Hit it anyway and nothing restores or
+> ⚠️ `dotnet new webapi` pins the patch its SDK shipped with, which can sit below that floor (`10.0.10` from a
+> 10.0.3xx SDK), so **raise `Microsoft.AspNetCore.OpenApi` before adding the auth packages**. Hit it anyway and nothing restores or
 > builds until it is cleared — but `dotnet add package` edits still land, so
 > `dotnet add package Microsoft.AspNetCore.OpenApi` fixes it in place; no hand-editing needed.
 

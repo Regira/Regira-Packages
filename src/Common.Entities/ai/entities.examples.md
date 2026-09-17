@@ -998,7 +998,7 @@ public class ProductAttachment : EntityAttachment
 // Entity:
 public class Product : IEntityWithSerial, IHasAttachments, IHasAttachments<ProductAttachment>
 {
-    public bool? HasAttachment { get; set; }
+    [NotMapped] public bool? HasAttachment { get; set; }   // required by the interface; nothing fills it
     public ICollection<ProductAttachment>? Attachments { get; set; }
     ICollection<IEntityAttachment>? IHasAttachments.Attachments
     {

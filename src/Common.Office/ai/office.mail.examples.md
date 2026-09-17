@@ -52,6 +52,9 @@ public async Task SendPasswordReset(string email, string resetLink)
 ## ASP.NET Identity integration
 
 ```csharp
+using Microsoft.AspNetCore.Identity.UI.Services;          // IEmailSender
+using Regira.Security.Authentication.Web.Mail;            // IdentityMailer (package Regira.Security.Authentication.Web)
+
 services.AddSingleton<IEmailSender>(sp =>
     new IdentityMailer(
         sp.GetRequiredService<IMailService>(),

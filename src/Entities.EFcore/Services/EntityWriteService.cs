@@ -54,6 +54,14 @@ public class EntityWriteService<TContext, TEntity, TKey>(
 
         Logger?.LogDebug($"Modifying {typeof(TEntity).FullName} #{item.Id} {(original == null ? "" : " with original")}");
 
+        // Before the preppers, over the whole graph: a Related() sync attaches each child's graph, which reaches
+        // this entity through a back-reference and every sibling through this entity — their fixup, which undoes
+        // a foreign-key change, would otherwise run before TrackAsUpdateOf gets to check each of them.
+        if (original != null)
+        {
+            DbContext.DropStaleReferencesInGraph(item, original);
+        }
+
         // The concurrency tokens the client sent, read before any prepper runs: a prepper may overwrite them
         // ([ServerOwned] restores from the stored row), and the check has to compare the client's value.
         var clientTokens = DbContext.CaptureClientTokens(item);

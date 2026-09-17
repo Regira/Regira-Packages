@@ -250,14 +250,14 @@ Regira.Entities.Mapping.Mapster           ← add separately — DTO mapping (NO
 | Package | Version |
 |---|---|
 | `Regira.Entities.*` | major **6**; resolve the patch at add time. Keep the `Regira.*` packages you reference **directly** on the same version, or restore reports NU1605 |
-| `Microsoft.OpenApi` (direct reference; also transitive via `Microsoft.AspNetCore.OpenApi`) | pin **2.11.0** — clears the advisory on 2.0.0 and matches the floor `Regira.Security.Authentication.Web` sets (a lower pin fails restore with NU1605 when that package is referenced). **Stay on 2.x**: 3.x breaks the .NET 10 OpenAPI source generator |
+| `Microsoft.OpenApi` | **no direct reference** — it arrives through `Microsoft.AspNetCore.OpenApi`, whose range is the compatible one by definition — from **10.0.11** on it is past the 2.x advisory (10.0.12 → `[2.12.0, 3.0.0)`); 10.0.10 and earlier pull the vulnerable 2.0.0, one more reason that package is added first (below). It must stay on **2.x**: 3.x breaks the .NET 10 OpenAPI source generator, and `dotnet add package Microsoft.OpenApi` resolves 3.x with at most an NU1608 warning. Overriding it anyway? Pin by hand the version restore already resolves (`dotnet list package --include-transitive`) — anything lower fails restore with NU1605 |
 | `SQLitePCLRaw.bundle_e_sqlite3` | pin **3.0.3** |
 | `Microsoft.EntityFrameworkCore.*` (+ provider) | major must equal the TFM's EF Core major (`net10.0` → **10.x**, see Checklist 0.5); resolve the patch at add time |
-| `Microsoft.AspNetCore.OpenApi` | major must equal your TFM (`net10.0` → **10.x**); resolve the patch at add time. ⚠️ `dotnet new webapi` already pins it below the floor **`Regira.Security.Authentication.Web`** sets (`10.0.10` vs `10.0.11`) — adding sign-in trips NU1605 until you raise the pin yourself |
+| `Microsoft.AspNetCore.OpenApi` | major must equal your TFM (`net10.0` → **10.x**); resolve the patch at add time. ⚠️ `dotnet new webapi` pins the patch its SDK shipped with, which can sit below the floor **`Regira.Security.Authentication.Web`** sets (`10.0.10` from a 10.0.3xx SDK vs `10.0.11`) — adding sign-in then trips NU1605 until you raise the pin |
 | `Scalar.AspNetCore` | major **2**; resolve the patch at add time |
 | `Serilog.AspNetCore`, `Serilog.Settings.Configuration`, `Serilog.Sinks.Console` | latest **stable** major — never a preview; resolve the patch at add time. The console/file sinks arrive transitively with `Serilog.AspNetCore`, so add them explicitly only if you pin them |
 
-**Add them as commands, not as hand-written XML.** Which rows you may type by hand is then structural rather than a rule to remember: only the two exact pins below are XML, and every major-constraint row resolves its own patch.
+**Add them as commands, not as hand-written XML.** Which rows you may type by hand is then structural rather than a rule to remember: only the exact pin below is XML, and every major-constraint row resolves its own patch.
 
 ```bash
 dotnet add package Microsoft.AspNetCore.OpenApi   # first — lifts the template's pin, so adding auth later can't downgrade (see below)
@@ -276,8 +276,7 @@ dotnet add package Serilog.Settings.Configuration
 > is live, and no hand-editing is needed.
 
 ```xml
-<!-- the two rows that are pinned rather than resolved -->
-<PackageReference Include="Microsoft.OpenApi" Version="2.11.0" />
+<!-- the one row that is pinned rather than resolved -->
 <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
 ```
 
@@ -494,7 +493,17 @@ chain fails and requests never reach the API. Two safe options:
 
 - **Proxy to the HTTPS origin** from the SPA dev server and disable cert verification in dev. In `vite.config.ts`:
   ```ts
-  server: { proxy: { '/api': { target: 'https://localhost:7xxx', changeOrigin: true, secure: false } } }
+  server: { proxy: { '/api': { target: 'https://localhost:7xxx', changeOrigin: true, secure: false, xfwd: true } } }
+  ```
+  Absolute URLs the API builds (an attachment's `uri`) take the scheme and host it received — the target's,
+  behind a proxy — so downloads leave the SPA's origin. `xfwd: true` forwards the SPA's; honour it in
+  Development, **after** `app.UseHttpsRedirection()` (placed first, the forwarded `http` scheme triggers the
+  redirect):
+  ```csharp no-compile
+  using Microsoft.AspNetCore.HttpOverrides;
+
+  if (app.Environment.IsDevelopment())
+      app.UseForwardedHeaders(new() { ForwardedHeaders = ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedProto });
   ```
 - **Or skip the redirect in Development** so the SPA can talk to the API over HTTP:
   ```csharp no-compile

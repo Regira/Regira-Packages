@@ -134,7 +134,7 @@ using Regira.Entities.Attachments.Abstractions;
 public interface IHasAttachments
 {
     ICollection<IEntityAttachment>? Attachments { get; set; }
-    bool? HasAttachment { get; set; } // ⚠️ yours to set (a primer/prepper or a mapped projection) — nothing populates it, so it serializes null even for a row that has attachments. `FilterHasAttachment(so.HasAttachment)` does not read it either: it filters on Attachments.Any(). To show a "has documents" flag without loading the collection, set it; otherwise drop it from the DTO.
+    bool? HasAttachment { get; set; } // ⚠️ yours to set on the read path (a processor or a mapped projection) — nothing populates it, so it serializes null even for a row that has attachments. `FilterHasAttachment(so.HasAttachment)` does not read it either: it filters on Attachments.Any(). To show a "has documents" flag without loading the collection, set it; otherwise drop it from the DTO.
 }
 
 // Typed (int keys) — most common
@@ -147,7 +147,7 @@ public interface IHasAttachments<TEntityAttachment, TKey, TObjectKey, TAttachmen
     where TAttachment : class, IAttachment<TAttachmentKey>, new()
 {
     ICollection<TEntityAttachment>? Attachments { get; set; }
-    bool? HasAttachment { get; set; } // ⚠️ yours to set (a primer/prepper or a mapped projection) — nothing populates it, so it serializes null even for a row that has attachments. `FilterHasAttachment(so.HasAttachment)` does not read it either: it filters on Attachments.Any(). To show a "has documents" flag without loading the collection, set it; otherwise drop it from the DTO.
+    bool? HasAttachment { get; set; } // ⚠️ yours to set on the read path (a processor or a mapped projection) — nothing populates it, so it serializes null even for a row that has attachments. `FilterHasAttachment(so.HasAttachment)` does not read it either: it filters on Attachments.Any(). To show a "has documents" flag without loading the collection, set it; otherwise drop it from the DTO.
 }
 
 public interface IHasObjectId<TKey>
@@ -1546,14 +1546,25 @@ public abstract class EntityAttachmentControllerBase<TEntity>
     : EntityAttachmentControllerBase<TEntity, EntityAttachmentDto, EntityAttachmentInputDto>
     where TEntity : class, IEntityAttachment<int, int, int, Attachment>, IEntity<int>;
 
-// Standard variant — set the class [Route] to the owner base path (e.g. [Route("products")]).
-// The base actions append the sub-routes: {objectId}/attachments, attachments/{id},
-// {objectId}/files, files/{id}, etc.
+// Standard variant — set the class [Route] to the owner base path (e.g. [Route("products")]);
+// the base actions append the sub-routes below.
 public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto>
     : ControllerBase
     where TEntity : class, IEntityAttachment<int, int, int, Attachment>, IEntity<int>
     where TInputDto : class, IEntityAttachmentInput;
 ```
+
+Every `{id}` is the **link** id (`EntityAttachmentDto.Id`), never `attachmentId`; `{objectId}` is the owner's id.
+
+| Route (under the owner base path) | Action |
+|---|---|
+| `GET {objectId}/attachments` | the owner's links (`ListResult`) |
+| `GET attachments` · `GET attachments/{id}` | links across owners (`EntityAttachmentSearchObject`) · one link |
+| `POST {objectId}/files` | upload — multipart `file` + the input DTO's fields as form values |
+| `PUT {objectId}/files/{id}` | replace the file's bytes (multipart `file`) |
+| `PUT {objectId}/attachments/{id}` | update the link's own fields (JSON input DTO) |
+| `DELETE attachments/{id}` | remove the link and its file |
+| `GET files/{id}` · `GET {objectId}/files/{*fileName}` | download by link id · by the client `FileName` (`?inline=false` → attachment) |
 
 ---
 

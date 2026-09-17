@@ -17,12 +17,15 @@
 - **Required services:** `AddIdentityCore<AppUser>().AddEntityFrameworkStores<TCtx>().AddSignInManager().AddDefaultTokenProviders()`,
   `AddJwtAuthentication(…)` (for `ITokenHelper`), and an `IEmailSender` (recover/confirm email).
   **`IEmailSender` is `Microsoft.AspNetCore.Identity.UI.Services.IEmailSender`** (a Microsoft type, not
-  Regira — package `Microsoft.AspNetCore.Identity.UI`); implement it or use Regira's `IdentityMailer`.
+  Regira — package `Microsoft.AspNetCore.Identity.UI`); implement it or use this package's `IdentityMailer`
+  (`Regira.Security.Authentication.Web.Mail`), which sends through a registered Regira `IMailService` —
+  `Regira.Office` → `office.mail.instructions` → *ASP.NET Identity Integration*.
 - **Version floor:** floors `Microsoft.OpenApi` at **2.11.0** and `Microsoft.AspNetCore.OpenApi` at
-  **10.0.11** on net10 — a lower pin of either fails restore with NU1605, and nothing restores or builds
-  until it is cleared. Pin `Microsoft.OpenApi` **2.11.0** and **stay on 2.x**: 3.x breaks the .NET 10
-  OpenAPI source generator. ⚠️ `dotnet new webapi` pins `Microsoft.AspNetCore.OpenApi` at `10.0.10` — raise
-  it **before** referencing this package, or afterwards with
+  **10.0.11** on net10 — a direct pin of either below the resolved version fails restore with NU1605, and
+  nothing restores or builds until it is cleared. Leave `Microsoft.OpenApi` **transitive**:
+  `Microsoft.AspNetCore.OpenApi` brings the 2.x its source generator is compatible with (3.x breaks it).
+  ⚠️ `dotnet new webapi` pins `Microsoft.AspNetCore.OpenApi` at its SDK's patch (`10.0.10` from a 10.0.3xx
+  SDK) — raise it **before** referencing this package, or afterwards with
   `dotnet add package Microsoft.AspNetCore.OpenApi`, which lands even while the downgrade is live.
 - **`clientApp` = JWT audience.** Login is `POST auth?clientApp=…` (required query); set the API's
   `Authentication:Jwt:Audience` to the SPA's `clientApp` or authenticated calls 401 (`audience invalid`).

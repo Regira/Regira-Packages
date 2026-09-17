@@ -45,6 +45,7 @@ Task<long> Count(IList<TSearchObject?> so, CancellationToken token = default)
 - After a **successful** `SaveChanges()` the EF change tracker is cleared — all entities saved in that call are now detached. To update one later, pass it through `Modify()` or `Save()` again before the next `SaveChanges()`. A **failed** `SaveChanges()` leaves every entry tracked (stock EF Core semantics), so you can fix or remove the offending entity and retry the same call
 - A database **integrity-constraint violation** (unique index, foreign key, NOT NULL, check) surfaces as `EntityConstraintException` — catch that, not `DbUpdateException`, around direct `SaveChanges()` calls (seeding, jobs). Transient faults (deadlocks, timeouts) are not wrapped and still throw `DbUpdateException` subtypes. See [Built-in Features → Constraint Exceptions](built-in-features.md#constraint-exceptions)
 - A write built on a **stale read** — a concurrency token the row no longer holds, or a row another writer removed — surfaces as `EntityConcurrencyException`; catch that, not `DbUpdateConcurrencyException`. See [Built-in Features → Concurrency Exceptions](built-in-features.md#concurrency-exceptions)
+- An entity read with `Details(id)` can go straight back into `Modify()` with its navigations loaded. When a foreign key — on the entity or on a `Related()` child — was set to another key, `Modify()` drops the reference navigation still pointing at the stored principal and removes the row from that principal's loaded collections (it may still be in the graph through another path), so the new key is saved rather than overwritten by EF's attach fixup; the entity then carries that navigation as `null`. A `Related()` child stays with the parent whose collection lists it, whatever its own parent key says; move it through the collections. To clear a relation, set both the foreign key and the navigation to `null`: an empty key beside a loaded navigation is left to the navigation, which is what a request that sends only the nested object relies on
 
 ```csharp
 Task Save(TEntity item, CancellationToken token = default) // calls Add() or Modify() internally
@@ -196,7 +197,9 @@ public abstract class EntityPrepperBase<TEntity> : IEntityPrepper<TEntity>
 `[ServerOwned]` on a scalar (or `e.ServerOwned(x => x.Code, mint)` for the fluent form, which also mints on
 create) restores that property from the stored row on update, so a PUT/PATCH that omits it cannot null it.
 Enforced by `AutoServerOwnedPrepper`, registered by `UseDefaults()`. Being a prepper, it guards the
-`IEntityService` write path only and leaves a workflow service's raw `DbContext` write alone. See
+`IEntityService` write path only and leaves a workflow service's raw `DbContext` write alone. It has no
+bypass, so a workflow action saving through `IEntityService` is restored too — guard such fields with your
+own prepper and a scoped "trusted writer" flag instead. See
 [Built-in features](./built-in-features.md#server-owned-fields).
 
 #### Related child collections
