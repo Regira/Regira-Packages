@@ -248,7 +248,7 @@ public class Product : IEntity<int>, IHasTimestamps, IArchivable, IHasTitle, IHa
     // ... existing properties ...
     
     // Attachment support
-    public bool? HasAttachment { get; set; }
+    [NotMapped] public bool? HasAttachment { get; set; }   // required by IHasAttachments; not a column
     public ICollection<ProductAttachment>? Attachments { get; set; }
     ICollection<IEntityAttachment>? IHasAttachments.Attachments
     {

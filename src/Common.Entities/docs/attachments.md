@@ -103,7 +103,9 @@ public class OwningEntity: IHasAttachments, IHasAttachments<MyEntityAttachment>
     // Add these 3 properties
     // HasAttachment is yours to fill: nothing populates it, so it serializes as null even for a row that
     // has attachments. Filtering on it is also yours to wire — Regira.Entities.EFcore ships the
-    // FilterHasAttachment(bool?) query extension, but no query builder calls it for you.
+    // FilterHasAttachment(bool?) query extension, but no query builder calls it for you. It is a flag, not a
+    // column, hence [NotMapped] (System.ComponentModel.DataAnnotations.Schema).
+    [NotMapped]
     public bool? HasAttachment { get; set; }
     public ICollection<MyEntityAttachment>? Attachments { get; set; }
     // implicit interface implementation
@@ -163,6 +165,9 @@ Endpoints exposed (with `[Route("products")]`):
 | `PUT` | `{objectId}/attachments/{id}` | Update attachment metadata |
 | `DELETE` | `attachments/{id}` | Delete (also removes the file) |
 | `GET` | `files/{id}` · `{objectId}/files/{fileName}` | Download the file |
+
+Every `{id}` is the id of the link row (`EntityAttachmentDto.Id`), not its `AttachmentId`; `{objectId}` is the
+owner's id.
 
 ### Dependency Injection
 

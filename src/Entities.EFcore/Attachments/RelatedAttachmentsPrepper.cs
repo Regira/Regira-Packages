@@ -57,7 +57,8 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
                     dbContext.Entry(entity).State = EntityState.Added;
                 }
             }
-            var relatedItemsToModify = modifiedItems.Except(relatedItemsToAdd).Where(m => m.Id != null && !m.Id.Equals(default(TEntityAttachmentKey)));
+            // Materialized before the loop: tracking a link runs EF's fixup, which may change the collection it came from
+            var relatedItemsToModify = modifiedItems.Except(relatedItemsToAdd).Where(m => m.Id != null && !m.Id.Equals(default(TEntityAttachmentKey))).ToArray();
             foreach (var entity in relatedItemsToModify)
             {
                 var originalEntity = originalItems.Single(p => p.Id!.Equals(entity.Id));

@@ -141,6 +141,10 @@ internal static class ConcurrencyTokenExtensions
     /// A token nothing has moved yet and the model does not declare a version stamp is left as it is, and decided by
     /// <see cref="ApplyUndecidedClientTokens"/> once the primers have run.
     /// </para>
+    /// <para>
+    /// A reference navigation still pointing at the stored principal after its foreign key moved is dropped before
+    /// the attach (<see cref="StaleReferenceExtensions.DropStaleReferences"/>), so the new foreign key is written.
+    /// </para>
     /// </summary>
     /// <exception cref="EntityInputException{T}">A required version stamp (<see cref="IsRequiredVersionStamp"/>) the
     /// client left out. Thrown before anything is attached, so the tracker is as the caller left it.</exception>
@@ -149,6 +153,10 @@ internal static class ConcurrencyTokenExtensions
     {
         RequireSuppliedStamps(incoming, clientTokens);
 
+        // Attaching runs EF's fixup, which lets a loaded reference navigation overwrite a changed foreign key.
+        // EntityWriteService.Modify has already covered its whole graph; this single-entity pass only drops such a
+        // navigation — it takes nothing out of a collection, since the caller may be syncing one.
+        dbContext.DropStaleReferences(incoming, stored);
         dbContext.Entry(stored).State = EntityState.Detached;
         dbContext.Attach(incoming);
         var entry = dbContext.Entry(incoming);

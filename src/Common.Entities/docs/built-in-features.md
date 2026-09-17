@@ -358,7 +358,9 @@ public class Order : IEntity<int>
 
 - **Create** mints when a `mintOnCreate` is supplied and the property is unset; a value already there
   (seeding, import) is kept. The attribute alone never mints.
-- **Update** restores the stored value, so the field is immutable through the entity service.
+- **Update** restores the stored value, so the field is immutable through the entity service — a workflow
+  action saving through `IEntityService` included. A field only such an action may change needs a prepper of
+  its own that skips the restore for that trusted writer.
 - It is a **prepper**, not a primer: a domain/workflow service saving through the raw `DbContext` keeps its
   write. That is what lets a second writer legitimately own the same field - and what keeps
   `ArchivablePrimer`'s delete-to-update from being reverted.

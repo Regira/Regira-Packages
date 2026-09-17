@@ -375,7 +375,8 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 > ```
 > `[ServerOwned]` (namespace `Regira.Entities.Attributes`) is enforced by a prepper `UseDefaults()`
 > registers, so it guards the `IEntityService` write path and leaves a workflow service's raw-`DbContext`
-> write alone. Scalars and FKs only — a navigation and `IArchivable.IsArchived` are rejected (a restore has
+> write alone. It has no bypass: your own domain action saving through `IEntityService` is reverted like any
+> client. Scalars and FKs only — a navigation and `IArchivable.IsArchived` are rejected (a restore has
 > to be able to clear that flag).
 >
 > **On create the guard does nothing**: whatever value the entity already carries is inserted as-is, which is
@@ -387,6 +388,7 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 > | Protect on update; optionally mint on create from the entity itself | `[ServerOwned]` / `e.ServerOwned(…)` |
 > | Mint from an injected service, or re-derive the value on every save | a **prepper** (`EntityPrepperBase<T>`; `original` is `null` on create, the stored row on update) |
 > | Stamp the field even when a raw-`DbContext` writer creates the row (`Created`) | a **primer** — but it also *reverts* such a writer's updates (§Step 9) |
+> | Only a gated domain action may change it (`Status` on approve) | a **prepper** that restores it unless a scoped trusted-writer flag is set — [`entities.patterns.md`](./entities.patterns.md) → Role-gated transitions (server-owned state) |
 >
 > Owner-stamp from the claim, computed totals, and the primer form:
 > [`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update.
@@ -1044,8 +1046,11 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
    `ObjectType`, so a second owner needs its own subclass, `DbSet`, controller and registration. Budget it as
    one extra simple slot per owner, not one for the whole app.
 2. Implement `IHasAttachments` and `IHasAttachments<TAttachment>` on the owning entity. The typed collection
-   is the ordinary property; the **non-generic** one takes the explicit implementation, casting both ways:
+   is the ordinary property; the **non-generic** one takes the explicit implementation, casting both ways.
+   Both interfaces also require `HasAttachment` — a flag, not a column (on an entity that already maps it, the
+   next migration drops that column); the ⚠️ note below says who fills it:
    ```csharp no-compile
+   [NotMapped] public bool? HasAttachment { get; set; }   // System.ComponentModel.DataAnnotations.Schema
    public ICollection<ProductAttachment>? Attachments { get; set; }
    ICollection<IEntityAttachment>? IHasAttachments.Attachments
    {
@@ -1088,8 +1093,9 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 > `e.Includes((q, _) => q.Include(x => x.Attachments!.OrderBy(a => a.SortOrder)).ThenInclude(a => a.Attachment))`.
 
 > ⚠️ **`HasAttachment` is a property nothing fills and a filter nothing binds** — both halves are yours.
-> *Reads:* it serializes `null` unless you set it (a primer, or a mapped projection); a paperclip icon bound
-> to it is otherwise always empty, so leave it off the DTO if you do not populate it. *Filtering:* declare
+> *Reads:* it serializes `null` unless you set it on the read path (an `IEntityProcessor`, or a mapped
+> projection); a paperclip icon bound to it is otherwise always empty, so leave it off the DTO if you do not
+> populate it. *Filtering:* declare
 > `bool? HasAttachment` on your `TSearchObject` and apply `query.FilterHasAttachment(so.HasAttachment)`
 > (`Regira.Entities.EFcore.Extensions` — it queries `Attachments.Any()`, not the property) in the query
 > builder. Without the SearchObject property, `?hasAttachment=true` binds to nothing and the request returns
@@ -1250,14 +1256,15 @@ verbatim; everything around them is the wrapper:
 { "item": { "id": 13, "code": "LMP-002", "title": "Floor lamp" }, "isNew": true, "affected": 1, "duration": 7 }
 
 // EntityInputException → 400. ⚠️ A FLAT map, with no ProblemDetails "errors" wrapper around it — this is
-// BadRequest(ModelState), not ValidationProblem(). Keys are camelCased by the web JSON defaults' dictionary
-// key policy, so nameof(Product.CategoryId) reaches the client as "categoryId" either way.
-{ "categoryId": ["Category 99 does not exist"], "code": ["Code is required"] }
+// BadRequest(ModelState), not ValidationProblem(). Keys are the InputErrors keys verbatim — System.Text.Json
+// applies no dictionary-key policy — so nameof(Product.CategoryId) reaches the client as "CategoryId".
+{ "CategoryId": ["Category 99 does not exist"], "Code": ["Code is required"] }
 
 // Model binding / DataAnnotations failing first is a DIFFERENT shape — [ApiController]'s automatic 400,
 // which does wrap. A client reading errors must handle both, or read the flat map when `errors` is absent.
+// A DataAnnotations failure is keyed by the C# property name; a JSON conversion failure by its path ("$.credits").
 { "title": "One or more validation errors occurred.", "status": 400,
-  "errors": { "credits": ["The field Credits must be between 0 and 5."] } }
+  "errors": { "Credits": ["The field Credits must be between 0 and 5."] } }
 
 // GET /api/products/7/attachments — a List endpoint, so no "count"; the file metadata is NESTED
 { "items": [ { "id": 5, "objectId": 7, "attachmentId": 91, "objectType": "Product", "sortOrder": 0,
@@ -1356,7 +1363,7 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 - **What a scoping filter cannot do:** validate **create** (the client supplies the FK — stamp/verify `OwnerId` from the claim in a prepper, never trust the body) or guard **direct `IEntityService` calls** in custom code, which bypass the controller's filtered existence checks. Two variants of the create hole bite hardest:
   - ⚠️ **An attachment upload is a create the filter never sees.** `POST /{owner}/{id}/files` takes the owner id from the **route**, stamps it on a new link row and saves — no query runs, so no global filter applies, and any authenticated caller can attach a file to a row they cannot read. `PUT`/`DELETE` on an existing link load it through the service first and *are* filtered; only the upload is exposed. Add a prepper on the **link** entity that re-runs the owner's scope over the owner's `DbSet` and throws an `EntityInputException<TLink>` when it resolves nothing — which answers **400**, not the 404 the read path gives a foreign row, since the write pipeline maps only 400 and 409. Override the controller's `virtual Add` and return `NotFound()` instead where the two must agree.
   - ⚠️ **Read scope is not write scope.** The write endpoints' existence checks run the *same* filter, so a read scope you widened deliberately — a manager who may see their reports' rows — silently grants that manager `PATCH`/`DELETE` on them too. When the two differ, keep the filter at read width and put the ownership check in a prepper.
-- **Scope before any early return.** The idiomatic query-builder shape opens with `if (so == null) return query;` — for a security filter that is a hole, because `Details(id)` and the write existence checks can run with a null search object and would skip the scoping entirely. Derive from `GlobalFilteredQueryBuilderBase<TEntity>` (it runs on every query and takes no search object), apply the ownership predicate unconditionally, and return `query.Where(_ => false)` when no identity resolves — an anonymous or stale-token call must see nothing, not everything.
+- **Scope before any early return.** The idiomatic query-builder shape opens with `if (so == null) return query;` — for a security filter that is a hole, because `Details(id)` and the write existence checks can run with a null search object and would skip the scoping entirely. Derive from `GlobalFilteredQueryBuilderBase<TEntity>` (it runs on every query and takes no search object), apply the ownership predicate unconditionally, and return `query.Where(_ => false)` when no identity resolves — an anonymous or stale-token call must see nothing, not everything. A seeder or hosted job has no request either, so its `IEntityService` reads see nothing too — and so does `Modify`, whose re-read of the stored row then finds none and saves nothing: give it an explicit identity through a context it sets (the shape of `WritableTenantContext` in [`entities.blueprints.md`](./entities.blueprints.md) → Multi-tenancy — IHasTenantId + global filter + primer), or have it read the `DbContext` directly. Don't equate "no `HttpContext`" with "system": work started from inside a request inherits that request's context.
 - **Multiple global filters accumulate (AND).** Every registered filter whose `TEntity` the entity satisfies runs, and their predicates compose — so an `IOwnedEntity`-wide filter and a `ShoppingList`-specific one both apply. `TEntity` may be an interface, a base class, **or the concrete entity type**. The one case that does *not* stack is the key variants of a single filter family (`FilterArchivablesQueryBuilder` vs `<Guid>`): one variant runs, preferring the key-matching one. Two filters deriving separately from `GlobalFilteredQueryBuilderBase<>` are always distinct families and never suppress each other. A filter scoped to a type **no registered entity satisfies** never runs at all — startup validation warns about this, which is your signal that a security filter is inert.
 - **Role/permission tiers** (admin vs editor): declare claim policies (`AddAuthorization(o => o.AddPolicy("EditorOnly", p => p.RequireClaim(...)))`) and gate the baseline with `MapControllers().RequireAuthorization("AdminOrEditor")`. For "everyone reads, some roles write", one global filter carries the tier — worked recipe with the traps in [`entities.patterns.md`](./entities.patterns.md) § Role-gated write authorization filter. ⚠️ Gate that filter on an allow-list of your own controllers, and remember `POST /{entity}/search` and `POST /{entity}/list` are reads. ⚠️ `RequireClaim`/`RequireRole` and any hand-written claim read must use the spelling the *validated* principal carries, and getting it wrong costs rows, not errors (next bullet). The claim contract is one lookup away in `security.instructions` → *Claims emitted per scheme* and *Claim normalization*. The schemes do **not** all agree on the role claim type (`role`, Entra's `roles`, and the long `ClaimTypes.Role` URI are all in play), so read roles with `User.FindRoles()` and scopes with `User.HasScope()` rather than a single `HasClaim`; on a normalized principal — every scheme except the API key — the canonical `sub`/`name`/`email`/`role` spellings are present alongside the provider's, so `RequireClaim("role", …)` does hold.
 - **Verify per identity, not per endpoint.** Log in as each role (and each tenant) and compare `GET /{entity}/search` totals: an administrator sees more than an owner, a second tenant sees none of the first's. A filter that never ran, a role claim that did not survive validation, and a scope matching no registered entity all answer **200 with fewer rows** — invisible to a build, to DI validation, and to a single-user smoke test. Do this once per app after the first scoped entity works, then whenever a filter or claim changes.

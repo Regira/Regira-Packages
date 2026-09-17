@@ -25,8 +25,9 @@ public class DomainActionExceptionTests(ContosoApiFactory factory) : IClassFixtu
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         // The flat SerializableError map BadRequest(ModelState) produces — the same body
-        // ControllerExtensions.Save returns, with no ProblemDetails "errors" wrapper around it. Keys are
-        // camelCased by the web JSON defaults' dictionary-key policy, so a client reads `title`.
+        // ControllerExtensions.Save returns, with no ProblemDetails "errors" wrapper around it. The key reads
+        // `title` only because this host serializes with Newtonsoft's camel-case resolver; System.Text.Json
+        // leaves dictionary keys as thrown (`Title`).
         var errors = await response.Content.ReadFromJsonAsync<Dictionary<string, string[]>>();
         Assert.Equal(["Only a draft course can be renamed."], errors!["title"]);
     }

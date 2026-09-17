@@ -356,7 +356,7 @@ public class TicketAttachment : EntityAttachment
 ```
 ```csharp no-compile
 modelBuilder.Entity<Ticket>(e =>
-    e.HasMany(x => x.Attachments).WithOne(a => a.Ticket!)      // was WithOne() — now points at the navigation
+    e.HasMany(x => x.Attachments).WithOne(a => a.Ticket!)      // WithOne names the navigation the filter binds to
         .HasForeignKey(x => x.ObjectId).HasPrincipalKey(x => x.Id));
 
 modelBuilder.Entity<TicketAttachment>(e =>
@@ -557,6 +557,16 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
   `EntityInputException<Product>`.
 - **Write through `IEntityService`** — keeps preppers, primers and row security in play, so the action and the
   CRUD route cannot diverge.
+- **The `Details(id)` result goes straight into `Modify`** — no need to clear its navigations. The read resolves
+  a principal that appears twice in the graph to one instance. When a foreign key — on the entity or on a
+  `Related()` child — was set to another key, the write drops the reference navigation still on the stored
+  principal and takes the row out of that principal's loaded collections (the old assignee may still be in the
+  graph as a child's author), so `item.AssigneeId = next` saves `next` (the saved `item` then carries
+  `Assignee = null`; re-read with `Details(id)` when the response needs it). A collection being saved is never
+  changed, so a `Related()` child stays with the parent that lists it whatever its own parent key says — move it
+  through the collections. **Clearing** a relation takes the navigation too
+  (`item.AssigneeId = null; item.Assignee = null;`): an empty key beside a loaded navigation is what a body
+  sending only the nested object looks like, so the navigation keeps deciding it.
 - **Answer in the same envelope as the generated endpoints.** `this.DetailsResult(item)`
   (`Regira.Entities.Web.Controllers`) wraps it as `{ "item": … }`, so a client reads
   `data.item` on every route it calls and the SPA service needs no per-action unwrapping. A bare
@@ -578,7 +588,9 @@ keeping `Status` on `TInputDto` hands every PATCH caller a state pen. Invert the
 1. **Take the workflow fields off `TInputDto`** (`Status`, `DecidedOn`, decider ids). The role-gated action is
    now the only writer.
 2. **Restore them in a prepper** so ordinary PUT/PATCH round-trips them untouched instead of resetting them —
-   guarded by a scoped flag the trusted writer flips, or the restore would also undo the action's own write:
+   guarded by a scoped flag the trusted writer flips, or the restore would also undo the action's own write.
+   That flag is why these fields are not `[ServerOwned]`: its restore has no bypass, so the action's
+   `Modify` would be reverted too.
 
 ```csharp no-compile
 public sealed class WorkflowContext { public bool IsTrustedWriter { get; set; } }    // services.AddScoped
@@ -768,9 +780,10 @@ services.UseEntities<AppDbContext>(o => o.UseDefaults())
 - **Create** mints only when the property is unset, so seeded and imported values survive. The attribute on
   its own never mints — an attribute cannot carry a lambda.
 - **Update** copies the stored value over whatever arrived, so the field is immutable through the entity
-  service. Preppers run in registration order, and `UseDefaults()` registers the restore before any
-  `.For<>()` chain, so a `Prepare()` on the entity still wins. (Registering a prepper *before* calling
-  `UseDefaults()` inverts that — the restore then runs last and overwrites it.)
+  service — your own domain action's `Modify` included. A field a gated action changes belongs to
+  §Role-gated transitions instead. Preppers run in registration order, and `UseDefaults()` registers the
+  restore before any `.For<>()` chain, so a `Prepare()` on the entity still wins. (Registering a prepper
+  *before* calling `UseDefaults()` inverts that — the restore then runs last and overwrites it.)
 - Enforced by a **prepper** (`AutoServerOwnedPrepper`, registered by `UseDefaults()`), so a domain/workflow
   service saving through the raw `DbContext` keeps its write — see *Primer vs prepper when a second writer
   exists* below.
@@ -810,9 +823,10 @@ invoice number, source-system id).
 use a prepper instead: `EntityPrepperBase<T>.Prepare(modified, original, …)` hands you the full `original`
 entity (`null` on create); register with `e.AddPrepper<T>()`.
 
-**Another service writes the field too?** `[ServerOwned]`/`e.ServerOwned(…)` already handles it — it is a
-prepper, so it never runs on that writer's save. Only the primer form above needs the warning; see *Primer vs
-prepper when a second writer exists* below.
+**Another service writes the field through the raw `DbContext`?** `[ServerOwned]`/`e.ServerOwned(…)` already
+handles it — it is a prepper, so it never runs on that writer's save. Only the primer form above needs the
+warning; see *Primer vs prepper when a second writer exists* below. A writer going through `IEntityService` is
+restored like any client — §Role-gated transitions covers that case.
 
 ## Optimistic concurrency (stale-write detection)
 
