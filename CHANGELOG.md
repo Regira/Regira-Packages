@@ -5,6 +5,10 @@ adds one bullet under **Unreleased** in the same change (format: `` `PackageId` 
 and leaves that package's `<Version>` higher than its last published version. At publish time the
 Unreleased block becomes a dated release heading.
 
+## Unreleased
+
+- `Regira.Entities` 6.3.2 — packed guides. Step 11 answers "mirror the parent's archived filter onto this dependent?" with a decision table, and settles the `APPLY` question it raises: one hop inlines as a join and is safe even when the filtered dependent is itself the target of a correlated `Any(...)` from its parent; two hops is the `APPLY` SQLite lacks. Adding one means re-running the `Any(...)`-based endpoints, which is where a two-hop mistake surfaces. Step 1's interface checklist gives each interface's member signatures, so `ConcurrencyToken` is written as the `Guid` it is instead of a `string`. The `null` = untouched contract is the `Related()` sync's, not EF's: handing `Modify` a **tracked** entity whose collection navigation was set to `null` orphans the children and cascades them away — pass a detached instance. Step 13 routes hand-written report and state-transition actions to their patterns before the file is written, not after the 500. The untranslatable-projection warning covers any projection rather than only a `GroupBy`, and names the member-init-inside-a-constructor form. Seed verification ends with reading twenty whole rows, which is the only thing that catches independently-drawn columns (brand × model) and in-range-but-implausible dates.
+
 ## 6.3.1 — 2026-09-17
 
 - All packages — version aligned at 6.3.1 for a whole-family publish. Six packages carry a change of their own, all below: `Regira.Entities.EFcore`, `Regira.Entities`, `Regira.Setup`, `Regira.Security.Authentication.Web`, `Regira.Office` and `Regira.DAL.SqlServer`, whose SQL Server driver moves a major; twenty-seven more ship the dependency moves at the end of this block. Nothing is published outside the aligned number. The remaining packages are republished unchanged so the family shares one version.

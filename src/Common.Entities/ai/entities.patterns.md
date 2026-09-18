@@ -485,17 +485,20 @@ This is the sanctioned shape, not a deviation — but keep it **read-only**, and
   reach the aggregate, so add `.Where(x => !x.IsArchived)` there.
 - ⚠️ No write path here. An aggregate endpoint that also mutates re-creates the dual-write problem the
   one-writer rule exists to prevent.
-- ⚠️ **Project a `GroupBy` into an anonymous type, then shape the DTO after `ToListAsync()`.** A positional
-  **record constructor** inside the projection (`.Select(g => new Bucket(g.Key, g.Count()))`) does not
-  translate — EF throws *"The LINQ expression … could not be translated"*, which surfaces as a 500 with an
-  empty body on a green build. The anonymous type above translates; map it to your DTO in memory.
+- ⚠️ **Project flat scalars into an anonymous type, then shape the DTO after `ToListAsync()`.** About the
+  **projection**, not the aggregation — a `Select` with no `GroupBy` breaks the same way. Neither a positional
+  **record constructor** (`new Bucket(g.Key, g.Count())`) nor a **member-init nested in a constructor call**
+  (`new Row(…, new OwnerDto { … })`) translates, and the 500 has an empty body on a green build.
 - ⚠️ **Prefer a `join` over a correlated `SelectMany`.** `db.A.SelectMany(a => db.B.Where(b => b.AId == a.Id)…)`
   compiles to `CROSS APPLY`, and the SQLite provider these guides default to rejects it outright
   (*"Translating this query requires the SQL APPLY operation"*). The same shape in a **processor** that
   aggregates children into `[NotMapped]` fields (§Step 7) hits it for the same reason. A **query filter on
-  the target entity** reaches the same end from a distance: EF inlines it into a correlated `Any(...)`, so
-  the `HasQueryFilter` §Step 11 asks for on a directly-queried dependent is itself what pulls `APPLY` in —
-  one level (`!x.Event!.IsArchived`) usually survives, two (`!x.Session!.Event!.IsArchived`) does not.
+  the target entity** reaches the same end from a distance: EF inlines it into every correlated `Any(...)`
+  over that entity, so the `HasQueryFilter` §Step 11 asks for on a directly-queried dependent travels into
+  queries that never mention it. **One hop (`!x.Event!.IsArchived`) inlines as a join — safe even when that
+  dependent is itself the target of an `Any(...)` from its parent. Two hops (`!x.Session!.Event!.IsArchived`)
+  is the `APPLY`.** Keep such a filter one level deep; the cost of adding one is re-running the
+  `Any(...)`-based endpoints once.
 - ⚠️ **A method of your own called on the row does not translate** — `.Where(t => IsBreached(t, now))`. Inline
   it, or hoist it to an `Expression<Func<T, bool>>` / `IQueryable<T>` extension so it stays in the tree.
 - ⚠️ **`EF.Functions.DateDiff*`/`DateAdd*` are SQL Server only** and throw on the SQLite these guides default

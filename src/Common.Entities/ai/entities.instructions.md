@@ -235,21 +235,26 @@ The table below lists the optional steps; the required steps (1–6, 11–15) fo
 
 **Interface selection checklist:**
 
-| Interface | Add when… |
-|---|---|
-| `IEntityWithSerial` | int primary key (auto-increment). Shortcut for `IEntity<int>` |
-| `IEntity<TKey>` | Non-int primary key (e.g. `Guid`) |
-| `IHasTimestamps` | Track Created + LastModified (stored as UTC by default) |
-| `IHasConcurrencyToken` | Optimistic concurrency — a PUT/PATCH built on a stale read answers 409 instead of overwriting; carry `ConcurrencyToken` on both DTOs ([`entities.patterns.md`](./entities.patterns.md) → Optimistic concurrency) |
-| `IArchivable` | Soft-delete — ⚠️ `DELETE /{id}` then flags the row instead of erasing it; the flagged rows are hidden by the archived query filter, auto-wired by `UseDefaults()` (Step 11); full round-trip in [`entities.patterns.md`](./entities.patterns.md) → Soft Delete |
-| `IHasTitle` | Entity has a short display name |
-| `IHasDescription` | Entity has a long text field |
-| `IHasCode` | Entity has a short unique code |
-| `ISortable` | Used as a sortable child collection |
-| `IHasNormalizedContent` | Entity uses normalized text for search |
-| `IHasAttachments` | Entity can have file attachments |
+The interface adds behaviour, never the property — declare each member yourself, with the exact type below.
 
-> **`IHasTitle` is getter-only in the interface** (`string? Title { get; }`). Implementing entities must declare `{ get; set; }` to allow writes — C# permits this even when the interface only specifies a getter. Declaring just `{ get; }` on the entity makes the property read-only and will cause compile errors whenever you try to assign it.
+| Interface | Add when… | You declare |
+|---|---|---|
+| `IEntityWithSerial` | int primary key (auto-increment). Shortcut for `IEntity<int>` | `int Id` |
+| `IEntity<TKey>` | Non-int primary key (e.g. `Guid`) | `TKey Id` |
+| `IHasTimestamps` | Track Created + LastModified (stored as UTC by default) | `DateTime Created`, `DateTime? LastModified` |
+| `IHasConcurrencyToken` | Optimistic concurrency — a PUT/PATCH built on a stale read answers 409 instead of overwriting; carry `ConcurrencyToken` on both DTOs, no initializer ([`entities.patterns.md`](./entities.patterns.md) → Optimistic concurrency) | `Guid ConcurrencyToken` — ⚠️ a `Guid`, not an ETag `string` or a `[Timestamp]` `byte[]` |
+| `IArchivable` | Soft-delete — ⚠️ `DELETE /{id}` then flags the row instead of erasing it; the flagged rows are hidden by the archived query filter, auto-wired by `UseDefaults()` (Step 11); full round-trip in [`entities.patterns.md`](./entities.patterns.md) → Soft Delete | `bool IsArchived` — keep it on `TInputDto` too, or restoring is impossible |
+| `IHasTitle` | Entity has a short display name | `string? Title { get; set; }` (the interface is getter-only) |
+| `IHasDescription` | Entity has a long text field | `string? Description` |
+| `IHasCode` | Entity has a short unique code | `string? Code` |
+| `ISortable` | Used as a sortable child collection | `int SortOrder` |
+| `IHasNormalizedContent` | Entity uses normalized text for search | `string? NormalizedContent` + a `[Normalized]` source |
+| `IHasAttachments` | Entity can have file attachments | `[NotMapped] bool? HasAttachment`, `ICollection<TEntityAttachment>? Attachments` |
+| `IHasStartEndDate` | A validity period you filter with `query.FilterIsActiveOn(date)` | `DateTime? StartDate`, `DateTime? EndDate` — both nullable |
+
+The rest (`IHasSlug`, `IHasUri`, `IHasUserId`, `IHasDefault`, `IHasObjectId<TKey>`, the single-sided
+`IHasCreated`/`IHasLastModified`/`IHasStartDate`/`IHasEndDate`) are in §Quick Reference: Built-in Entity
+Interfaces, with the services each turns on.
 
 > **`IHasNormalizedContent` is all-or-nothing.** The global `Q` filter AND-s a `NormalizedContent` match for every entity that implements it, so declaring it but leaving `NormalizedContent` unpopulated (no `[Normalized]`/normalizer) makes `Q` match nothing and searches return empty. Populate it, or don't implement the interface. The attribute belongs on the **property** — `[MaxLength(1024), Normalized(SourceProperties = [nameof(Title), nameof(Description)])] public string? NormalizedContent { get; set; }` — see §Normalizing for why the class-level form silently normalizes nothing.
 
@@ -529,6 +534,12 @@ The **parent FK needs no stamping**. New children reach the store through the pa
 
 > ⚠️ **One writer per save path.** A parent's `Related()` sync and the child's own `IEntityService<T>` *may* coexist — the registrations don't conflict — but only while **the parent's input DTO leaves the collection `null`**, which makes the sync short-circuit to a no-op. Send the collection and the parent wins: its next save re-diffs and silently overwrites rows the standalone service wrote (`null` = untouched, `[]` = **all rows deleted**). Need independent endpoints for an owned row? That's the supported join-toggle recipe in [`entities.patterns.md`](./entities.patterns.md) — *Single-field PATCH / state toggle*; just keep the collection off the parent's `TInputDto`. Unless the child is also **sortable**: `SortOrder` is collection-level and must ride the parent DTO, so guard the per-row field with a `Prepare` hook instead (same file → *Owned children that are both sortable and individually togglable*).
 
+> ⚠️ **Calling `Modify` from your own action? `null` = untouched is the *sync's* contract, and EF gets there
+> first.** On a **tracked** parent loaded with `Include(x => x.Items)`, setting `Items = null` to no-op the
+> sync orphans the children before the sync is ever consulted — they cascade away on `SaveChanges`, 200, no
+> error. Hand `Modify` a **detached** instance (`AsNoTracking()`, or `new Cart { Id = id, …, Items = null }`);
+> `[ServerOwned]` restores what you left off.
+
 > **`Related()` children cost no budget slot.** A child collection managed via `e.Related(...)` gets **no
 > `.For<>()` and no controller** — it rides on the parent's endpoints. Giving `OrderLine` its own registration
 > is the classic way to blow the free-tier bucket for nothing (see Step 0). Editing a m2m join from a SPA:
@@ -605,14 +616,22 @@ Add `DbSet<YourEntity>` and configure any relationships in `OnModelCreating`.
 >     .ConfigureWarnings(w => w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning)));
 > ```
 >
-> A dependent you also query **directly** (an aggregate over `OrderLine`, not through `Order`) needs one more thing: give it a matching `HasQueryFilter(x => !x.Order!.IsArchived)` in `OnModelCreating`. That is what keeps its own count and items in agreement — and it never collides with the named archived filter, because the archived filter only touches `IArchivable` types.
+> **Mirror the parent's archived filter onto a dependent?** Per dependent:
 >
-> ⚠️ That filter also hides the rows from the **parent's own** aggregate recompute, which runs while the parent is still archived — so restoring the parent zeroes a computed total, with a 200 and no error. Any prepper summing such a dependent needs `IgnoreQueryFilters()`, scoped by the parent FK: [`entities.patterns.md`](./entities.patterns.md) § Aggregates over a non-owned child collection.
+> | The dependent… | Mirror `HasQueryFilter(x => !x.Parent!.IsArchived)`? |
+> |---|---|
+> | is queried **directly** (own endpoint, `/search`, an aggregate over it) and is **one hop** from the parent | **Yes** — otherwise its `count` and `items` disagree |
+> | is reached **only** through the parent's `Include(...)` | **No** — the parent's filter already removed it |
+> | sits **two hops** away (`!x.Session!.Event!.IsArchived`) | **No** — needs `APPLY`, which SQLite lacks. Filter explicitly in the queries that care |
 >
-> ⚠️ **Keep it one level deep.** EF inlines this filter into any correlated `Any(...)` over the dependent, so
-> a two-level filter (`!x.Session!.Event!.IsArchived`) makes such a search need `APPLY` — which SQLite lacks.
-> A dependent reached only through the parent's includes needs no filter of its own:
-> [`entities.patterns.md`](./entities.patterns.md) § Cross-entity aggregates & report endpoints.
+> It never collides with the named archived filter, because that one only touches `IArchivable` types.
+>
+> ⚠️ **A mirrored filter leaves the dependent's own routes.** EF inlines it into every correlated `Any(x => …)`
+> over that entity from anywhere else — including the parent's search (`Assignments.Any(a => a.ReturnedOn == null)`).
+> One hop inlines as a join and is safe in that position; two hops is the `APPLY`. So **after adding one, re-run
+> the endpoints that filter the parent by `Any(...)` over it** — that is where a two-hop mistake surfaces.
+>
+> ⚠️ A mirrored filter also hides the rows from the **parent's own** aggregate recompute, which runs while the parent is still archived — so restoring the parent zeroes a computed total, with a 200 and no error. Any prepper summing such a dependent needs `IgnoreQueryFilters()`, scoped by the parent FK: [`entities.patterns.md`](./entities.patterns.md) § Aggregates over a non-owned child collection.
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — DbContext
 
@@ -631,6 +650,12 @@ Use `EntityControllerBase`. The generic type arguments on the controller must **
 The controller can add `TDto` and `TInputDto` on top. A wrong arity **compiles** — it only surfaces at
 startup DI validation (enable `ValidateOnBuild`, see `entities.setup.md`), so copy the pairing from the
 table below rather than reasoning it out.
+
+> **Writing something that is not CRUD? Read the matching pattern first.** A **dashboard, report or export**
+> action → [`entities.patterns.md`](./entities.patterns.md) § Cross-entity aggregates & report endpoints:
+> such a query **bypasses the entity pipeline**, so the row-security predicate an `IGlobalFilteredQueryBuilder`
+> would have applied is yours to repeat — omitting it is a data leak that compiles, type-checks and returns 200.
+> A **state transition** (submit/approve/reject) → same file, *Domain actions on an entity resource*.
 
 > **`EntityControllerBase` lives in `Regira.Entities.Web.Controllers.Abstractions`.** A bare
 > `using Regira.Entities.Web.Controllers;` is **not** enough — the base class is in the `.Abstractions`
@@ -738,6 +763,8 @@ Expected: `Code` and `Total` are unchanged from step 1 (not `null`/`0`) and `sta
 **Assert your seed data's domain invariants with a query, not by eyeballing a page.** Name each rule the data must satisfy ("every asset whose status is *In use* has a holder"; "every event has at least one session"), then prove it with a search that must return `count: 0` — `GET /assets/search?statusId=3&isAssigned=false`. This is the one class of bug a green build, a green type-check *and* a passing round-trip all miss: the generator loop that skips a case leaves data that is individually valid and collectively wrong, and it only shows up as something looking odd on a page nobody scrolled to.
 
 **Then check the *distributions*, not only the invariants.** An invariant catches the rule you thought of; a ratio catches the one you didn't. Count each state your UI visualises — a bucket sitting at **0 % or 100 % of its population is a generator bug**, however plausible each individual row is. The classic shape is a date derived from a uniformly-spread `Created` against a much shorter SLA or due window: every row is defensible and every open item is overdue, which makes the badge, the filter and the dashboard tile meaningless. Derive such dates relative to each row's own window instead, and re-count.
+
+**Finally, read twenty whole rows** — `GET /{entity}/search?pageSize=20`, every column. A ratio proves a bucket is *populated*, never that a row makes *sense*: columns drawn from independent pools are each well-distributed and jointly absurd (*"Lenovo MacBook Pro"*), and a date can sit inside a healthy 41 % bucket and still be seven years stale. Draw correlated columns as tuples. Neither defect is reachable by counting, and both are obvious on sight.
 
 Rows scoped to a user/tenant, or endpoints gated by role? One more check applies — §Security & Authorization → *Verify per identity*.
 
@@ -1409,7 +1436,7 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 | Save/delete returns **409 Conflict** (`ProblemDetails` title "Conflict") on a valid-looking payload | A DB constraint rejected the change — required FK points at a nonexistent parent, duplicate unique key, or a delete under `Restrict` (§Error Handling); the response detail is generic — the constraint name is in the server log (warning) | Fix the data, or validate in a prepper and `throw new EntityInputException<TEntity>(…)` → field-level 400 (parameterize by the *serviced* entity) |
 | A user's edit silently overwrites another user's change — no 409 | No concurrency token, or it never round-trips: missing from the read or input DTO (the client then sends the default, which is not checked), or an application-owned token nothing re-mints | Implement `IHasConcurrencyToken` (or declare a token of your own and mint it in a primer) and put it on both DTOs ([`entities.patterns.md`](./entities.patterns.md) → Optimistic concurrency). Startup validation warns about a DTO without the property |
 | Every PUT/PATCH answers **409 "Concurrency conflict"**, even with a single user | The entity initializes its token (`= Guid.NewGuid()`) and the input DTO has no property for it, so each mapped entity carries a token the row never held; or the client resends the token it read before its own last save | Remove the initializer and add the property to both DTOs; take the new token from the `SaveResult` after each save. Startup validation reports the initializer as an error |
-| A dashboard/report endpoint answers **500 with an empty body** on a green build; the log says *"The LINQ expression … could not be translated"* or *"Translating this query requires the SQL APPLY operation"* | An untranslatable construct in the query: a record constructor in the projection, a correlated `SelectMany` (`CROSS APPLY`), **a method of your own called on the row**, or a provider-specific `EF.Functions` member (`DateDiff*` is SQL Server only) | The full list with the translating alternative for each is in [`entities.patterns.md`](./entities.patterns.md) § Cross-entity aggregates & report endpoints |
+| A dashboard/report endpoint answers **500 with an empty body** on a green build; the log says *"The LINQ expression … could not be translated"* or *"Translating this query requires the SQL APPLY operation"* | An untranslatable construct in the query: a record constructor in the projection, a correlated `SelectMany` (`CROSS APPLY` — absent on SQLite), **a method of your own called on the row**, or a provider-specific `EF.Functions` member (`DateDiff*` is SQL Server only) | The full list with the translating alternative for each is in [`entities.patterns.md`](./entities.patterns.md) § Cross-entity aggregates & report endpoints |
 
 ### Troubleshooting — compiler errors
 
