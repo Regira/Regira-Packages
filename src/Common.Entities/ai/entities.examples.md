@@ -19,7 +19,8 @@
 
 ## DbContext
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Data/WebshopDbContext.cs
 public class WebshopDbContext(DbContextOptions<WebshopDbContext> options) : DbContext(options)
 {
@@ -71,7 +72,8 @@ public class WebshopDbContext(DbContextOptions<WebshopDbContext> options) : DbCo
 
 ## Category entity
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Entities/Categories/Category.cs
 public class Category : IEntityWithSerial, IHasTimestamps, IHasTitle, IHasNormalizedContent, IArchivable
 {
@@ -193,7 +195,8 @@ public static EntityServiceCollection<WebshopDbContext> AddCategories(this IEnti
 
 ## Product entity
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Entities/Products/Product.cs
 public class Product : IEntityWithSerial, IHasTimestamps, IHasTitle, IHasDescription, IHasNormalizedContent
 {
@@ -309,7 +312,8 @@ public static EntityServiceCollection<WebshopDbContext> AddProducts(this IEntity
 > **Note:** This entity uses `Guid` as the primary key to demonstrate the non-int key workflow. 
 In real projects, choose the key type based on your requirements — `int` (auto-increment) is the default and most common choice.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Entities/Customers/Customer.cs — uses IEntity<Guid> (non-int key)
 public class Customer : IEntity<Guid>, IHasTimestamps, IHasNormalizedContent
 {
@@ -354,7 +358,8 @@ The **simple int-key + custom SearchObject** registration. Use it when you want 
 SearchObject but do **not** need typed `TSortBy`/`TIncludes` (which would make it a *complex*
 registration). This is a *simple* registration.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Entities/Suppliers/Supplier.cs
 public class Supplier : IEntityWithSerial, IHasTitle, IHasTimestamps
 {
@@ -403,7 +408,8 @@ var supplierService = scope.ServiceProvider.GetRequiredService<IEntityService<Su
 
 ## Order + OrderLine entities
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Entities/Orders/OrderStatus.cs
 public enum OrderStatus { Pending=0, Processing, Shipped, Delivered, Cancelled }
 
@@ -608,7 +614,8 @@ public static EntityServiceCollection<WebshopDbContext> AddOrders(this IEntitySe
 
 Use `EntityControllerBase` for entity HTTP endpoints:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Controllers/CategoryController.cs ~ For<Category, int, CategorySearchObject>()
 [ApiController, Route("categories")]
 public class CategoryController : EntityControllerBase<Category, int, CategorySearchObject, CategoryDto, CategoryInputDto>;
@@ -654,7 +661,8 @@ own PATCH route.
 > This example uses its own `Checklist` aggregate rather than extending the `Order` + `OrderLine` example above,
 > which declares a different field set for the same names. Don't merge the two.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Entities/Checklists/Checklist.cs
 public class Checklist : IEntityWithSerial, IHasTitle
 {
@@ -698,7 +706,8 @@ public class ChecklistInputDto
 }
 ```
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Entities/Checklists/ChecklistServiceConfiguration.cs
 public static EntityServiceCollection<AppDbContext> AddChecklists(this IEntityServiceCollection<AppDbContext> services)
     => services.For<Checklist, ChecklistSearchObject, EntitySortBy, ChecklistIncludes>(e =>
@@ -735,7 +744,8 @@ public static EntityServiceCollection<AppDbContext> AddChecklists(this IEntitySe
 > receives every registered `IEntityPrepper` and filters by entity type, so preppers added for the same entity from
 > another call site interleave by global registration order.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Controllers/ChecklistItemsController.cs — one route, one field. No .For<ChecklistItem>() anywhere:
 // ChecklistItem has no IEntityService, so inject the DbContext and SaveChanges explicitly.
 [ApiController]
@@ -779,7 +789,8 @@ runtime. It yields `null` only for **value-type** element types, where variance 
 
 ### Inline processor
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 e.Process((items, includes) =>
 {
     foreach (var item in items)
@@ -799,7 +810,8 @@ before the entity is tracked — no need to inject anything or write a separate 
 > new set. `?? 0` / `?.Any() != true` collapse `null` and `[]` into one branch and zero the stored total on
 > every status-only PATCH — 200 OK, silent corruption. Branch on `null` and re-read the persisted children.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // With DbContext — look up related data and auto-price order lines before save:
 e.Prepare(async (order, dbContext) =>
 {
@@ -843,7 +855,8 @@ public class ProductPrepper : EntityPrepperBase<Product>
 
 ### Primers
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Entity-specific primer — mint a server-owned field on create, and protect it on update.
 // Same mechanism as the built-in HasCreatedDbPrimer, which restores Created from OriginalValues this way.
 // For this exact case the one-liner is e.ServerOwned(x => x.Code, _ => …) (or [ServerOwned] to protect
@@ -886,7 +899,8 @@ collections correctly. Reach for these calls only in the cases below. (Full rule
 
 ### AfterMapper
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Inline:
 e.UseMapping<ProductDto, ProductInputDto>()
     .After((entity, dto) =>
@@ -910,7 +924,8 @@ public class ProductAfterMapper(IHttpContextAccessor httpContextAccessor) : Enti
 
 ### IQKeywordHelper — Q full-text search
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class ProductQueryBuilder(IQKeywordHelper qHelper) : FilteredQueryBuilderBase<Product, int, ProductSearchObject>
 {
     public override IQueryable<Product> Build(IQueryable<Product> query, ProductSearchObject? so)
@@ -928,7 +943,8 @@ public class ProductQueryBuilder(IQKeywordHelper qHelper) : FilteredQueryBuilder
 
 ### Global filter query builder
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Separate class — applies to all entities implementing the interface:
 public class FilterByTenantQueryBuilder(ITenantContext tenantContext) : GlobalFilteredQueryBuilderBase<ITenantEntity, int>
 {
@@ -946,7 +962,8 @@ options.AddGlobalFilterQueryBuilder<FilterHasNormalizedContentQueryBuilder>();
 
 ### Global normalizer
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Uses INormalizer to manually control normalization output:
 public class ProductNormalizer(INormalizer normalizer) : EntityNormalizerBase<Product>
 {
@@ -963,7 +980,8 @@ public class ProductNormalizer(INormalizer normalizer) : EntityNormalizerBase<Pr
 
 ### Paging defaults
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Default + max page size — enforced by the controller List/Search endpoints. An omitted pageSize uses the
 // default; pageSize <= 0 opts out and falls back to the max; a positive pageSize is clamped to the max.
 services.UseEntities<WebshopDbContext>(options =>
@@ -987,7 +1005,8 @@ services.UseEntities<WebshopDbContext>(options =>
 > the owner's `For<>()` builder — registers the *typed* per-owner read/write services, the link prepper and
 > the DTO mapping, plus a per-owner join entity. Slot cost: [§License requirement](./entities.instructions.md#license-requirement).
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Attachment entity — inherit the `EntityAttachment` base (maps to int, int, int, Attachment) and set
 // ObjectType in the constructor.
 public class ProductAttachment : EntityAttachment
@@ -1065,7 +1084,8 @@ services
 > use inline LINQ (e.g. `query.Where(x => x.Code == so.Code)`) as a drop-in replacement.
 > See [`entities.signatures.md`](./entities.signatures.md) — §QueryExtensions for full interface constraints.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // From Regira.Entities.EFcore.Extensions (QueryExtensions):
 query.FilterId(so.Id)                   // requires IEntity<TKey>
 query.FilterIds(so.Ids)                 // requires IEntity<TKey>

@@ -12,7 +12,8 @@
 
 ## Registration
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 builder.Services.AddAnalytics<GeoPageView>(builder.Configuration)   // or your own IGeoPageView entity
     .WithStore<MyStore>()
     .AddGeoIP2(builder.Configuration);                               // binds Analytics:GeoIP2

@@ -11,7 +11,7 @@ turn; if a counterpart edit is out of scope, say so explicitly rather than leavi
 
 | You change… | Also update… |
 |---|---|
-| a public signature or behaviour | the module's `ai/*.md` and `README.md`. The MCP knowledge base is built from `ai/` (Regira-Tools, DEPLOY.md §7), so a stale guide ships to every agent that asks |
+| a public signature or behaviour | the module's `ai/*.md` and `README.md`. The MCP knowledge base is built from `ai/`, so a stale guide ships to every agent that asks |
 | a package version | `CHANGELOG.md`; Regira-Website's `packages.json` is regenerated from this repo's `src/` by `npm run packages` over there |
 | the path or filename of a doc page under `src/*/` | the links into it — regira.com's views and Regira-Blog post bodies point at this repo's Pages site with absolute URLs |
 
@@ -71,12 +71,33 @@ Read `ai/learnings.md` before starting any substantial work. Update it when a ta
 
 ### Adding a new module
 
+**Guides live on the hub, not on every package.** A family's `ai/` folder sits in its `Common.{Hub}/`
+project and documents every provider behind it — `office.pdf.instructions.md` covers all seven PDF
+backends. That is why most of the ~60 `{Family}.{Provider}/` projects carry no `ai/` folder at all, and
+why adding one to a provider is the exception rather than step 2. Which path you are on decides the work:
+
+**A new provider in an existing family** (`PDF.NewBackend`, `Mail.NewSender`):
+
+1. Create `src/{Family}.{Provider}/` with a `.csproj` and source files
+2. Document it **in the hub's guide** — the provider table in `{family}.instructions.md`, plus its
+   registration call and anything that behaves unlike its siblings. Do not start a second guide for it
+3. Add it to the `Main packages and defaults` column of both routing tables (below), saying when to pick it
+4. A provider needs its own `ai/` only for something the hub guide genuinely cannot carry — the exact
+   `using` set of a provider-only namespace (`Entities.EFcore`, `Entities.Web` ship a `namespaces.md`
+   and nothing else) or a package card (`Security.Authentication*`). A provider `build/` folder is for
+   MSBuild work unrelated to guides, such as carrying a native companion file into the output
+   (`PDF.SelectPdf`, `OCR.Tesseract`) — it is not the guide-extraction pattern below
+
+**A new hub** (a family that does not exist yet, or a standalone package like `TreeList`):
+
 1. Create `src/{ModuleName}/` with a `.csproj`, source files, `build/`, and `ai/`
 2. Write the AI guides in `src/{ModuleName}/ai/` — at minimum `{module}.instructions.md` and `{module}.examples.md`
 3. Create `src/{ModuleName}/build/Regira.{ModuleName}.targets` following the pattern in any existing `.targets` file
 4. Create `src/{ModuleName}/build/Regira.{ModuleName}.props` following the pattern in any existing `.props` file (sets `DefaultItemExcludes` to prevent `.regira\**` and `.claude\**` from appearing as project items)
 5. Add the props file, targets file, and AI files to the `.csproj` under `buildTransitive\` and `ai\` respectively
 6. Add the module to the routing tables in `ai/AGENTS.md` and `src/Common.Setup/ai/copilot-instructions.md`
+7. Add a snippet group to `tools/GuideVerifier/projects.json` so the guide's ```` ```csharp ```` blocks are
+   compiled — list the new guide files and the src projects they compile against
 
 ### Updating AI guides
 
@@ -88,6 +109,24 @@ When adding or updating features, make sure to update the documentation as well.
 ai/ -> documentation for AI agents
 README.md + src/{ModuleName}/docs/ -> documentation for developers
 The documents for AI agents and the documents for developers should not refer to each other.
+
+**The developer README is an index, not the manual.** It carries the projects table, installation, a
+short "which one do I want" orientation, the `## Overview` link list and the licence — then each subject
+gets its own page under `docs/`. `Common.Entities` and `Common.Security` are the shape to copy. A README
+that grows a full API reference is the thing to split, because it is also the nuget.org package page
+(`PackageReadmeFile`), so length there is a cost on every package listing.
+
+Link convention: the README's `## Overview` uses absolute `https://regira.github.io/Regira-Packages/…`
+URLs; a `docs/` page repeats the same list with **relative** links (`../README.md`, `jwt.md`) and bolds
+itself. A cross-module link from any README uses the absolute form, since READMEs are also served from
+nuget.org where a relative path resolves to nothing.
+
+Snippets in both layers are compiled by `tools/GuideVerifier` — add new guide files to the matching group
+in `tools/GuideVerifier/projects.json`, and mark a genuine fragment with a `<!-- no-compile -->` line
+directly above its fence. The marker sits there rather than in the fence's info string because
+Kramdown — Jekyll's parser behind the Pages site — only accepts a single-token info string: it does not
+read ```` ```csharp no-compile ```` as a fence at all, so the marker rendered as literal text on the
+published page and the mis-paired fences swallowed the prose and headings after them into code blocks.
 
 Write docs as if authored correctly from scratch — no correction notes or change history.
 
@@ -118,13 +157,12 @@ Every package owns its own `<Version>` in its `.csproj` (SemVer). Published vers
   adopt — a new type, a new registration, a new extension point. A member that only completes a shape a
   consumer already has (`QKeyword`'s `Trimmed*` family beside `Trimmed`) does not move the family's version
   line, and the whole family publishes on one aligned number.
-- Do not bump packages you did not change. Dependent packages are re-versioned by the release tooling (ProjectFilesProcessor in the private Regira-Tools repo) when it publishes to nuget.org.
+- Do not bump packages you did not change. Dependent packages are re-versioned by the release tooling when it publishes to nuget.org.
 - **Record every shipped change in [CHANGELOG.md](CHANGELOG.md) in the same change**: one bullet under the `## Unreleased` heading — `` `PackageId` x.y.z — one-line summary``. At publish time the Unreleased block becomes a dated release heading.
 - **The number you write is provisional; the deploy phase settles the final one.** The rules above are what
   keep a changed package publishable at any moment — write them as stated. At release time the tooling
   re-versions dependents on top of that, and only then does the `## Unreleased` block become a dated
-  heading, so do not date it yourself. Deploy mechanics live in `DEPLOY.md` in the private **Regira-Tools**
-  repo — outside this repository.
+  heading, so do not date it yourself. The deploy itself runs from outside this repository.
 - **The tag and the GitHub release come last, from this repo.** `.github/workflows/release.yml` tags a
   `main` commit and publishes the release page, with the notes taken from that version's `CHANGELOG.md`
   block. It publishes nothing to nuget.org — that already happened — so it refuses a version the registry

@@ -13,8 +13,8 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 > **A QR code *is* a barcode** — specifically the 2D `BarcodeFormat.QRCode`. This module treats QR as a subset of barcodes: `QRCodeInput : BarcodeInput`, and `IQRCodeService` is just a QR-restricted convenience over `IBarcodeService`. Anything QR can also be done through the general barcode services. See [Barcode vs QR — which to use](#barcode-vs-qr--which-to-use).
 
 **Related:**
-- [Media / Drawing](../../Common.Media/ai/media.instructions.md) — `IImageFile` is the return type of `Create()`
-- [IO.Storage](../../Common.IO.Storage/ai/io.storage.instructions.md) — `IMemoryFile` for file input/output
+- **Media / Drawing** — `IImageFile` is the return type of `Create()`. `get_package(id: "Regira.Media", section: "media.instructions")`, or `media.instructions.md` locally.
+- **IO.Storage** — `IMemoryFile` for file input/output. `get_package(id: "Regira.IO.Storage", section: "io.storage.instructions")`, or `io.storage.instructions.md` locally.
 
 ---
 

@@ -81,7 +81,8 @@ The instance's own backup folder (`MSSQL\Backup`) usually admits only the servic
 
 `Exists` checks for a database on an open connection:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 bool exists = await restoreService.Exists(connection, "shop_staging");
 ```
 

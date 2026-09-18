@@ -62,7 +62,8 @@ TreeView<Category> view = tree.ToTreeView();
 
 Self-referencing entities stored as parent/child join rows (multi-parent) come out of the database flat; the multi-parent `ToTreeList` overload reassembles them. With Regira Entities, tree endpoints fetch the flat rows through a mapped SQL function, then return the assembled tree depth-first:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // rows: { ParentId, ChildId, Level, RootId } — e.g. from a recursive-CTE table-valued function
 var items = await dbContext.GetCategoryOffspring(ids, maxLevel).ToListAsync();
 // the selector returns each row's PARENT rows — an edge-row's parent is the row ending where it starts

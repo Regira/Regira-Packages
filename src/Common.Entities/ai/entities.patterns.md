@@ -6,7 +6,8 @@ Per-feature recipes, loaded on demand. The always-loaded spine ([`entities.instr
 
 The write service exposes single-item `Add`, `Modify`, `Save`, and `Remove` plus a single `SaveChanges()` (`IEntityWriteService<TEntity, TKey>`). Those per-item calls only **track** the change — no INSERT or UPDATE is issued until `SaveChanges()`. To insert or update many rows, loop the per-item calls and flush **once**:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Resolve the always-registered IEntityService<TEntity, TKey> outside a controller (see §Step 13).
 var service = scope.ServiceProvider.GetRequiredService<IEntityService<Product, int>>();
 
@@ -28,7 +29,8 @@ Two timing facts drive how you order a bulk run:
 
 Applies the first fact directly: save parents, then assign their generated `Id`s to children.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Wave 1 — parents
 foreach (var c in rootCategories) await categories.Add(c);
 await categories.SaveChanges();                 // Ids now populated; tracker cleared
@@ -44,13 +46,15 @@ await categories.SaveChanges();
 A collection managed by `e.Related()` is *owned* and has **no** `IEntityService<T>` of its own (see the relationship decision table), so it can't go through the service loop above. Two ways in:
 
 - **Through the parent's navigation** — set the owned collection before adding the parent; the parent's `Related()` prepper persists the join rows on `SaveChanges()`:
-  ```csharp no-compile
+  <!-- no-compile -->
+  ```csharp
   product.Categories = [cat1, cat2];   // ProductCategory join rows
   await products.Add(product);
   await products.SaveChanges();
   ```
 - **Straight on the DbContext** — for a standalone/self-referencing join (e.g. `RelatedCategory`) with no parent write path, add the rows on the context:
-  ```csharp no-compile
+  <!-- no-compile -->
+  ```csharp
   db.RelatedCategories.Add(new RelatedCategory { ParentId = a.Id, ChildId = b.Id });
   await db.SaveChangesAsync();
   ```
@@ -63,7 +67,8 @@ Prefer the parent-navigation form when the join hangs off an entity you're alrea
 
 Resolve the per-owner **link** service registered by `HasAttachments` — `IEntityService<TEntityAttachment, int>` — and add a link that carries a **nested `Attachment`** with the bytes. The attachment write pipeline (bytes→file conversion + storage-key `Identifier` generation) runs on `SaveChanges()`, writing the file, filling `Path`/`Length`, and assigning `AttachmentId`:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // IEntityService<ProductAttachment, int> — registered by HasAttachments.
 // Not IAttachmentService<…>: that interface is for the shared Attachment base only, and a link
 // entity is an IEntityAttachment (not an IAttachment), so the typed overload can't bind to it.
@@ -97,7 +102,8 @@ Resolve the **per-owner link** service registered by `HasAttachments` —
 with the bytes. The attachment write pipeline runs on `SaveChanges()`: it writes the file,
 fills `Path`/`Length`, and assigns `AttachmentId`.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Registered by HasAttachments. NOT IAttachmentService<…>: that interface is for the shared
 // Attachment base only, and a link entity is an IEntityAttachment (not an IAttachment).
 var links = sp.GetRequiredService<IEntityService<ProductAttachment, int>>();
@@ -135,7 +141,8 @@ There is no `AddRange`. The per-item `Add`/`Modify`/`Save`/`Remove` calls only *
 changes; nothing hits the database until a single `SaveChanges()`. Loop the per-item calls
 and flush **once**:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 var service = sp.GetRequiredService<IEntityService<Product, int>>();
 foreach (var product in products)
     await service.Add(product);   // tracks only — no DB round-trip yet
@@ -155,7 +162,8 @@ Pre-set timestamps survive — no raw SQL needed. `HasCreatedDbPrimer` stamps `C
 when it is `DateTime.MinValue`, and `HasLastModifiedDbPrimer` stamps only on update. Assign
 historical dates before the first `SaveChanges()`:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 await service.Add(new Ticket { /* … */ Created = new DateTime(2024, 3, 1) });
 await service.SaveChanges(); // the pre-set Created is kept; the primer does not overwrite it
 ```
@@ -164,7 +172,8 @@ await service.SaveChanges(); // the pre-set Created is kept; the primer does not
 (`default`/`DateTime.MinValue`/`null`). The built-ins protect `Created`/`LastModified` only; an
 unconditional `SubmittedAt = DateTime.UtcNow` on create silently flattens the seeded timeline to seed time.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // SubmittedAt is set once, when the record is created — so stamp on create, restore on update.
 if (original == null && modified.SubmittedAt == default) modified.SubmittedAt = DateTime.UtcNow;
 if (original != null) modified.SubmittedAt = original.SubmittedAt;
@@ -196,7 +205,8 @@ An owned child collection whose rows own a collection of their **own** (order �
 discounts; party → relationships → relationship contact data) syncs in one registration — the
 `configure` callback of `Related()` nests another `Related()`:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 e.Related(
     item => item.ChildRelationships, item => item.ChildRelationships?.Prepare(),   // level 1: parent-level prepare
     rel => rel.Related(r => r.ContactData, r => r.ContactData?.Prepare())          // level 2: per-row nested sync
@@ -220,7 +230,8 @@ paging off-by-one; it is not. Cause: `Product.CategoryId` is **required** and `C
 On `net10.0` the archived filter propagates into the `Include` as an inner join, so a product whose
 category is archived drops out of `items`; the count query has no join. Pick by what the principal is:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // 1. Reference data is never archivable: drop IArchivable from Category and refuse the delete while in use
 modelBuilder.Entity<Product>().HasOne(x => x.Category).WithMany().OnDelete(DeleteBehavior.Restrict);
 
@@ -248,7 +259,8 @@ class instead of the property, or no attribute at all), so the global `Q` filter
 custom filter — startup logs *"?q= text search is silently ignored for: X"*. Either way the attribute goes
 on the **property**, naming its sources:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class Article : IEntity<int>, IHasNormalizedContent
 {
     [MaxLength(1024), Normalized(SourceProperties = [nameof(Title), nameof(Description)])]
@@ -269,7 +281,8 @@ collection reached the `Related()` sync as `[]`. The contract is `null` = leave 
 delete them all — and an input DTO that initializes the collection turns every omitted collection into
 `[]`:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class OrderInputDto
 {
     public string? Status { get; set; }
@@ -294,7 +307,8 @@ The filter lands on every `IArchivable` entity type — root types only, since E
 
 > ⚠️ **A `DbContext` you construct yourself never sees that wiring.** `new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()…Options)` — integration tests, an `IDesignTimeDbContextFactory`, a seeding tool — builds its model without consulting the service collection, so archived rows stay visible *there* while the host hides them. Add the filter to those options explicitly:
 >
-> ```csharp no-compile
+> <!-- no-compile -->
+> ```csharp
 > new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
 >     .UseSqlite(connection)
 >     .AddArchivedQueryFilter()          // Regira.Entities.EFcore.Extensions
@@ -303,7 +317,8 @@ The filter lands on every `IArchivable` entity type — root types only, since E
 
 **Wiring it in the `DbContext` instead** is still supported — for a setup that opted out of `DbContextWiring.ArchivedQueryFilter`, or one that prefers the model to state it. It must come *after* your own `HasQueryFilter(...)` calls and only once; calling it while the automatic wiring is on is harmless (the convention skips an entity type that already carries the filter):
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 protected override void OnModelCreating(ModelBuilder modelBuilder)
 {
     base.OnModelCreating(modelBuilder);
@@ -347,14 +362,16 @@ registered (it costs its own simple slot).
 
 Three edits, in this order:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class TicketAttachment : EntityAttachment
 {
     public TicketAttachment() => ObjectType = nameof(Ticket);
     public Ticket? Ticket { get; set; }          // exists so the archived filter has something to bind to
 }
 ```
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 modelBuilder.Entity<Ticket>(e =>
     e.HasMany(x => x.Attachments).WithOne(a => a.Ticket!)      // WithOne names the navigation the filter binds to
         .HasForeignKey(x => x.ObjectId).HasPrincipalKey(x => x.Id));
@@ -413,7 +430,8 @@ Flip one field (e.g. `IsActive`) without a full update: expose it on `TInputDto`
 ```bash
 curl -X PATCH {base}/xs/{id} -H "Content-Type: application/json" -d '{ "isActive": false }'
 ```
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Server-side (seeding/jobs) — there is no service.Patch; load, flip, Modify, persist:
 var item = await service.Details(id);
 item!.IsActive = false;
@@ -433,7 +451,8 @@ await service.SaveChanges();      // base controllers SaveChanges for you; direc
 > ⚠️ If the parent *does* send the collection, its next save re-diffs and reverts the toggle. Remove the collection from the parent's input DTO, or drop one of the two registrations.
 >
 > **2. Hand-write a minimal PATCH controller, no `.For<>()`** — when you only need the toggle, not a whole endpoint set. No second registration means **no budget slot and no validator warning**; inject the `DbContext` directly:
-> ```csharp no-compile
+> <!-- no-compile -->
+> ```csharp
 > [HttpPatch("product-tags/{id:int}/active")]
 > public async Task<IActionResult> SetActive(int id, [FromBody] bool isActive)
 > {
@@ -459,7 +478,8 @@ A dashboard total (spend by month, counts per status, top suppliers) belongs to 
 is no `SearchObject` that can express it and no entity service that should own it. Write a plain
 `ControllerBase` alongside the entity controllers and query the `DbContext` directly:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 [ApiController, Route("dashboard")]                 // RoutePrefixConvention still prefixes it
 public class DashboardController(AppDbContext db) : ControllerBase
 {
@@ -595,7 +615,8 @@ keeping `Status` on `TInputDto` hands every PATCH caller a state pen. Invert the
    That flag is why these fields are not `[ServerOwned]`: its restore has no bypass, so the action's
    `Modify` would be reverted too.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public sealed class WorkflowContext { public bool IsTrustedWriter { get; set; } }    // services.AddScoped
 
 // registered via e.AddPrepper<CreditRequestGuard>(); original is the framework's archived-inclusive re-read
@@ -616,7 +637,8 @@ public class CreditRequestGuard(WorkflowContext workflow) : EntityPrepperBase<Cr
 3. **Gate the action controller** (`[Authorize(Roles = "Manager")]` or a policy — spellings and policies in
    `Regira.Security` → security.instructions → *Roles end-to-end*) and flip the flag before writing:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 workflowContext.IsTrustedWriter = true;
 item.Status = RequestStatus.Approved;
 item.DecidedOn = DateTime.UtcNow;
@@ -636,7 +658,8 @@ endpoints — passes through it.
 gates a controller's reads too — so the tier goes in one global filter, declared once so a new controller
 cannot silently miss it:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Microsoft.AspNetCore.Authorization;              // IAllowAnonymous
 using Microsoft.AspNetCore.Http;                       // HttpMethods
 using Microsoft.AspNetCore.Mvc;                        // ForbidResult
@@ -715,7 +738,8 @@ its own controller with its own route value, so an entry for `Products` alone le
 
 Mapster maps by name only — a DTO property renamed from its entity counterpart (e.g. `OrderDto.Lines` for `Order.OrderLines`) is silently left `null` in both directions. Wire both directions inline on the **typed** mapping builder:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 e.UseMapping<OrderDto, OrderInputDto>()
     .After((order, dto) => dto.Lines = order.OrderLines?
         .Select(l => new OrderLineDto { Id = l.Id, ProductId = l.ProductId, Quantity = l.Quantity, UnitPrice = l.UnitPrice })
@@ -731,7 +755,8 @@ Keep both on the typed chain — the class-based `.After<TImplementation>()` ret
 
 The typed `e.Prepare(async (entity, dbContext) => …)` overload (Step 8) hands you the strongly-typed `DbContext`, so a prepper can mutate **related** rows, not just the entity's own fields — decrement stock, bump a denormalized counter. Rows you load are tracked, so the parent's `SaveChanges()` persists them in the same transaction:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 e.Prepare(async (order, dbContext) =>
 {
     foreach (var line in order.Lines ?? [])
@@ -764,7 +789,8 @@ After Step 5, list every field you excluded from `TInputDto`; each needs restori
 the framework does the restoring — `[ServerOwned]` (namespace `Regira.Entities.Attributes`) to protect,
 `e.ServerOwned(x => x.Code, mint)` to protect *and* mint on create:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class Order : IEntity<int>
 {
     public int Id { get; set; }
@@ -803,7 +829,8 @@ Two cases the declaration does not cover, and what to use instead:
 
 The primer form, for that second case — stamp on create, restore on update:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class ShoppingListOwnerPrimer(IHttpContextAccessor httpContextAccessor) : EntityPrimerBase<ShoppingList>
 {
     public override Task PrepareAsync(ShoppingList entity, EntityEntry entry, CancellationToken token = default)
@@ -947,7 +974,8 @@ of the Relationship Patterns decision table, `Invoice.Total` summed from the `In
 via `InvoiceId?` — there is no incoming collection to diff, and there must not be: the child owns that write.
 Read the aggregate from the store instead:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 e.Prepare(async (invoice, dbContext) =>
 {
     invoice.SubTotal = invoice.Id > 0                          // nothing points at an unsaved parent yet
@@ -981,7 +1009,8 @@ that also survives bulk seeding cannot count rows per item: queued rows are invi
 `SaveChanges()`, so a `COUNT(*)`-per-row generator is both N+1 and duplicate-prone — it hands the same
 number to every row in the wave. Prime the counter once and increment in memory:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class RequestCodeGenerator(IServiceScopeFactory scopeFactory)
 {
     private readonly SemaphoreSlim _lock = new(1, 1);
@@ -1046,7 +1075,8 @@ guard it with a **prepper**; reserve the primer for fields nothing outside the e
 controller's download actions are `virtual` — re-expose **both** download overloads anonymously; uploads,
 deletes, and the attachment CRUD stay guarded:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 [Authorize]
 [Route("articles")] // the owner base path — the base declares no class route (§Attachments step 4)
 public class ArticleAttachmentController : EntityAttachmentControllerBase<ArticleAttachment>

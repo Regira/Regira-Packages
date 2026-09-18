@@ -38,7 +38,8 @@ extension methods, and includes built-in protection against circular references.
 
 ### From a flat collection with a parent selector
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 var people = new[]
 {
     new Person { Id = 1, Name = "Alice", ParentId = null },
@@ -55,7 +56,8 @@ Console.WriteLine(tree.Roots[0].Children.Count);   // 2  (Bob, Carol)
 
 ### From roots with a children selector (best performance)
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 var roots = people.Where(p => p.ParentId == null);
 
 var tree = people.ToTreeList(
@@ -76,7 +78,8 @@ child!.AddChild("grandchild");
 
 Once the tree is built every node exposes navigation extension methods:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 var node = tree.First(n => n.Value.Name == "Bob");
 
 // Single-node navigation
@@ -91,7 +94,8 @@ var nephews   = node.GetNephews();      // children of uncles
 
 Extension methods also work on **collections of nodes**:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 IEnumerable<TreeNode<Person>> subset = tree.Where(n => n.Level == 1);
 
 var roots     = subset.GetRoots();      // root nodes reachable from subset
@@ -104,7 +108,8 @@ var withSelf  = subset.WithOffspring(); // self + all descendants
 
 ## Ordering & Views
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Depth-first traversal (default)
 var ordered = tree.OrderByHierarchy();
 
@@ -121,7 +126,8 @@ TreeView<Person> view = tree.ToTreeView();
 `ReverseTree` inverts all parent-child relationships.  
 Leaf nodes become roots; the original root becomes a leaf.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 var reversed = tree.ReverseTree();
 ```
 
@@ -139,7 +145,8 @@ By default the tree throws `InvalidChildException<T>` in two situations:
 
 `ThrowOnError` turns both into a silent skip:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 var tree = new TreeList<Person>(new TreeList<Person>.TreeOptions
 {
     EnableAutoCheck = true,   // validate before adding (default: true)

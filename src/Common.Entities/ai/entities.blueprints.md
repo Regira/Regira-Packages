@@ -32,7 +32,8 @@ whatever entity already owns the data. (The Fleet reference app hangs both, plus
 Define each child shape once as an interface + abstract base; every owner gets a thin concrete subclass
 with its own table — no `ObjectType` discriminator, no cross-owner queries to guard, cheap FKs:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 [Flags] public enum ContactDataTypes { Other = 0, Phone = 1 << 0, Email = 1 << 1, Website = 1 << 2 }
 
 public interface IContactDetails : IEntity<int>, IHasTitle, ISortable, IHasDescription, IHasTimestamps
@@ -79,7 +80,8 @@ to them, so the base class alone carries the shape. Adapt the fields freely (a `
 
 ### Owner wiring
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class SupplierContactData : ContactDetailsBase;                       // one thin subclass per owner
 public class SupplierAddress : AddressBase { public int SupplierId { get; set; } }
 
@@ -99,7 +101,8 @@ public class Supplier : IEntityWithSerial, IHasNormalizedContent,
 
 Relationship mapping (plus a `DbSet` per subclass) — contact rows use a shadow FK, addresses an explicit one:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 modelBuilder.Entity<Supplier>(entity =>
 {
     entity.HasMany(e => e.ContactData).WithOne().OnDelete(DeleteBehavior.Cascade);
@@ -109,7 +112,8 @@ modelBuilder.Entity<Supplier>(entity =>
 
 ### Registration + search
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 services.For<Supplier, SupplierSearchObject, EntitySortBy, SupplierIncludes>(e =>
 {
     e.Related(item => item.ContactData, item => item.ContactData?.Prepare());   // owned: no For<>, no controller, no slot
@@ -123,7 +127,8 @@ services.For<Supplier, SupplierSearchObject, EntitySortBy, SupplierIncludes>(e =
 Contact values and address text become searchable by folding them into the **owner's** `NormalizedContent`,
 so the one global `Q` filter finds a supplier by phone number or city:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class SupplierNormalizer(INormalizer normalizer, ContactDataNormalizer contactDataNormalizer, AddressNormalizer addressNormalizer)
     : EntityNormalizerBase<Supplier>(normalizer)
 {
@@ -181,7 +186,8 @@ first — pick by what the app actually queries, and mix freely:
    [Contact data & addresses on any entity](#contact-data--addresses-on-any-entity); no new registration.
 2. **A single flat `Contact` entity** — one contacts table, no subtypes, no polymorphic DTOs. 1 slot:
 
-   ```csharp no-compile
+   <!-- no-compile -->
+   ```csharp
    public class Contact : IEntityWithSerial, IHasNormalizedTitle, IHasNormalizedContent, IArchivable,
        IHasContactData, IHasContactData<ContactContactDetails>
    {
@@ -208,7 +214,8 @@ Moving up later is ordinary schema evolution, not a rewrite — the child collec
 
 ### Model
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public abstract class Party(string partyType) : IEntityWithSerial, IHasCode, IHasDescription,
     IHasTimestamps, IArchivable, IHasContactData, IHasContactData<PartyContactDetails>,
     IHasStartEndDate, IHasNormalizedTitle, IHasNormalizedContent
@@ -269,7 +276,8 @@ The party reuses the owner-agnostic child shapes from
 [Contact data & addresses on any entity](#contact-data--addresses-on-any-entity) — `ContactDetailsBase`,
 `AddressBase`, and the `IHasContactData` pair with the cast bridge. Its concrete subclasses:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class PartyContactDetails : ContactDetailsBase;                 // FK to Party is a shadow FK
 public class PartyRelationshipContactDetails : ContactDetailsBase      // contact data on a relation itself
 {
@@ -280,7 +288,8 @@ public class PartyAddress : AddressBase { public int PartyId { get; set; } }
 
 ### Typed relations between parties
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class RelationshipType : IEntityWithSerial, IHasCode, IHasTitle, IHasDescription, IHasNormalizedContent
 {
     public int Id { get; set; }
@@ -316,7 +325,8 @@ public class PartyRelationship : IEntityWithSerial, IHasStartEndDate, ISortable,
 
 ### DbContext
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 modelBuilder.Entity<PartyUser>(entity =>
 {
     entity.HasOne(pu => pu.Party).WithOne().HasForeignKey<PartyUser>(pu => pu.PartyId).OnDelete(DeleteBehavior.Cascade);
@@ -344,7 +354,8 @@ modelBuilder.Entity<PartyRelationship>(entity =>
 
 ### Registration
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public static IEntityServiceCollection<AppDbContext> AddParties(this IEntityServiceCollection<AppDbContext> services)
 {
     services.For<Party, PartySearchObject, PartySortBy, PartyIncludes>(e =>
@@ -379,7 +390,8 @@ public static IEntityServiceCollection<AppDbContext> AddParties(this IEntityServ
 
 `Prepare()` is a two-line app helper reused by every owned collection — it resets client-generated ids and applies sort order using framework extensions (`Regira.Entities.Extensions`):
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public static ICollection<T> Prepare<T>(this ICollection<T> items) where T : IEntity<int>
 {
     items.Cast<IEntity<int>>().AdjustIdForEfCore();                       // new rows: negative/temp ids -> 0
@@ -392,7 +404,8 @@ public static ICollection<T> Prepare<T>(this ICollection<T> items) where T : IEn
 
 One endpoint serves both subtypes; System.Text.Json needs the discriminator declared, and Mapster needs a runtime-type branch:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "partyType")]
 [JsonDerivedType(typeof(PersonDto), PartyTypes.Person)]
 [JsonDerivedType(typeof(OrganizationDto), PartyTypes.Organization)]
@@ -425,7 +438,8 @@ Relationship DTOs come in a parent and a child flavor so each side embeds only t
 
 ### Controller
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 [ApiController, Route("parties")]
 public class PartyController(IPartyService service)
     : EntityControllerBase<Party, PartySearchObject, PartySortBy, PartyIncludes, PartyDto, PartyInputDto>
@@ -443,7 +457,8 @@ public class PartyController(IPartyService service)
 
 Prefer a 1:1 join entity over a user field on `Party` — it keeps the stakeholder domain independent from the identity store:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class PartyUser : IEntityWithSerial
 {
     public int Id { get; set; }
@@ -472,7 +487,8 @@ User-defined `Title`/`Value` pairs ("IP address = 10.0.0.5", "serial = X-123") a
 
 ### Contract + base + per-owner subclass
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public interface IEntityLabel : IHasTitle, ISortable, IHasTimestamps, IHasNormalizedContent
 {
     int ObjectId { get; set; }        // FK to the owner
@@ -500,7 +516,8 @@ public class InterventionLabel : EntityLabelBase;
 
 ### Owner wiring
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public interface IHasLabels { ICollection<IEntityLabel>? Labels { get; set; } }
 public interface IHasLabels<T> where T : IEntityLabel { ICollection<T>? Labels { get; set; } }
 
@@ -518,7 +535,8 @@ public class Vehicle : IEntityWithSerial, IHasNormalizedContent, IHasLabels<Vehi
 
 DbContext — same three lines per owner (add a `DbSet<VehicleLabel>` too):
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 modelBuilder.Entity<Vehicle>(entity =>
 {
     entity.HasMany(e => e.Labels).WithOne()        // no inverse navigation on the label
@@ -529,7 +547,8 @@ modelBuilder.Entity<Vehicle>(entity =>
 
 ### DTOs — one shared pair for every owner
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class EntityLabelDto
 {
     public int Id { get; set; }
@@ -556,7 +575,8 @@ public class EntityLabelInputDto
 
 ### Registration + search
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 services.UseEntities<AppDbContext>(options =>
 {
     options.UseMapsterMapping();
@@ -576,7 +596,8 @@ services.UseEntities<AppDbContext>(options =>
 
 Labels become searchable by folding their text into the **owner's** `NormalizedContent` (the global `Q` filter then covers them — never add a second `Q` filter):
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class EntityLabelNormalizer(INormalizer defaultNormalizer) : EntityNormalizerBase<IEntityLabel>(defaultNormalizer)
 {
     public override Task HandleNormalize(IEntityLabel item, CancellationToken token = default)
@@ -622,7 +643,8 @@ Row-level tenant isolation in three small pieces: a marker interface on tenant-o
 
 ### Marker + tenant context
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public interface IHasTenantId { string TenantId { get; set; } }   // string: matches Identity/GUID keys
 
 public interface ITenantContext { string? TenantId { get; } }
@@ -639,14 +661,16 @@ public class WritableTenantContext : ITenantContext { public string? TenantId { 
 
 Tenant-owned entities just implement the marker (typically via a shared app-level base interface):
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public interface IAppEntity : IEntity<int>, IHasTimestamps, IHasTenantId { }   // every domain entity
 // on the entity: [StringLength(32)] public string TenantId { get; set; } = null!;
 ```
 
 ### Global filter + primer
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Scope every query of every IHasTenantId entity — reads simply never see foreign rows.
 public class FilterHasTenantQueryBuilder(ITenantContext tenantContext) : FilterHasTenantQueryBuilder<int>(tenantContext);
 public class FilterHasTenantQueryBuilder<TKey>(ITenantContext tenantContext) : GlobalFilteredQueryBuilderBase<IHasTenantId, TKey>
@@ -671,7 +695,8 @@ The generic-`TKey` base + int specialization mirrors the framework's own global 
 
 ### Registration
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 services.AddHttpContextAccessor()
     .AddScoped<ITenantContext, TenantContext>();
 
@@ -702,7 +727,8 @@ The active tenant travels **inside the caller's credential** as a `tenant` claim
 
 `Tenant` is a normal string-keyed entity in the identity context — **not** tenant-filtered (it *is* the tenant; admins list all of them):
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class Tenant : IEntity<string>, IHasCode, IHasNormalizedTitle, IHasDescription, IHasTimestamps
 {
     [StringLength(32)] public string Id { get; set; } = Guid.NewGuid().ToString("N");
@@ -752,7 +778,8 @@ The blueprint continues the multi-parent `Category`/`RelatedCategory` example (j
 
 ### 1. Keyless projection + mapped functions on the DbContext
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // the row shape returned by the tree functions — keyless, never tracked, no table
 public class CategoryTreeItem
 {
@@ -808,7 +835,8 @@ public partial class WebshopDbContext
 
 Keep the DDL as constants next to the DbContext; `CREATE OR ALTER` makes execution idempotent:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public static class CategoryDbFunctions
 {
     public static readonly string CREATE_GetCategoryOffspring = """
@@ -851,7 +879,8 @@ Semantics: **Offspring** walks parent→child from the seed ids (`Level` 0-based
 
 **Creating the functions.** With migrations: `migrationBuilder.Sql(CategoryDbFunctions.CREATE_GetCategoryOffspring)` (one per statement). With `EnsureCreated()`: execute after schema creation, provider-gated —
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 await db.Database.EnsureCreatedAsync();
 if (db.Database.ProviderName == "Microsoft.EntityFrameworkCore.SqlServer")
     foreach (var sql in CategoryDbFunctions.CREATE_ALL)
@@ -860,7 +889,8 @@ if (db.Database.ProviderName == "Microsoft.EntityFrameworkCore.SqlServer")
 
 ### 3. SearchObject + query-filter composition
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public record CategorySearchObject : SearchObject
 {
     public ICollection<int>? ParentId { get; set; }     // direct relation (layer 1)
@@ -891,7 +921,8 @@ The same composition powers *indirect* filters on other entities — e.g. "produ
 
 Extend the entity's repository (`e.HasRepository<CategoryRepository>()` + a domain interface, as in Stakeholders) with tree methods that materialize the flat rows and assemble a `TreeList` (`Regira.TreeList`):
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class CategoryRepository(WebshopDbContext dbContext,
     IEntityReadService<Category, int, CategorySearchObject> readService,
     IEntityWriteService<Category, int> writeService)
@@ -938,7 +969,8 @@ Expose ASP.NET Core Identity users with the same List/Search/Details/Save surfac
 
 ### Exposed model + repository over UserManager
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // The exposed entity model (NOT the IdentityUser itself): string-keyed, carries claims + write-only password
 public class AppUserEntity : IEntity<string>
 {
@@ -979,7 +1011,8 @@ public class AppUserRepository(AccountsDbContext dbContext, UserManager<AppIdent
 
 ### Registration + controller
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Note the filter is typed on the INNER IdentityUser (the type the query runs against):
 services.For<AppUserEntity, string, AppUserSearchObject, EntitySortBy, AppUserIncludes>(e =>
 {
@@ -1008,7 +1041,8 @@ Serve static/computed reference data (countries, currencies, time zones) through
 
 ### Model + in-memory IEntityService
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class Country : IHasCode, IHasNormalizedTitle, IHasDefault<string>
 {
     public string Id { get; set; } = null!;                        // ISO2
@@ -1040,7 +1074,8 @@ public class CountryRepository(ICultureContext cultureContext) : IEntityService<
 
 ### Registration + controller
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 services.For<Country, string>(e => e.UseEntityService<CountryRepository>());
 public class CountryController : EntityControllerBase<Country, string, SearchObject<string>, CountryDto, CountryDto>;
 ```
@@ -1097,7 +1132,8 @@ budget slots.
 Copy the **Multi-tenancy blueprint**: an `IHasTenantId { string TenantId }` marker on tenant-owned
 entities, plus two registrations inside `UseEntities`:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 options.AddGlobalFilterQueryBuilder<FilterHasTenantQueryBuilder>(); // scopes every IHasTenantId read
 options.AddPrimer<HasTenantPrimer>();                               // stamps TenantId on every write
 ```
@@ -1115,7 +1151,8 @@ Copy the **Recursive entities blueprint**: map recursive-CTE table-valued functi
 `HasDbFunction`, returning a keyless projection (`HasNoKey().ToTable((string?)null)`). Compose them
 inside query filters:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 if (so.AncestorId?.Any() == true)
     query = query.Where(x => dbContext.GetCategoryOffspring(so.AncestorId, 9).Any(o => o.ChildId == x.Id));
 ```
@@ -1143,7 +1180,8 @@ creates via `userManager.CreateAsync(item, password)`; claim diffs reconciled ma
 Copy the **Virtual entity blueprint**: implement `IEntityService<T, TKey, SearchObject<TKey>>` over an
 in-memory source (apply `Q`, ordering and `PagingInfo` yourself; write methods throw), then swap it in:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 services.For<Country, string>(e => e.UseEntityService<CountryRepository>());
 ```
 

@@ -51,7 +51,8 @@ IMemoryFile output = await excel.Create(sheets);
 
 ### IExcelReader / IExcelReader\<T\>
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<IEnumerable<ExcelSheet>>    Read(IBinaryFile input, string[]? headers = null, CancellationToken cancellationToken = default);
 Task<IEnumerable<ExcelSheet<T>>> Read(IBinaryFile input, string[]? headers = null, CancellationToken cancellationToken = default);  // generic
 ```
@@ -64,7 +65,8 @@ Task<IEnumerable<ExcelSheet<T>>> Read(IBinaryFile input, string[]? headers = nul
 
 ### IExcelWriter / IExcelWriter\<T\>
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<IMemoryFile> Create(IEnumerable<ExcelSheet>    sheets, CancellationToken cancellationToken = default);
 Task<IMemoryFile> Create(IEnumerable<ExcelSheet<T>> sheets, CancellationToken cancellationToken = default);  // generic
 ```
@@ -128,7 +130,8 @@ IMemoryFile file = ((Regira.Office.Excel.EPPlus.ExcelManager)excel).Create(myDat
 
 Lowest memory footprint — uses streaming under the hood. Has a **generic `ExcelManager<T>`** that maps rows directly to typed objects (as does NpoiMapper). Automatically renames duplicate column headers (`"Col"` → `"Col_2"`, `"Col_3"`, …).
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 IExcelService<Product> excel = new Regira.Office.Excel.MiniExcel.ExcelManager<Product>();
 
 var sheets   = await excel.Read(file);          // IEnumerable<ExcelSheet<Product>>
@@ -139,7 +142,8 @@ var products = sheets.First().Data!;            // ICollection<Product>
 
 Uses Npoi.Mapper for property-to-column binding. Also has a generic `ExcelManager<T>`. Good for scenarios where column names match property names (or are annotated).
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 IExcelService<Order> excel = new Regira.Office.Excel.NpoiMapper.ExcelManager<Order>();
 ```
 

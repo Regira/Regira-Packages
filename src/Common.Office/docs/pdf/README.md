@@ -67,13 +67,15 @@ API and yields an empty file with no exception. `GetBytes()` normalises both and
 
 ### IHtmlToPdfService
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<IMemoryFile> Create(HtmlInput template, CancellationToken cancellationToken = default);
 ```
 
 ### IPdfMerger / IPdfSplitter / IPdfEditor
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // IPdfMerger
 Task<IMemoryFile?>              Merge(IEnumerable<IMemoryFile> items, CancellationToken cancellationToken = default);
 
@@ -87,14 +89,16 @@ Task<IMemoryFile?>              RemovePages(IMemoryFile pdf, IEnumerable<int> pa
 
 ### IPdfToImageService / IImagesToPdfService
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<IList<IImageFile>>  ToImages(IMemoryFile pdf, PdfToImagesOptions? options = null, CancellationToken cancellationToken = default);
 Task<IMemoryFile?>       ImagesToPdf(ImagesInput input, CancellationToken cancellationToken = default);
 ```
 
 ### IPdfTextExtractor / IPdfTextService
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<string>          GetText(IMemoryFile pdf, CancellationToken cancellationToken = default);
 Task<IList<string>>   GetTextPerPage(IMemoryFile pdf, CancellationToken cancellationToken = default);
 Task<IMemoryFile?>    RemoveEmptyPages(IMemoryFile pdf, CancellationToken cancellationToken = default);
@@ -102,7 +106,8 @@ Task<IMemoryFile?>    RemoveEmptyPages(IMemoryFile pdf, CancellationToken cancel
 
 ### IPdfPrinter
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 string              DefaultPrinter { get; }
 Task<IList<string>> List(CancellationToken cancellationToken = default);
 Task                Print(PdfPrinterInput input, CancellationToken cancellationToken = default);

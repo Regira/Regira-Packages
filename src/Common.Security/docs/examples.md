@@ -228,5 +228,12 @@ services.AddSingleton<IEmailSender>(provider =>
 
 ## Overview
 
-1. [Index](../README.md) — Overview, encryption, hashing, and every authentication scheme
-1. **[Examples](examples.md)** — Hash passwords, JWT + refresh tokens, API keys, cookies, Entra ID, Identity controllers
+1. [Index](../README.md) — Overview, projects, and choosing a scheme
+1. [Encryption & Hashing](cryptography.md) — Symmetric encryption, PBKDF2 and BCrypt password hashing
+1. [JWT Authentication](jwt.md) — Self-issued bearer tokens, claims, and refresh tokens
+1. [API Key Authentication](api-keys.md) — Key-based auth for machine callers
+1. [External Identity Providers](external-auth.md) — Validating external bearer tokens; OpenID Connect sign-in
+1. [Cookie Authentication](cookies.md) — Cookie-backed sessions
+1. [Composing Multiple Schemes](schemes.md) — Running several schemes side by side
+1. [Pre-built Auth Controllers](controllers.md) — Account, password and user endpoints
+1. **[Practical Examples](examples.md)** — Complete implementation examples

@@ -17,6 +17,7 @@
 
 ## Program.cs
 
+<!-- no-compile -->
 ```csharp
 builder.Host.UseWebHostOptions();
 
@@ -33,6 +34,7 @@ app.AddWindowsServiceInstaller(new WindowsServiceOptions
 
 ## Queue a report export
 
+<!-- no-compile -->
 ```csharp
 [HttpPost("reports")]
 public IActionResult StartExport([FromServices] IBackgroundTaskQueue queue)
@@ -49,6 +51,7 @@ public IActionResult StartExport([FromServices] IBackgroundTaskQueue queue)
 
 ## Expose API version from .csproj
 
+<!-- no-compile -->
 ```csharp
 [HttpGet("version")]
 public async Task<IActionResult> Version([FromServices] ProjectService projects)

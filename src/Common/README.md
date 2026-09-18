@@ -152,7 +152,8 @@ bool okPhone = RegexUtility.IsValidPhoneNumber("+32 123 456 789");
 
 ### CollectionUtility
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 List<T>           list     = source.AsList<T>();
 IEnumerable<T>    distinct = source.DistinctBy(x => x.Id);
 ```
@@ -168,7 +169,8 @@ Type underlying   = TypeUtility.GetSimpleType(typeof(int?));   // int
 
 ### ObjectUtility
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Merge non-null properties from one or more sources onto target
 ObjectUtility.Merge(target, source);
 
@@ -268,7 +270,8 @@ public class Article
 }
 ```
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 var normalizer = new ObjectNormalizer();
 normalizer.HandleNormalize(myEntity, recursive: true);
 ```
@@ -348,7 +351,8 @@ Lightweight database connectivity contracts. Implementations live in the `DAL.*`
 
 ### IDbSettings
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 string BuildConnectionString(params KeyValuePair<string, string>[] extraOptions);
 ```
 
@@ -356,7 +360,8 @@ Extend `DbSettingsBase` to implement a provider-specific connection string build
 
 ### IDbCommunicator
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 IDbConnection Open();
 IDbConnection Close();
 ```
@@ -402,7 +407,8 @@ See the individual DAL project docs for implementations:
 
 A `List<T>` that disposes every `IDisposable` element when itself is disposed. Useful for holding image files, streams, or other resources that need coordinated cleanup.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using var images = new DisposableCollection<IImageFile>();
 images.Add((await imageService.Parse(bytes1))!);
 images.Add((await imageService.Parse(bytes2))!);

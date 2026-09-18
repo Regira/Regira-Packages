@@ -11,7 +11,7 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 | `Regira.Office.Mail` | Email sending, mail DTOs for HTTP endpoints, and `.msg` / `.eml` reading |
 
 **Related:**
-- [IO.Storage](../../Common.IO.Storage/ai/io.storage.instructions.md) — `INamedFile` used for email attachments
+- **IO.Storage** — `INamedFile` used for email attachments. `get_package(id: "Regira.IO.Storage", section: "io.storage.instructions")`, or `io.storage.instructions.md` locally.
 
 ---
 

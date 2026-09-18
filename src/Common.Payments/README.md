@@ -33,7 +33,8 @@ Regira Payments provides payment processing via Mollie and POM, built on the sha
 
 ### PaymentService
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 var svc = new Regira.Payments.Mollie.Services.PaymentService(new MollieConfig
 {
     Api             = "https://api.mollie.com/v2",

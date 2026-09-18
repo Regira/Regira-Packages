@@ -2,7 +2,7 @@
 
 > **Role:** Load this file for setup rules reused by multiple module guides and for consumer-guide sync or distribution mechanics.
 >
-> **Boundaries:** Use [`AGENTS.md`](../../../ai/AGENTS.md) for module discovery, top-level routing, and the execution-oriented consumer workflow. Use the project setup guide — `get_package(id: "Regira.Setup", section: "project.setup")` — for project-template choice and baseline app shape.
+> **Boundaries:** Use the consumer bootstrap — `get_bootstrap_guide(heading: "toc")`, or `./AGENTS.md` at the repo root — for module discovery, top-level routing, and the execution-oriented consumer workflow. Use the project setup guide — `get_package(id: "Regira.Setup", section: "project.setup")` — for project-template choice and baseline app shape.
 
 Use this file when a module guide needs shared setup without repeating it.
 
@@ -24,7 +24,7 @@ Consumers do not need the source-repository `ai/` folder for the normal one-file
 
 ## Related Files
 
-- [`AGENTS.md`](../../../ai/AGENTS.md) — canonical downstream bootstrap to copy as `./AGENTS.md`
+- **Consumer bootstrap** — `get_bootstrap_guide(heading: "toc")` — canonical downstream bootstrap; committed as `./AGENTS.md` at the repo root when the MCP server is not configured
 - **Project setup guide** — `get_package(id: "Regira.Setup", section: "project.setup")` — canonical shared project-template guide; extractable to `.regira/instructions/project.setup.md` through `Regira.Setup`
 
 ## Authoring Rules

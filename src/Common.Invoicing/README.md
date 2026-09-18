@@ -33,7 +33,8 @@ Regira Invoicing covers electronic invoice creation, UBL/Peppol conversion, and 
 
 ### DI Registration
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 services.AddBillit(sp => new BillitConfig
 {
     PartyId = configuration["Billit:PartyId"],
@@ -44,7 +45,8 @@ services.AddBillit(sp => new BillitConfig
 
 ### IInvoiceManager
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<ICreateInvoiceResult> Create(IInvoice item);
 Task<ISendInvoiceResult>   Send(params string[] ids);    // send by IDs
 Task<ISendInvoiceResult>   Send(IInvoice input);          // send by invoice object
@@ -56,7 +58,8 @@ Task<ISendInvoiceResult>   Send(IInvoice input);          // send by invoice obj
 
 ### IUblConverter
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 XDocument Convert(UblDocumentInput input);
 ```
 
@@ -96,7 +99,8 @@ XDocument ubl = converter.Convert(new UblDocumentInput
 
 ### PeppolService
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 var service = new PeppolService(gatewaySettings, jsonSerializer);
 
 UblDocumentResponse result = await service.Send(ublDocument);
@@ -111,7 +115,8 @@ Requests are sealed with `SealUtility.Generate()` — an MD5 digest over the tok
 
 ## Typical end-to-end flow
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // 1. Build the invoice domain model
 IInvoice invoice = BuildInvoice(order);
 

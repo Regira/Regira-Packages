@@ -31,7 +31,9 @@
 | Property | Type | Default | Description |
 |---|---|---|---|
 | `ServiceName` | `string?` | `null` | App / Windows Service display name |
+| `Mode` | `string` | `"Production"` | Hosting mode (inherited from `HostOptions`; see `HostingModes`) |
 | `LocalPort` | `int?` | `null` | Override listening port |
+| `SelfHosting` | `bool` | `false` | Flags the app as self-hosted (e.g. Kestrel / Windows Service) |
 | `EnableSwagger` | `bool` | `true` | Toggle Swagger UI |
 | `EnableCors` | `bool` | `false` | Toggle CORS |
 | `EnableHttps` | `bool` | `false` | Toggle HTTPS redirect |
@@ -49,6 +51,7 @@
 }
 ```
 
+<!-- no-compile -->
 ```csharp
 builder.Host.UseWebHostOptions();
 ```
@@ -59,6 +62,7 @@ builder.Host.UseWebHostOptions();
 
 Queue and execute long-running work without blocking HTTP requests.
 
+<!-- no-compile -->
 ```csharp
 services.UseBackgroundQueue();
 
@@ -75,10 +79,14 @@ public IActionResult StartExport(IBackgroundTaskQueue queue)
 
 Typed tasks with progress tracking:
 
+<!-- no-compile -->
 ```csharp
 services.UseBackgroundQueue<ReportTask>();
 
-var task = taskManager.Execute<string>(async (sp, t) =>
+// Execute lives on IBackgroundQueueManager<TTask>; IBackgroundTaskManager<TTask> only lists/finds
+// tasks (List, Find, Add, Remove, Clear) and has no Execute.
+var queueManager = serviceProvider.GetRequiredService<IBackgroundQueueManager<ReportTask>>();
+var task = queueManager.Execute<string>(async (sp, t) =>
 {
     t.SetProgress(0.5);
     return await GenerateReport(sp, t.Id);
@@ -89,6 +97,7 @@ var task = taskManager.Execute<string>(async (sp, t) =>
 
 ### Windows Service Installer
 
+<!-- no-compile -->
 ```csharp
 app.AddWindowsServiceInstaller(new WindowsServiceOptions
 {
@@ -124,6 +133,7 @@ Generates `install.bat` / `uninstall.bat` scripts using `sc.exe`.
   variables in its script (batch syntax), and `ExecuteFile` throws `NotSupportedException` rather than drop them.
 - There is no timeout: the call returns when the process exits.
 
+<!-- no-compile -->
 ```csharp
 IProcessHelper processes = new ProcessHelper();
 var output = processes.ExecuteFile("/usr/bin/pg_dump",
@@ -155,6 +165,7 @@ Console.WriteLine(string.Join(", ", proj.TargetFrameworks!));  // "net8.0, net10
 
 Update and write back:
 
+<!-- no-compile -->
 ```csharp
 proj.Version  = new Version("5.1.0");
 XDocument updated = parser.Update(xml, proj);
@@ -165,6 +176,7 @@ updated.Save("MyLib.csproj");
 
 ### `ProjectService`
 
+<!-- no-compile -->
 ```csharp
 var service = new ProjectService(parser, textFileService);
 
@@ -180,6 +192,7 @@ await service.Save(proj);  // writes changes back to disk
 
 Build a dependency tree from all projects in the solution:
 
+<!-- no-compile -->
 ```csharp
 var manager  = new ProjectManager(projectService);
 ProjectTree  tree = await manager.BuildTree();
@@ -188,6 +201,7 @@ var roots  = tree.Roots;
 var leaves = tree.GetBottom().Select(n => n.Value.Id);
 ```
 
-`ProjectTree` extends `TreeList<Project>` — see [treelist.instructions.md](../../TreeList/ai/treelist.instructions.md) for the full navigation API.
+`ProjectTree` extends `TreeList<Project>` — see `get_package(id: "Regira.TreeList", section: "treelist.instructions")`,
+or `treelist.instructions.md` locally, for the full navigation API.
 
 ---

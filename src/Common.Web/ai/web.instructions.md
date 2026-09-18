@@ -12,7 +12,6 @@
 | `Web.HTML.RazorEngineCore` | `Regira.Web.HTML.RazorEngineCore` | Razor templates via RazorEngineCore |
 | `Web.HTML.RazorLight` | `Regira.Web.HTML.RazorLight` | Razor templates via RazorLight |
 | `Web.Swagger` | `Regira.Web.Swagger` | Swagger/OpenAPI JWT & API Key support |
-| `System.Hosting` | `Regira.System.Hosting` | Host config, background tasks, Windows Service |
 
 ---
 
@@ -33,8 +32,6 @@
 <!-- Swagger JWT + API Key support -->
 <PackageReference Include="Regira.Web.Swagger" Version="6.*" />
 
-<!-- Host config, background tasks, Windows Service -->
-<PackageReference Include="Regira.System.Hosting" Version="6.*" />
 ```
 
 ---
@@ -43,6 +40,7 @@
 
 ### `IHtmlParser`
 
+<!-- no-compile -->
 ```csharp
 Task<string> Parse<T>(string html, T model);
 ```
@@ -62,6 +60,7 @@ Replaces `{{PropertyName}}` tokens with property values. Supports conditional bl
 <!--{{/showAddress}}-->
 ```
 
+<!-- no-compile -->
 ```csharp
 var parser = new HtmlTemplateParser(jsonSerializer);
 string html = await parser.Parse(template, new { Name = "Alice", Address = "123 Main St", showAddress = true });
@@ -73,6 +72,7 @@ string html = await parser.Parse(template, new { Name = "Alice", Address = "123 
 
 Best for simple templates without layout inheritance. Strips `@model` directives and `Layout` blocks.
 
+<!-- no-compile -->
 ```csharp
 IHtmlParser parser = new Regira.Web.HTML.RazorEngineCore.RazorTemplateParser();
 string html = await parser.Parse(razorTemplate, model);
@@ -84,6 +84,7 @@ string html = await parser.Parse(razorTemplate, model);
 
 Lighter alternative with memory caching. Use `TemplateKey` to reuse compiled templates across calls.
 
+<!-- no-compile -->
 ```csharp
 IHtmlParser parser = new Regira.Web.HTML.RazorLight.RazorTemplateParser(new()
 {
@@ -108,6 +109,7 @@ string html = await parser.Parse(razorTemplate, model);
 
 ### Global Exception Handling
 
+<!-- no-compile -->
 ```csharp
 services.AddGlobalExceptionHandling();
 app.UseGlobalExceptionHandling();
@@ -117,6 +119,7 @@ app.UseGlobalExceptionHandling();
 
 Sets `CultureInfo.CurrentCulture` from a `culture` query parameter or route value.
 
+<!-- no-compile -->
 ```csharp
 app.UseRequestCulture();
 // GET /api/products?culture=nl-BE  → sets nl-BE culture
@@ -129,6 +132,7 @@ Extension on `MvcOptions` from **`Regira.Web`** (`using Regira.Web.Routing;`). I
 `api/v1/products`), and a selector with no route model of its own takes the prefix as its route. It
 registers at the head of `opts.Conventions` so it runs before conventions that read the finished route.
 
+<!-- no-compile -->
 ```csharp
 services.AddControllers(options =>
     options.UseCentralRoutePrefix(new RouteAttribute("api/v1")));
@@ -138,6 +142,7 @@ services.AddControllers(options =>
 
 Enables `[FromBody] string` binding for `text/plain` requests.
 
+<!-- no-compile -->
 ```csharp
 services.AddControllers(options =>
     options.InputFormatters.Insert(0, new TextPlainInputFormatter()));
@@ -145,12 +150,14 @@ services.AddControllers(options =>
 
 ### `ControllerExtensions`
 
+<!-- no-compile -->
 ```csharp
 return this.File(namedFile, inline: true);  // return INamedFile as download or inline
 ```
 
 ### `RequestUtility` — `HttpRequest` extension methods
 
+<!-- no-compile -->
 ```csharp
 string     url     = Request.CurrentUrl();
 Uri        baseUrl = Request.GetBaseUrl();
@@ -165,6 +172,7 @@ IPAddress? ip      = Request.GetIPAddress();
 
 Add JWT Bearer and/or API Key inputs to the Swagger UI:
 
+<!-- no-compile -->
 ```csharp
 builder.Services.AddSwaggerGen(o =>
 {
@@ -176,59 +184,19 @@ builder.Services.AddSwaggerGen(o =>
 
 Display enums as strings in Swagger:
 
+<!-- no-compile -->
 ```csharp
 builder.Services.AddControllers().DisplayEnumAsString();
 ```
 
 ---
 
-## System.Hosting — `WebHostOptions`
+## Host config, background tasks, Windows Service
 
-Configure via `appsettings.json` under `"Hosting"`:
-
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `ServiceName` | `string?` | `null` | App / Windows Service display name |
-| `LocalPort` | `int?` | `null` | Override listening port |
-| `EnableSwagger` | `bool` | `true` | Toggle Swagger UI |
-| `EnableCors` | `bool` | `false` | Toggle CORS |
-| `EnableHttps` | `bool` | `false` | Toggle HTTPS redirect |
-| `RoutePrefix` | `string?` | `null` | API route prefix |
-
-```csharp
-builder.Host.UseWebHostOptions();
-```
-
----
-
-## System.Hosting — Background Tasks
-
-Queue and execute long-running work without blocking requests.
-
-```csharp
-services.UseBackgroundQueue();
-
-// In a controller
-public IActionResult StartExport(IBackgroundTaskQueue queue)
-{
-    queue.QueueBackgroundWorkItem(async token =>
-    {
-        await GenerateReport(token);
-    });
-    return Accepted();
-}
-```
-
-Typed tasks with progress tracking:
-
-```csharp
-services.UseBackgroundQueue<ReportTask>();
-
-var task = taskManager.Execute<string>(async (sp, t) =>
-{
-    t.SetProgress(0.5);
-    return await GenerateReport(sp, t.Id);
-});
-```
+`WebHostOptions` (`UseWebHostOptions`), the background task queue (`UseBackgroundQueue`,
+`IBackgroundTaskQueue`, `IBackgroundQueueManager<TTask>`) and `AddWindowsServiceInstaller` ship in
+**`Regira.System.Hosting`**, not in this family — `Regira.Web` does not reference it. Read
+`get_package(id: "Regira.System", section: "system.instructions")`, or `system.instructions.md`
+locally, before wiring any of them.
 
 ---

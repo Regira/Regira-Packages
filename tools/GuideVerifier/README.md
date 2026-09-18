@@ -20,7 +20,7 @@ so a snippet that no longer binds against the real API is caught here rather tha
      §2 declares the entities, §3 registers them, §4 writes their controllers). The group's snippets then
      compile into one namespace instead of one each. Leave it off for reference guides, where the
      per-snippet isolation is what keeps two files' `Product` apart.
-2. Pulls every ` ```csharp ` block from each guide file (skipping `no-compile` blocks).
+2. Pulls every ` ```csharp ` block from each guide file, skipping any preceded by a `<!-- no-compile -->` line.
 3. Classifies each block with Roslyn:
    - **Declaration** blocks (types / namespaces / usings) are emitted at namespace scope, each in its own
      namespace to avoid cross-guide type collisions.
@@ -48,28 +48,47 @@ dotnet run --project tools/GuideVerifier -- . --group office-pdf,office-excel
 
 Many guide snippets are **deliberate fragments** — an entity class that references types defined in a
 neighbouring block, a signature reference, a method body shown without its class, a line with a `// …`
-placeholder. These cannot compile standalone and must be opted out of verification by tagging the fence:
+placeholder. These cannot compile standalone and are opted out of verification by a marker line placed
+above the fence:
 
 ~~~markdown
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // partial fragment — references types defined elsewhere in the guide
 public class Product : IEntityWithSerial { /* … */ }
 ```
 ~~~
 
-The token `no-compile` anywhere in the fence info string (after `csharp`) excludes the block. The rule of
-thumb: a block that a reader could paste into a project and expect to build should stay a plain
-` ```csharp ` block (and therefore be verified); anything that is illustrative-only gets `no-compile`.
+A `<!-- no-compile -->` line **directly above** the fence excludes the block. The rule of thumb: a block a
+reader could paste into a project and expect to build stays a plain ` ```csharp ` block (and is therefore
+verified); anything illustrative-only gets the marker.
 
-As the guides are cleaned up so that more blocks are self-contained, remove `no-compile` tags to bring
+> **The marker goes above the fence, never inside its info string.** ` ```csharp no-compile ` was the old
+> form, and it broke the published docs. Kramdown — Jekyll's parser behind the GitHub Pages site — only
+> accepts a **single-token** info string, so it does not read that line as a fence at all: the marker
+> rendered as literal text on the page, and every unrecognised opener turned the following closing fence
+> into an opener, swallowing the prose and headings after it into a code block. `entities.blueprints` lost
+> five of its eight `##` sections that way. The guides read correctly over MCP throughout, which is why it
+> went unnoticed — only the human-facing site was affected. Keep the marker on its own line and the fence a
+> bare ` ```csharp `.
+
+The old form now **fails loudly** rather than silently: the extractor no longer reads the info string, so
+` ```csharp no-compile ` is collected as an ordinary C# block and the fragment breaks the build.
+
+As the guides are cleaned up so that more blocks are self-contained, remove `no-compile` markers to bring
 those snippets back under verification.
+
+**Blind spot — blockquoted snippets.** A fence indented inside a blockquote (`> ```csharp `) is invisible to
+the extractor, marker or not, so those blocks are never verified. Four exist today, in
+`entities.instructions.md` and `entities.patterns.md`; they carry `> <!-- no-compile -->` for consistency,
+but the marker is inert. Don't rely on a blockquoted block being checked.
 
 ## Scope and CI
 
 - Intended to run in CI as a **separate, non-blocking job** (`continue-on-error`) once workflows are
   authored, while the guides still carry many `no-compile` fragments. Make it blocking once most snippets compile.
 - **Test-CI only.** This project references src projects; it must never be pulled into the
-  MCP deploy path or the knowledge-base builder (both in the private Regira-Tools repo), which
+  MCP deploy path or the knowledge-base builder (both outside this repository), which
   stay dependency-free of it.
 
 ## Extending coverage

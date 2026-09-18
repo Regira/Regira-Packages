@@ -21,7 +21,8 @@ Always prefer clear, conventional patterns over clever solutions. Default to the
 
 `Regira.Entities.DependencyInjection` validates a license key at startup (product code `regira.entities`). **The free tier needs no call — omit `UseRegira()` entirely.** To apply **paid** keys, register them **once** via `UseRegira()` before calling `UseEntities()`:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Program.cs — before UseEntities
 services.UseRegira(configuration); // paid keys only — omit this line on the free tier
 
@@ -366,7 +367,8 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 > **⚠️ Exclude a server-owned field and restore it in the same edit.** A field absent from `TInputDto` maps
 > as `null`/default on every PUT *and* PATCH — 200 OK, silent corruption (a status-only PATCH zeroes a
 > computed `Total`). Declare it server-owned:
-> ```csharp no-compile
+> <!-- no-compile -->
+> ```csharp
 > public class Order : IEntity<int>
 > {
 >     public int Id { get; set; }
@@ -608,7 +610,8 @@ Add `DbSet<YourEntity>` and configure any relationships in `OnModelCreating`.
 >
 > Once you have confirmed it is an aggregate parent, silence it where the context is registered (the options builder, not `OnModelCreating`):
 >
-> ```csharp no-compile
+> <!-- no-compile -->
+> ```csharp
 > using Microsoft.EntityFrameworkCore.Diagnostics; // CoreEventId
 >
 > builder.Services.AddDbContext<AppDbContext>(opt => opt
@@ -660,7 +663,8 @@ table below rather than reasoning it out.
 > **`EntityControllerBase` lives in `Regira.Entities.Web.Controllers.Abstractions`.** A bare
 > `using Regira.Entities.Web.Controllers;` is **not** enough — the base class is in the `.Abstractions`
 > child namespace and the controller won't resolve (CS0246) without it. See
-> [`entities.web.namespaces.md`](../../Entities.Web/ai/entities.web.namespaces.md) for the exact `using` set.
+> `get_package(id: "Regira.Entities.Web", section: "entities.web.namespaces")` for the exact `using` set
+> (this guide ships with `Regira.Entities.Web` and is served over MCP only — it does not extract locally).
 
 > **Keep controller routes resource-relative and spell the resource** — `[Route("products")]` — then apply a shared `api` base **once** at host/app level so it stays configurable (`app.UsePathBase`, reverse proxy, or a global route-prefix convention). Avoid the `[controller]` token: it expands to the class-name stem, so a `SupplierController` serves `/Supplier`, not the kebab-case plural `/suppliers` the SPA calls — a 404 on every request for that entity. See [`entities.setup.md`](./entities.setup.md) — API route prefix.
 
@@ -677,7 +681,8 @@ table below rather than reasoning it out.
 
 **Alignment card — the three generic lists must match (register = N, controller = N+2, inject = N).** Copy one tier:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // ── SIMPLE (no TSortBy/TIncludes) ──
 e.For<Product, int, ProductSearchObject>(/* … */);                                  // register (N=3)
 class ProductController : EntityControllerBase<Product, int, ProductSearchObject, ProductDto, ProductInputDto>; // controller (N+2)
@@ -910,7 +915,8 @@ Diagnostic code `REGIRA0001` marks the obsolete `EntityPrimerContainer(DbContext
 - `MaxPageSize` is always the ceiling; `null` for either option turns that aspect off.
 
 **Global — inside `UseEntities()`:**
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 services.UseEntities<AppDbContext>(options =>
 {
     options.DefaultPageSize = 50;   // applied when the request omits pageSize
@@ -919,7 +925,8 @@ services.UseEntities<AppDbContext>(options =>
 ```
 
 **Per-entity override — inside `.For<>()`** (fully replaces the global values for that entity):
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 .For<Product>(e => e.SetPageSize(defaultPageSize: 25, maxPageSize: 100))
 .For<LogEntry>(e => e.SetPageSize());   // opt out entirely: omitted / pageSize <= 0 returns every row
 ```
@@ -950,7 +957,8 @@ too, but the two placements take **different options**, and only the property fo
 compiles, binds nothing, and leaves `NormalizedContent` `null` for every row — so `?q=` matches nothing and
 every search returns empty, at HTTP 200, with no error and no warning.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class Category : IEntity<int>, IHasNormalizedContent
 {
     public string Title { get; set; } = null!;
@@ -1017,7 +1025,8 @@ This overload matches the **raw** family (`TrimmedQW`), because the columns you 
 
 `IQKeywordHelper` is injected, so this is a **registered builder class**, not an inline `e.Filter(...)` lambda (a lambda has no DI — see §Step 6):
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class OrderQueryBuilder(IQKeywordHelper qHelper) : FilteredQueryBuilderBase<Order, int, OrderSearchObject>
 {
     public override IQueryable<Order> Build(IQueryable<Order> query, OrderSearchObject? so)
@@ -1030,7 +1039,8 @@ e.AddFilter<OrderQueryBuilder>();
 
 **Or use the built-in global filter** (applies to all `IHasNormalizedContent` entities):
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 options.AddGlobalFilterQueryBuilder<FilterHasNormalizedContentQueryBuilder>();
 ```
 
@@ -1065,7 +1075,8 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — Additional Patterns > Attachments
 > **→ See:** [`entities.signatures.md`](./entities.signatures.md) — Attachments
-> **→ See:** [`io.storage`](../../Common.IO.Storage/ai/io.storage.instructions.md) — the `IFileService` file-store contract behind attachments (read before wiring a store)
+> **→ See:** `io.storage.instructions` — the `IFileService` file-store contract behind attachments (read before
+> wiring a store). `get_package(id: "Regira.IO.Storage", section: "io.storage.instructions")`, or `io.storage.instructions.md` locally.
 
 1. Create a class inheriting the **`EntityAttachment`** base and set `ObjectType` in the constructor:
    `public class ProductAttachment : EntityAttachment { public ProductAttachment() => ObjectType = nameof(Product); }`.
@@ -1076,7 +1087,8 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
    is the ordinary property; the **non-generic** one takes the explicit implementation, casting both ways.
    Both interfaces also require `HasAttachment` — a flag, not a column (on an entity that already maps it, the
    next migration drops that column); the ⚠️ note below says who fills it:
-   ```csharp no-compile
+   <!-- no-compile -->
+   ```csharp
    [NotMapped] public bool? HasAttachment { get; set; }   // System.ComponentModel.DataAnnotations.Schema
    public ICollection<ProductAttachment>? Attachments { get; set; }
    ICollection<IEntityAttachment>? IHasAttachments.Attachments

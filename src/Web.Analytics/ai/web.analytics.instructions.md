@@ -13,7 +13,8 @@
 
 ## Registration
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 builder.AddAnalyticsConfiguration();                       // optional: watched botdetector.json in the content root
 builder.Services.AddAnalytics(builder.Configuration)       // binds the "Analytics" section
     .WithStore<MyPageViewStore>();                         // REQUIRED for tracking — no store, no tracking (warning logged)
@@ -53,7 +54,8 @@ logged and swallowed; a store exception loses that batch but never kills the wri
 Derive from `PageView` for host-specific dimensions; the pipeline fills the base properties, your
 contributors/enrichers fill the rest:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class SitePageView : PageView { public string? Experiment { get; set; } public string? Network { get; set; } }
 // IVisitContributor<SitePageView> fills Experiment in-request (cookie/header);
 // IPageViewEnricher<SitePageView> fills Network from pending.ClientIp (unmasked, pre-persist)

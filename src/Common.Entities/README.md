@@ -86,7 +86,8 @@ Assuming a `Repository` with a `DbContext` is being used.
 
 basic sample setup which whill register a `IEntityService` for Category, Product and Order entities, using the default `EntityRepository` implementation.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 builder.Services
     .UseRegira(LICENSE) // free tier and trial available
     .UseEntities<MyDbContext>(options => options.UseDefaults())
