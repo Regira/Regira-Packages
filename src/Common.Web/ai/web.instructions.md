@@ -109,7 +109,6 @@ string html = await parser.Parse(razorTemplate, model);
 
 ### Global Exception Handling
 
-<!-- no-compile -->
 ```csharp
 services.AddGlobalExceptionHandling();
 app.UseGlobalExceptionHandling();
@@ -119,7 +118,6 @@ app.UseGlobalExceptionHandling();
 
 Sets `CultureInfo.CurrentCulture` from a `culture` query parameter or route value.
 
-<!-- no-compile -->
 ```csharp
 app.UseRequestCulture();
 // GET /api/products?culture=nl-BE  → sets nl-BE culture
@@ -132,7 +130,6 @@ Extension on `MvcOptions` from **`Regira.Web`** (`using Regira.Web.Routing;`). I
 `api/v1/products`), and a selector with no route model of its own takes the prefix as its route. It
 registers at the head of `opts.Conventions` so it runs before conventions that read the finished route.
 
-<!-- no-compile -->
 ```csharp
 services.AddControllers(options =>
     options.UseCentralRoutePrefix(new RouteAttribute("api/v1")));
@@ -142,7 +139,6 @@ services.AddControllers(options =>
 
 Enables `[FromBody] string` binding for `text/plain` requests.
 
-<!-- no-compile -->
 ```csharp
 services.AddControllers(options =>
     options.InputFormatters.Insert(0, new TextPlainInputFormatter()));
@@ -172,7 +168,6 @@ IPAddress? ip      = Request.GetIPAddress();
 
 Add JWT Bearer and/or API Key inputs to the Swagger UI:
 
-<!-- no-compile -->
 ```csharp
 builder.Services.AddSwaggerGen(o =>
 {
@@ -184,7 +179,6 @@ builder.Services.AddSwaggerGen(o =>
 
 Display enums as strings in Swagger:
 
-<!-- no-compile -->
 ```csharp
 builder.Services.AddControllers().DisplayEnumAsString();
 ```

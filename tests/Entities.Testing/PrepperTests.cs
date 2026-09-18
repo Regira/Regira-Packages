@@ -504,4 +504,146 @@ public class PrepperTests
         Assert.That(savedProducts.Single(p => p.Id == 1).Title, Is.EqualTo("Product (1 - modified)"),
             "the existing row should be updated in place, matched by id from the reloaded original");
     }
+
+    /// <summary>
+    /// Contract check: a <c>null</c> incoming collection means "untouched", not "empty". The sync must
+    /// leave every existing related row exactly as it is — no deletes, no re-inserts — so a PATCH that
+    /// omits a collection cannot wipe it.
+    /// </summary>
+    [Test]
+    public async Task Related_Null_Incoming_Collection_Leaves_Existing_Rows_Untouched()
+    {
+        IServiceCollection services = new ServiceCollection();
+        services.AddDbContext<ProductContext>(db => db.UseSqlite(_connection));
+        var sp = services.BuildServiceProvider();
+
+        var dbContext = sp.GetRequiredService<ProductContext>();
+        await dbContext.Database.EnsureCreatedAsync();
+
+        using (var insertScope = sp.CreateScope())
+        {
+            var ctx = insertScope.ServiceProvider.GetRequiredService<ProductContext>();
+            ctx.Categories.Add(new Category
+            {
+                Id = 1,
+                Title = "Category",
+                Products = new List<Product>
+                {
+                    new() { Title = "Product (1)" },   // Id=1
+                    new() { Title = "Product (2)" },   // Id=2
+                }
+            });
+            await ctx.SaveChangesAsync();
+        }
+
+        using var updateScope = sp.CreateScope();
+        var updateCtx = updateScope.ServiceProvider.GetRequiredService<ProductContext>();
+
+        var original = await updateCtx.Categories
+            .AsNoTrackingWithIdentityResolution()
+            .Include(x => x.Products)
+            .SingleAsync(x => x.Id == 1);
+
+        // The client sent only a title change; the collection is absent from the payload.
+        var modified = new Category { Id = 1, Title = "Category (updated)", Products = null };
+
+        var prepper = new RelatedCollectionPrepper<ProductContext, Category, Product, int, int>(
+            updateCtx,
+            x => x.Products);
+
+        await prepper.Prepare(modified, original);
+        await updateCtx.SaveChangesAsync();
+
+        var savedProducts = await updateCtx.Products.AsNoTracking().ToListAsync();
+        Assert.That(savedProducts.Select(p => p.Id), Is.EquivalentTo(new[] { 1, 2 }),
+            "a null collection must be ignored: both rows survive, neither is deleted nor re-inserted");
+        Assert.That(savedProducts.Single(p => p.Id == 1).Title, Is.EqualTo("Product (1)"),
+            "untouched rows keep their values");
+    }
+
+    /// <summary>
+    /// Records every reader-executing command, so a test can assert that a code path issued no query.
+    /// Reads go through a reader; the non-query channel would miss them entirely.
+    /// </summary>
+    private sealed class ReaderRecorder : Microsoft.EntityFrameworkCore.Diagnostics.DbCommandInterceptor
+    {
+        public List<string> Reads { get; } = [];
+
+        public override Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader> ReaderExecuting(
+            System.Data.Common.DbCommand command,
+            Microsoft.EntityFrameworkCore.Diagnostics.CommandEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader> result)
+        {
+            Reads.Add(command.CommandText);
+            return result;
+        }
+
+        public override ValueTask<Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader>> ReaderExecutingAsync(
+            System.Data.Common.DbCommand command,
+            Microsoft.EntityFrameworkCore.Diagnostics.CommandEventData eventData,
+            Microsoft.EntityFrameworkCore.Diagnostics.InterceptionResult<System.Data.Common.DbDataReader> result,
+            CancellationToken cancellationToken = default)
+        {
+            Reads.Add(command.CommandText);
+            return ValueTask.FromResult(result);
+        }
+    }
+
+    /// <summary>
+    /// Regression guard for the null-collection short-circuit. The original is loaded WITHOUT
+    /// Include(Products), so the navigation is null and the prepper's fallback load is the only thing
+    /// that could issue a query. With a null incoming collection there is nothing to reconcile, so it
+    /// must issue none. Without the early return this fails: the fallback fetches every child row and
+    /// the sync discards them one line later.
+    /// </summary>
+    [Test]
+    public async Task Related_Null_Incoming_Collection_Issues_No_Query()
+    {
+        var recorder = new ReaderRecorder();
+        IServiceCollection services = new ServiceCollection();
+        services.AddDbContext<ProductContext>(db => db.UseSqlite(_connection).AddInterceptors(recorder));
+        var sp = services.BuildServiceProvider();
+
+        var dbContext = sp.GetRequiredService<ProductContext>();
+        await dbContext.Database.EnsureCreatedAsync();
+
+        using (var insertScope = sp.CreateScope())
+        {
+            var ctx = insertScope.ServiceProvider.GetRequiredService<ProductContext>();
+            ctx.Categories.Add(new Category
+            {
+                Id = 1,
+                Title = "Category",
+                Products = new List<Product>
+                {
+                    new() { Title = "Product (1)" },
+                    new() { Title = "Product (2)" },
+                }
+            });
+            await ctx.SaveChangesAsync();
+        }
+
+        using var updateScope = sp.CreateScope();
+        var updateCtx = updateScope.ServiceProvider.GetRequiredService<ProductContext>();
+
+        // No Include: the navigation is NOT materialized, so the prepper's `?? LoadRelatedCollection`
+        // fallback is reachable — this is the fixture in which the removed query used to fire.
+        var original = await updateCtx.Categories
+            .AsNoTrackingWithIdentityResolution()
+            .SingleAsync(x => x.Id == 1);
+        Assert.That(original.Products, Is.Null, "precondition: navigation not eager-loaded");
+
+        var modified = new Category { Id = 1, Title = "Category (updated)", Products = null };
+
+        var prepper = new RelatedCollectionPrepper<ProductContext, Category, Product, int, int>(
+            updateCtx,
+            x => x.Products);
+
+        recorder.Reads.Clear();
+        await prepper.Prepare(modified, original);
+
+        Assert.That(recorder.Reads, Is.Empty,
+            "a null incoming collection must not query the original's rows: "
+            + string.Join(" | ", recorder.Reads.Select(r => string.Join(" ", r.Split()))));
+    }
 }

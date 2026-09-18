@@ -4,7 +4,6 @@
 
 ## DI Registration
 
-<!-- no-compile -->
 ```csharp
 // Program.cs
 services.AddSingleton<IHtmlParser, Regira.Web.HTML.RazorLight.RazorTemplateParser>(

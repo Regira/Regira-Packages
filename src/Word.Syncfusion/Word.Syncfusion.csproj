@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Office.Word.Syncfusion</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.3.1</Version>
+    <Version>6.3.2</Version>
     <Description>Word document processing using Syncfusion DocIO for Regira Office.</Description>
     <PackageTags>regira;office;word;syncfusion;docio;docx</PackageTags>
   </PropertyGroup>

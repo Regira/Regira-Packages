@@ -17,7 +17,6 @@
 
 ## Program.cs
 
-<!-- no-compile -->
 ```csharp
 builder.Host.UseWebHostOptions();
 

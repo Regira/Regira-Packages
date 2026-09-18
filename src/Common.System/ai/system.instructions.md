@@ -51,7 +51,6 @@
 }
 ```
 
-<!-- no-compile -->
 ```csharp
 builder.Host.UseWebHostOptions();
 ```
@@ -97,7 +96,6 @@ var task = queueManager.Execute<string>(async (sp, t) =>
 
 ### Windows Service Installer
 
-<!-- no-compile -->
 ```csharp
 app.AddWindowsServiceInstaller(new WindowsServiceOptions
 {

@@ -6,7 +6,7 @@ namespace Licensing.Testing;
 [TestFixture]
 public class LicenseUtilityTests
 {
-    // Mirrors tools/LicenseKeyGen/appsettings.json (product -> tier -> limitKey -> value).
+    // Mirrors the key generator's limits configuration (product -> tier -> limitKey -> value).
     private static readonly Dictionary<string, Dictionary<string, Dictionary<string, int>>> LimitsConfig = new()
     {
         ["regira.services"] = new()

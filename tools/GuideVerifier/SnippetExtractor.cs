@@ -26,6 +26,10 @@ public static class SnippetExtractor
             if (IsHeading(trimmed))
             {
                 heading = trimmed.TrimStart('#').Trim();
+                // A marker applies to the NEXT fence, not across a section boundary. Without this reset a
+                // marker that no fence follows would exempt the first fence of some later section instead —
+                // a snippet nobody chose to skip, silently unverified while the run stays green.
+                pendingNoCompile = false;
                 i++;
                 continue;
             }

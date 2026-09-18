@@ -77,7 +77,6 @@ The `<!--{{LoginUrl}}-->` block is only rendered when `LoginUrl` is truthy.
 
 Add structured error logging without exposing internals to the API consumer.
 
-<!-- no-compile -->
 ```csharp
 // Program.cs
 services.AddGlobalExceptionHandling();
@@ -92,7 +91,6 @@ All uncaught exceptions now return a clean 500 and are logged to `ILogger<Global
 
 Support multi-language APIs by reading a `?culture=` parameter on every request.
 
-<!-- no-compile -->
 ```csharp
 app.UseRequestCulture();
 
