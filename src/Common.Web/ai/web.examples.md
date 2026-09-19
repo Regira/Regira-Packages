@@ -22,6 +22,7 @@ app.UseRequestCulture();
 
 ## Render an invoice email body
 
+<!-- no-compile -->
 ```csharp
 // invoice-email.cshtml (Razor template)
 // <h2>Invoice #@Model.Number</h2>
@@ -33,6 +34,7 @@ public async Task<string> RenderInvoiceEmail(Invoice invoice)
 
 ## Simple token-based template (no Razor)
 
+<!-- no-compile -->
 ```csharp
 var parser = new HtmlTemplateParser(_jsonSerializer);
 string html = await parser.Parse(
@@ -42,6 +44,11 @@ string html = await parser.Parse(
 
 ## Background export task (System.Hosting)
 
+The queue ships in `Regira.System.Hosting` — read
+`get_package(id: "Regira.System", section: "system.instructions")`, or `system.instructions.md`
+locally, for its API. The example below is only the Web-side call.
+
+<!-- no-compile -->
 ```csharp
 [HttpPost("reports/generate")]
 public IActionResult StartReport([FromServices] IBackgroundTaskQueue queue)
@@ -57,6 +64,7 @@ public IActionResult StartReport([FromServices] IBackgroundTaskQueue queue)
 
 ## Return a file from a controller
 
+<!-- no-compile -->
 ```csharp
 [HttpGet("invoices/{id}/download")]
 public async Task<IActionResult> Download(int id)

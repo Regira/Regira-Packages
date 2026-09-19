@@ -52,13 +52,15 @@ Console.WriteLine(result?.Contents?[0]);   // "ABC-1234"
 
 ### IBarcodeWriter
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<IImageFile> Create(BarcodeInput input, CancellationToken cancellationToken = default);
 ```
 
 ### IBarcodeReader
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<BarcodeReadResult?> Read(IImageFile img, BarcodeFormat? format = null, CancellationToken cancellationToken = default);
 ```
 
@@ -66,7 +68,8 @@ Pass `format` to narrow the scanner to a specific type; pass `null` (the default
 
 ### IQRCodeWriter / IQRCodeReader
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<IImageFile>          Create(QRCodeInput input, CancellationToken cancellationToken = default);
 Task<BarcodeReadResult?>  Read(IImageFile qrCode, CancellationToken cancellationToken = default);
 ```

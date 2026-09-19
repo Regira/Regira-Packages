@@ -10,8 +10,6 @@ Regira System provides process execution helpers, application hosting utilities,
 | `System.Hosting` | `Regira.System.Hosting` | Host config, background queues, Windows Service |
 | `System.Projects` | `Regira.System.Projects` | Parse and manage .csproj files |
 
-See [Web](https://regira.github.io/Regira-Packages/src/Common.Web#systemhosting) for the full `System.Hosting` API reference and examples.
-
 ## Installation
 
 ```xml
@@ -22,163 +20,12 @@ See [Web](https://regira.github.io/Regira-Packages/src/Common.Web#systemhosting)
 
 ---
 
-## Process execution (`Regira.System`)
+## Overview
 
-### IProcessHelper / ProcessHelper
-
-Run shell commands or executables and capture their output.
-
-```csharp
-public interface IProcessHelper
-{
-    IProcessOutput ExecuteCommand(string command, bool waitForOutput = false);
-    IProcessOutput ExecuteCommand(string command, IDictionary<string, string> environment, bool waitForOutput = false);
-    IProcessOutput ExecuteFile(string filename, bool waitForOutput = false, string? arguments = null);
-    IProcessOutput ExecuteFile(string filename, IDictionary<string, string> environment, bool waitForOutput = false, string? arguments = null);
-}
-```
-
-`ProcessHelper` is the default implementation. `ExecuteCommand` writes the command to a temporary `.bat` file (in `Options.TempFolder`, or the system's temp folder), executes it and deletes it again — Windows only; every call has a file of its own, so one instance serves concurrent calls. `ExecuteFile` starts the given executable directly, on any platform. Pass `waitForOutput: true` to capture stdout/stderr — both streams are drained at the same time, so a process that writes more than a pipe buffer holds to one of them (a command-line tool logging its progress to stderr, say) cannot stall the call. The text is reassembled from line events, so it carries the platform's line ending and a trailing newline rather than the exact bytes the process wrote — trim it before comparing.
-
-The `environment` overloads set variables on the process instead of on the command line — that is where a value belongs when it must not be written to the generated script, such as a password. They are default interface methods, so a custom `IProcessHelper` keeps compiling. One that does not override `ExecuteCommand` has the script set the variables instead (`set "KEY=VALUE"` ahead of the command, which is batch syntax — an implementation running another shell has to override it): they reach the process just the same, but their values end up wherever that implementation writes the command. One that does not override `ExecuteFile` throws — there is no command to set them from, and a variable silently dropped surfaces as a failure somewhere else entirely.
-
-```csharp
-IProcessHelper processHelper = new ProcessHelper(new ProcessHelper.Options
-{
-    TempFolder = @"C:\Temp"   // optional; holds the temporary .bat files, created when missing and left in place
-});
-
-IProcessOutput result = processHelper.ExecuteCommand("dotnet --version", waitForOutput: true);
-Console.WriteLine(result.Output);     // captured stdout
-Console.WriteLine(result.ExitCode);   // process exit code
-
-var environment = new Dictionary<string, string> { ["PGPASSWORD"] = "pass" };
-processHelper.ExecuteCommand("pg_dump --no-password mydb", environment);
-```
-
-### IProcessOutput / ProcessOutput
-
-```csharp
-public interface IProcessOutput
-{
-    string? Output { get; set; }
-    string? Error { get; set; }
-    int ExitCode { get; set; }
-}
-```
-
-`Output` and `Error` are only populated when `waitForOutput` is `true`.
-
-### ProcessHelperExtensions
-
-Open a path or an `IBinaryFile` with the OS default application (a file without a path is written to a temp file first):
-
-```csharp
-IProcessHelper processHelper = new ProcessHelper();
-IBinaryFile binaryFile = new BinaryFileItem { FileName = "invoice.pdf" };
-
-processHelper.OpenFileByOS(@"C:\docs\invoice.pdf");
-processHelper.OpenFileByOS(binaryFile);
-```
-
----
-
-## System.Hosting — quick reference
-
-### WebHostOptions (appsettings `"Hosting"` section)
-
-```json
-{
-  "Hosting": {
-    "ServiceName": "MyApi",
-    "LocalPort": 5000,
-    "EnableSwagger": true,
-    "EnableCors": false,
-    "RoutePrefix": "api/v1"
-  }
-}
-```
-
-```csharp
-var builder = WebApplication.CreateBuilder();
-builder.Host.UseWebHostOptions();
-```
-
-### Background task queue
-
-```csharp no-compile
-services.UseBackgroundQueue();
-// or typed:
-services.UseBackgroundQueue<MyTask>();
-```
-
-### Windows Service installer
-
-```csharp
-var app = WebApplication.Create();
-app.AddWindowsServiceInstaller(new WindowsServiceOptions
-{
-    ServiceName        = "MyApi",
-    InstallFilename    = "install.bat",
-    UninstallFilename  = "uninstall.bat"
-});
-```
-
-Generates `install.bat` / `uninstall.bat` scripts using `sc.exe`.
-
----
-
-## System.Projects
-
-Parse, inspect, and update `.csproj` files programmatically. Useful for tooling, code-gen scripts, and build automation.
-
-### ProjectParser
-
-```csharp
-var parser = new ProjectParser();
-
-XDocument xml = XDocument.Load("MyLib.csproj");
-Project proj  = parser.Parse(xml);
-
-Console.WriteLine(proj.Id);               // PackageId
-Console.WriteLine(proj.Version);          // "5.0.3"
-Console.WriteLine(string.Join(", ", proj.TargetFrameworks!)); // "net8.0, net10.0"
-```
-
-Update and write back:
-
-```csharp no-compile
-proj.Version = new Version("5.1.0");
-XDocument updated = parser.Update(xml, proj);
-updated.Save("MyLib.csproj");
-```
-
-### ProjectService
-
-```csharp no-compile
-// ITextFileService comes from the Regira.IO.Storage package
-var service = new ProjectService(parser, textFileService);
-
-Project       single  = await service.Details("src/MyLib/MyLib.csproj");
-IEnumerable<Project> all = await service.List();     // scans root recursively
-
-await service.Save(proj);   // writes changes back to disk
-```
-
-### ProjectManager + ProjectTree
-
-Build a dependency tree from all projects in the solution:
-
-```csharp no-compile
-var manager = new ProjectManager(projectService);
-ProjectTree tree = await manager.BuildTree();
-
-// tree is a TreeList<Project> — see TreeList docs for navigation
-var roots = tree.Roots;                              // projects with no dependencies
-var leaves = tree.GetBottom().Select(n => n.Value.Id);  // projects nobody depends on
-```
-
-`ProjectTree` extends `TreeList<Project>` — see [TreeList docs](https://regira.github.io/Regira-Packages/src/TreeList) for the full navigation API.
+1. **[Index](https://regira.github.io/Regira-Packages/src/Common.System/)** — Overview, projects, and installation
+1. [Process Execution](https://regira.github.io/Regira-Packages/src/Common.System/docs/processes.html) — Running commands and executables, capturing their output
+1. [Hosting](https://regira.github.io/Regira-Packages/src/Common.System/docs/hosting.html) — `WebHostOptions`, background task queues, Windows Service installer
+1. [Project Files](https://regira.github.io/Regira-Packages/src/Common.System/docs/projects.html) — Parsing and managing `.csproj` files
 
 ## License
 

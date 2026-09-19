@@ -12,7 +12,8 @@ Regira Web.HTML provides Razor-based HTML template rendering plus common web uti
 | `Web.HTML.RazorEngineCore` | `Regira.Web.HTML.RazorEngineCore` | Razor templates via RazorEngineCore |
 | `Web.HTML.RazorLight` | `Regira.Web.HTML.RazorLight` | Razor templates via RazorLight |
 | `Web.Swagger` | `Regira.Web.Swagger` | Swagger/OpenAPI JWT & API Key support |
-| `System.Hosting` | `Regira.System.Hosting` | Host config, background tasks, Windows Service |
+
+Host configuration (`WebHostOptions`), background task queues and the Windows Service installer live in `Regira.System.Hosting` — see [System](https://regira.github.io/Regira-Packages/src/Common.System/docs/hosting.html).
 
 ## Installation
 
@@ -30,9 +31,6 @@ Regira Web.HTML provides Razor-based HTML template rendering plus common web uti
 
 <!-- Swagger -->
 <PackageReference Include="Regira.Web.Swagger" Version="6.*" />
-
-<!-- Hosting utilities -->
-<PackageReference Include="Regira.System.Hosting" Version="6.*" />
 ```
 
 ---
@@ -41,7 +39,8 @@ Regira Web.HTML provides Razor-based HTML template rendering plus common web uti
 
 ### IHtmlParser
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<string> Parse<T>(string html, T model);
 ```
 
@@ -141,7 +140,8 @@ services.AddControllers(options =>
 
 ### ControllerExtensions
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Return INamedFile as a download or inline
 return this.File(namedFile, inline: true);
 ```
@@ -150,7 +150,8 @@ return this.File(namedFile, inline: true);
 
 Extension methods on `HttpRequest`:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 string  url     = Request.CurrentUrl();
 Uri     baseUrl = Request.GetBaseUrl();
 Uri     abs     = Request.GetAbsoluteUrl("/images/logo.png");
@@ -183,64 +184,9 @@ builder.Services.AddControllers().DisplayEnumAsString();
 
 ---
 
-## System.Hosting
-
-### WebHostOptions
-
-Configure via `appsettings.json` under `"Hosting"`:
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `ServiceName` | `string?` | `null` | App / Windows Service display name |
-| `Mode` | `string` | `"Production"` | Hosting mode (inherited from `HostOptions`; see `HostingModes`) |
-| `LocalPort` | `int?` | `null` | Override listening port |
-| `SelfHosting` | `bool` | `false` | Flags the app as self-hosted (e.g. Kestrel / Windows Service) |
-| `EnableSwagger` | `bool` | `true` | Toggle Swagger UI |
-| `EnableCors` | `bool` | `false` | Toggle CORS |
-| `EnableHttps` | `bool` | `false` | Toggle HTTPS redirect |
-| `RoutePrefix` | `string?` | `null` | API route prefix |
-
-```csharp
-var builder = WebApplication.CreateBuilder();
-builder.Host.UseWebHostOptions();
-```
-
-### Background Tasks
-
-Queue and execute long-running work without blocking requests.
-
-```csharp no-compile
-services.UseBackgroundQueue();
-
-// In a controller
-public IActionResult StartExport([FromServices] IBackgroundTaskQueue queue)
-{
-    queue.QueueBackgroundWorkItem(async token =>
-    {
-        await GenerateReport(token);
-    });
-    return Accepted();
-}
-```
-
-Typed tasks with progress tracking:
-
-```csharp no-compile
-services.UseBackgroundQueue<ReportTask>();
-
-// inject IBackgroundQueueManager<ReportTask>
-var task = queueManager.Execute<string>(async (sp, t) =>
-{
-    t.SetProgress(0.5);
-    return await GenerateReport(sp, t.Id);
-});
-```
-
----
-
 ## Overview
 
-1. **[Index](https://regira.github.io/Regira-Packages/src/Common.Web/)** — Overview, template engines, middleware, Swagger, and hosting
+1. **[Index](https://regira.github.io/Regira-Packages/src/Common.Web/)** — Overview, template engines, middleware, and Swagger
 1. [Examples](https://regira.github.io/Regira-Packages/src/Common.Web/docs/examples.html) — HTML templating, exception handling, background tasks
 
 ## License

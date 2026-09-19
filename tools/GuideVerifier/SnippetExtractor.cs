@@ -1,9 +1,12 @@
-namespace Regira.GuideVerifier;
+﻿namespace Regira.GuideVerifier;
 
 /// <summary>
-/// Pulls fenced <c>```csharp</c> blocks out of a markdown guide. A block fenced <c>```csharp no-compile</c>
-/// (any info string after <c>csharp</c> that includes the token <c>no-compile</c>) is skipped — that is the
-/// escape hatch for genuinely partial fragments that can't stand on their own. Each returned snippet
+/// Pulls fenced <c>```csharp</c> blocks out of a markdown guide. A block preceded by an
+/// <c>&lt;!-- no-compile --&gt;</c> comment line is skipped — that is the escape hatch for genuinely partial
+/// fragments that can't stand on their own. The marker sits on its own line above the fence rather than in
+/// the fence's info string, because Kramdown (Jekyll/GitHub Pages) only accepts a single-token info string:
+/// <c>```csharp no-compile</c> is not a fence to it, so the marker rendered as literal text and the
+/// mis-paired fences swallowed following prose and headings into code blocks. Each returned snippet
 /// remembers its nearest preceding heading so a compiler failure can be reported as <c>file.md § heading</c>.
 /// </summary>
 public static class SnippetExtractor
@@ -12,6 +15,7 @@ public static class SnippetExtractor
     {
         var lines = content.Replace("\r\n", "\n").Split('\n');
         var heading = "(intro)";
+        var pendingNoCompile = false;
         var i = 0;
         while (i < lines.Length)
         {
@@ -22,6 +26,18 @@ public static class SnippetExtractor
             if (IsHeading(trimmed))
             {
                 heading = trimmed.TrimStart('#').Trim();
+                // A marker applies to the NEXT fence, not across a section boundary. Without this reset a
+                // marker that no fence follows would exempt the first fence of some later section instead —
+                // a snippet nobody chose to skip, silently unverified while the run stays green.
+                pendingNoCompile = false;
+                i++;
+                continue;
+            }
+
+            // `<!-- no-compile -->` on its own line marks the NEXT fenced block as a partial fragment.
+            if (IsNoCompileMarker(trimmed))
+            {
+                pendingNoCompile = true;
                 i++;
                 continue;
             }
@@ -33,7 +49,8 @@ public static class SnippetExtractor
                                info.StartsWith("csharp ", StringComparison.OrdinalIgnoreCase) ||
                                info.Equals("cs", StringComparison.OrdinalIgnoreCase) ||
                                info.StartsWith("cs ", StringComparison.OrdinalIgnoreCase);
-                var noCompile = info.Contains("no-compile", StringComparison.OrdinalIgnoreCase);
+                var noCompile = pendingNoCompile;
+                pendingNoCompile = false;
 
                 var fenceLine = i + 1;
                 var body = new List<string>();
@@ -54,6 +71,18 @@ public static class SnippetExtractor
 
             i++;
         }
+    }
+
+    /// <summary>
+    /// A standalone <c>&lt;!-- no-compile --&gt;</c> line. Tolerates surrounding whitespace so the marker can be
+    /// indented with the block it precedes.
+    /// </summary>
+    private static bool IsNoCompileMarker(string line)
+    {
+        var t = line.Trim();
+        if (!t.StartsWith("<!--", StringComparison.Ordinal) || !t.EndsWith("-->", StringComparison.Ordinal))
+            return false;
+        return t[4..^3].Trim().Equals("no-compile", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsHeading(string line)

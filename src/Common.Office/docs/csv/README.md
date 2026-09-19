@@ -17,7 +17,8 @@ Regira Office.Csv provides async CSV read and write via CsvHelper, with both gen
 
 ## Quick Start
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Non-generic — rows as Dictionary<string, object>
 ICsvService csv = new CsvManager();
 var rows = await csv.Read(csvString);
@@ -29,7 +30,8 @@ var products = await csv.Read(csvString);
 
 ## ICsvService / ICsvService\<T\>
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Read
 Task<List<T>>    Read(string input,       CsvOptions? options = null, CancellationToken cancellationToken = default);
 Task<List<T>>    Read(IBinaryFile input,  CsvOptions? options = null, CancellationToken cancellationToken = default);
@@ -59,7 +61,8 @@ Task<IMemoryFile> WriteFile(IEnumerable<T> items, CsvOptions? options = null, Ca
 > passed to the **`CsvManager` constructor**. On the per-call `options` parameter only `Delimiter`
 > and `Culture` are read — the two flags are silently ignored there.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Flags must go through the constructor:
 var csv = new CsvManager<Product>(new CsvHelperOptions { IgnoreBadData = true });
 ```
@@ -73,7 +76,8 @@ var csv = new CsvManager<Product>(new CsvHelperOptions { IgnoreBadData = true })
 
 ## Examples
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Read from uploaded file
 var csvFile = formFile.ToNamedFile().ToBinaryFile();
 var rows    = await new CsvManager().Read(csvFile);

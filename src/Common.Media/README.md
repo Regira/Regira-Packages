@@ -22,7 +22,8 @@ Regira Drawing is a .NET image processing library that provides a **consistent a
 
 ## Quick Start
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Register
 services.AddSingleton<IImageService, Regira.Drawing.SkiaSharp.Services.ImageService>();
 
@@ -91,7 +92,8 @@ Png  Jpeg  Webp  Gif  Bmp  Tiff  Ico  Heif  Tga  Wbmp  …
 
 CSS-style distance from each edge.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 new ImageEdgeOffset(top: 10, left: 20, bottom: 10, right: 20)
 new ImageEdgeOffset(10, 20)   // top + left; Bottom and Right stay null
 ```
@@ -127,7 +129,8 @@ Controls how a layer is positioned and rendered when composited.
 
 ### Parsing
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<IImageFile?> Parse(Stream? stream)
 Task<IImageFile?> Parse(byte[]? bytes)
 Task<IImageFile?> Parse(byte[] rawBytes, ImageSize size, ImageFormat? format = null)
@@ -138,14 +141,16 @@ The third overload accepts unencoded pixel data together with explicit dimension
 
 ### Format
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<ImageFormat> GetFormat(IImageFile input)
 Task<IImageFile>  ChangeFormat(IImageFile input, ImageFormat targetFormat)
 ```
 
 ### Transform
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<ImageSize>  GetDimensions(IImageFile input)
 Task<IImageFile> Resize(IImageFile input, ImageSize wantedSize, int quality = 100)     // preserves aspect ratio
 Task<IImageFile> ResizeFixed(IImageFile input, ImageSize size, int quality = 100)      // ignores aspect ratio
@@ -159,7 +164,8 @@ Task<IImageFile> FlipVertical(IImageFile input)
 
 ### Color
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<Color>      GetPixelColor(IImageFile input, int x, int y)
 Task<IImageFile> MakeTransparent(IImageFile input, Color? color = null)  // null = light gray (245, 245, 245)
 Task<IImageFile> MakeOpaque(IImageFile input)
@@ -167,7 +173,8 @@ Task<IImageFile> MakeOpaque(IImageFile input)
 
 ### Draw / Create
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<IImageFile> Create(ImageSize size, Color? backgroundColor = null, ImageFormat? format = null)
 Task<IImageFile> CreateTextImage(LabelImageOptions? options = null)
 Task<IImageFile> Draw(IEnumerable<ImageLayer> items, IImageFile? target = null)
@@ -179,7 +186,8 @@ Task<IImageFile> Draw(IEnumerable<ImageLayer> items, IImageFile? target = null)
 
 ### Registration
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 services.AddSingleton<IImageService, Regira.Drawing.SkiaSharp.Services.ImageService>();
 services.AddSingleton<IImageCreator, CanvasImageCreator>();
 services.AddSingleton<IImageCreator, LabelImageCreator>();
@@ -193,7 +201,8 @@ services.AddSingleton<IImageCreator>(provider =>
 
 ### Fluent API
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 var result = await new ImageBuilder(imageService, imageCreators)
     .SetBaseLayer(new CanvasImageOptions { Size = new ImageSize(800, 600), BackgroundColor = Color.White })
     .Add(layer1, layer2, layer3)
@@ -214,7 +223,8 @@ If no base layer is set, `Build()` auto-calculates a canvas that fits all added 
 
 Three generic types let you add image files, canvases, or labels as layers:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Existing image — pin to bottom-right
 new ImageLayer { Source = imageFile,
                  Options = new() { Position = ImagePosition.Right | ImagePosition.Bottom, Margin = 10 } }
@@ -234,7 +244,8 @@ new ImageLayer<LabelImageOptions>  { Source = new() { Text = "DRAFT", FontSize =
 
 Implement `IImageCreator<T>` to make `ImageBuilder` understand any source type:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class QrCodeCreator(IQrService qr) : ImageCreatorBase<QrCodeOptions>
 {
     public override async Task<IImageFile?> Create(QrCodeOptions input, CancellationToken cancellationToken = default) =>

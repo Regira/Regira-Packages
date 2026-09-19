@@ -159,6 +159,7 @@ Keep setup aligned with the selected `projectTemplate`. This file must remain en
 - Keep `Program.cs` thin and move service registration or middleware setup into extension methods.
 - Prefer `Microsoft.Extensions.DependencyInjection` and depend on abstractions instead of concrete implementations.
 - Use file-scoped namespaces.
+- Prefer meaningful generic type names such as `TEntity`, `TKey`, and `TDto`, matching the Regira API's own generic parameters.
 - For standard Web APIs, OpenAPI plus Scalar is the default API surface: use `app.MapOpenApi()` plus `app.MapScalarApiReference()`, and do not add `Swashbuckle.AspNetCore` or call `UseSwaggerUI()` on the standard Regira API path. Add Swagger only when the user explicitly requests it.
 - Ask for feedback instead of guessing missing APIs, namespaces, signatures, or project-specific conventions.
 
@@ -177,7 +178,7 @@ Template consequences:
 4. Inspect existing `PackageReference` items when the installed Regira package set is part of the decision.
 5. Read the guidance for each installed Regira module — cheapest first: if MCP is configured, orient with `get_package_card` (often enough on its own), then `get_package_toc` to list section keys, `get_section_toc` to inspect headings, and `get_package` with `section=` / `heading=` to fetch targeted content without loading unnecessary context. Use `list_types` / `get_type` (or local sources/`.d.ts` when installed) to check API surface instead of loading doc-heavy sections. Otherwise run `dotnet restore` and `dotnet build` to extract embedded `ai/*.md` files into `.regira/instructions/`.
 6. Before generating entity models, services, controllers, DI registrations, or infrastructure code, read the applicable primary guides (`*.instructions.md`, `project.setup.md`, `shared.setup.md`) following the **minimum viable read** in *Guide loading rules* — either via MCP or from `.regira/instructions/`. Skipping the relevant primary guides is a workflow violation.
-7. If guides are unavailable both via MCP and locally, verify the restore/build succeeded, then continue with the setup baseline, package routing table, and general engineering rules in this file.
+7. If guides are unavailable both via MCP and locally, verify the restore/build succeeded, then continue with the setup baseline and package routing table in this file.
 8. Generate code that stays consistent with the selected `projectTemplate`, installed Regira packages, any extracted local guides, and local project conventions.
 
 ## Regira package routing
@@ -244,37 +245,8 @@ If the MCP is not configured or unavailable:
 - `.regira/instructions/*.md` provides shared setup and module-specific guidance. Installed Regira packages that ship AI files extract them there from their packaged `ai/` content on build via their package props and targets.
 - `Regira.Setup` can be installed when the consumer needs `project.setup.md` and `shared.setup.md` extracted locally through the package-based guide flow.
 
-## General engineering rules
-
-Apply these conventions when no narrower module guide exists, or as a supplement when the module guide does not cover the topic. Reuse the setup baseline above for framework, namespace, and web-API defaults instead of re-stating them elsewhere.
-
-### Following conventions
+## Following conventions
 
 Follow the prescribed conventions by default; deviate deliberately, not by defaulting to a remembered pattern, and declare any **intended deviations** and why. This applies especially to the **Serilog template** (`project.setup` → *Logging*) and the **project layout** — per-entity folders in a single project, or the layered solution once its triggers apply — described in one place only: `entities.setup` → *Project Structure*.
 
-### Project conventions
-
-Unless the project already constrains you, prefer the latest stable .NET (.NET 10) and C# features that fit the local code style.
-
-### Naming
-
-- Follow normal C# naming conventions.
-- Keep names descriptive but concise.
-- Prefer meaningful generic type names such as `TEntity`, `TKey`, and `TDto` over bare single-letter names when context allows.
-- Use generic names like `item` when the surrounding type already makes the meaning obvious.
-
-### Dependency injection
-
-Prefer `Microsoft.Extensions.DependencyInjection` with feature-focused `IServiceCollection` extension methods.
-
-### Testing
-
-- Choose the smallest suitable test surface for the task.
-- Keep tests focused and behavior-oriented.
-
-### SOLID and simplicity
-
-- Default to SOLID design principles, but do not introduce abstractions that the current task does not need.
-- Prefer the simplest solution that correctly solves the current problem.
-- Avoid speculative flexibility and premature indirection.
-- Depend on abstractions instead of concrete implementations when defining business logic.
+Where no module guide covers the topic, fall back to the setup baseline above for framework, namespace, and web-API defaults, and to the project's own conventions for everything else.

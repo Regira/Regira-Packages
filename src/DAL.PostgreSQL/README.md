@@ -80,7 +80,8 @@ to create or drop a database.
 The three database operations are also available on their own, against a connection to any *other*
 database on the same server:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 bool exists = await pgRestore.Exists(connection, "staging-db");
 await pgRestore.Drop(connection, "staging-db");
 await pgRestore.Create(connection, "staging-db");

@@ -36,8 +36,10 @@ public static class GeneratedProject
         Directory.CreateDirectory(dir);
 
         var usings = BaseUsings.Concat(groupUsings).Distinct().ToList();
+        // The ASP.NET ambients below only bind where the group actually references the framework.
+        var aspNetCore = frameworkReferences.Contains("Microsoft.AspNetCore.App");
         foreach (var snippet in snippets)
-            File.WriteAllText(Path.Combine(dir, $"{snippet.Id}.cs"), Emit(snippet, usings, sharedNamespace));
+            File.WriteAllText(Path.Combine(dir, $"{snippet.Id}.cs"), Emit(snippet, usings, aspNetCore, sharedNamespace));
 
         var csprojPath = Path.Combine(dir, "GuideSnippets.csproj");
         File.WriteAllText(csprojPath, Csproj(projectReferences, frameworkReferences, packages));
@@ -50,7 +52,13 @@ public static class GeneratedProject
     /// then lands in this one namespace instead of its own, so the blocks compile as the walkthrough reads.
     /// Leave null for reference guides, where per-snippet isolation is what keeps two files' `Product` apart.
     /// </param>
-    private static string Emit(Snippet snippet, IReadOnlyList<string> allUsings, string? sharedNamespace = null)
+    /// <param name="aspNetCore">
+    /// True when the group references <c>Microsoft.AspNetCore.App</c>, which is what makes the startup
+    /// ambients (<c>services</c>, <c>app</c>, <c>builder</c>) bind. Emitting them elsewhere would fail to
+    /// compile the whole group on the field declarations alone.
+    /// </param>
+    private static string Emit(Snippet snippet, IReadOnlyList<string> allUsings, bool aspNetCore,
+        string? sharedNamespace = null)
     {
         var usings = string.Join("\n", allUsings.Select(u => $"using {u};"));
         var provenance = $"// {snippet.Location} (line {snippet.FenceLine} of {snippet.RelativeFile})";
@@ -94,6 +102,17 @@ public static class GeneratedProject
         sb.Append("        private static System.IServiceProvider sp = null!;\n");
         sb.Append("        private static System.IServiceProvider scope = null!;\n");
         sb.Append("        private static string[] args = [];\n");
+        // The startup trio, for the same reason: a guide's registration and pipeline lines are written as
+        // they appear inside `Program.cs`, so `services.AddX()` / `app.UseX()` / `builder.Services.AddX()`
+        // would otherwise fail on the receiver alone and have to be marked `<!-- no-compile -->` — which
+        // exempts the call being documented from any checking at all. `app` is typed `WebApplication` so
+        // both the `IApplicationBuilder` and `IEndpointRouteBuilder` extensions resolve on it.
+        if (aspNetCore)
+        {
+            sb.Append("        private static Microsoft.Extensions.DependencyInjection.IServiceCollection services = null!;\n");
+            sb.Append("        private static Microsoft.AspNetCore.Builder.WebApplication app = null!;\n");
+            sb.Append("        private static Microsoft.AspNetCore.Builder.WebApplicationBuilder builder = null!;\n");
+        }
         sb.Append("        internal static async System.Threading.Tasks.Task Run()\n");
         sb.Append("        {\n");
         sb.Append("            await System.Threading.Tasks.Task.CompletedTask;\n");

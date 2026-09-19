@@ -63,7 +63,8 @@ await mailer.Send(
 
 Both backends implement this interface.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Parameter-based overload
 Task<IMailResponse> Send(
     IMailAddress             sender,
@@ -223,7 +224,8 @@ services.AddSingleton<IMailService, DummyMailer>();
 
 `Mail.Web` ships `MailInput` for accepting email requests over HTTP. `MailInputExtensions.ToMessageObject()` converts it to a domain `IMessageObject`.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 [HttpPost]
 public async Task<IActionResult> Send([FromBody] MailInput input, IMailService mailer)
 {

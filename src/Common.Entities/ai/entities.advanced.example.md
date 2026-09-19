@@ -1,7 +1,8 @@
 ## Usings
 
 **Usings**
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
@@ -30,7 +31,8 @@ using System.ComponentModel.DataAnnotations.Schema;
 ## Program.cs setup
 
 **Program.cs**
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Basic setup: follow the shared project setup guide — get_package(id: "Regira.Setup", section: "project.setup") — for the selected template first.
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<ProjectsContext>(options =>
@@ -44,7 +46,8 @@ builder.Services.AddEntityServices();
 ## Entity models and search objects
 
 **Models**
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class Stakeholder : IEntity<Guid>, IHasCode, IHasTitle, IHasNormalizedContent
 {
     public Guid Id { get; set; }
@@ -151,7 +154,8 @@ public enum ProjectIncludes
 ## DbContext configuration
 
 **DbContext**
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class ProjectsContext(DbContextOptions<ProjectsContext> options) : DbContext(options)
 {
     public DbSet<Stakeholder> Stakeholders { get; set; } = null!;
@@ -266,7 +270,8 @@ public class ProjectInputDto
 ## Helper services (processor, primer, query builders, normalizer, manager)
 
 **Helper Services**
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public class StakeholderProcessor(ProjectsContext dbContext) : IEntityProcessor<Stakeholder, EntityIncludes>
 {
     public async Task Process(IList<Stakeholder> items, EntityIncludes? includes, CancellationToken token = default)
@@ -433,7 +438,8 @@ public class ProjectManager(IEntityRepository<Project, ProjectSearchObject, Proj
 ## Service registration extensions
 
 **Configuration Extensions**
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public static class EntityServiceCollectionExtensions
 {
     public static EntityServiceCollection<ProjectsContext> AddEntityServices(this IServiceCollection services)
@@ -499,7 +505,8 @@ public static class ProjectServiceCollectionExtensions
 ## API controllers
 
 **Controllers**
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 [ApiController, Route("projects")] // For<Project, ProjectSearchObject, ProjectSortBy, ProjectIncludes>
 public class ProjectController : EntityControllerBase<Project, ProjectSearchObject, ProjectSortBy, ProjectIncludes, ProjectDto, ProjectInputDto>;
 

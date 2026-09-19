@@ -2,11 +2,10 @@ name: Release
 
 # Creates the git tag and the GitHub release page for a Regira Packages version.
 #
-# This workflow does NOT publish to nuget.org. Packages are packed and pushed by
-# ProjectFilesProcessor in the private Regira-Tools repo (DEPLOY.md there, section 3), which runs
-# against `wip` before the release PR is merged. By the time this workflow runs the versions are
-# already live on nuget.org and immutable — the tag records which commit on `main` they were built
-# from, it is not the act of publishing.
+# This workflow does NOT publish to nuget.org. Packages are packed and pushed by the release
+# tooling, which runs against `wip` before the release PR is merged. By the time this workflow
+# runs the versions are already live on nuget.org and immutable — the tag records which commit
+# on `main` they were built from, it is not the act of publishing.
 #
 # Two ways in:
 #   - Actions -> Run workflow, giving the version. The normal path: it creates the tag for you.
@@ -76,9 +75,9 @@ jobs:
           echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
           echo "Releasing $VERSION from $COMMIT"
 
-      # The heading must already be dated. DEPLOY.md section 4 dates the Unreleased block on `wip`
-      # before the merge, so an undated heading here means the release PR carried a stale changelog
-      # onto main and the release notes would come out empty.
+      # The heading must already be dated. The Unreleased block is dated on `wip` before the merge,
+      # so an undated heading here means the release PR carried a stale changelog onto main and the
+      # release notes would come out empty.
       - name: Guard — CHANGELOG.md has a dated heading for this version
         env:
           VERSION: ${{ steps.resolve.outputs.version }}
@@ -86,16 +85,16 @@ jobs:
           set -euo pipefail
           VERSION_RE="${VERSION//./\\.}"
           if ! grep -Eq "^## ${VERSION_RE}( |\$)" CHANGELOG.md; then
-            echo "::error::CHANGELOG.md has no '## $VERSION' heading — move the Unreleased entries under it first (DEPLOY.md section 4)" >&2
+            echo "::error::CHANGELOG.md has no '## $VERSION' heading — move the Unreleased entries under it first" >&2
             exit 1
           fi
           if ! grep -Eq "^## ${VERSION_RE} .*[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]]*\$" CHANGELOG.md; then
-            echo "::error::The '## $VERSION' heading carries no release date — date it as '## $VERSION — $(date +%F)' (DEPLOY.md section 4)" >&2
+            echo "::error::The '## $VERSION' heading carries no release date — date it as '## $VERSION — $(date +%F)'" >&2
             exit 1
           fi
 
       # A tag on a wip-only commit is stranded when the release PR is squashed or rebased, taking
-      # the release page's source with it. The same reasoning DEPLOY.md gives for the npm tag.
+      # the release page's source with it. The npm tag is held to the same reasoning.
       - name: Guard — the commit is on main
         env:
           COMMIT: ${{ steps.resolve.outputs.commit }}
@@ -103,7 +102,7 @@ jobs:
           set -euo pipefail
           git fetch --no-tags --prune origin +refs/heads/main:refs/remotes/origin/main
           if ! git merge-base --is-ancestor "$COMMIT" origin/main; then
-            echo "::error::$COMMIT is not reachable from main — merge the release PR first (DEPLOY.md section 5). Tagging a wip commit strands the tag when the PR is squashed or rebased." >&2
+            echo "::error::$COMMIT is not reachable from main — merge the release PR first. Tagging a wip commit strands the tag when the PR is squashed or rebased." >&2
             exit 1
           fi
 
@@ -118,7 +117,7 @@ jobs:
           set -euo pipefail
           if ! curl -sSfL https://api.nuget.org/v3-flatcontainer/regira.common/index.json \
              | jq -e --arg v "$VERSION" '.versions | index($v)' >/dev/null; then
-            echo "::error::Regira.Common $VERSION is not on nuget.org — run ProjectFilesProcessor first (DEPLOY.md section 3). If this release genuinely did not bump Regira.Common, re-run with skip_nuget_check." >&2
+            echo "::error::Regira.Common $VERSION is not on nuget.org — publish the packages first. If this release genuinely did not bump Regira.Common, re-run with skip_nuget_check." >&2
             exit 1
           fi
 

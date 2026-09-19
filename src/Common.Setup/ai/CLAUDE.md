@@ -1,6 +1,6 @@
 # Regira Consumer Project
 
-Read `ai/AGENTS.md` (or `.regira/instructions/` if guides have been extracted) before taking any action. It is the authoritative routing guide for all code generation, package selection, and project scaffolding.
+Read the consumer bootstrap before taking any action — `get_bootstrap_guide(heading: "toc")` over the MCP server, or `./AGENTS.md` at the repo root (plus `.regira/instructions/` if guides have been extracted). It is the authoritative routing guide for all code generation, package selection, and project scaffolding.
 
 ## MCP server
 
@@ -15,7 +15,7 @@ Add this to `.mcp.json` at the repo root (Claude Code — or `claude mcp add --t
 ## Non-negotiable rules
 
 1. **Never guess** — do not invent namespaces, method signatures, or package names. Stop and ask.
-2. **Run the pre-flight checklist** in `ai/AGENTS.md` before generating any code.
+2. **Run the pre-flight checklist** in the consumer bootstrap before generating any code.
 3. **Load the relevant guide first** — do not write application code before reading the applicable `*.instructions.md` file.
 
 ## Slash commands

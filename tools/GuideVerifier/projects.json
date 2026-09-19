@@ -101,8 +101,14 @@
         "src/System.Projects/System.Projects.csproj",
         "src/Common.IO.Storage/Common.IO.Storage.csproj"
       ],
+      "guideDirs": [
+        "src/Common.System/ai"
+      ],
       "guideFiles": [
-        "src/Common.System/README.md"
+        "src/Common.System/README.md",
+        "src/Common.System/docs/processes.md",
+        "src/Common.System/docs/hosting.md",
+        "src/Common.System/docs/projects.md"
       ],
       "usings": [
         "System.Xml.Linq",
@@ -116,7 +122,8 @@
         "Regira.System.Hosting.WindowsService",
         "Regira.System.Hosting.Background.DependencyInjection",
         "Regira.System.Projects.Models",
-        "Regira.System.Projects.Services"
+        "Regira.System.Projects.Services",
+        "Regira.TreeList"
       ],
       "frameworkReferences": ["Microsoft.AspNetCore.App"]
     },
@@ -130,8 +137,12 @@
         "src/System.Hosting/System.Hosting.csproj",
         "src/Serializing.Newtonsoft/Serializing.Newtonsoft.csproj"
       ],
+      "guideDirs": [
+        "src/Common.Web/ai"
+      ],
       "guideFiles": [
-        "src/Common.Web/README.md"
+        "src/Common.Web/README.md",
+        "src/Common.Web/docs/examples.md"
       ],
       "usings": [
         "Microsoft.AspNetCore.Builder",
@@ -277,6 +288,13 @@
       ],
       "guideFiles": [
         "src/Common.Security/README.md",
+        "src/Common.Security/docs/cryptography.md",
+        "src/Common.Security/docs/jwt.md",
+        "src/Common.Security/docs/api-keys.md",
+        "src/Common.Security/docs/external-auth.md",
+        "src/Common.Security/docs/cookies.md",
+        "src/Common.Security/docs/schemes.md",
+        "src/Common.Security/docs/controllers.md",
         "src/Common.Setup/ai/project.setup.md"
       ],
       "usings": [

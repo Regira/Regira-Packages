@@ -21,7 +21,8 @@ Regira OCR provides optical character recognition via two underlying engines. Bo
 
 ## IOcrService
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<OcrResult> Read(IMemoryFile imgFile, string? lang = null, CancellationToken cancellationToken = default);
 ```
 

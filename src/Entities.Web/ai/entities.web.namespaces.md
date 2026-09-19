@@ -17,7 +17,8 @@
 
 ### `EntityControllerBase<>` overloads
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // int key, no custom SearchObject/SortBy/Includes, no DTOs — simple
 EntityControllerBase<TEntity>
 // int key, no custom SearchObject/SortBy/Includes — simple

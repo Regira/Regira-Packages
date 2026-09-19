@@ -83,7 +83,8 @@ public class ProductRepository(MongoCommunicator comm, ISerializer serializer)
 
 CRUD methods:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<TEntity?>             Details(object id)
 Task<IEnumerable<TEntity>> List(object? searchObject = null)
 Task<long>                 Count(object? searchObject = null)

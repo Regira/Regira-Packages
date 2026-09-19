@@ -11,8 +11,8 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 | `Regira.Office.OCR` | Optical character recognition via Tesseract and PaddleOCR |
 
 **Related:**
-- [IO.Storage](../../Common.IO.Storage/ai/io.storage.instructions.md) — `IMemoryFile` used as image input
-- [Media / Drawing](../../Common.Media/ai/media.instructions.md) — image preprocessing before OCR
+- **IO.Storage** — `IMemoryFile` used as image input. `get_package(id: "Regira.IO.Storage", section: "io.storage.instructions")`, or `io.storage.instructions.md` locally.
+- **Media / Drawing** — image preprocessing before OCR. `get_package(id: "Regira.Media", section: "media.instructions")`, or `media.instructions.md` locally.
 
 ---
 

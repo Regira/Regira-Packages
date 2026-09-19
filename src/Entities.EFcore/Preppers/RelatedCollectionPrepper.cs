@@ -25,6 +25,16 @@ public class RelatedCollectionPrepper<TContext, TEntity, TRelated, TEntityKey, T
             // UpdateRelatedCollection has mutated entity states, and EF Core navigation fixup can add
             // deleted items back into a live navigation collection mid-enumeration.
             var modifiedItems = _selectorFunc(modified)?.ToList();
+            // A null collection means UNTOUCHED, not emptied: the caller left it out of the payload, so
+            // there is nothing to reconcile. Returning here is what the rest of this branch already did —
+            // UpdateRelatedCollection returns on a null modifiedItems and the nested loop is guarded on it
+            // — minus the load below, which would otherwise fetch every existing child row only to discard
+            // it. It also avoids tripping a lazy-load on the original's navigation for the same nothing.
+            if (modifiedItems == null)
+            {
+                return;
+            }
+
             // The collection must be reconciled against the rows that actually exist for this entity.
             // If the reload didn't materialize the navigation (the entity's Includes config doesn't
             // eager-load it), load it explicitly here so the original always exposes its related rows.
@@ -34,7 +44,7 @@ public class RelatedCollectionPrepper<TContext, TEntity, TRelated, TEntityKey, T
 
             dbContext.UpdateRelatedCollection<TEntity, TRelated, TEntityKey, TRelatedKey>(modified, modifiedItems, original, originalItems);
 
-            if (_nestedPreppers.Count > 0 && modifiedItems != null)
+            if (_nestedPreppers.Count > 0)
             {
                 var originalList = originalItems?.ToList();
                 foreach (var modifiedItem in modifiedItems)

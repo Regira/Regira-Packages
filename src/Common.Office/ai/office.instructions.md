@@ -42,8 +42,8 @@
 
 ## Related Modules
 
-- [Drawing / Images](../../Common.Media/ai/media.instructions.md) — `IImageService` used by Barcodes, OCR, and PDF sub-modules
-- [IO.Storage](../../Common.IO.Storage/ai/io.storage.instructions.md) — `IFileService` for file input/output across backends
+- **Drawing / Images** — `IImageService` used by Barcodes, OCR, and PDF sub-modules. `get_package(id: "Regira.Media", section: "media.instructions")`, or `media.instructions.md` locally.
+- **IO.Storage** — `IFileService` for file input/output across backends. `get_package(id: "Regira.IO.Storage", section: "io.storage.instructions")`, or `io.storage.instructions.md` locally.
 
 ---
 

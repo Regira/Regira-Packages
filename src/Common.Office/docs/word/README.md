@@ -53,26 +53,30 @@ IMemoryFile doc = await word.Create(new WordTemplateInput
 
 ### IWordCreator
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<IMemoryFile> Create(WordTemplateInput input, CancellationToken cancellationToken = default);
 ```
 
 ### IWordConverter
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<IMemoryFile> Convert(WordTemplateInput input, FileFormat format, CancellationToken cancellationToken = default);
 Task<IMemoryFile> Convert(WordTemplateInput input, ConversionOptions options, CancellationToken cancellationToken = default);
 ```
 
 ### IWordMerger
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default);
 ```
 
 ### IWordTextExtractor / IWordImageExtractor / IWordToImagesService
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<string>                    GetText(WordTemplateInput input, CancellationToken cancellationToken = default);
 Task<IEnumerable<WordImage>>    GetImages(WordTemplateInput input, CancellationToken cancellationToken = default);
 Task<IEnumerable<IImageFile>>   ToImages(WordTemplateInput input, CancellationToken cancellationToken = default);  // one image per page

@@ -11,8 +11,8 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 | `Regira.Office.Word` | Word document creation, conversion, merge, and extraction |
 
 **Related:**
-- [Media / Drawing](../../Common.Media/ai/media.instructions.md) — `IImageFile` returned by `ToImages()`
-- [IO.Storage](../../Common.IO.Storage/ai/io.storage.instructions.md) — `IMemoryFile` used for document input/output
+- **Media / Drawing** — `IImageFile` returned by `ToImages()`. `get_package(id: "Regira.Media", section: "media.instructions")`, or `media.instructions.md` locally.
+- **IO.Storage** — `IMemoryFile` used for document input/output. `get_package(id: "Regira.IO.Storage", section: "io.storage.instructions")`, or `io.storage.instructions.md` locally.
 
 ---
 

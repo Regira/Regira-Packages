@@ -2,7 +2,7 @@
 
 > **Role:** Load this file only when the task creates a new project or changes project shape, hosting, logging, authentication, OpenAPI, or baseline DI structure.
 >
-> **Boundaries:** Do not use this file for module discovery or package-family routing; use [`AGENTS.md`](../../../ai/AGENTS.md) for that. For cross-module setup rules reused by multiple guides, use [`shared.setup.md`](./shared.setup.md).
+> **Boundaries:** Do not use this file for module discovery or package-family routing; use the consumer bootstrap for that — `get_bootstrap_guide(heading: "toc")`, or `./AGENTS.md` at the repo root. For cross-module setup rules reused by multiple guides, use [`shared.setup.md`](./shared.setup.md).
 >
 > **NuGet package versions:** Never guess a specific version number — omit it and let NuGet resolve the **latest stable**, then pin what restored (the numbers in this document are illustrative, not authoritative). Where a package guide ships a known-good list (e.g. `Regira.Entities` → `entities.setup`), start from it so you don't float from `*`.
 
@@ -117,7 +117,8 @@ All templates use Serilog with console + rolling file sinks configured from `app
 
 Wrap the entire `Program.cs` body in a bootstrap logger + try/catch/finally:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -187,7 +188,8 @@ Use this as the default API documentation surface for Regira projects. Do not ad
 
 ⚠️ **Adding authentication to any template? The plain `AddOpenApi()` / `MapScalarApiReference()` pair above is then incomplete** — Scalar renders every endpoint but offers no way to authenticate, so `/scalar` cannot exercise a guarded API. This applies to Templates 2–4 alike; it is not specific to `SelfHostingApiWithAuth`. Declare the schemes, and mark the operations that require one — a declared scheme only produces the auth prompt; without the operation transformer the document says nothing about which endpoints are guarded, and a generated client cannot tell:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Security.Authentication.Web.OpenApi.Transformers;
 
 builder.Services.AddOpenApi(options =>
@@ -272,7 +274,8 @@ Enrich console apps with appsettings, user secrets and environment variables.
 ```
 
 **HostExtensions**
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public static IHostBuilder AddConfiguration(this IHostBuilder builder)
 {
     return builder.ConfigureAppConfiguration((_, config) =>
@@ -488,7 +491,8 @@ Standalone console application for a task, script, or batch job — with structu
 
 ### `Program.cs`
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -530,7 +534,8 @@ finally
 
 ### `Infrastructure/HostingExtensions.cs`
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Serilog;
@@ -577,7 +582,8 @@ Standard ASP.NET Core API hosted on IIS, Azure, or Docker. No authentication. Su
 
 ### `Program.cs`
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Scalar.AspNetCore;
 using Serilog;
 
@@ -639,7 +645,8 @@ Lightweight self-hosted HTTP API, optionally deployable as a Windows Service. No
 
 ### `Program.cs`
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Regira.System.Hosting.WindowsService;
 using Scalar.AspNetCore;
@@ -701,7 +708,8 @@ same scaffold — see *Authentication conventions* → *Picking a scheme*. Deplo
 
 ### `Program.cs`
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Hosting.WindowsServices;
 using Regira.Security.Authentication.ApiKey.Extensions;

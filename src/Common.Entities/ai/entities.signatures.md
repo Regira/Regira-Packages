@@ -162,7 +162,8 @@ public interface IHasObjectId<TKey>
 
 ### Read
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.Services.Abstractions;
 
 public interface IEntityReadService<TEntity, in TKey>
@@ -207,7 +208,8 @@ public interface IEntityReadService<TEntity, in TKey, TSearchObject, TSortBy, TI
 
 ### Write
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.Services.Abstractions;
 
 public interface IEntityWriteService<TEntity, TKey>
@@ -251,7 +253,8 @@ public interface IEntityService<TEntity, TSearchObject, TSortBy, TIncludes>
 
 Custom services with `HasRepository<>()` or `HasManager<>()`.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.Services.Abstractions;
 
 // Primary shortcut forms (int key, full-featured)
@@ -268,7 +271,8 @@ public interface IEntityManager<TEntity, TSearchObject, TSortBy, TIncludes>
 
 Inject the inner service via constructor; override only the methods you need.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.Services.Abstractions;
 
 // Without sort/includes — exposes Service field
@@ -339,7 +343,8 @@ The generic type arguments on the controller must **exactly match** those used i
 | `.For<TEntity, TSearchObject, TSortBy, TIncludes>()` | `EntityControllerBase<TEntity, TSearchObject, TSortBy, TIncludes, TDto, TInputDto>` |
 | `.For<TEntity, TKey, TSearchObject, TSortBy, TIncludes>()` | `EntityControllerBase<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto, TInputDto>` |
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.Web.Controllers.Abstractions;
 
 // Minimal — no sorting or includes
@@ -378,7 +383,8 @@ public abstract class EntityControllerBase<TEntity, TKey, TSo, TSortBy, TInclude
 reference data) without re-implementing it. Signatures are identical on both bases; the complex one adds the
 `[FromBody] TSo[]` overloads of `List`/`Search`:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public virtual Task<ActionResult<DetailsResult<TDto>>> Details([FromRoute] TKey id, [FromQuery] ArchivedFilter? archived = null);
 public virtual Task<ActionResult<ListResult<TDto>>>    List([FromQuery] TSearchObject so, [FromQuery] PagingInfo pagingInfo);
 public virtual Task<ActionResult<SearchResult<TDto>>>  Search([FromQuery] TSearchObject so, [FromQuery] PagingInfo pagingInfo);
@@ -461,7 +467,8 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 
 ### EntityExtensions
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.Extensions;
 
 public static class EntityExtensions
@@ -474,7 +481,8 @@ public static class EntityExtensions
 
 ### ModelBuilderExtensions
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.EFcore.Extensions;
 
 public static class ModelBuilderExtensions
@@ -493,7 +501,8 @@ public static class ModelBuilderExtensions
 }
 ```
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public static class DbContextOptionsBuilderExtensions
 {
     // The AddDbContext counterpart of SetArchivedQueryFilter: same named filter, applied at model
@@ -515,7 +524,8 @@ public static class DbContextOptionsBuilderExtensions
 
 ### DeleteCycleExtensions
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.EFcore.Extensions;
 
 public static class DeleteCycleExtensions
@@ -548,7 +558,8 @@ public static class DeleteCycleExtensions
 
 > Every method
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.EFcore.Extensions;
 
 public static class QueryExtensions
@@ -651,7 +662,8 @@ and whether typed `Includes` is available. Match the controller base and any man
 
 ### Top-Level DI Entry Point
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.DependencyInjection.Extensions;
 
 public static EntityServiceCollection<TContext> UseEntities<TContext>(
@@ -666,7 +678,8 @@ public static EntityServiceCollection<TContext> UseEntities<TContext>(
 
 #### Setup
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.DependencyInjection.Extensions;
 
 // Registers in one call: paging defaults (DefaultPageSize=10, MaxPageSize=100), default primers
@@ -689,7 +702,8 @@ public static EntityServiceCollectionOptions UseNormalizerDefaults(
 
 #### Mapping
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // package: Regira.Entities.Mapping.Mapster
 using Regira.Entities.Mapping.Mapster;
 
@@ -698,7 +712,8 @@ public static EntityServiceCollectionOptions UseMapsterMapping(
     Action<TypeAdapterConfig>? configure = null);
 ```
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // package: Regira.Entities.Mapping.AutoMapper
 using Regira.Entities.Mapping.AutoMapper;
 
@@ -707,7 +722,8 @@ public static EntityServiceCollectionOptions UseAutoMapper(
     Action<IServiceProvider, IMapperConfigurationExpression>? configure = null);
 ```
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.DependencyInjection.Mapping;
 
 public static EntityServiceCollectionOptions AddAfterMapper<TAfterMapper>(
@@ -725,7 +741,8 @@ public static EntityServiceCollectionOptions AfterMap<TSource, TTarget>(
 
 #### Preppers (global)
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.DependencyInjection.Preppers;
 
 public static EntityServiceCollectionOptions AddPrepper<TImplementation>(
@@ -746,7 +763,8 @@ public static EntityServiceCollectionOptions AddPrepper<TContext, TEntity, TKey>
 
 #### Primers (global)
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.DependencyInjection.Primers;
 
 public static EntityServiceCollectionOptions AddPrimer<TPrimer>(
@@ -760,7 +778,8 @@ public static EntityServiceCollectionOptions AddDefaultPrimers(
 
 #### Global Filter Query Builders
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.DependencyInjection.QueryBuilders;
 
 public static EntityServiceCollectionOptions AddGlobalFilterQueryBuilder<TImplementation>(
@@ -775,7 +794,8 @@ public static EntityServiceCollectionOptions AddDefaultGlobalQueryFilters(
 
 #### Normalizers (global)
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.DependencyInjection.Normalizers;
 
 public static EntityServiceCollectionOptions AddNormalizer<TNormalizer>(
@@ -796,7 +816,8 @@ public static EntityServiceCollectionOptions AddDefaultEntityNormalizer(
 
 ### EntityServiceCollection\<TContext\>
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.DependencyInjection.ServiceCollections;
 
 public class EntityServiceCollection<TContext>
@@ -874,7 +895,8 @@ public static class EntityServiceBuilderExtensions
 
 Base builder. Derives from `EntityServiceCollection<TContext>` (above), so inside a `.For<>(e => …)` lambda `e` also offers that type's generic `AddTransient(...)` registration helpers — e.g. `e.AddTransient<IOrderService, OrderManager>()` — alongside the builder methods below.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.DependencyInjection.ServiceBuilders;
 
 public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServiceCollection<TContext>
@@ -1033,7 +1055,8 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
 
 Passed into the `configure` callback of the `Related(...)` overload. Allows configuring nested sub-collections and per-item prepare logic for a related collection.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.DependencyInjection.ServiceBuilders;
 
 public class RelatedEntityBuilder<TContext, TRelated, TRelatedKey>
@@ -1069,7 +1092,8 @@ public class RelatedEntityBuilder<TContext, TRelated, TRelatedKey>
 Returned by `WithSearchObject<TSearchObject>()`. Inherits all `EntityServiceBuilder` methods.
 **Only listing new / changed members:**
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public partial class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject>
     : EntityServiceBuilder<TContext, TEntity, TKey>
     where TSearchObject : class, ISearchObject<TKey>, new()
@@ -1116,7 +1140,8 @@ public partial class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, T
 
 ### Int-Key Variants
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // For<TEntity>() → EntityIntServiceBuilder
 public partial class EntityIntServiceBuilder<TContext, TEntity>
     : EntityServiceBuilder<TContext, TEntity, int>
@@ -1173,7 +1198,8 @@ Returned by `.For<TEntity, TKey, TSearchObject, TSortBy, TIncludes>()` or `.Comp
 Inherits all `EntitySearchObjectServiceBuilder` methods.
 **Only listing new / changed members:**
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public partial class ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes>
     : EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject>
     where TSortBy : struct, Enum
@@ -1226,7 +1252,8 @@ public partial class ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearc
 Returned by `.For<TEntity, TSearchObject, TSortBy, TIncludes>()`.
 Inherits all `ComplexEntityServiceBuilder` methods. Only addition vs parent:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 public partial class ComplexEntityIntServiceBuilder<TContext, TEntity, TSearchObject, TSortBy, TIncludes>
     : ComplexEntityServiceBuilder<TContext, TEntity, int, TSearchObject, TSortBy, TIncludes>
 {
@@ -1249,7 +1276,8 @@ Returned by `UseMapping<TDto, TInputDto>()`. Inherits all builder methods.
 
 > ⚠️ The class-based `After<TImplementation>()` overloads live on the **base (untyped)** variant and return it — `TDto`/`TInputDto` are lost, so the typed `.After(...)`/`.AfterInput(...)` shortcuts no longer compile after them (CS1061). Chain the typed shortcuts first, or keep both after-mappers inline.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Base variant — any source/target after-mapper
 public class MappedEntityServiceBuilder<TContext, TEntity, TKey>
     : EntityServiceBuilder<TContext, TEntity, TKey>
@@ -1300,7 +1328,8 @@ public interface IEntityMapper
 
 ### After Mappers
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.Mapping.Abstractions;
 
 public interface IEntityAfterMapper
@@ -1375,7 +1404,8 @@ public interface IIncludableQueryBuilder<TEntity, TKey, TIncludes>
 
 ### Processors
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.Processing.Abstractions;
 
 public interface IEntityProcessor<TEntity, in TIncludes>
@@ -1387,7 +1417,8 @@ public interface IEntityProcessor<TEntity, in TIncludes>
 
 ### Preppers
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.Preppers.Abstractions;
 
 public interface IEntityPrepper
@@ -1403,7 +1434,8 @@ public interface IEntityPrepper<in TEntity> : IEntityPrepper
 
 ### Primers
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.EFcore.Primers.Abstractions;
 
 public interface IEntityPrimer
@@ -1422,7 +1454,8 @@ public interface IEntityPrimer<in T> : IEntityPrimer
 
 ### Normalizers
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.Normalizing.Abstractions;
 
 public interface IEntityNormalizer
@@ -1441,7 +1474,8 @@ public interface IEntityNormalizer<in T> : IEntityNormalizer
 
 ### Keyword Parsing
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.Keywords;
 using Regira.Entities.Keywords.Abstractions;
 
@@ -1504,7 +1538,8 @@ public record DeleteResult<TDto>   { public TDto Item { get; set; }        publi
 
 ## Attachments
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.Attachments.Abstractions;
 
 public interface IAttachment : IBinaryFile, IHasTimestamps;
@@ -1538,7 +1573,8 @@ public interface IEntityAttachment<TKey, TObjectKey, TAttachmentKey, TAttachment
 
 ### Attachment Controller
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.Web.Attachments.Abstractions;
 
 // Simplest variant
@@ -1611,7 +1647,8 @@ an `Order` write).
 
 `InputErrors` is initialized, so both forms work — a nested initializer for a fixed set, indexer assignment for a map you build:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 throw new EntityInputException<Order>("Saving order failed")
 {
     InputErrors = { ["OrderLines"] = "Order must contain at least one order line." }   // nested initializer, no `new`
@@ -1637,7 +1674,8 @@ public record PagingInfo
 }
 ```
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.DependencyInjection.ServiceCollections.Models;
 
 public class EntityServiceCollectionOptions(IServiceCollection services)
@@ -1688,7 +1726,8 @@ public enum DbContextWiring
 }
 ```
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using Regira.Entities.DependencyInjection.Validation;
 
 public class EntityValidationOptions

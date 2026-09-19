@@ -369,7 +369,7 @@ By default (`EnableAutoCheck = true`, `ThrowOnError = true`), `InvalidChildExcep
 
 Case 2 covers the whole cyclic input: those values all have a parent, so none of them is picked as a root,
 and the downward walk never arrives at them. It equally covers a value whose parent object is not part of
-`values`. Both used to be silently absent from the tree.
+`values`.
 
 The **children-selector** build takes its roots from the caller and therefore has nothing unreachable to
 report; a cycle it walks into is caught by the ancestor check on the way down (case 1).

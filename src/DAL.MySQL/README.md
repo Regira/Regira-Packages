@@ -37,7 +37,8 @@ string cs    = settings.BuildConnectionString();
 
 Extends `DbCommunicator<MySqlConnection>` (Dapper). Execute raw queries via the underlying `DbConnection`.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 var comm = new MySqlCommunicator(settings.BuildConnectionString());
 var rows = await comm.OpenDbConnection.QueryAsync<Product>("SELECT * FROM products");
 ```

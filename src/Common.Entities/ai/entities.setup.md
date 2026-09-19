@@ -139,7 +139,8 @@ app/
 
 DI has three levels, each a file in `Webshop.DependencyInjection`. The root also owns the license registration and `AddDbContext` — in the single project P3 and P4 put both in `Program.cs` — so every host, API or console, gets the same license, context and provider from one call:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Extensions/ServiceCollectionExtensions.cs — root: the one call every host makes
 public static IServiceCollection AddEntityServices(this IServiceCollection services, IConfiguration configuration)
     => services
@@ -356,7 +357,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 ## P3: Program.cs
 
 **Changes to BasicApi**
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // ... usings from BasicApi
 using Microsoft.EntityFrameworkCore;
 
@@ -435,7 +437,8 @@ builder.Services.AddEntityServices();
 
 > **SQLite starter note:** For the default SQLite starter/test setup, do not scaffold an initial EF migration. After `app = builder.Build()`, create a scope and call `Database.EnsureCreated()` instead:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -461,7 +464,8 @@ using (var scope = app.Services.CreateScope())
 
 Keep controller routes resource-relative and **spell the resource** — `[Route("products")]` — then apply a shared `api` base **once** at the host/app level so it stays configurable. Avoid the `[controller]` token: it expands to the class-name stem, so a `SupplierController` serves `/Supplier` instead of the `/suppliers` the SPA calls. Either host under that base path (IIS virtual directory / reverse proxy, or `app.UsePathBase("/api")`), or register a global route-prefix convention. `Regira.Entities.Web` already brings `Regira.Web` transitively, so `Regira.Web.Routing`'s `UseCentralRoutePrefix` is available without another reference — it configures `MvcOptions`, so call it where those are built: `builder.Services.AddControllers(o => o.UseCentralRoutePrefix(new RouteAttribute("api")));`. The self-contained equivalent below is here for a host that does not reference it:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // namespace Microsoft.AspNetCore.Mvc.ApplicationModels (RouteAttribute is in Microsoft.AspNetCore.Mvc)
 public sealed class RoutePrefixConvention(string prefix) : IApplicationModelConvention
 {
@@ -499,14 +503,16 @@ chain fails and requests never reach the API. Two safe options:
   behind a proxy — so downloads leave the SPA's origin. `xfwd: true` forwards the SPA's; honour it in
   Development, **after** `app.UseHttpsRedirection()` (placed first, the forwarded `http` scheme triggers the
   redirect):
-  ```csharp no-compile
+  <!-- no-compile -->
+  ```csharp
   using Microsoft.AspNetCore.HttpOverrides;
 
   if (app.Environment.IsDevelopment())
       app.UseForwardedHeaders(new() { ForwardedHeaders = ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedProto });
   ```
 - **Or skip the redirect in Development** so the SPA can talk to the API over HTTP:
-  ```csharp no-compile
+  <!-- no-compile -->
+  ```csharp
   if (!app.Environment.IsDevelopment())
   {
       app.UseHttpsRedirection();
@@ -538,7 +544,8 @@ Create `Extensions/ServiceCollectionExtensions.cs`. The complete wiring pattern 
 
 **Complete wiring pattern — callback vs. return value:**
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Program.cs — register license once before any module setup
 services.UseRegira(configuration);
 

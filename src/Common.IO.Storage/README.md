@@ -31,7 +31,8 @@ Regira IO.Storage provides a **unified abstraction** for file storage operations
 
 ## Quick Start
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 services.AddSingleton<IFileService>(_ =>
     new BinaryFileService(new FileSystemOptions { RootFolder = "/var/app/uploads" }));
 
@@ -46,7 +47,8 @@ All backends implement this interface. **Identifiers** are relative paths within
 
 ### Read
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<bool>                Exists(string identifier)
 Task<byte[]?>             GetBytes(string identifier)
 Task<Stream?>             GetStream(string identifier)
@@ -55,7 +57,8 @@ Task<IEnumerable<string>> List(FileSearchObject? so = null)
 
 ### Write
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 Task<string> Save(string identifier, byte[] bytes,  string? contentType = null)
 Task<string> Save(string identifier, Stream stream, string? contentType = null)
 Task         Move(string sourceIdentifier, string targetIdentifier)
@@ -73,7 +76,8 @@ Task         Delete(string identifier)
 
 ### URI helpers
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 string  Root { get; }                        // storage root URI / path
 string  GetAbsoluteUri(string identifier)    // relative → absolute
 string  GetIdentifier(string uri)            // absolute → relative
@@ -171,7 +175,8 @@ var service = new BinaryFileService(new FileSystemOptions { RootFolder = "/var/a
 
 **Network shares** — for a UNC path protected by a username & password, use `NetworkFileService` with a `NetworkShareCommunicator`. The communicator authenticates against the share lazily on the first file operation (or eagerly via `await communicator.Open()`); dispose it on application shutdown to release the connection.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 services.AddSingleton(new NetworkFileSystemOptions
 {
     RootFolder = @"\\fileserver\share\uploads",
@@ -195,7 +200,8 @@ services.AddSingleton<IFileService, NetworkFileService>();
 
 **Text files** — use `TextFileService` directly, or wrap any `IFileService` with the `DefaultTextFileService` decorator:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 var text = new DefaultTextFileService(anyFileService, Encoding.UTF8);
 string? content = await text.GetContents("config/app.json");
 await text.Save("config/app.json", jsonString);
@@ -291,7 +297,8 @@ Fully implements `IFileService` — `Save`/`Move`/`Delete` create commits on `Br
 
 `ZipFileService` implements `IFileService` and `IDisposable`. Construct it with a `ZipFileCommunicator` that points to an existing archive or starts a fresh one:
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 // Open an existing zip file
 using var zipService = new ZipFileService(new ZipFileCommunicator { SourceFile = existingZip });
 var entries = await zipService.List();
@@ -324,7 +331,8 @@ IMemoryFile zip = await new ZipBuilder()
 
 `Zip` is an extension method; `Unzip` is a static method on `ZipUtility`.
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 IMemoryFile zipFromFiles    = files.Zip();                             // collection → zip
 IMemoryFile zipFromPaths    = paths.Zip(baseFolder: "/var/exports");   // paths → zip
 BinaryFileCollection items  = ZipUtility.Unzip(existingZip);           // zip → collection
@@ -368,7 +376,8 @@ await new ExportHelper(source, target)
 
 ### FileNameUtility — path helpers
 
-```csharp no-compile
+<!-- no-compile -->
+```csharp
 FileNameUtility.GetAbsoluteUri("folder/file.txt", root)
 FileNameUtility.GetRelativeUri(absolutePath, root)
 FileNameUtility.GetCleanFileName("folder/sub/file.txt")  // → "file.txt"
