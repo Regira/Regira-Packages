@@ -133,6 +133,10 @@ public class OwningEntity: IHasAttachments, IHasAttachments<MyEntityAttachment>
     });
 ```
 
+The owner-side mapping is required. `ObjectId` is not a conventional foreign-key name and the link has no
+navigation back to its owner, so without it EF adds a shadow key of its own: link rows are saved without an
+owner, the owner's `Attachments` loads empty and `?hasAttachment=true` matches nothing. Startup validation warns.
+
 #### Marking one attachment as the primary one
 
 Mark the link entity — a flag, or its `SortOrder`, which is assigned from the incoming array position. A foreign

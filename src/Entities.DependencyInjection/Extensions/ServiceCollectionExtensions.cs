@@ -160,6 +160,7 @@ public static class ServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, ArchivedQueryFilterValidator>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, ArchivableReferenceDataValidator>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, AttachmentsInputDtoValidator>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, AttachmentForeignKeyValidator>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, ServerOwnedValidator>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, DeleteCycleValidator>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, ConcurrencyTokenValidator>());
