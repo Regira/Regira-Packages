@@ -1,5 +1,6 @@
 using Docnet.Core;
 using Docnet.Core.Models;
+using Microsoft.Extensions.Configuration;
 using Office.Word.testing.Abstractions;
 using Regira.Drawing.SkiaSharp.Services;
 using Regira.IO.Extensions;
@@ -19,6 +20,18 @@ namespace Office.Word.testing;
 public class SyncfusionTests() : WordTestsBase(CreateService(), "Syncfusion")
 {
     private const string LicenseVariable = "SYNCFUSION_LICENSE_KEY";
+    private const string LicenseSetting = "SyncFusion:LicenseKey";
+
+    /// <summary>
+    /// The key comes from user secrets (<c>dotnet user-secrets set "SyncFusion:LicenseKey" "..."</c>),
+    /// falling back to the <c>SYNCFUSION_LICENSE_KEY</c> environment variable the package itself reads,
+    /// so CI can hand it over without a secrets file. Null when neither is set.
+    /// </summary>
+    private static readonly string? LicenseKey =
+        new ConfigurationBuilder()
+            .AddUserSecrets(typeof(SyncfusionTests).Assembly, optional: true)
+            .Build()[LicenseSetting]
+        ?? Environment.GetEnvironmentVariable(LicenseVariable);
 
     /// <summary>
     /// The banner DocIO prepends to every document when the key is missing, wrong, or does not
@@ -27,7 +40,7 @@ public class SyncfusionTests() : WordTestsBase(CreateService(), "Syncfusion")
     private const string TrialBanner = "trial version of Syncfusion Word library";
 
     private static WordService CreateService()
-        => new(new SyncfusionWordConfig { LicenseKey = Environment.GetEnvironmentVariable(LicenseVariable) });
+        => new(new SyncfusionWordConfig { LicenseKey = LicenseKey });
 
 
     /// <summary>
@@ -38,17 +51,17 @@ public class SyncfusionTests() : WordTestsBase(CreateService(), "Syncfusion")
     [Test]
     public async Task License_Key_Removes_The_Trial_Banner()
     {
-        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(LicenseVariable)))
+        if (string.IsNullOrWhiteSpace(LicenseKey))
         {
             // Only this test needs a key. The rest run unlicensed: the banner is extra text, so it
             // does not affect what they assert.
-            Assert.Ignore($"Set {LicenseVariable} to verify the key licenses DocIO.");
+            Assert.Ignore($"Set the {LicenseSetting} user secret or {LicenseVariable} to verify the key licenses DocIO.");
         }
 
         var text = await Service.GetText(TemplateInput("lorem_ipsum.docx"));
 
         Assert.That(text, Does.Not.Contain(TrialBanner),
-            $"The key in {LicenseVariable} does not license the DocIO Word library — output is watermarked.");
+            $"The configured key ({LicenseSetting} / {LicenseVariable}) does not license the DocIO Word library — output is watermarked.");
     }
 
 
