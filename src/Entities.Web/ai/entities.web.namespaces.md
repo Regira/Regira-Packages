@@ -11,7 +11,7 @@
 | Namespace | Types |
 |---|---|
 | `Regira.Entities.Web.Controllers.Abstractions` | `EntityControllerBase<>` (all overloads) |
-| `Regira.Entities.Web.Controllers` | `ControllerExtensions` *(`Save()`/`Patch()`/`Delete()` — on `ControllerBase`)*, `EntityExceptionFilter`, `EntityConstraintConflictAttribute` |
+| `Regira.Entities.Web.Controllers` | `ControllerExtensions` *(`Details()`/`Save()`/`Patch()`/`Delete()` — on `ControllerBase`)*, `EntityExceptionFilter`, `EntityConstraintConflictAttribute` |
 
 > ⚠️ **The `.Abstractions` suffix is required.** `using Regira.Entities.Web.Controllers;` is NOT enough — the class lives one level deeper in `...Controllers.Abstractions`.
 

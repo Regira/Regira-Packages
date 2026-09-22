@@ -232,6 +232,7 @@ The table below lists the optional steps; the required steps (1–6, 11–15) fo
 
 - Use `SetDecimalPrecisionConvention` in DbContext instead of setting precision per property
 - `DateTime` values round-trip as UTC automatically (JSON `Z` suffix): the UTC date convention is auto-wired by `UseEntities(e => e.UseDefaults())`. Standalone EF without the entities stack: `.AddUtcDateTimeConvention()` in `AddDbContext` or `SetUtcDateTimeConvention` in `ConfigureConventions`
+- A calendar date or a wall-clock time with no instant behind it (a booking day, an opening hour, a birthday) is a `DateOnly`/`TimeOnly`, not a `DateTime` at midnight: the UTC policy touches `DateTime` only, so there is no zone shift to undo, and both round-trip through EF (SQLite stores text; comparisons, `AddDays` and `.Month` translate), Mapster and query-string binding (`?day=2026-09-21`). ⚠️ System.Text.Json reads a `DateOnly` **only** as `"yyyy-MM-dd"` — a client that sends a serialized JS `Date` (`"2026-09-21T00:00:00.000Z"`) gets a 400. `TimeOnly` is written `"09:30:00"` and read with or without seconds
 - Nullable: follow interfaces when type is nullable, nullable properties can be combined with [Required] annotation
 
 **Interface selection checklist:**
@@ -606,7 +607,7 @@ Add `DbSet<YourEntity>` and configure any relationships in `OnModelCreating`.
 
 > **Then expect an EF warning (`net10.0`) — and read it before suppressing it.** Because a real query filter is installed there, EF logs one `PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning` per relationship whose required principal is `IArchivable` — *"Entity 'Order' has a global query filter defined and is the required end of a relationship with 'OrderLine'"*. On **`net8.0` it cannot appear at all** (no filter is installed there), so don't go looking for it.
 >
-> ⚠️ **The warning is benign for an aggregate parent and a silent data bug for reference data.** The filter propagates into `Include(...)`, and where the navigation is required EF composes it as an inner join — so the dependents drop out of **items** while the **count** query (no includes, no join) still counts them. For `Order` → `OrderLine` that is the intent. For a `Category` that fifty separately-registered `Asset` rows point at, archiving one silently removes those fifty from every list while `/search` keeps reporting them: short pages, no error, nothing logged. **Reference data behind a required FK should not be `IArchivable`** — use a real `DELETE` with `OnDelete(Restrict)` (→ 409 while in use), or make the FK optional. Startup validation warns on that shape; the aggregate-parent case is the one the Step 15 "no warnings" checkpoint excuses. Full decision table: [`entities.patterns.md`](./entities.patterns.md) → Soft Delete.
+> ⚠️ **The warning is benign for an aggregate parent and a silent data bug for reference data.** The filter propagates into `Include(...)`, and where the navigation is required EF composes it as an inner join — so the dependents drop out of **items** while the **count** query (no includes, no join) still counts them. For `Order` → `OrderLine` that is the intent. For a `Category` that fifty separately-registered `Asset` rows point at, archiving one silently removes those fifty from every list while `/search` keeps reporting them: short pages, no error, nothing logged. **Reference data behind a required FK should not be `IArchivable`** — use a real `DELETE` with `OnDelete(Restrict)` (→ 409 while in use), or make the FK optional. Startup validation warns on that shape; the aggregate-parent case is the one the golden path's startup-warning checkpoint expects. Full decision table: [`entities.patterns.md`](./entities.patterns.md) → Soft Delete.
 >
 > Once you have confirmed it is an aggregate parent, silence it where the context is registered (the options builder, not `OnModelCreating`):
 >
@@ -623,7 +624,7 @@ Add `DbSet<YourEntity>` and configure any relationships in `OnModelCreating`.
 >
 > | The dependent… | Mirror `HasQueryFilter(x => !x.Parent!.IsArchived)`? |
 > |---|---|
-> | is queried **directly** (own endpoint, `/search`, an aggregate over it) and is **one hop** from the parent | **Yes** — otherwise its `count` and `items` disagree |
+> | is queried **directly** (own endpoint, `/search`, an aggregate over it) and is **one hop** from the parent | **Yes** — otherwise its `count` and `items` disagree. No `?archived=` opt-in lifts it (the opt-in acts on the queried `IArchivable` entity only), so rows that must stay readable after the parent is archived call for keeping the parent out of their reads instead — [`entities.patterns.md`](./entities.patterns.md) → Soft Delete |
 > | is reached **only** through the parent's `Include(...)` | **No** — the parent's filter already removed it |
 > | sits **two hops** away (`!x.Session!.Event!.IsArchived`) | **No** — needs `APPLY`, which SQLite lacks. Filter explicitly in the queries that care |
 >
@@ -878,6 +879,10 @@ in the Development environment by default. It catches, with actionable messages:
   (§Attachments step 3).
 - **Null attachment `Uri`** (warning) — an attachment controller is mapped while the null resolver is in
   place, i.e. `UseAttachmentUris()` was omitted or set on a different options instance.
+- **Attachment owner not mapped to `ObjectId`** (warning) — an `IHasAttachments` owner whose attachment
+  collection reaches the link through any key but `ObjectId`, typically a shadow key EF invented because the
+  owner side was left to conventions. Every link row is saved orphaned: the owner's `Attachments` loads empty and
+  `?hasAttachment=true` matches nothing (§Attachments step 5).
 - **Archivable reference data behind a required FK** (warning, net10) — an `IArchivable` principal that
   separately registered entities reference through a required FK. Archiving such a row drops the dependents
   from list results while `/search` keeps counting them; the message works the mirrored-filter remedy
@@ -1099,7 +1104,16 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
    ```
 3. **Mapped owner (`UseMapping`)? Declare the collection on the input DTO:** `public ICollection<EntityAttachmentInputDto>? Attachments { get; set; }` (or your derived attachment input DTO). Without it the convention map drops the incoming collection on every save and the sync reads that as "attachments not sent" — adds, removes and reorders through the parent are silently ignored (200 OK, no error; the `/{objectId}/attachments` sub-routes still work, which masks it). Startup validation warns. Mirror on the read DTO with `ICollection<EntityAttachmentDto>?`.
 4. Create a controller inheriting `EntityAttachmentControllerBase<TAttachment>` — **name it after the attachment type** (`ProductAttachmentController` or `ProductAttachmentsController` for a `ProductAttachment`; any other name makes `Uri` unresolvable, see 7) and set the class route to the **owner base path**, e.g. `[Route("products")]` (resource-relative — see the route-prefix note in §Step 13). The base controller appends the sub-routes `{objectId}/attachments`, `attachments/{id}`, `{objectId}/files`, ….
-5. Add `DbSet<Attachment>` and `DbSet<TAttachment>` to DbContext; configure relationship in `OnModelCreating`
+5. Add `DbSet<Attachment>` and `DbSet<TAttachment>` to the DbContext and map **both** relationships in
+   `OnModelCreating`. ⚠️ The owner side is the one EF cannot infer — `ObjectId` is not a conventional FK name, so
+   left out it gets a shadow `ProductId`, every link row is saved orphaned, the owner's `Attachments` loads empty
+   and `?hasAttachment=true` matches nothing (the `/{id}/attachments` sub-routes still list the files; startup
+   validation warns):
+   <!-- no-compile -->
+   ```csharp
+   modelBuilder.Entity<ProductAttachment>().HasOne(x => x.Attachment).WithMany().HasForeignKey(x => x.AttachmentId);
+   modelBuilder.Entity<Product>().HasMany(x => x.Attachments).WithOne().HasForeignKey(x => x.ObjectId).HasPrincipalKey(x => x.Id);
+   ```
 6. Register **two** things: `.WithAttachments(_ => new BinaryFileService(...))` for the shared `Attachment` entity + file store + bytes→file primer, **and** `.For<Product>(e => e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments))` for the typed per-owner services + link prepper + DTO mapping. `HasAttachments` is an extension on the **base** `EntityServiceBuilder`, so it chains on every `For<>()` tier — a complex owner registers it exactly like the simple one shown here.
 7. *(web apps)* Call `options.UseAttachmentUris()` (before registering entities, on the **same** `UseEntities` options instance) and register `AddHttpContextAccessor()` so attachment DTOs resolve a `Uri` linking to the attachment controller's `GetFile` action.
 
@@ -1241,7 +1255,8 @@ Load that file when implementing one of these:
 - **Server-owned / immutable fields on update** — `[ServerOwned]`/`e.ServerOwned(…)` so PUT/PATCH can't null or re-mint a code, total or owner FK; plus the prepper and primer forms for what a declaration cannot cover.
 - **Optimistic concurrency (stale-write detection)** — a concurrency token on both DTOs, so a PUT/PATCH built on a stale read answers 409 instead of silently overwriting; the primer that makes an application-owned token move, and what each route is checked against.
 - **Server-generated sequential codes** — mint `REQ-2026-00001` from a primer on `Added` and restore it on `Modified`; includes when that primer has to be a prepper instead, and why the counter is primed from the highest code.
-- **Cross-entity aggregates & report endpoints** — a dashboard controller belongs to no entity, so it **bypasses the pipeline**: global filter row security does not apply unless you repeat the predicate. Also **domain actions on an entity resource** (`POST /{id}/approve`) and **role-gated transitions**.
+- **Cross-entity aggregates & report endpoints** — a dashboard controller belongs to no entity, so it **bypasses the pipeline**: global filter row security does not apply unless you repeat the predicate.
+- **Domain actions on an entity resource** — a state change (`POST /{id}/approve`) as a second controller on the entity's route, answered with a re-read; **role-gated transitions** for privileged states, and the append-only history shape.
 - **Aggregates over a non-owned child collection** — a parent total rolled up from children that own their own FK. Eventually consistent, seeding needs a second pass, and a child query filter can zero it on restore.
 - **Role-gated write authorization filter** — one global filter mapping controller → required role, keyed on the generated write actions because the controllers serve reads over `POST` too.
 - **Writing to a related entity from a prepper** — the typed `e.Prepare(entity, dbContext)` overload; `EntityInputException<T>` must name the *serviced* entity or it escapes as a 500.
@@ -1448,7 +1463,7 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 | Save/delete returns **409 Conflict** (`ProblemDetails` title "Conflict") on a valid-looking payload | A DB constraint rejected the change — required FK points at a nonexistent parent, duplicate unique key, or a delete under `Restrict` (§Error Handling); the response detail is generic — the constraint name is in the server log (warning) | Fix the data, or validate in a prepper and `throw new EntityInputException<TEntity>(…)` → field-level 400 (parameterize by the *serviced* entity) |
 | A user's edit silently overwrites another user's change — no 409 | No concurrency token, or it never round-trips: missing from the read or input DTO (the client then sends the default, which is not checked), or an application-owned token nothing re-mints | Implement `IHasConcurrencyToken` (or declare a token of your own and mint it in a primer) and put it on both DTOs ([`entities.patterns.md`](./entities.patterns.md) → Optimistic concurrency). Startup validation warns about a DTO without the property |
 | Every PUT/PATCH answers **409 "Concurrency conflict"**, even with a single user | The entity initializes its token (`= Guid.NewGuid()`) and the input DTO has no property for it, so each mapped entity carries a token the row never held; or the client resends the token it read before its own last save | Remove the initializer and add the property to both DTOs; take the new token from the `SaveResult` after each save. Startup validation reports the initializer as an error |
-| A dashboard/report endpoint answers **500 with an empty body** on a green build; the log says *"The LINQ expression … could not be translated"* or *"Translating this query requires the SQL APPLY operation"* | An untranslatable construct in the query: a record constructor in the projection, a correlated `SelectMany` (`CROSS APPLY` — absent on SQLite), **a method of your own called on the row**, or a provider-specific `EF.Functions` member (`DateDiff*` is SQL Server only) | The full list with the translating alternative for each is in [`entities.patterns.md`](./entities.patterns.md) § Cross-entity aggregates & report endpoints |
+| A dashboard/report endpoint answers **500 with an empty body** on a green build; the log says *"The LINQ expression … could not be translated"* or *"Translating this query requires the SQL APPLY operation"* | An untranslatable construct in the query: a record constructor in the projection, a correlated `SelectMany` (`CROSS APPLY` — absent on SQLite), **a method of your own called on the row**, date arithmetic between two columns on SQLite (`x.End - x.Start`), or a provider-specific `EF.Functions` member (`DateDiff*` is SQL Server only) | The full list with the translating alternative for each is in [`entities.patterns.md`](./entities.patterns.md) § Cross-entity aggregates & report endpoints |
 
 ### Troubleshooting — compiler errors
 

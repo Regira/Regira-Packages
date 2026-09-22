@@ -184,6 +184,32 @@ transition writes it, so guard it on the transition instead of on create (§Role
 
 **See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "Bulk insert / update")`.
 
+### Workflow / state transitions
+<!-- how_to: key=state-transitions aliases=workflow,state-machine,transition,transitions,approve,approval,reject,submit,append-only,immutable,history,trusted-writer -->
+A state change (submit → approve → close) is a **domain action**: a second controller on the entity's route
+(`POST {id}/approve`) that loads with `Details(id)`, decides, writes through `IEntityService` and answers
+with a re-read in the generated endpoints' shape:
+
+<!-- no-compile -->
+```csharp
+item.Status = RequestStatus.Approved;
+await service.Modify(item);
+await service.SaveChanges();
+return await this.Details<CreditRequest, CreditRequestDto>(id) ?? NotFound();   // fresh navigations, the DTO, { "item": … }
+```
+
+- **Who may set the state?** Anyone with PATCH rights → the fields stay on `TInputDto`. Only the action →
+  take them off and restore them in a prepper guarded by a scoped trusted-writer flag the action flips
+  (`[ServerOwned]` has no bypass, so it would revert the action too).
+- **Gate the transition set, not only the fields.** A generic transition endpoint that reaches a state a
+  role-gated action also reaches voids that action's role check; decide who may reach which state in the one
+  service every path calls.
+- **An append-only history** is its own entity with the workflow service as only writer: a prepper refusing
+  any create or update without the trusted-writer flag, no collection on the parent's input DTO, no `DELETE`.
+
+**See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "Domain actions on an entity resource")`
+— *Role-gated transitions* is its sub-section.
+
 ### Which service is registered for an entity (incl. attachments)
 <!-- how_to: key=registered-service aliases=registered,service,resolve,getrequiredservice,inject,injection,which,what -->
 Every entity registered with `For<>()` resolves as `IEntityService<TEntity, TKey>` (and the
@@ -292,7 +318,8 @@ public class OrderInputDto
 
 A client that is not editing the rows omits the property (or sends `null`); a hand-written call must never
 default it to an empty array. A computed total in a prepper needs the same branch — `null` means re-read
-the persisted children, not "sum nothing".
+the persisted children, not "sum nothing" — and so does a rule spanning a scalar and the rows: a PATCH of the
+scalar alone arrives with the collection `null`, so a check that runs only when rows are sent is bypassable.
 
 **See:** `get_package(id: "Regira.Entities", section: "instructions", heading: "Relationship Patterns — Decision Table")`
 — *One writer per save path* — and §Step 5.
@@ -336,6 +363,7 @@ EF logs one `PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarnin
 | The principal is… | Archiving one means | Do |
 |---|---|---|
 | an **aggregate parent** — `Order` → `OrderLine`, an `e.Related()` child with no `For<>()` of its own | its children go with it, which is the intent | suppress the warning, and read on for the dependent-you-query-directly case |
+| an **aggregate parent whose children are separately registered** — `Asset` → `MaintenanceRecord` with its own `.For<>()` and list endpoint | the children stay stored, but every read of theirs that joins the parent loses them — and the mirrored filter below hides them outright, even from `?archived=included` | usually a **domain state** instead (`Retired`, `Cancelled`) with a real `DELETE` and `Restrict`, so the history stays readable. Archive it only when hiding the children *is* the intent (mirror, below), or keep the parent out of their reads (below) |
 | **reference data** — a category, a status, a type, a lookup any separately-registered entity points at | every row referencing it silently vanishes from list results | **do not make it `IArchivable`.** Delete it for real and let `OnDelete(Restrict)` return **409** while it is in use. Or make the FK **optional**, so the dependent survives with a null navigation |
 
 **What "silently vanishes" means, precisely.** The archived filter is a real EF filter on the principal, so it propagates into `Include(...)`; where the navigation is **required** EF composes it as an inner join and the dependent rows drop out of the **items** projection. The **count** query carries no includes, hence no join, hence no elimination. So `/search` reports a total its own page does not contain:
@@ -349,6 +377,8 @@ scoped to that category                  count  43 | items   0   ← 43 rows nob
 Startup validation reports this shape (`ArchivableReferenceDataValidator`, a **warning** naming both entities) — it fires only for a dependent that is separately registered, since an `e.Related()` child is never queried on its own.
 
 **If it really is an aggregate parent**, suppress the warning per context with `.ConfigureWarnings(w => w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning))` on the `AddDbContext` options. And for any dependent you **also query directly**, mirror the filter — `modelBuilder.Entity<OrderLine>().HasQueryFilter(x => !x.Order!.IsArchived)` — which is what keeps its count and items in agreement. A filter you add to a dependent that is **not itself `IArchivable`** never collides with the named archived filter: the archived filter only touches `IArchivable` types, so your filter on such a dependent is unopposed.
+
+**What mirroring costs.** `?archived=` opts in on the queried entity only, and a mirrored filter is your own filter on a dependent that is not `IArchivable` — no opt-in ever lifts it. An archived parent's children are then unreachable through the API for everyone, the administrator who archived it included. When they must stay readable, don't mirror: keep the parent out of the children's reads — no `Include` of it, no filter through its navigation, and the one field their list shows denormalised onto them (`AssetCode` on the record) — so no join exists for the archived filter to drop rows through. Startup validation still warns, since it inspects the model's shape rather than your queries; with no read joining the parent, that warning stands by design.
 
 ### Attachments on an archivable owner
 
@@ -521,20 +551,27 @@ This is the sanctioned shape, not a deviation — but keep it **read-only**, and
   `Any(...)`-based endpoints once.
 - ⚠️ **A method of your own called on the row does not translate** — `.Where(t => IsBreached(t, now))`. Inline
   it, or hoist it to an `Expression<Func<T, bool>>` / `IQueryable<T>` extension so it stays in the tree.
-- ⚠️ **`EF.Functions.DateDiff*`/`DateAdd*` are SQL Server only** and throw on the SQLite these guides default
-  to; `Like` is the portable one. Compute the bound in C# first (`var cutoff = now.AddHours(-4);`) instead.
+- ⚠️ **Date arithmetic between two columns does not translate on SQLite** (it stores dates as text):
+  `(x.End - x.Start)` inside a `Where` or an aggregate throws, and `EF.Functions.DateDiff*`/`DateAdd*` are SQL
+  Server only (`Like` is the portable `EF.Functions` member). Compare against a bound instead —
+  `x.End > x.Start.AddHours(4)`, or `var cutoff = now.AddHours(-4);` computed in C#. An average duration: project
+  the two columns and average after `ToListAsync()`, under the same filters so the set stays bounded.
+- ✅ **These translate on SQLite, so keep the metric:** `.Year`/`.Month`/`.Date`/`.DayOfWeek` (grouping by
+  month included), `AddDays`/`AddHours`, `g.Count(pred)`, a conditional `g.Sum(x => cond ? 1 : 0)`,
+  `g.Select(x => x.OtherId).Distinct().Count()`, and `DateOnly` comparisons and `.Month`.
 - On the client this is a plain `useAxios()` call with its own `useFeedback()` — not a slice, not a pooled
   store. See the front-end `entities.patterns` → *Custom endpoints on a service* and *Feedback for custom
   saves*.
 
-### Domain actions on an entity resource
+## Domain actions on an entity resource
 
 A state machine (submit / approve / reject / reopen) is neither a CRUD write nor a report. It belongs beside
 the entity controller on the **same** resource route, as a second controller with distinct templates — this
 is supported, and keeps the guard off the hot path where every ordinary PATCH would pay for it:
 
 ```csharp
-using Regira.Entities.Web.Controllers;                                       // this.DetailsResult(...)
+using Regira.Entities.Web.Controllers;                                       // this.Details<TEntity, TDto>(id)
+using Regira.Entities.Web.Models;                                            // DetailsResult<T>
 
 public enum RequestStatus { Draft, Submitted, Approved }
 
@@ -545,13 +582,14 @@ public class CreditRequest : IEntity<int>
     public DateTime? DecidedOn { get; set; }
 }
 
+public class CreditRequestDto { public int Id { get; set; } public RequestStatus Status { get; set; } public DateTime? DecidedOn { get; set; } }
 public class DecisionInput { public string? Reason { get; set; } }
 
 [ApiController, Route("credit-requests")]                                    // same prefix as the entity controller
 public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> service) : ControllerBase
 {
     [HttpPost("{id:int}/approve")]
-    public async Task<IActionResult> Approve(int id, [FromBody] DecisionInput input)
+    public async Task<ActionResult<DetailsResult<CreditRequestDto>>> Approve(int id, [FromBody] DecisionInput input)
     {
         var item = await service.Details(id);
         if (item == null) return NotFound();
@@ -565,7 +603,7 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
         item.DecidedOn = DateTime.UtcNow;
         await service.Modify(item);
         await service.SaveChanges();                                         // no base controller here — save explicitly
-        return this.DetailsResult(item);                                     // { "item": … } — the envelope every generated endpoint uses
+        return await this.Details<CreditRequest, CreditRequestDto>(id) ?? NotFound();   // re-read → fresh navigations, the DTO, { "item": … }
     }
 }
 ```
@@ -585,15 +623,16 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
   `Related()` child — was set to another key, the write drops the reference navigation still on the stored
   principal and takes the row out of that principal's loaded collections (the old assignee may still be in the
   graph as a child's author), so `item.AssigneeId = next` saves `next` (the saved `item` then carries
-  `Assignee = null`; re-read with `Details(id)` when the response needs it). A collection being saved is never
+  `Assignee = null` — one reason the response is a re-read). A collection being saved is never
   changed, so a `Related()` child stays with the parent that lists it whatever its own parent key says — move it
   through the collections. **Clearing** a relation takes the navigation too
   (`item.AssigneeId = null; item.Assignee = null;`): an empty key beside a loaded navigation is what a body
   sending only the nested object looks like, so the navigation keeps deciding it.
-- **Answer in the same envelope as the generated endpoints.** `this.DetailsResult(item)`
-  (`Regira.Entities.Web.Controllers`) wraps it as `{ "item": … }`, so a client reads
-  `data.item` on every route it calls and the SPA service needs no per-action unwrapping. A bare
-  `Ok(item)` works but makes this one action the exception.
+- **Answer with a re-read, exactly as `GET /{id}` would.** `this.Details<TEntity, TDto>(id)`
+  (`Regira.Entities.Web.Controllers`) reads the row back through the service, maps it to the read DTO and
+  wraps it as `{ "item": … }`, so a client reads `data.item` on every route and the SPA service needs no
+  per-action unwrapping. The saved `item` is the wrong thing to return: its reference to a changed FK is
+  gone (above) and it is the entity, not the DTO. `this.DetailsResult(dto)` wraps a DTO you already hold.
 - ⚠️ **Where the transitioned fields live depends on who may write them.** *May anyone with PATCH rights set
   the state?* Keep `Status`/`DecidedOn` on `TInputDto` and let this controller be their real writer —
   excluding them without a restore makes every ordinary PATCH reset them to `null`/default (§Server-owned /
@@ -649,6 +688,17 @@ await service.SaveChanges();
 A seeder that stamps historical states is a trusted writer too — flip the same flag in its scope. The guard
 stays in the prepper (not the controller) so *every* write path — CRUD PUT/PATCH, other services, future
 endpoints — passes through it.
+
+⚠️ **Gate the transition set, not only the fields.** The guard decides *who writes the fields*; which role may
+reach which **state** is a second rule. When a generic action (`POST {id}/transitions` taking the target state)
+reaches a state that a role-gated one (`POST {id}/cancel`) also reaches, the attribute on the gated action
+protects nothing — the caller takes the other route. Put the role-per-target-state check in the one service
+every transition goes through, and let the endpoint attributes only narrow it.
+
+**An append-only history** (a status log, an audit trail of transitions) is the same guard on its own entity:
+the workflow service is its only writer, so its prepper throws `EntityInputException` for any create or update
+made without the trusted-writer flag, the parent's input DTO leaves the collection out (one writer per save
+path), and its controller exposes no `DELETE` (override it to return `405`).
 
 ## Role-gated write authorization filter
 

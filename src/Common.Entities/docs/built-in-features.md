@@ -315,8 +315,9 @@ services.UseEntities<AppDbContext>(o =>
 generic-arity mismatches (the controller check activates automatically when `Regira.Entities.Web` is
 referenced, or explicitly via `ValidateEntityControllers()`), warns when primers/normalizers are registered
 without their SaveChanges interceptor (an informational note instead when the `RegisterPrimerContainer` +
-`ApplyPrimers()` pattern is detected), warns when `?q=` would be silently ignored for an entity, and fails
-on a `[ServerOwned]` declaration nothing can enforce.
+`ApplyPrimers()` pattern is detected), warns when `?q=` would be silently ignored for an entity and when an
+attachments owner's collection is not mapped to the link's `ObjectId`, and fails on a `[ServerOwned]`
+declaration nothing can enforce.
 Configure via `UseEntities(o => o.ConfigureValidation(v => { v.Enabled = true; /* Production opt-in */ }))`.
 
 

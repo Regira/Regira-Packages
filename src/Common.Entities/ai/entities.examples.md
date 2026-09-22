@@ -581,6 +581,9 @@ public static EntityServiceCollection<WebshopDbContext> AddOrders(this IEntitySe
             // returning early leaves Total at the DTO's default (0) on every status-only PATCH.
             // The [] branch is unreachable for Order specifically — OrderManager.Modify rejects an empty
             // collection above — but keep the three-way: an aggregate that allows delete-all needs it.
+            // A rule spanning a scalar and the lines (a supplier certified for every line's product) is no
+            // different: a PATCH of the scalar alone arrives with OrderLines == null, so validate it against the
+            // persisted lines here too — inside the populated branch only, it is bypassable.
             if (order.OrderLines == null)
             {
                 order.Total = order.Id > 0

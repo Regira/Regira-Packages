@@ -86,6 +86,28 @@ Webshop.API/
 └── Program.cs
 ```
 
+#### Beyond entities (larger apps)
+
+A small app needs nothing more. Once an app carries code that belongs to no single entity — workflow services,
+security filters, background jobs, seeders, helpers — give each kind its own folder beside `Entities/`, so an
+entity folder keeps only its entity's files (the set above, plus that entity's own prepper, processor and query
+builder):
+
+```
+Webshop.API/
+├── Data/
+│   └── Seeding/        # seeders
+├── Infrastructure/     # host and cross-cutting concerns, e.g. HostingExtensions.cs
+│   ├── Security/       # role constants, row-scope and write filters, claims factory
+│   └── Jobs/           # background services
+├── Services/           # domain services spanning entities: workflows, notifications, code generators, a scoped WorkflowContext
+└── Utilities/          # helpers that reference no app type: formatting, date and string math
+```
+
+`Utilities/` holds no app type — a helper that needs an entity or the `DbContext` is a service. Don't reuse
+Regira's own `*Utility` names there (`DateTimeUtility`): with both namespaces imported the simple name is
+ambiguous (CS0104).
+
 ### Layered solution
 
 The shape of an application that has outgrown the free tier. The free budget (5 simple + 2 complex registrations — Checklist 0) fits a single project by construction: none of the triggers below pays for a split at that size, and dividing a free-tier app into layer projects adds `.csproj` files and buys nothing.
@@ -176,6 +198,11 @@ public static EntityServiceCollection<WebshopDbContext> AddProducts(this IEntity
 - P2–P4 apply as written: the web host still calls `ConfigureDefaultJsonOptions()` and keeps its controllers; a console host references only `DependencyInjection` (§Packages, console row) and seeds per [`entities.instructions.md`](./entities.instructions.md#seeding-via-ientityservice) — §Seeding via IEntityService.
 
 Controllers stay in the host; when a second host must serve the same endpoints, move `Controllers/` into a `Webshop.Web` class library (references `Regira.Entities.Web` + `DependencyInjection`) that both hosts reference.
+
+The folders of *Beyond entities* map onto the layers: cross-entity domain services into `Webshop.Services` (under
+their domain folder), helpers into a `Utilities/` folder of `Webshop.Core`, seeders beside the host that runs
+them, and `Infrastructure/` stays in each host — except role constants, which move to `Webshop.Core` once a
+layer below the host needs them.
 
 ---
 
@@ -335,7 +362,7 @@ dotnet add package Serilog.Settings.Configuration
 - Call `modelBuilder.SetDecimalPrecisionConvention()` in `OnModelCreating` for global decimal precision (default `(18, 4)`)
 - UTC dates need no configuration here: the UTC date convention is auto-wired by `UseEntities(e => e.UseDefaults())` (see P3), so all `DateTime` values round-trip as UTC and JSON gets the ISO 8601 `Z` suffix. (Standalone EF without the entities stack: `configurationBuilder.SetUtcDateTimeConvention()` in `ConfigureConventions`, or `.AddUtcDateTimeConvention()` in `AddDbContext`.)
 - Soft delete needs no configuration here either: the archived query filter (`e => !e.IsArchived` on every `IArchivable` entity) is auto-wired by `UseEntities<TContext>(e => e.UseDefaults())` (see P3) and applied after everything `OnModelCreating` configured. ⚠️ A `DbContext` you construct yourself — `new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()…Options)` in tests, a design-time factory, a seeding tool — bypasses that wiring: add `.AddArchivedQueryFilter()` to those options, or call `modelBuilder.SetArchivedQueryFilter()` at the end of `OnModelCreating` (after your own `HasQueryFilter(...)` calls, exactly once). Startup validation errors out on a model that ends up without it. Round-trip: [`entities.patterns.md`](./entities.patterns.md) → Soft Delete.
-- **Consequence (`net10.0` only, where a real query filter is installed):** EF then logs one `PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning` per relationship whose required principal is `IArchivable`. ⚠️ **Check what the principal is before suppressing it.** For an aggregate parent (`Order` → its lines) it is the intent, and it is the one startup warning the golden path's "no warnings" checkpoint excuses. For **reference data** — a category/status/type that separately-registered entities point at through a required FK — it is a silent data bug: the filter propagates into `Include(...)` as an inner join, so those rows vanish from `items` while `/search` still counts them. Such an entity should not be `IArchivable` at all (real `DELETE` + `OnDelete(Restrict)` → 409), or its FK should be optional; startup validation warns on the shape. See [`entities.patterns.md`](./entities.patterns.md) → Soft Delete. Once confirmed benign, ignore it on the **`AddDbContext` options builder** (P3 below, not here in `OnModelCreating`) with `using Microsoft.EntityFrameworkCore.Diagnostics;` + `.ConfigureWarnings(w => w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning))`, and add a matching `HasQueryFilter(x => !x.Parent!.IsArchived)` for any dependent you query *directly* rather than through its parent.
+- **Consequence (`net10.0` only, where a real query filter is installed):** EF then logs one `PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning` per relationship whose required principal is `IArchivable`. ⚠️ **Check what the principal is before suppressing it.** For an aggregate parent (`Order` → its lines) it is the intent, and the golden path's startup-warning checkpoint expects it. For **reference data** — a category/status/type that separately-registered entities point at through a required FK — it is a silent data bug: the filter propagates into `Include(...)` as an inner join, so those rows vanish from `items` while `/search` still counts them. Such an entity should not be `IArchivable` at all (real `DELETE` + `OnDelete(Restrict)` → 409), or its FK should be optional; startup validation warns on the shape. See [`entities.patterns.md`](./entities.patterns.md) → Soft Delete. Once confirmed benign, ignore it on the **`AddDbContext` options builder** (P3 below, not here in `OnModelCreating`) with `using Microsoft.EntityFrameworkCore.Diagnostics;` + `.ConfigureWarnings(w => w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning))`, and add a matching `HasQueryFilter(x => !x.Parent!.IsArchived)` for any dependent you query *directly* rather than through its parent.
 
 ```csharp
 using Regira.DAL.EFcore.Extensions;      // SetDecimalPrecisionConvention
@@ -451,10 +478,22 @@ using (var scope = app.Services.CreateScope())
 > until shutdown, so anything written after it never executes and the app simply starts up empty — no
 > exception, no log line.
 
-> **⚠️ Delete the `.db` file after any model change — `EnsureCreated()` does not migrate.** It creates the
-> schema only when the `.db` is absent, so any model change after the first run stays invisible — a new
-> table/column simply won't exist — until you delete the `.db` file and re-run (it re-creates and re-seeds).
-> Treat the SQLite database as disposable; adopt explicit migrations only once the schema stabilizes.
+> **⚠️ Reset the database after any model change — `EnsureCreated()` does not migrate.** It creates the
+> schema only when the database is absent, so any model change after the first run stays invisible — a new
+> table/column simply won't exist — until the database is dropped and re-created (and re-seeded). Treat the
+> SQLite database as disposable; adopt explicit migrations only once the schema stabilizes. A switch in the
+> startup block beats deleting the file by hand, which a running host or an open viewer may still hold:
+>
+> <!-- no-compile -->
+> ```csharp
+> if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("ResetDatabase"))
+>     dbContext.Database.EnsureDeleted();          // dotnet run -- --ResetDatabase=true
+> dbContext.Database.EnsureCreated();
+> ```
+>
+> **Stop the running app before rebuilding.** The host holds its own DLL, so `dotnet build` fails with
+> `MSB3027`/`MSB3021` — not an `error CS…`, which is what a build log is usually searched for — and the next
+> start runs the previous binary. A seeder or model fix that "has no effect" is this, until proven otherwise.
 
 > **Don't judge seeding by the `.db` file size — query through the app.** SQLite's default is rollback journaling, so committed rows land directly in the `.db` (only a transient `<db>.db-journal` appears mid-transaction). Under WAL (`<db>.db-wal` present — treat it as expected, not as something you must have configured), freshly-committed rows instead sit in the WAL file until a checkpoint, so the `.db` can look empty (a few KB) while the data is really there.
 

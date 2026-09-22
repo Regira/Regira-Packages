@@ -61,7 +61,7 @@ When implementing a new entity in an application:
     - Ensure the file store is set up: `.WithAttachments(factory)` (registers the shared `Attachment` entity + store + primer)
     - Define the `EntityAttachment` subclass (inherit `EntityAttachment`, set `ObjectType` in the constructor)
     - Implement `IHasAttachments` / `IHasAttachments<TAttachment>` on the owning entity
-    - Add `DbSet<Attachment>` + `DbSet<TAttachment>` and configure relationships in DbContext
+    - Add `DbSet<Attachment>` + `DbSet<TAttachment>` and map both relationships in DbContext — the owner side explicitly: `HasMany(x => x.Attachments).WithOne().HasForeignKey(x => x.ObjectId)`
     - Register the typed link: `.For<Owner>(e => e.HasAttachments<TContext, Owner, TAttachment>(x => x.Attachments))`
     - Add a controller `: EntityAttachmentControllerBase<TAttachment>` with the owner base `[Route]` only
 - [ ] Add Normalizers
