@@ -1,39 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-	<TargetFramework>net10.0</TargetFramework>
-	<ImplicitUsings>enable</ImplicitUsings>
-	<Nullable>enable</Nullable>
-	<IsPackable>false</IsPackable>
-	<Authors>Regira bv</Authors>
-	<UserSecretsId>a148955e-1052-48e7-a8da-4534748de1c4</UserSecretsId>
-	<Description>Unit and integration tests for Regira Office Word packages.</Description>
-	<PackageTags>regira;testing;office;word</PackageTags>
-  </PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <Authors>Regira bv</Authors>
+    <UserSecretsId>a148955e-1052-48e7-a8da-4534748de1c4</UserSecretsId>
+    <Description>Unit and integration tests for Regira Office Word packages.</Description>
+    <PackageTags>regira;testing;office;word</PackageTags>
+</PropertyGroup>
   <ItemGroup>
-	<PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.12" />
-	<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
-	<PackageReference Include="NUnit" Version="4.6.1" />
-	<PackageReference Include="NUnit3TestAdapter" Version="6.3.0" />
-	<PackageReference Include="NUnit.Analyzers" Version="4.15.0">
-	  <PrivateAssets>all</PrivateAssets>
-	  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-	</PackageReference>
-	<PackageReference Include="Testcontainers" Version="4.15.0" />
-	<PackageReference Include="coverlet.collector" Version="10.0.1">
-	  <PrivateAssets>all</PrivateAssets>
-	  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-	</PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.12" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="NUnit" Version="4.6.1" />
+    <PackageReference Include="NUnit3TestAdapter" Version="6.3.0" />
+    <PackageReference Include="NUnit.Analyzers" Version="4.15.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Testcontainers" Version="4.15.0" />
+    <PackageReference Include="coverlet.collector" Version="10.0.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
   <ItemGroup>
-	<ProjectReference Include="..\..\src\Common.IO.Storage\Common.IO.Storage.csproj" />
-	<ProjectReference Include="..\..\src\Common.Office.Clients\Common.Office.Clients.csproj" />
-	<ProjectReference Include="..\..\src\Drawing.SkiaSharp\Drawing.SkiaSharp.csproj" />
-	<ProjectReference Include="..\..\src\PDF.DocNET\PDF.DocNET.csproj" />
-	<ProjectReference Include="..\..\src\Word.Aspose\Word.Aspose.csproj" />
-	<ProjectReference Include="..\..\src\Word.Gotenberg\Word.Gotenberg.csproj" />
-	<ProjectReference Include="..\..\src\Word.Mini\Word.Mini.csproj" />
-	<ProjectReference Include="..\..\src\Word.Spire\Word.Spire.csproj" />
-	<ProjectReference Include="..\..\src\Word.Syncfusion\Word.Syncfusion.csproj" />
+    <ProjectReference Include="..\..\src\Common.IO.Storage\Common.IO.Storage.csproj" />
+    <ProjectReference Include="..\..\src\Common.Office.Clients\Common.Office.Clients.csproj" />
+    <ProjectReference Include="..\..\src\Drawing.SkiaSharp\Drawing.SkiaSharp.csproj" />
+    <ProjectReference Include="..\..\src\PDF.DocNET\PDF.DocNET.csproj" />
+    <ProjectReference Include="..\..\src\Word.Aspose\Word.Aspose.csproj" />
+    <ProjectReference Include="..\..\src\Word.Gotenberg\Word.Gotenberg.csproj" />
+    <ProjectReference Include="..\..\src\Word.Mini\Word.Mini.csproj" />
+    <ProjectReference Include="..\..\src\Word.Spire\Word.Spire.csproj" />
+    <ProjectReference Include="..\..\src\Word.Syncfusion\Word.Syncfusion.csproj" />
   </ItemGroup>
 </Project>
