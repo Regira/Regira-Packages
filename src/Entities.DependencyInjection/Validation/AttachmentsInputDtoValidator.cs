@@ -1,5 +1,4 @@
 using Regira.Entities.Attachments.Abstractions;
-using Regira.Entities.DependencyInjection.Mapping;
 
 namespace Regira.Entities.DependencyInjection.Validation;
 
@@ -14,21 +13,22 @@ namespace Regira.Entities.DependencyInjection.Validation;
 /// work, which masks the gap until a user notices a removed file resurrecting after save.
 /// </para>
 /// <para>
-/// Detected statically: the entity implements <see cref="IHasAttachments"/> (or a typed variant) and a
-/// <c>UseMapping&lt;TDto, TInputDto&gt;()</c> registration exists whose input DTO lacks a public
-/// <c>Attachments</c> collection property. An unmapped owner writes through the entity itself, where the
-/// collection is always present, so it is not reported.
+/// Detected statically: the entity implements <see cref="IHasAttachments"/> (or a typed variant) and an input DTO
+/// it is bound through — its last <c>UseMapping&lt;TDto, TInputDto&gt;()</c> registration, or else the
+/// <c>TInputDto</c> of an entity controller (<see cref="EntityDtoShapes"/>) — lacks a public <c>Attachments</c>
+/// collection property. An owner written through the entity itself, where the collection is always present, is
+/// not reported.
 /// </para>
 /// </summary>
 internal sealed class AttachmentsInputDtoValidator : IEntityRegistrationValidator
 {
     public IEnumerable<EntityValidationIssue> Validate(EntityValidationContext context)
     {
-        var mappings = context.Services
-            .Where(d => d.ServiceType == typeof(EntityMappingRegistration))
-            .Select(d => d.ImplementationInstance)
-            .OfType<EntityMappingRegistration>()
-            .ToArray();
+        var shapes = new EntityDtoShapes(context);
+        if (shapes.FailureIssue("attachments input-DTO") is { } failure)
+        {
+            yield return failure;
+        }
 
         foreach (var entityType in context.Registrations.Entities.Select(e => e.EntityType).Distinct().OrderBy(t => t.Name))
         {
@@ -37,22 +37,21 @@ internal sealed class AttachmentsInputDtoValidator : IEntityRegistrationValidato
                 continue;
             }
 
-            // Last-wins: UseMapping appends a registration per call and DI resolves the last one, so the
-            // effective mapping is the last match. Reading the first would validate a superseded DTO —
-            // warning about one no longer in use, or passing while the live one silently drops attachments.
-            var mapping = mappings.LastOrDefault(m => m.EntityType == entityType);
-            if (mapping == null || mapping.InputDtoType == entityType || HasAttachmentsCollection(mapping.InputDtoType))
+            foreach (var mapping in shapes.For(entityType))
             {
-                continue;
-            }
+                if (mapping.InputDtoType == entityType || HasAttachmentsCollection(mapping.InputDtoType))
+                {
+                    continue;
+                }
 
-            yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
-                $"{entityType.Name} implements IHasAttachments but its input DTO {mapping.InputDtoType.Name} has no Attachments collection the convention map can materialize. " +
-                "Every PUT/PATCH through the entity controller maps the collection to null, and the attachments sync treats null as 'collection not sent': " +
-                "attachment adds, removes and reorders in the entity payload are silently ignored — 200 OK, no error, no log. " +
-                "The /{id}/attachments sub-routes still work, which masks it. " +
-                $"ACTION: add `public ICollection<EntityAttachmentInputDto>? Attachments {{ get; set; }}` (or your derived attachment input DTO) to {mapping.InputDtoType.Name}. " +
-                "See entities.instructions → Attachments.");
+                yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
+                    $"{entityType.Name} implements IHasAttachments but its input DTO {mapping.InputDtoType.Name} has no Attachments collection the convention map can materialize. " +
+                    "Every PUT/PATCH through the entity controller maps the collection to null, and the attachments sync treats null as 'collection not sent': " +
+                    "attachment adds, removes and reorders in the entity payload are silently ignored — 200 OK, no error, no log. " +
+                    "The /{id}/attachments sub-routes still work, which masks it. " +
+                    $"ACTION: add `public ICollection<EntityAttachmentInputDto>? Attachments {{ get; set; }}` (or your derived attachment input DTO) to {mapping.InputDtoType.Name}. " +
+                    "See entities.instructions → Attachments.");
+            }
         }
     }
 

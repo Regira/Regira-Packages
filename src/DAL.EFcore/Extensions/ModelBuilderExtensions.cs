@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Regira.DAL.EFcore.Conversions;
 
 namespace Regira.DAL.EFcore.Extensions;
@@ -21,7 +22,8 @@ public static class ModelBuilderExtensions
         var converter = new UtcDateTimeConverter();
         var properties = modelBuilder.Model
             .GetEntityTypes()
-            .SelectMany(t => t.GetProperties())
+            .SelectMany(WithComplexTypes)
+            .SelectMany(t => t.GetDeclaredProperties())
             .Where(p => (p.ClrType == typeof(DateTime) || p.ClrType == typeof(DateTime?)) && p.GetValueConverter() == null);
 
         foreach (var property in properties)
@@ -29,6 +31,10 @@ public static class ModelBuilderExtensions
             property.SetValueConverter(converter);
         }
     }
+
+    /// <summary>The type and every complex type nested in it: a value object's properties are not the entity's own.</summary>
+    private static IEnumerable<IMutableTypeBase> WithComplexTypes(IMutableTypeBase type)
+        => new[] { type }.Concat(type.GetDeclaredComplexProperties().SelectMany(c => WithComplexTypes(c.ComplexType)));
 
     /// <inheritdoc cref="SetUtcDateTimeConvention(ModelBuilder)"/>
     /// <param name="configurationBuilder"></param>

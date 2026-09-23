@@ -387,7 +387,10 @@ To be combined with the archived query filter and `FilterArchivablesQueryBuilder
 By default all timestamps are handled as UTC: primers write `DateTime.UtcNow` and normalize client-supplied
 values (local kinds are converted, unspecified kinds are assumed UTC). `UseEntities(e => e.UseDefaults())`
 also wires the UTC date convention into the DbContext options, so `DateTime` values read from the database
-materialize with `DateTimeKind.Utc` and JSON responses carry the ISO 8601 `Z` suffix. (Standalone EF usage
+materialize with `DateTimeKind.Utc` and JSON responses carry the ISO 8601 `Z` suffix. On the way in,
+`ConfigureDefaultJsonOptions()` reads request-body `DateTime` properties the same way — a local offset
+(`…T19:00:00+02:00`) is converted, an offset-less value is taken as UTC — so a prepper compares the incoming value
+with the stored one on one clock. (Standalone EF usage
 can apply the same convention via `AddUtcDateTimeConvention()` / `SetUtcDateTimeConvention()` — see
 [DbContext](#dbcontext) above.)
 

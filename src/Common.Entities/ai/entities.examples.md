@@ -1029,7 +1029,7 @@ public class Product : IEntityWithSerial, IHasAttachments, IHasAttachments<Produ
     }
 }
 
-// Mapped owner (UseMapping)? The DTOs carry `ICollection<EntityAttachmentInputDto>? Attachments` /
+// Owner with its own DTOs (on the controller or through UseMapping)? They carry `ICollection<EntityAttachmentInputDto>? Attachments` /
 // `ICollection<EntityAttachmentDto>? Attachments` — see the recipe's input-DTO step in entities.instructions.
 
 // Controller — the class route is the owner base path; the base controller appends the sub-routes

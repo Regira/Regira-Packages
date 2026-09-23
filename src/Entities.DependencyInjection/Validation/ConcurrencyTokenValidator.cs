@@ -44,8 +44,9 @@ namespace Regira.Entities.DependencyInjection.Validation;
 /// token, so nothing is compared.</item>
 /// </list>
 /// <para>
-/// Detected statically, from the model DI builds, the last <c>UseMapping&lt;TDto, TInputDto&gt;()</c> registration and
-/// the primers the interceptor would run. What counts as a token and as "supplied" is shared with the write path, and
+/// Detected statically, from the model DI builds, the DTOs the entity is bound through (its last
+/// <c>UseMapping&lt;TDto, TInputDto&gt;()</c> registration, or else its entity controllers' <c>TDto</c>/<c>TInputDto</c>)
+/// and the primers the interceptor would run. What counts as a token and as "supplied" is shared with the write path, and
 /// the primers come from the interceptor's own discovery, so neither can disagree with what runs. An entity that is
 /// its own input DTO carries its token by construction, so only its initializer is judged. Blind spots by
 /// construction: a <c>Related()</c> child (mapped inside its parent's DTO, whose shape this validator does not see)
@@ -70,22 +71,21 @@ internal sealed class ConcurrencyTokenValidator : IEntityRegistrationValidator
             yield break;
         }
         var markers = registered.Where(t => typeof(IHasConcurrencyToken).IsAssignableFrom(t)).ToArray();
-        var mappings = context.Services
-            .Where(d => d.ServiceType == typeof(EntityMappingRegistration))
-            .Select(d => d.ImplementationInstance)
-            .OfType<EntityMappingRegistration>()
-            .ToArray();
-        // Last-wins: UseMapping appends a registration per call and DI resolves the last one (see
-        // AttachmentsInputDtoValidator). An entity without one — or mapped onto itself — is its own input DTO.
+        // The last UseMapping registration, or else the entity controllers' DTOs (EntityDtoShapes). An entity with
+        // neither — or mapped onto itself — is its own input DTO.
+        var shapes = new EntityDtoShapes(context);
+        if (shapes.FailureIssue("concurrency token") is { } shapeFailure)
+        {
+            yield return shapeFailure;
+        }
         var effective = registered
-            .Select(entityType => (EntityType: entityType, Mapping: mappings.LastOrDefault(m => m.EntityType == entityType)))
+            .Select(entityType => (EntityType: entityType, Shapes: shapes.For(entityType)))
             .ToArray();
         var mapped = effective
-            .Where(e => e.Mapping != null && e.Mapping.InputDtoType != e.EntityType)
-            .Select(e => e.Mapping!)
+            .SelectMany(e => e.Shapes.Where(s => s.InputDtoType != e.EntityType))
             .ToArray();
         var selfBound = effective
-            .Where(e => e.Mapping == null || e.Mapping.InputDtoType == e.EntityType)
+            .Where(e => e.Shapes.Count == 0 || e.Shapes.Any(s => s.InputDtoType == e.EntityType))
             .Select(e => e.EntityType)
             .ToArray();
 

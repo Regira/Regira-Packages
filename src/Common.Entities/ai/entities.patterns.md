@@ -1181,8 +1181,8 @@ Unable to save changes because a circular dependency was detected in the data to
 `IEntityService.Remove` + `SaveChanges` — the `DELETE` route of `EntityControllerBase` — answers **500** for
 every owner whose children are loaded. Two dead ends, so they are not rediscovered:
 
-- **A primer or prepper nulling the property does nothing.** They *do* run for `Deleted` entries, so they look
-  like the hook. EF builds the delete order from the entry's **original** foreign-key values, and mutating the
+- **A primer nulling the property does nothing.** Primers *do* run for `Deleted` entries (preppers don't run on
+  a delete at all), so they look like the hook. EF builds the delete order from the entry's **original** foreign-key values, and mutating the
   current value of a deleted entry is silently ignored — no error, no warning, the same exception.
 - **Faking the original value only moves the failure.** With the edge gone EF orders the deletes happily and the
   database rejects them: the stored row still holds the reference while the row it points at is deleted.

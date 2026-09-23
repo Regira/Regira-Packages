@@ -252,7 +252,8 @@ e.Related<TRelated, TRelatedKey>(x => x.Collection,
 - Can be registered **globally** (apply to an interface or base type) or **per entity**
 - Timestamp primers (`HasCreatedDbPrimer`, `HasLastModifiedDbPrimer`) write UTC values by default; the
   auto-wired UTC date convention (`UseDefaults()`) makes dates read from the database materialize as
-  `DateTimeKind.Utc` and serialize to JSON with the `Z` suffix (standalone EF: `.AddUtcDateTimeConvention()` /
+  `DateTimeKind.Utc` and serialize to JSON with the `Z` suffix; `ConfigureDefaultJsonOptions()` reads
+  request-body `DateTime` properties as UTC too, so a prepper sees both sides on one clock (standalone EF: `.AddUtcDateTimeConvention()` /
   `SetUtcDateTimeConvention()` — `Regira.DAL.EFcore.Extensions`). Disable UTC handling with
   `UseEntities(e => e.UseUtc(false))` → local time, values used as given; the convention's converter follows
   the same policy (one process-wide decision: `Regira.Utilities.DateTimeDefaults.UseUtc`, on by default)

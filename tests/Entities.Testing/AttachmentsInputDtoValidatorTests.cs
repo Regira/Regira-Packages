@@ -7,6 +7,7 @@ using Regira.Entities.Attachments.Abstractions;
 using Regira.Entities.Attachments.Models;
 using Regira.Entities.DependencyInjection.Extensions;
 using Regira.Entities.DependencyInjection.Mapping;
+using Regira.Entities.DependencyInjection.Validation;
 using Regira.Entities.Mapping.Models;
 using Regira.Entities.Models.Abstractions;
 
@@ -172,6 +173,27 @@ public class AttachmentsInputDtoValidatorTests
             Assert.That(warnings, Has.Some.Contains("silently ignored"), "the message must carry the symptom");
             Assert.That(warnings, Has.Some.Contains("ICollection<EntityAttachmentInputDto>"), "the message must carry the one-line remedy");
         });
+    }
+
+    /// <summary>What Regira.Entities.Web contributes from the entity controllers' generic arguments.</summary>
+    private sealed class DeclaredShapes(params EntityMappingRegistration[] shapes) : IEntityDtoShapeSource
+    {
+        public IEnumerable<EntityMappingRegistration> GetDtoShapes() => shapes;
+    }
+
+    [Test]
+    public async Task An_Owner_Whose_Controller_Input_Dto_Lacks_The_Collection_Is_Reported_Without_UseMapping()
+    {
+        // DTOs declared on the controller alone — the documented default — used to be invisible to this check.
+        var warnings = await Warnings(services =>
+        {
+            services.AddDbContext<DocumentContext>(db => db.UseSqlite(_connection));
+            services.UseEntities<DocumentContext>(o => { o.UseDefaults(); Logging()(o); })
+                .For<Document>();
+            services.AddSingleton<IEntityDtoShapeSource>(new DeclaredShapes(new EntityMappingRegistration(typeof(Document), typeof(DocumentDto), typeof(BareInputDto))));
+        });
+
+        Assert.That(warnings, Has.Some.Contains(Hazard).And.Some.Contains(nameof(BareInputDto)));
     }
 
     [Test]

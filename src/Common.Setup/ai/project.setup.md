@@ -208,7 +208,7 @@ app.MapScalarApiReference(options =>
     {
         PreferredSecuritySchemes = [ApiKeyDefaults.AuthenticationScheme, JwtBearerDefaults.AuthenticationScheme]
     };
-});
+}).AllowAnonymous();
 ```
 
 **Nuget packages — Web API**
@@ -362,7 +362,8 @@ authentication middleware.
 }
 ```
 
-Section names are constants on `AuthenticationSections` (`using Regira.Security.Authentication.Core.Models;`):
+Section names are constants on `AuthenticationSections` (`using Regira.Security.Authentication.Core.Models;`)
+holding the full configuration path — `AuthenticationSections.Jwt` is `"Authentication:Jwt"`:
 `Jwt`, `Bearer`, `ApiKeys`, `Cookie`, `Oidc`, `EntraId`.
 Only add the blocks the app registers a scheme for:
 
@@ -630,7 +631,7 @@ finally
 
 > **Entities + OpenAPI:** the JSON options above configure controllers only. `AddOpenApi()` instead reads
 > `Http.Json.JsonOptions`, so on a `Regira.Entities` API swap this block for `ConfigureDefaultJsonOptions()`
-> (`Regira.Entities.Web.DependencyInjection`) — it applies cycles/nulls/enum-names to **both** sets so the
+> (`Regira.Entities.Web.DependencyInjection`) — it applies cycles/nulls/enum-names (and a UTC read of request-body `DateTime`s) to **both** sets so the
 > generated schema matches the wire format (`get_package(id: "Regira.Entities", section: "entities.setup")` → P3).
 
 > A browser SPA on `http://` is 307-redirected by `UseHttpsRedirection()`; see *Calling the API in dev*
@@ -715,6 +716,7 @@ using Microsoft.Extensions.Hosting.WindowsServices;
 using Regira.Security.Authentication.ApiKey.Extensions;
 using Regira.Security.Authentication.ApiKey.Models;
 using Regira.Security.Authentication.Core.Extensions;
+using Regira.Security.Authentication.Core.Models;
 using Regira.Security.Authentication.Jwt.Extensions;
 using Regira.Security.Authentication.Web.OpenApi.Transformers;
 using Regira.System.Hosting.WindowsService;
@@ -748,11 +750,7 @@ try
     // and becomes the default authenticate and challenge scheme, so the order the schemes were
     // registered in stops deciding what an unattributed [Authorize] authenticates against.
     builder.Services
-        .AddJwtAuthentication(o =>
-        {
-            o.Secret = builder.Configuration["Authentication:Jwt:Secret"]
-                ?? throw new NullReferenceException("Secret is missing");
-        })
+        .AddJwtAuthentication(o => builder.Configuration.GetSection(AuthenticationSections.Jwt).Bind(o))
         .AddSchemeSelector();
 
     // OpenAPI — two transformers cover every registered scheme: the first declares them from the
@@ -777,7 +775,7 @@ try
                 JwtBearerDefaults.AuthenticationScheme
             ]
         };
-    });
+    }).AllowAnonymous();
 
     app
         .UseRouting()

@@ -174,6 +174,14 @@ public static class ServiceCollectionExtensions
         {
             services.TryAddEnumerable(ServiceDescriptor.Singleton(typeof(IEntityRegistrationValidator), controllerValidator));
         }
+        // Same for the controllers' DTO shapes: declaring the DTOs on the controller alone is the default, and the
+        // DTO checks (concurrency token, attachments collection) otherwise see only UseMapping registrations.
+        var controllerDtoShapes = Type.GetType(
+            "Regira.Entities.Web.Validation.ControllerDtoShapeSource, Regira.Entities.Web", throwOnError: false);
+        if (controllerDtoShapes != null)
+        {
+            services.TryAddEnumerable(ServiceDescriptor.Singleton(typeof(IEntityDtoShapeSource), controllerDtoShapes));
+        }
 
         if (options.ValidationConfigured)
         {

@@ -1736,8 +1736,8 @@ public class EntityValidationOptions
     public bool ThrowOnError { get; set; }  // default true: error-severity issues stop the host
 }
 
-// Entities.Web — registers the controller ↔ For<>() arity startup check
-// (also enabled automatically by ConfigureDefaultJsonOptions())
+// Entities.Web — registers the controller ↔ For<>() arity startup check and the controllers' DTO shapes
+// (also enabled automatically by UseEntities())
 public static EntityServiceCollectionOptions ValidateEntityControllers(this EntityServiceCollectionOptions options);
 public static IServiceCollection ValidateEntityControllers(this IServiceCollection services);
 ```
