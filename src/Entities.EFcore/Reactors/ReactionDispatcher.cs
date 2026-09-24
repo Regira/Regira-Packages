@@ -7,8 +7,9 @@ namespace Regira.Entities.EFcore.Reactors;
 
 /// <summary>
 /// Runs the reactors for the changes of a committed save: in registration order, per change, in a DI scope of their
-/// own. Each reactor is isolated — the data is already committed, so a failure is logged instead of thrown, and the
-/// reactors after it start from a fresh scope rather than inherit the half-staged changes it may have left tracked.
+/// own. A reactor is instantiated in that scope the first time a change of a type it reacts to needs it. Each reactor
+/// is isolated — the data is already committed, so a failure is logged instead of thrown, and the reactors after it
+/// start from a fresh scope rather than inherit the half-staged changes it may have left tracked.
 /// </summary>
 internal sealed class ReactionDispatcher(IServiceProvider serviceProvider)
 {
@@ -43,32 +44,32 @@ internal sealed class ReactionDispatcher(IServiceProvider serviceProvider)
         var scope = _scopeFactory.CreateAsyncScope();
         try
         {
-            var reactors = Resolve(scope.ServiceProvider);
+            var reactors = InScope(scope.ServiceProvider);
             foreach (var change in changes)
             {
                 var entityType = change.Entity.GetType();
-                for (var i = 0; i < reactors.Length; i++)
+                for (var i = 0; i < reactors.Count; i++)
                 {
-                    if (!reactors[i].Handles(entityType))
+                    if (!reactors.MayHandle(i, entityType))
                     {
                         continue;
                     }
-                    var reactor = reactors[i].Reactor;
                     try
                     {
-                        if (reactor.CanReact(change))
+                        // instantiated here, so a reactor that cannot be built fails like one that throws
+                        if (reactors.Get(i) is { } registered && registered.Handles(entityType) && registered.Reactor.CanReact(change))
                         {
                             // not the save's token: the data is committed, and a client that goes away must not cancel what follows from it
-                            await reactor.React(change, CancellationToken.None);
+                            await registered.Reactor.React(change, CancellationToken.None);
                         }
                     }
                     catch (Exception ex)
                     {
                         Report(ex, "Reactor {Reactor} failed for a committed {Kind} of {EntityType} #{Id} — the save stands; the other reactors still run",
-                            reactor.GetType().FullName, change.Kind, entityType.FullName, IdOf(change.Entity));
+                            reactors.NameOf(i), change.Kind, entityType.FullName, IdOf(change.Entity));
                         await scope.DisposeAsync();
                         scope = _scopeFactory.CreateAsyncScope();
-                        reactors = Resolve(scope.ServiceProvider);
+                        reactors = InScope(scope.ServiceProvider);
                     }
                 }
             }
@@ -85,10 +86,31 @@ internal sealed class ReactionDispatcher(IServiceProvider serviceProvider)
         }
     }
 
-    private RegisteredReactor[] Resolve(IServiceProvider scopedProvider)
-        => _services != null
-            ? ReactorDiscovery.GetReactors(scopedProvider, _services)
-            : ReactorDiscovery.Unregistered(scopedProvider.GetServices<IEntityReactor>());
+    private ScopedReactors InScope(IServiceProvider scopedProvider)
+        => new(_services != null
+            ? ReactorDiscovery.GetCatalog(_services).Registrations
+            : ReactorDiscovery.Resolved(scopedProvider.GetServices<IEntityReactor>()), scopedProvider);
+
+    /// <summary>The reactors of one DI scope, each instantiated the first time a change needs it.</summary>
+    private sealed class ScopedReactors(ReactorRegistration[] registrations, IServiceProvider scopedProvider)
+    {
+        private readonly RegisteredReactor?[] _reactors = new RegisteredReactor?[registrations.Length];
+        private readonly bool[] _materialized = new bool[registrations.Length];
+
+        public int Count => registrations.Length;
+        public bool MayHandle(int index, Type entityType) => registrations[index].MayHandle(entityType);
+        public string NameOf(int index) => _reactors[index]?.Reactor.GetType().FullName ?? registrations[index].Name;
+
+        public RegisteredReactor? Get(int index)
+        {
+            if (!_materialized[index])
+            {
+                _materialized[index] = true;
+                _reactors[index] = registrations[index].Materialize(scopedProvider);
+            }
+            return _reactors[index];
+        }
+    }
 
     // a reactor failure must never vanish: without a logger (a bare ServiceCollection) it goes to the trace listeners
     internal void Report(Exception? ex, string message, params object?[] args)

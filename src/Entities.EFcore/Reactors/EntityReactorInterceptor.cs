@@ -2,7 +2,9 @@ using System.Data.Common;
 using System.Runtime.CompilerServices;
 using System.Transactions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Regira.DAL.EFcore.Extensions;
 using Regira.Entities.EFcore.Extensions;
@@ -14,29 +16,99 @@ namespace Regira.Entities.EFcore.Reactors;
 /// <summary>
 /// Runs the registered <see cref="IEntityReactor"/>s once the changes of a save are <b>committed</b>.
 /// <list type="bullet">
+///   <item>While the context queries, it marks the entries a tracking query loads: their original values are the
+///     stored row.</item>
 ///   <item>In <c>SavingChanges</c> — after the primers — it captures every pending row of an entity type a reactor
-///     reacts to, with its stored values: the originals the write path loaded, or a read of the row when its writer
-///     attached it without them (<c>Update(detached)</c>, a stub <c>Remove</c>).</item>
+///     reacts to, with its stored values: the originals of an entry loaded by a query or by the write path, or a read
+///     of the row — one query per entity type — for an entry its writer attached (<c>Update(detached)</c>, a stub
+///     <c>Attach</c> or <c>Remove</c>).</item>
 ///   <item>In <c>SavedChanges</c> it builds the changes and runs the reactors — at once when the save committed on its
-///     own; at <c>TransactionCommitted</c> when the save ran inside an explicit transaction; when the ambient
-///     <see cref="System.Transactions.Transaction"/> completes when there is one. A failed or canceled save, a rollback
-///     and a transaction that ends without committing discard them.</item>
+///     own; when its database transaction commits when the save ran inside one, through whichever context wired with
+///     this interceptor commits it; when the ambient <see cref="System.Transactions.Transaction"/> completes when there
+///     is one. A failed or canceled save, a rollback and a transaction that ends without committing discard them.</item>
 /// </list>
 /// Both call shapes are hooked: a synchronous <c>SaveChanges()</c> waits for its reactors as the asynchronous one does.
-/// Rolling back to a savepoint does not withdraw the reactions of the saves made after it.
+/// Not seen: a rollback to a savepoint (the reactions of the saves made after it still run), and a transaction
+/// committed outside EF, on the <see cref="DbTransaction"/> itself (its reactions never run). A transaction begun
+/// outside EF and handed to <c>UseTransaction</c> is known to have ended only when it commits or rolls back through
+/// EF; on a provider that reuses its transaction object (Npgsql), one disposed without either leaves its reactions to
+/// the next such transaction on that connection that commits through EF.
 /// </summary>
-public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveChangesInterceptor, IDbTransactionInterceptor
+public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveChangesInterceptor, IDbTransactionInterceptor, IDbCommandInterceptor
 {
     private sealed class ReactionState
     {
         public List<CapturedChange>? InFlight;
-        public readonly List<(Guid TransactionId, IReadOnlyList<IEntityChange> Changes)> AwaitingCommit = [];
+        // the pool lease the change tracker is watched for: a pooled context drops its event handlers when it is returned
+        public int? WatchedLease;
+        public EventHandler<EntityTrackedEventArgs>? OnTracked;
+    }
+
+    private sealed class AwaitingCommit
+    {
+        public readonly List<(ReactionDispatcher Dispatcher, IReadOnlyList<IEntityChange> Changes)> Batches = [];
     }
 
     private static readonly ConditionalWeakTable<DbContext, ReactionState> States = new();
+    // Keyed on the database transaction, which contexts sharing it (UseTransaction) hold in common: whichever of them
+    // commits it runs the reactions of all. A transaction disposed without a commit raises nothing: what awaits it is
+    // collected with it, or — on a provider that hands the same object to the next transaction on its connection
+    // (Npgsql) — dropped when that one starts.
+    private static readonly ConditionalWeakTable<DbTransaction, AwaitingCommit> AwaitingCommits = new();
 
     private readonly Lazy<ReactionDispatcher> _dispatcher = new(() => new ReactionDispatcher(serviceProvider));
     private readonly Lazy<ReactorTargets> _unregisteredTargets = new(() => ReactorDiscovery.GetTargets(serviceProvider.GetServices<IEntityReactor>()));
+
+    // Querying: mark what a tracking query loads
+
+    InterceptionResult<DbDataReader> IDbCommandInterceptor.ReaderExecuting(DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result)
+    {
+        Watch(eventData.Context);
+        return result;
+    }
+    ValueTask<InterceptionResult<DbDataReader>> IDbCommandInterceptor.ReaderExecutingAsync(DbCommand command, CommandEventData eventData,
+        InterceptionResult<DbDataReader> result, CancellationToken cancellationToken)
+    {
+        Watch(eventData.Context);
+        return ValueTask.FromResult(result);
+    }
+
+    // An entry a tracking query loads holds the stored row as its originals. Watched from the first command a context
+    // runs — before a row is materialized — and again on every pool lease; a provider without commands is watched from
+    // its first save on.
+    private void Watch(DbContext? context)
+    {
+        if (context == null)
+        {
+            return;
+        }
+        var state = States.GetOrCreateValue(context);
+        var lease = context.ContextId.Lease;
+        if (state.WatchedLease == lease)
+        {
+            return;
+        }
+        state.WatchedLease = lease;
+
+        var targets = GetTargets();
+        if (targets.IsEmpty)
+        {
+            return;
+        }
+        var tracker = context.ChangeTracker;
+        if (state.OnTracked != null)
+        {
+            tracker.Tracked -= state.OnTracked;
+        }
+        state.OnTracked = (_, e) =>
+        {
+            if (e.FromQuery && targets.Covers(e.Entry.Metadata.ClrType))
+            {
+                StoredOriginalsExtensions.MarkLoaded(e.Entry);
+            }
+        };
+        tracker.Tracked += state.OnTracked;
+    }
 
     // Saving: capture
 
@@ -60,11 +132,10 @@ public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveCh
 
     private async Task Capture(DbContext context, bool async, CancellationToken token)
     {
+        Watch(context);
         // replaced, never appended: a save that did not reach SavedChanges left nothing to react to
-        if (States.TryGetValue(context, out var existing))
-        {
-            existing.InFlight = null;
-        }
+        var state = States.GetOrCreateValue(context);
+        state.InFlight = null;
 
         var targets = GetTargets();
         if (targets.IsEmpty)
@@ -78,13 +149,7 @@ public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveCh
         {
             return;
         }
-
-        var captured = new List<CapturedChange>(entries.Length);
-        foreach (var entry in entries)
-        {
-            captured.Add(await CapturedChange.Capture(context, entry, async, token));
-        }
-        States.GetOrCreateValue(context).InFlight = captured;
+        state.InFlight = await CapturedChange.CaptureAll(context, entries, async, token);
     }
 
     private ReactorTargets GetTargets()
@@ -124,9 +189,13 @@ public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveCh
         // built now, while the entries still hold what was written — the caller may reuse or clear them next
         IReadOnlyList<IEntityChange> changes = captured.Select(c => c.ToChange()).ToArray();
 
-        if (context.Database.CurrentTransaction is { } transaction)
+        if (context.Database.CurrentTransaction is IInfrastructure<DbTransaction> transaction)
         {
-            state.AwaitingCommit.Add((transaction.TransactionId, changes));
+            var awaiting = AwaitingCommits.GetOrCreateValue(transaction.Instance);
+            lock (awaiting)
+            {
+                awaiting.Batches.Add((_dispatcher.Value, changes));
+            }
         }
         else if (Transaction.Current is { } ambient)
         {
@@ -142,6 +211,7 @@ public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveCh
         }
         else
         {
+            // committed — or, on a provider without database transactions, stored as it will stay
             await _dispatcher.Value.Dispatch(changes);
         }
     }
@@ -197,74 +267,70 @@ public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveCh
         }
     }
 
-    // Transactions
+    // Transactions — the one SaveChanges opens itself commits before SavedChanges: nothing awaits it
 
     void IDbTransactionInterceptor.TransactionCommitted(DbTransaction transaction, TransactionEndEventData eventData)
-        => SyncOverAsync.Wait(() => Committed(eventData));
+        => SyncOverAsync.Wait(() => Committed(transaction));
     Task IDbTransactionInterceptor.TransactionCommittedAsync(DbTransaction transaction, TransactionEndEventData eventData, CancellationToken cancellationToken)
-        => Committed(eventData);
+        => Committed(transaction);
 
-    private Task Committed(TransactionEndEventData eventData)
+    private static async Task Committed(DbTransaction transaction)
     {
-        if (eventData.Context is not { } context || !States.TryGetValue(context, out var state) || state.AwaitingCommit.Count == 0)
+        if (!AwaitingCommits.TryGetValue(transaction, out var awaiting) || !AwaitingCommits.Remove(transaction))
         {
-            return Task.CompletedTask;
+            return;
         }
-        // A context runs one transaction at a time, so what another transaction left behind ended without committing.
-        // The commit of the transaction SaveChanges opens itself comes before SavedChanges: nothing awaits it.
-        IReadOnlyList<IEntityChange> changes = state.AwaitingCommit
-            .Where(b => b.TransactionId == eventData.TransactionId)
-            .SelectMany(b => b.Changes)
-            .ToArray();
-        state.AwaitingCommit.Clear();
-        return _dispatcher.Value.Dispatch(changes);
+        (ReactionDispatcher Dispatcher, IReadOnlyList<IEntityChange> Changes)[] batches;
+        lock (awaiting)
+        {
+            batches = [.. awaiting.Batches];
+        }
+        // in the order they were saved, each run of saves by the dispatcher of the context that made them
+        var run = new List<IEntityChange>();
+        ReactionDispatcher? current = null;
+        foreach (var (dispatcher, changes) in batches)
+        {
+            if (current != null && current != dispatcher)
+            {
+                await current.Dispatch(run.ToArray());
+                run.Clear();
+            }
+            current = dispatcher;
+            run.AddRange(changes);
+        }
+        if (current != null)
+        {
+            await current.Dispatch(run.ToArray());
+        }
     }
 
-    void IDbTransactionInterceptor.TransactionRolledBack(DbTransaction transaction, TransactionEndEventData eventData)
-        => DiscardAwaitingCommit(eventData.Context);
-    Task IDbTransactionInterceptor.TransactionRolledBackAsync(DbTransaction transaction, TransactionEndEventData eventData, CancellationToken cancellationToken)
-    {
-        DiscardAwaitingCommit(eventData.Context);
-        return Task.CompletedTask;
-    }
-    void IDbTransactionInterceptor.TransactionFailed(DbTransaction transaction, TransactionErrorEventData eventData)
-        => DiscardAwaitingCommit(eventData.Context);
-    Task IDbTransactionInterceptor.TransactionFailedAsync(DbTransaction transaction, TransactionErrorEventData eventData, CancellationToken cancellationToken)
-    {
-        DiscardAwaitingCommit(eventData.Context);
-        return Task.CompletedTask;
-    }
-
-    // A transaction that is disposed without a commit or rollback call raises neither — the next one to start is where
-    // what it left behind is known to be dead.
+    // A transaction starting on an object means whatever waited on its previous use ended without committing: Npgsql
+    // hands the NpgsqlTransaction of a pooled connection to every BeginTransaction on it, the next request's included.
+    // UseTransaction is not a start — contexts sharing a live transaction each raise it.
     DbTransaction IDbTransactionInterceptor.TransactionStarted(DbConnection connection, TransactionEndEventData eventData, DbTransaction result)
     {
-        DiscardAwaitingCommit(eventData.Context);
+        AwaitingCommits.Remove(result);
         return result;
     }
     ValueTask<DbTransaction> IDbTransactionInterceptor.TransactionStartedAsync(DbConnection connection, TransactionEndEventData eventData, DbTransaction result,
         CancellationToken cancellationToken)
     {
-        DiscardAwaitingCommit(eventData.Context);
-        return ValueTask.FromResult(result);
-    }
-    DbTransaction IDbTransactionInterceptor.TransactionUsed(DbConnection connection, TransactionEventData eventData, DbTransaction result)
-    {
-        DiscardAwaitingCommit(eventData.Context);
-        return result;
-    }
-    ValueTask<DbTransaction> IDbTransactionInterceptor.TransactionUsedAsync(DbConnection connection, TransactionEventData eventData, DbTransaction result,
-        CancellationToken cancellationToken)
-    {
-        DiscardAwaitingCommit(eventData.Context);
+        AwaitingCommits.Remove(result);
         return ValueTask.FromResult(result);
     }
 
-    private static void DiscardAwaitingCommit(DbContext? context)
+    void IDbTransactionInterceptor.TransactionRolledBack(DbTransaction transaction, TransactionEndEventData eventData)
+        => AwaitingCommits.Remove(transaction);
+    Task IDbTransactionInterceptor.TransactionRolledBackAsync(DbTransaction transaction, TransactionEndEventData eventData, CancellationToken cancellationToken)
     {
-        if (context != null && States.TryGetValue(context, out var state))
-        {
-            state.AwaitingCommit.Clear();
-        }
+        AwaitingCommits.Remove(transaction);
+        return Task.CompletedTask;
+    }
+    void IDbTransactionInterceptor.TransactionFailed(DbTransaction transaction, TransactionErrorEventData eventData)
+        => AwaitingCommits.Remove(transaction);
+    Task IDbTransactionInterceptor.TransactionFailedAsync(DbTransaction transaction, TransactionErrorEventData eventData, CancellationToken cancellationToken)
+    {
+        AwaitingCommits.Remove(transaction);
+        return Task.CompletedTask;
     }
 }

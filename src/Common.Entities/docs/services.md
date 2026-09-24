@@ -281,15 +281,22 @@ public abstract class EntityPrimerBase<T> : IEntityPrimer<T>
   that fails or rolls back: sending mail, calling another system, enqueueing a background job, starting a
   follow-up workflow when a status changes. What must be part of the save itself stays a primer
 - Committed means: at once for a save that commits on its own, at `Commit()` for the saves inside an explicit
-  `BeginTransaction()`, and when an ambient `TransactionScope` completes. A failed save, a rollback, or a
-  transaction disposed without committing reacts to nothing
+  `BeginTransaction()` — also for contexts sharing that transaction through `UseTransaction`, whichever of them
+  commits it — and when an ambient `TransactionScope` completes. A failed save, a rollback, or a transaction
+  disposed without committing reacts to nothing
+- Not seen: a rollback to a savepoint — the reactions of the saves made after it still run — and a transaction
+  committed outside EF, on the `DbTransaction` itself — its reactions never run. A transaction begun outside EF and
+  handed to `UseTransaction` is known to have ended only when it commits or rolls back through EF: on Npgsql, which
+  reuses the transaction object of a pooled connection, one disposed without either leaves its reactions to the
+  next such transaction on that connection
 - Receive an `IEntityChange<TEntity>`: `Kind` (`Added`/`Modified`/`Deleted` — a soft delete is `Modified`),
   `Entity` (the committed row, generated keys filled in), `Original` (the row as stored before the save) and
   `ChangedProperties`, with the `HasChanged(x => x.Status)` and `ChangedTo(x => x.Status, value)` helpers. Values
   are detached snapshots without navigations
-- The stored values come from the write path's own read (`Modify`) or a tracking query; for a writer that attached
-  the entity without them (`Update()` of a detached entity, a stub `Remove`) the save reads the row once — only for
-  entity types a reactor is registered for
+- The stored values come from the entity as it was loaded — by a tracking query, `Modify` or the `Related()` sync.
+  Every other write (`Update()` of a detached entity, a stub `Attach` or `Remove`, a delete through the service)
+  has its rows read during the save, one query per entity type — only for entity types a reactor is registered for.
+  `ExecuteUpdate` / `ExecuteDelete` bypass the change tracker, so no reactor sees them
 - Run in process before `SaveChanges()` returns, in registration order, in a DI scope of their own with a fresh
   `DbContext` — a reactor that writes saves its own unit of work, and that save runs the reactors of what it wrote
   (up to 8 levels deep). Hand slow work to a job system

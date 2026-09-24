@@ -77,6 +77,8 @@ public static class CommitActionExtensions
 
 A public interceptor, `CommitActionInterceptor`, handles both the save hooks and the transaction hooks. It keeps two lists per context: the actions of the save in progress, and the actions waiting on a transaction the caller owns.
 
+> **Build on the reactor interceptor (added 2026-09-24).** `EntityReactorInterceptor` in `Regira.Entities.EFcore` 6.4.0 already decides when a save is committed, for all three columns of the table below. With no transaction open it acts at `SavedChanges`. Inside a caller's transaction it waits for that transaction's commit, keyed on the `DbTransaction` itself, so contexts sharing it through `UseTransaction` are covered. Inside an ambient scope it acts at `TransactionCompleted`. A rollback, a failure and a transaction disposed without committing discard what waits. Extract that tracking into an internal component that both use, and add the rollback actions and the failure hooks this proposal needs on top of it. Do not write a second interceptor with its own lists. The reactor interceptor has also settled open questions 2 and 3. The lists live in a `ConditionalWeakTable`, and what waits on a transaction is keyed on the `DbTransaction`, so an undecided transaction's work is collected with it. It is wired under `DbContextWiring.Reactors`, not `PrimerInterceptors`. Revisit the wiring paragraph below with that in mind.
+
 | Moment | Save outside any caller transaction | Save inside a caller's `BeginTransaction()` | Save inside an ambient `TransactionScope` |
 | --- | --- | --- | --- |
 | A primer throws in `SavingChanges` | run this save's rollback actions, then rethrow | same | same |
@@ -158,7 +160,7 @@ In `tests/Entities.Web.Testing/AttachmentTests.cs`, a shared `PUT attachments/{i
 
 ### Step 1: actions bound to a commit, in `Entities.EFcore`
 
-Add the extension methods, the per-context lists and `CommitActionInterceptor`. The tests cover:
+Add the extension methods and the commit actions, built on the commit tracking of `EntityReactorInterceptor` (see the note under *Actions bound to a commit*). The tests cover:
 
 - Success, general failure, concurrency conflict, cancellation, and a primer that throws.
 - A caller transaction that commits, one that rolls back, and one disposed without a commit, which must run nothing.

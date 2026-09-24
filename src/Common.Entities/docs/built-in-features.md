@@ -429,6 +429,18 @@ A soft delete writes `IsArchived` — and what the other primers stamp on the up
 concurrency token — and nothing else of the row. The delete-by-key idiom `Remove(new Order { Id = id })` therefore
 archives the row without overwriting its stored values with the stub's empty ones.
 
+The rows that depend on it stay as they are, archivable or not, loaded or not: archived lines stay hidden with their
+order through the query filter, but nothing deletes, archives or detaches them. EF cascades a delete to the loaded
+dependents the moment the parent is removed. The service's `Remove` marks an `IArchivable` without that cascade.
+After a raw `DbContext.Remove`, `ArchivablePrimer` undoes it before the save:
+- a dependent EF deleted is kept, with its own pending edits;
+- one EF detached is still inserted;
+- a foreign key EF nulled keeps the parent's key.
+
+The cascade leaves no trace, so on the raw path a dependent removed in the same save as its soft-deleted parent is
+kept as well. Remove it in a save of its own. A `Restrict` relationship with loaded dependents still throws on a raw
+`Remove`, before any primer runs.
+
 A `DbContext` constructed outside the service collection — `new AppDbContext(options)` in tests, a design-time
 factory, a seeding tool — is not covered by that wiring and needs `.AddArchivedQueryFilter()` on its own
 options builder (see [DbContext](#dbcontext)).

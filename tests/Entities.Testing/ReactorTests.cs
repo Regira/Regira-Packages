@@ -4,6 +4,8 @@ using System.Transactions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -22,8 +24,9 @@ namespace Entities.Testing;
 /// <summary>
 /// Reactors run once the changes of a save are committed — never for a save that fails or a transaction that rolls
 /// back — and receive each changed row with the values it was stored with before the save. Those originals come from
-/// the write path's own read when the entity went through <c>IEntityService</c>, and from a read of the row when a
-/// writer attached it without them; the query counts pin that the first case costs nothing extra.
+/// the entry when it was loaded — by a tracking query, or by the write path's own read when the entity went through
+/// <c>IEntityService</c> — and from a read of the row, one query per entity type, when a writer attached it; the query
+/// counts pin both.
 /// </summary>
 [TestFixture]
 public class ReactorTests
@@ -86,6 +89,23 @@ public class ReactorTests
         public override Task React(IEntityChange<IHasTimestamps> change, CancellationToken token = default)
         {
             log.Events.Add($"timestamps:{change.Entity.GetType().Name}");
+            return Task.CompletedTask;
+        }
+    }
+
+    public class InvoiceReactor : EntityReactorBase<Invoice>
+    {
+        private readonly ReactionLog _log;
+
+        public InvoiceReactor(ReactionLog log)
+        {
+            _log = log;
+            log.Events.Add("created:InvoiceReactor");
+        }
+
+        public override Task React(IEntityChange<Invoice> change, CancellationToken token = default)
+        {
+            _log.Changes.Add(change);
             return Task.CompletedTask;
         }
     }
@@ -394,6 +414,28 @@ public class ReactorTests
     }
 
     [Test]
+    public async Task A_Soft_Delete_Reacts_To_The_Archived_Row_Alone()
+    {
+        Build(s => s.For<Order>(e => e.React(Record)), o => o.AddReactor<LineReactor>());
+        var id = await SeedOrder(lines: [new OrderLine { Product = "Pen", Quantity = 1 }, new OrderLine { Product = "Ink", Quantity = 2 }]);
+
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+            db.Remove(await db.Orders.Include(x => x.Lines).SingleAsync(x => x.Id == id));   // EF cascades to the loaded lines
+            await db.SaveChangesAsync();
+        }
+
+        using var check = _sp.CreateScope();
+        Assert.Multiple(async () =>
+        {
+            Assert.That(_log.Changes.Select(c => c.Entity.GetType().Name), Is.EqualTo(new[] { nameof(Order) }));
+            Assert.That(_log.Single<Order>().ChangedTo(x => x.IsArchived, true), Is.True);
+            Assert.That(await check.ServiceProvider.GetRequiredService<ShopContext>().OrderLines.CountAsync(x => x.OrderId == id), Is.EqualTo(2));
+        });
+    }
+
+    [Test]
     public async Task A_Complex_Property_Change_Is_Reported_As_A_Path()
     {
         Build(s => s.For<Order>(e => e.React(Record)));
@@ -442,6 +484,139 @@ public class ReactorTests
             Assert.That(deleted.Entity.Product, Is.EqualTo("Ink"));
             Assert.That(_commands.Selects, Is.Zero);
         });
+    }
+
+    [Test]
+    public async Task An_Attached_Stub_Update_Reports_The_Stored_Row()
+    {
+        Build(s => s.For<Order>(e => e.React(Record)));
+        var id = await SeedOrder(status: OrderStatus.Shipped);
+
+        for (var save = 1; save <= 2; save++)
+        {
+            using var scope = _sp.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+            var stub = new Order { Id = id };
+            db.Attach(stub);
+            stub.Status = OrderStatus.Delivered;
+            await db.SaveChangesAsync();
+        }
+
+        var changes = _log.Changes.OfType<IEntityChange<Order>>().ToArray();
+        Assert.Multiple(() =>
+        {
+            Assert.That(changes, Has.Length.EqualTo(2));
+            Assert.That(changes[0].Entity.Title, Is.EqualTo("Books"), "the stub's empty values were never written");
+            Assert.That(changes[0].Entity.Address.City, Is.EqualTo("Gent"));
+            Assert.That(changes[0].Original!.Status, Is.EqualTo(OrderStatus.Shipped), "the stored value, not the stub's default");
+            Assert.That(changes[0].ChangedTo(x => x.Status, OrderStatus.Delivered), Is.True);
+            Assert.That(changes[1].ChangedTo(x => x.Status, OrderStatus.Delivered), Is.False, "the row was delivered already");
+            Assert.That(changes[1].ChangedProperties, Does.Not.Contain(nameof(Order.Status)));
+        });
+    }
+
+    [Test]
+    public async Task An_Entity_Attached_Again_After_A_Detach_Is_Read_Again()
+    {
+        Build(s => s.For<Order>(e => e.React(Record)));
+        var id = await SeedOrder();
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        var order = await db.Orders.SingleAsync(x => x.Id == id);
+        db.Entry(order).State = EntityState.Detached;
+        order.Title = "Renamed while detached";
+        db.Attach(order);                 // attached as it is now: the rename is its original
+        order.Status = OrderStatus.Shipped;
+        _commands.Commands.Clear();
+        await db.SaveChangesAsync();
+
+        var change = _log.Single<Order>();
+        Assert.Multiple(() =>
+        {
+            Assert.That(change.Original!.Title, Is.EqualTo("Books"));
+            Assert.That(change.Entity.Title, Is.EqualTo("Books"), "the rename was attached as unchanged, so it was not written");
+            Assert.That(change.HasChanged(x => x.Status), Is.True);
+            Assert.That(_commands.Selects, Is.EqualTo(1));
+        });
+    }
+
+    [Test]
+    public async Task Raw_Updates_Of_Many_Detached_Entities_Read_Their_Rows_In_One_Query()
+    {
+        Build(s => s.For<Order>(e => e.React(Record)));
+        var ids = new List<int>();
+        for (var i = 0; i < 20; i++)
+        {
+            ids.Add(await SeedOrder($"Order {i}"));
+        }
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        foreach (var id in ids)
+        {
+            var incoming = NewOrder("Renamed", OrderStatus.Shipped);
+            incoming.Id = id;
+            db.Update(incoming);
+        }
+        _commands.Commands.Clear();
+        await db.SaveChangesAsync();
+
+        var changes = _log.Changes.OfType<IEntityChange<Order>>().OrderBy(c => c.Entity.Id).ToArray();
+        Assert.Multiple(() =>
+        {
+            Assert.That(changes, Has.Length.EqualTo(20));
+            Assert.That(changes.Select(c => c.Original!.Title), Is.EqualTo(ids.Select((_, i) => $"Order {i}")));
+            Assert.That(changes.All(c => c.Original!.Status == OrderStatus.Pending && c.Original.Address.City == "Gent"), Is.True);
+            Assert.That(changes.All(c => c.HasChanged(x => x.Status) && c.HasChanged(x => x.Title) && !c.HasChanged(x => x.Address)), Is.True);
+            Assert.That(_commands.Selects, Is.EqualTo(1));
+        });
+    }
+
+    [Test]
+    public async Task Stub_Deletes_Read_Their_Rows_In_One_Query()
+    {
+        Build(s => s.For<Invoice>(e => e.React(Record)));
+        var ids = new[] { await SeedInvoice("INV-1"), await SeedInvoice("INV-2"), await SeedInvoice("INV-3") };
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        foreach (var id in ids)
+        {
+            db.Remove(new Invoice { Id = id });
+        }
+        _commands.Commands.Clear();
+        await db.SaveChangesAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_log.Changes.OfType<IEntityChange<Invoice>>().Select(c => c.Entity.Number).Order(), Is.EqualTo(new[] { "INV-1", "INV-2", "INV-3" }));
+            Assert.That(_commands.Selects, Is.EqualTo(1));
+        });
+    }
+
+    [Test]
+    public async Task A_Pooled_Context_Uses_What_It_Loads_On_Every_Lease()
+    {
+        Build(s => s.For<Order>(e => e.React(Record)));
+        var id = await SeedOrder();
+        var options = new DbContextOptionsBuilder<ShopContext>()
+            .UseSqlite(_connection)
+            .AddInterceptors(new EntityReactorInterceptor(_sp), _commands)
+            .Options;
+        var factory = new PooledDbContextFactory<ShopContext>(options);
+
+        foreach (var status in new[] { OrderStatus.Shipped, OrderStatus.Delivered })
+        {
+            await using var db = factory.CreateDbContext();
+            var order = await db.Orders.SingleAsync(x => x.Id == id);
+            order.Status = status;
+            _commands.Commands.Clear();
+            await db.SaveChangesAsync();
+            Assert.That(_commands.Selects, Is.Zero, $"the lease saving {status}");
+        }
+
+        Assert.That(_log.Changes.OfType<IEntityChange<Order>>().Select(c => c.Original!.Status), Is.EqualTo(new[] { OrderStatus.Pending, OrderStatus.Shipped }));
     }
 
     // ── which reactors run ──────────────────────────────────────────────────────
@@ -499,6 +674,29 @@ public class ReactorTests
             Assert.That(_log.Events, Is.EqualTo(new[] { "timestamps:Order" }));
             Assert.That(_log.Changes.OfType<IEntityChange<OrderLine>>().Count(), Is.EqualTo(1), "the line was captured and reacted to");
         });
+    }
+
+    [Test]
+    public async Task A_Reactor_Is_Only_Created_For_A_Change_It_Reacts_To()
+    {
+        Build(s =>
+        {
+            s.For<Order>(e => e.React(Record));
+            s.For<Invoice>(e => e.AddReactor<InvoiceReactor>());
+        });
+
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+            db.Orders.Add(NewOrder());
+            await db.SaveChangesAsync();
+            Assert.That(_log.Changes, Has.Count.EqualTo(1));
+            Assert.That(_log.Events, Is.Empty, "no invoice was saved");
+
+            db.Invoices.Add(new Invoice { OrderId = 1, Number = "INV-1" });
+            await db.SaveChangesAsync();
+        }
+        Assert.That(_log.Events, Is.EqualTo(new[] { "created:InvoiceReactor" }));
     }
 
     [Test]
@@ -607,6 +805,53 @@ public class ReactorTests
         }
 
         Assert.That(_log.Changes.OfType<IEntityChange<Order>>().Select(c => c.Entity.Title), Is.EqualTo(new[] { "Committed" }));
+    }
+
+    [Test]
+    public async Task A_Transaction_Shared_By_Two_Contexts_Reacts_To_Both_When_It_Commits()
+    {
+        Build(s =>
+        {
+            s.For<Order>(e => e.React(Record));
+            s.For<Invoice>(e => e.React(Record));
+        });
+        var id = await SeedOrder();
+
+        using var first = _sp.CreateScope();
+        using var second = _sp.CreateScope();
+        var orders = first.ServiceProvider.GetRequiredService<ShopContext>();
+        var invoices = second.ServiceProvider.GetRequiredService<ShopContext>();
+        await using var transaction = await orders.Database.BeginTransactionAsync();
+        await invoices.Database.UseTransactionAsync(transaction.GetDbTransaction());
+
+        (await orders.Orders.SingleAsync(x => x.Id == id)).Status = OrderStatus.Shipped;
+        await orders.SaveChangesAsync();
+        invoices.Invoices.Add(new Invoice { OrderId = id, Number = "INV-1" });
+        await invoices.SaveChangesAsync();
+        Assert.That(_log.Changes, Is.Empty, "nothing is committed yet");
+
+        await transaction.CommitAsync();
+        Assert.That(_log.Changes.Select(c => c.Entity.GetType().Name), Is.EqualTo(new[] { nameof(Order), nameof(Invoice) }));
+    }
+
+    [Test]
+    public async Task A_Transaction_Shared_By_Two_Contexts_Does_Not_React_When_It_Rolls_Back()
+    {
+        Build(s => s.For<Invoice>(e => e.React(Record)));
+
+        using var first = _sp.CreateScope();
+        using var second = _sp.CreateScope();
+        var owner = first.ServiceProvider.GetRequiredService<ShopContext>();
+        var invoices = second.ServiceProvider.GetRequiredService<ShopContext>();
+        await using (var transaction = await owner.Database.BeginTransactionAsync())
+        {
+            await invoices.Database.UseTransactionAsync(transaction.GetDbTransaction());
+            invoices.Invoices.Add(new Invoice { OrderId = 1, Number = "INV-1" });
+            await invoices.SaveChangesAsync();
+            await transaction.RollbackAsync();
+        }
+
+        Assert.That(_log.Changes, Is.Empty);
     }
 
     [Test]

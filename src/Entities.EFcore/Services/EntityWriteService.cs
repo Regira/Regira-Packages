@@ -79,7 +79,8 @@ public class EntityWriteService<TContext, TEntity, TKey>(
         => item.IsNew() ? Add(item, token) : Modify(item, token);
     public virtual Task Remove(TEntity item, CancellationToken token = default)
     {
-        RemoveGuarded(() => DbSet.Remove(item), item.Id);
+        // an IArchivable becomes a soft delete at the save, which leaves its dependents as they are: EF must not cascade to them now
+        RemoveGuarded(() => DbContext.RemoveWithoutCascade(item, () => DbSet.Remove(item)), item.Id);
         Logger?.LogDebug($"Removing {typeof(TEntity).FullName} #{item.Id}");
         return Task.CompletedTask;
     }
@@ -89,7 +90,8 @@ public class EntityWriteService<TContext, TEntity, TKey>(
     /// constraint conflict the database would have raised.<br />
     /// Marking is already enough to trip it: EF cascades the state change to tracked dependents there and
     /// then, so the failure surfaces here rather than at <see cref="SaveChanges"/> — see that method for the
-    /// counterpart on the flush path. Every removal has to go through this, including principals deleted
+    /// counterpart on the flush path. <see cref="Remove"/> marks an <see cref="IArchivable"/> without that cascade:
+    /// a soft delete severs nothing. Every removal has to go through this, including principals deleted
     /// alongside the entity itself, or one unguarded <c>Remove</c> puts the raw exception back.
     /// </summary>
     protected void RemoveGuarded(Action remove, object? id = null)

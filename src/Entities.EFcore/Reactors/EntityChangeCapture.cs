@@ -2,7 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Regira.Entities.EFcore.Extensions;
-using Regira.Entities.EFcore.Primers;
 using Regira.Entities.Reactors;
 using Regira.Entities.Reactors.Abstractions;
 using System.Collections.Concurrent;
@@ -19,7 +18,19 @@ internal sealed class CapturedChange(EntityEntry entry, EntityChangeKind kind, P
 {
     private static readonly IReadOnlySet<IProperty> NoneWritten = new HashSet<IProperty>();
 
-    public static async Task<CapturedChange> Capture(DbContext dbContext, EntityEntry entry, bool async, CancellationToken token)
+    /// <summary>
+    /// Captures the pending <paramref name="entries"/>. An update or delete is reported against the stored row: the
+    /// entry's own originals when it is marked as holding it (<see cref="StoredOriginalsExtensions"/>), otherwise the
+    /// row read now — in one query per entity type.
+    /// </summary>
+    public static async Task<List<CapturedChange>> CaptureAll(DbContext dbContext, IReadOnlyCollection<EntityEntry> entries, bool async, CancellationToken token)
+    {
+        var unknown = entries.Where(e => e.State != EntityState.Added && !e.HasStoredOriginals()).ToArray();
+        var read = await StoredRowReader.Read(dbContext, unknown, async, token);
+        return entries.Select(entry => Capture(entry, read.GetValueOrDefault(entry))).ToList();
+    }
+
+    private static CapturedChange Capture(EntityEntry entry, PropertyValues? stored)
     {
         var kind = entry.State switch
         {
@@ -31,36 +42,10 @@ internal sealed class CapturedChange(EntityEntry entry, EntityChangeKind kind, P
         {
             return new CapturedChange(entry, kind, null, NoneWritten);
         }
-
-        PropertyValues? stored = null;
-        if (!HasStoredOriginals(dbContext, entry))
-        {
-            // the one read the entities write path already made — repeated for a writer that bypassed it
-            stored = async ? await entry.GetDatabaseValuesAsync(token) : entry.GetDatabaseValues();
-        }
-        // a copy: the entry's own originals are accepted (overwritten) by the save
+        // a copy: the entry's own originals are accepted (overwritten) by the save. A row that is no longer stored
+        // leaves nothing better than what the entry holds — the save will fail on it anyway.
         return new CapturedChange(entry, kind, stored ?? entry.OriginalValues.Clone(),
             kind == EntityChangeKind.Modified ? WrittenProperties(entry) : NoneWritten);
-    }
-
-    /// <summary>
-    /// Whether the entry's original values are the stored row. The write path marks what it loaded that way
-    /// (<c>Modify</c>, the <c>Related()</c> sync); an entry a tracking query loaded flags only what was changed on it.
-    /// A delete may be a stub, and so may a soft delete — the archivable primer turns it into an update that writes the
-    /// archive flag alone — and an update with every property flagged was attached as its writer supplied it
-    /// (<c>Update(detached)</c>): for those, only the database knows.
-    /// </summary>
-    private static bool HasStoredOriginals(DbContext dbContext, EntityEntry entry)
-    {
-        if (entry.HasStoredOriginals())
-        {
-            return true;
-        }
-        if (entry.State != EntityState.Modified || ArchivablePrimer.IsBeingArchived(entry))
-        {
-            return false;
-        }
-        return entry.Properties.Any(p => !p.Metadata.IsPrimaryKey() && !p.IsModified);
     }
 
     // the columns the update writes: flagged now, after the primers, which is what the save sends

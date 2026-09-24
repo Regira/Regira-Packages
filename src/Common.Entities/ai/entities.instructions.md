@@ -611,18 +611,21 @@ options.AddReactor<AuditReactor>();    // global — an EntityReactorBase<IHasTi
 - `change.HasChanged(x => x.Status)` / `ChangedProperties` — `Modified` rows only; `Added` and `Deleted` report
   none. `change.ChangedTo(x => x.Status, value)` covers both an insert holding the value and an update that
   brought it there — the usual trigger for a pipeline.
-- The stored values are the database's on every tracked write: `IEntityService.Modify` has already read the row,
-  and a tracking query loaded it. When a writer attached the entity without them — `Update()` of a detached
-  entity, a stub `Remove(new Order { Id = id })` — the save reads the row once, and only for entity types a
-  reactor is registered for. A stub you `Attach` and then edit reports what you attached. `ExecuteUpdate` /
-  `ExecuteDelete` bypass the change tracker: no reactor (and no primer) sees them.
+- The stored values are the database's on every write. An entity that a tracking query loaded, or that
+  `IEntityService.Modify` or a `Related()` sync loaded, already holds them. Any other write — `Update()` of a
+  detached entity, a stub `Attach(new Order { Id = id })` then edited, a stub `Remove(...)`, a delete through the
+  service — has its rows read during the save, one query per entity type, and only for entity types a reactor is
+  registered for. `ExecuteUpdate` / `ExecuteDelete` bypass the change tracker: no reactor (and no primer) sees them.
 
 **How reactors run:**
 - **After the commit, never before** — at once for a save that commits on its own; at `Commit()` for every save
-  inside an explicit `BeginTransaction()`; when an ambient `TransactionScope` completes. A failed save, a
-  rollback and a transaction disposed without committing react to nothing. Rolling back to a savepoint does not
-  withdraw the reactions of the saves made after it, and a transaction you commit outside EF (a `DbTransaction`
-  passed to `UseTransaction`) is not seen.
+  inside an explicit `BeginTransaction()`, also when several contexts share that transaction through
+  `UseTransaction` and one of them commits it; when an ambient `TransactionScope` completes. A failed save, a
+  rollback and a transaction disposed without committing react to nothing. Not seen: a rollback to a savepoint
+  (the reactions of the saves made after it still run), and a commit made on the `DbTransaction` itself rather than
+  through a context `UseEntities` wires (its reactions never run). A transaction begun outside EF and handed to
+  `UseTransaction` must also commit or roll back through EF: on Npgsql, one disposed without either leaves its
+  reactions to the next such transaction on that pooled connection.
 - **In process, before `SaveChanges()` returns** — the caller waits for them. Hand slow or retryable work to a
   job system: the reactor only enqueues it (`IBackgroundJobClient.Enqueue(...)`).
 - **In registration order, per changed row, in a DI scope of their own** with a fresh `DbContext`: a reactor that
@@ -1452,7 +1455,7 @@ accepts search objects matching its own key type, so non-int entities need the m
 |---|---|---|
 | `HasCreatedDbPrimer` | `IHasCreated` | Sets `Created` (UTC) on insert; normalizes client-supplied values to UTC |
 | `HasLastModifiedDbPrimer` | `IHasLastModified` | Sets `LastModified` (UTC) on update |
-| `ArchivablePrimer` | `IArchivable` | Soft-delete: sets `IsArchived = true` and writes nothing else of the row (what the later primers stamp aside) |
+| `ArchivablePrimer` | `IArchivable` | Soft-delete: sets `IsArchived = true` and writes nothing else of the row (what the later primers stamp aside); undoes EF's cascade to the loaded dependents first, so they stay as they are — a dependent removed in the same raw save as its parent is kept too |
 | `HasConcurrencyTokenDbPrimer` | `IHasConcurrencyToken` | Mints a new `ConcurrencyToken` on every update (a soft delete included) and on insert when empty |
 | `AutoTruncatePrimer` | All entities | Truncates strings to `[MaxLength]` |
 

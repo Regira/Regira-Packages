@@ -443,7 +443,7 @@ The link is not itself `IArchivable`, so this filter never collides with the nam
 
 | Route | Behaviour |
 |---|---|
-| `DELETE /{id}` | soft-delete — sets `IsArchived = true` and writes nothing else of the row beyond what the primers stamp (`LastModified`, a new token), so the delete-by-key stub `Remove(new Order { Id = id })` archives without touching the stored values; the row survives, real affected count, idempotent |
+| `DELETE /{id}` | soft-delete — sets `IsArchived = true` and writes nothing else of the row beyond what the primers stamp (`LastModified`, a new token), so the delete-by-key stub `Remove(new Order { Id = id })` archives without touching the stored values; the rows that depend on it stay as they are, loaded or not (EF's cascade to loaded ones is undone, so no child is deleted, archived or orphaned); the row survives, real affected count, idempotent |
 | `GET /`, `GET /search` | archived excluded by default; `?archived=only` → the recycle bin; `?archived=included` → both |
 | `GET /{id}` | **404** for an archived row |
 | `GET /{id}?archived=included` | resolves the archived row |

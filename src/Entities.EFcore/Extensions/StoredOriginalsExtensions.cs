@@ -2,50 +2,44 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Regira.Entities.EFcore.Reactors;
+using Regira.Entities.EFcore.Utilities;
 using System.Runtime.CompilerServices;
 
 namespace Regira.Entities.EFcore.Extensions;
 
 /// <summary>
-/// Remembers which tracked entries the write path loaded with the <b>stored</b> row as their original values, so the
-/// <see cref="EntityReactorInterceptor"/> can tell them from an entry whose originals are only what its writer
-/// attached — <c>Update(detached)</c> reports every property modified with an original equal to the new value.
+/// Remembers which tracked entries hold the <b>stored</b> row as their original values, so the
+/// <see cref="EntityReactorInterceptor"/> reads the row only for the others. An entry's originals are only known to be
+/// the stored row when it came from the database: a tracking query loaded it (the interceptor marks those as they are
+/// tracked), or the write path loaded the row and set it as the originals (<c>Modify</c>, the <c>Related()</c> sync).
+/// Any other entry holds what its writer attached — <c>Update(detached)</c> reports the new values as the originals, and
+/// a stub attached by key its empty ones — however its properties are flagged.
 /// <para>
-/// A mark belongs to one tracking of the entity, not to the entity: it is kept on EF's internal entry, which a
-/// <c>ChangeTracker.Clear()</c> or a detach discards, so the same instance attached again is not taken for loaded.
-/// Marks are kept only for a context wired with the reactor interceptor, which drops them when a save completes —
-/// successfully or not — and they never outlive the context.
+/// A mark belongs to one tracking of the entity (<see cref="EntryMarks"/>): the same instance attached again after a
+/// detach or a <c>ChangeTracker.Clear()</c> is a new entry, unmarked. Marks are kept only for a context wired with the
+/// reactor interceptor, which drops them all when a save completes — successfully or not.
 /// </para>
 /// </summary>
 internal static class StoredOriginalsExtensions
 {
-    private static readonly ConditionalWeakTable<DbContext, HashSet<object>> Marked = new();
+    private static readonly EntryMarks Marks = new();
     private static readonly ConditionalWeakTable<IDbContextOptions, object> ReactorWiring = new();
 
+    /// <summary>Marks an entry the write path gave the stored row as its originals.</summary>
     public static void MarkStoredOriginals(this EntityEntry entry)
     {
-        if (!entry.Context.HasReactorInterceptor())
+        if (entry.Context.HasReactorInterceptor())
         {
-            return;
-        }
-        Marked.GetValue(entry.Context, _ => new HashSet<object>(ReferenceEqualityComparer.Instance)).Add(TrackingOf(entry));
-    }
-
-    public static bool HasStoredOriginals(this EntityEntry entry)
-        => Marked.TryGetValue(entry.Context, out var marked) && marked.Contains(TrackingOf(entry));
-
-    public static void ClearStoredOriginals(this DbContext dbContext)
-    {
-        if (Marked.TryGetValue(dbContext, out var marked))
-        {
-            marked.Clear();
+            Marks.Add(entry);
         }
     }
 
-    // EF's internal entry: one per tracking of an entity — a re-attached instance gets a new one
-#pragma warning disable EF1001
-    private static object TrackingOf(EntityEntry entry) => entry.GetInfrastructure();
-#pragma warning restore EF1001
+    /// <summary>For the reactor interceptor itself: an entry a tracking query loaded.</summary>
+    internal static void MarkLoaded(EntityEntry entry) => Marks.Add(entry);
+
+    public static bool HasStoredOriginals(this EntityEntry entry) => Marks.Contains(entry);
+
+    public static void ClearStoredOriginals(this DbContext dbContext) => Marks.Clear(dbContext);
 
     private static bool HasReactorInterceptor(this DbContext dbContext)
         => (bool)ReactorWiring.GetValue(dbContext.GetService<IDbContextOptions>(),

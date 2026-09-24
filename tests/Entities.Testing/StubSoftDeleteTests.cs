@@ -215,6 +215,22 @@ public class StubSoftDeleteTests
         Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => Save(db, synchronous));
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task An_Update_That_Archives_An_Attached_Stub_Without_A_Token_Is_Still_Checked(bool synchronous)
+    {
+        // it sets the one column a soft delete writes, but it is an update: only a delete the primer converts carries no claim
+        var seeded = await Seed();
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<SupplierContext>();
+        var stub = new Supplier { Id = seeded.Id };
+        db.Suppliers.Attach(stub);
+        stub.IsArchived = true;
+
+        Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => Save(db, synchronous));
+    }
+
     [Test]
     public async Task A_Service_Delete_Archives_The_Row_And_Keeps_Its_Other_Columns()
     {

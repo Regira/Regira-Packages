@@ -24,9 +24,9 @@ public class HasConcurrencyTokenDbPrimer : EntityPrimerBase<IHasConcurrencyToken
         var property = entry.Property(nameof(IHasConcurrencyToken.ConcurrencyToken));
         if (entry.State == EntityState.Modified)
         {
-            // a soft delete — the ArchivablePrimer made this update of a delete, possibly of a stub — carries no token of
-            // its own, like the delete it came from; any other update is compared with the token its entry holds
-            if (!property.IsModified && ArchivablePrimer.IsBeingArchived(entry))
+            // a soft delete — the ArchivablePrimer made this update of a delete, possibly of a stub, and says so — carries
+            // no token of its own, like the delete it came from; any other update is compared with the token its entry holds
+            if (!property.IsModified && ArchivablePrimer.IsSoftDelete(entry))
             {
                 await CompareUnclaimedWithStored(entry, property, token);
             }

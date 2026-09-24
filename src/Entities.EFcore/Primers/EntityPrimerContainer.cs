@@ -40,6 +40,7 @@ public class EntityPrimerContainer
 
     public async Task ApplyPrimers(Type? entityType = null, CancellationToken token = default)
     {
+        ArchivablePrimer.BeginPass(_dbContext);
         var groupedEntries = _dbContext.GetPendingEntries()
             .GroupBy(e => e.Entity.GetType())
             .Where(g => entityType == null || g.Key == entityType || TypeUtility.GetBaseTypes(g.Key).Contains(entityType));
@@ -59,6 +60,7 @@ public class EntityPrimerContainer
 
         // only now is it known which concurrency tokens a primer moves — those are compared with the client's value
         _dbContext.ApplyUndecidedClientTokens(entityType);
+        ArchivablePrimer.EndPass(_dbContext);
     }
     /// <summary>
     /// 
