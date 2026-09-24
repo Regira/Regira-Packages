@@ -210,6 +210,28 @@ return await this.Details<CreditRequest, CreditRequestDto>(id) ?? NotFound();   
 **See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "Domain actions on an entity resource")`
 — *Role-gated transitions* is its sub-section.
 
+### React to a committed change (status pipelines, mail, jobs)
+<!-- how_to: key=after-commit aliases=reactor,reactors,react,after-save,aftersave,committed,commit,side-effect,side-effects,event,events,trigger,pipeline,notify,notification,mail,hangfire,background-job,status-changed -->
+What must *follow* a change — mail the customer, start a follow-up workflow, enqueue a background job — is a
+**reactor**. It runs once the save is committed (never for a failed save or a rolled-back transaction), on
+every write path that reaches the row — CRUD PATCH, a domain action, an import, a raw `DbContext` writer:
+
+<!-- no-compile -->
+```csharp
+e.React(x => x.Status, OrderStatus.Shipped, (change, services, token) =>
+{
+    // hand the work to a job system; the reactor itself runs before SaveChanges() returns
+    services.GetRequiredService<IBackgroundJobClient>().Enqueue<IOrderMailer>(m => m.SendShipped(change.Entity.Id, CancellationToken.None));
+    return Task.CompletedTask;
+});
+```
+
+`change.Original` holds the stored row beside the committed `change.Entity`; a reactor runs in a DI scope of its
+own, and one that throws is logged while the save stands. Don't put this after `SaveChanges()` in a controller
+action: the other paths to the same state would skip it.
+
+**See:** `get_package(id: "Regira.Entities", section: "instructions", heading: "Reactors — after the commit")`.
+
 ### Which service is registered for an entity (incl. attachments)
 <!-- how_to: key=registered-service aliases=registered,service,resolve,getrequiredservice,inject,injection,which,what -->
 Every entity registered with `For<>()` resolves as `IEntityService<TEntity, TKey>` (and the
@@ -421,7 +443,7 @@ The link is not itself `IArchivable`, so this filter never collides with the nam
 
 | Route | Behaviour |
 |---|---|
-| `DELETE /{id}` | soft-delete — sets `IsArchived = true`, the row survives, real affected count, idempotent |
+| `DELETE /{id}` | soft-delete — sets `IsArchived = true` and writes nothing else of the row beyond what the primers stamp (`LastModified`, a new token), so the delete-by-key stub `Remove(new Order { Id = id })` archives without touching the stored values; the row survives, real affected count, idempotent |
 | `GET /`, `GET /search` | archived excluded by default; `?archived=only` → the recycle bin; `?archived=included` → both |
 | `GET /{id}` | **404** for an archived row |
 | `GET /{id}?archived=included` | resolves the archived row |
@@ -641,6 +663,9 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
   both modes.
 - Distinct route templates mean no collision — ASP.NET resolves `POST /credit-requests/{id}/approve` and the
   base controller's `PATCH /credit-requests/{id}` independently.
+- **What follows the approval goes in a reactor, not after `SaveChanges()` here** —
+  `e.React(x => x.Status, RequestStatus.Approved, …)` runs once the approval is committed, and also when the
+  state is reached another way (entities.instructions §Step 9 → Reactors).
 
 ### Role-gated transitions (server-owned state)
 
@@ -976,17 +1001,16 @@ stamp, and the edit it rewrote answers 409.
 These apply to declared version stamps; a data column needs none of them, so an undeclared token only gets them as
 Info.
 
-**Deleting by key still works, at one read per row.** A hard delete is commonly issued from a stub —
+**Deleting by key still works, at one read per row.** A delete is commonly issued from a stub —
 `Remove(new Order { Id = id })` — which carries no token, and comparing the stored row against `Guid.Empty` would
 match nothing and fail as a conflict forever. An absent token is read as the absence of a claim, so the primer reads
 the stored token and deletes against that: the delete goes through, while a caller that *does* supply a token keeps
-its check and an already-deleted row still reports a conflict. The cost is one extra `SELECT` per deleted row that
-carries the marker, so removing N stubs in a loop is N extra round trips — load the entities you are deleting (a
-single query) when that matters. On a synchronous `SaveChanges()` each of those reads blocks the calling thread.
-Two stubs still need the entity loaded: one of an `IArchivable` entity — the soft delete turns the stub into an
-update, which is checked like any other and answers 409 rather than overwriting the row with the stub's defaults —
-and one whose row references its own children, whose reference is dropped by a direct `UPDATE` before any primer
-runs.
+its check and an already-deleted row still reports a conflict. The soft delete of an `IArchivable` stub is checked
+the same way; it writes the archive flag and the primers' stamps, never the stub's empty values. The cost is one
+extra `SELECT` per deleted row that carries the marker, so removing N stubs in a loop is N extra round trips — load
+the entities you are deleting (a single query) when that matters. On a synchronous `SaveChanges()` each of those
+reads blocks the calling thread. One stub still needs the entity loaded: one whose row references its own children,
+whose reference is dropped by a direct `UPDATE` before any primer runs.
 
 **3. Handle the 409 on the client.** The body is a `ProblemDetails` titled **"Concurrency conflict"** — the
 constraint 409 is titled "Conflict" — so the client can tell "reload and try again" from "fix the input". Reload
@@ -1309,6 +1333,7 @@ full set with `e.AddDefaultInterceptors()` or select pieces à la carte with `e.
 | `UtcDateTimeConvention` | Rounds all `DateTime` properties through the database as UTC |
 | `ArchivedQueryFilter` | Applies the soft-delete filter (`e => !e.IsArchived`) to every `IArchivable` entity type — see §Soft Delete |
 | `ConcurrencyTokens` | Declares `IHasConcurrencyToken.ConcurrencyToken` a concurrency token on every implementing entity type — see §Optimistic concurrency |
+| `Reactors` | Runs registered reactors once a save's changes are committed (entities.instructions §Step 9 → Reactors) |
 
 > **À-la-carte pattern (no `UseDefaults()`):**
 > ```csharp

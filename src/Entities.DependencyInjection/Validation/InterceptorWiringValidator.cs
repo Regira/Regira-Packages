@@ -5,12 +5,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Regira.Entities.EFcore.Normalizing;
 using Regira.Entities.EFcore.Primers;
 using Regira.Entities.EFcore.Primers.Abstractions;
+using Regira.Entities.EFcore.Reactors;
 using Regira.Entities.Normalizing.Abstractions;
 
 namespace Regira.Entities.DependencyInjection.Validation;
 
 /// <summary>
-/// Detects primers/normalizers that are registered in DI but can never run because the matching
+/// Detects primers/normalizers/reactors that are registered in DI but can never run because the matching
 /// SaveChanges interceptor is missing from the DbContext options — the "prepper is registered but
 /// silently does nothing" class of bug. Inspects the context's final options (so interceptors added
 /// in <c>OnConfiguring</c> count too).
@@ -32,7 +33,9 @@ internal sealed class InterceptorWiringValidator : IEntityRegistrationValidator
                 $"Could not resolve primers/normalizers to validate interceptor wiring: {resolutionError}");
             yield break;
         }
-        if (primerTargets.Count == 0 && normalizerTargets.Count == 0)
+        // read from the registrations — no reactor is instantiated for this
+        var reactorTargets = ReactorDiscovery.GetTargets(context.Services);
+        if (primerTargets.Count == 0 && normalizerTargets.Count == 0 && reactorTargets.IsEmpty)
         {
             yield break;
         }
@@ -45,9 +48,10 @@ internal sealed class InterceptorWiringValidator : IEntityRegistrationValidator
                 .ToArray();
             var hasPrimers = Targets(primerTargets, contextEntities);
             var hasNormalizers = Targets(normalizerTargets, contextEntities);
-            if (!hasPrimers && !hasNormalizers)
+            var hasReactors = contextEntities.Any(reactorTargets.Covers);
+            if (!hasPrimers && !hasNormalizers && !hasReactors)
             {
-                continue; // this context has no prime-able/normalize-able entities — no interceptor needed
+                continue; // this context has no prime-able/normalize-able/reactable entities — no interceptor needed
             }
             // The recorded type may be an abstract base (UseEntities<AppContextBase>() +
             // AddDbContext<SqlServerAppContext>()): inspect the registered concrete context type(s) it
@@ -108,6 +112,12 @@ internal sealed class InterceptorWiringValidator : IEntityRegistrationValidator
                     yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
                         $"IEntityNormalizer services are registered but {inspectType.Name} has no normalizer interceptor — normalized fields (NormalizedTitle, NormalizedContent, ?q= search data) will not be populated on SaveChanges for this context (unless a custom SaveChanges applies them). " +
                         $"Fix: services.UseEntities<{contextType.Name}>(e => e.UseDefaults()) — or e.WireDbContext(DbContextWiring.NormalizerInterceptors) for à-la-carte wiring");
+                }
+                if (hasReactors && !interceptors.Any(i => i is EntityReactorInterceptor))
+                {
+                    yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
+                        $"IEntityReactor services are registered but {inspectType.Name} has no reactor interceptor — reactors will not run after its saves are committed. " +
+                        $"Fix: services.UseEntities<{contextType.Name}>(e => e.UseDefaults()) — or add DbContextWiring.Reactors to e.WireDbContext(...) for à-la-carte wiring");
                 }
             }
         }

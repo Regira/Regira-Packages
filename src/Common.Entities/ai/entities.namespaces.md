@@ -67,6 +67,17 @@
 
 ---
 
+## Reactors (after the commit)
+
+| Namespace | Types |
+|---|---|
+| `Regira.Entities.Reactors.Abstractions` | `IEntityReactor`, `IEntityReactor<>`, `EntityReactorBase<>`, `IEntityChange`, `IEntityChange<>`, `EntityChangeKind`, `EntityChangeExtensions` *(`HasChanged()`, `ChangedTo()`)* |
+| `Regira.Entities.Reactors` | `EntityChange<>` *(build one to unit-test a reactor)*, `EntityReactor<>` |
+| `Regira.Entities.EFcore.Reactors` | `EntityReactorInterceptor` |
+| `Regira.Entities.DependencyInjection.Reactors` | `ServiceCollectionReactorExtensions` *(`AddReactor<>()` — on `IServiceCollection` and `EntityServiceCollectionOptions`)* |
+
+---
+
 ## Normalizing
 
 | Namespace | Types |
@@ -255,6 +266,12 @@ Regira.Entities.Attributes   → ServerOwnedAttribute   // [ServerOwned] on the 
 Regira.Entities.EFcore.Primers.Abstractions   → EntityPrimerBase<T>, IEntityPrimer<T>
 Microsoft.EntityFrameworkCore.ChangeTracking  → EntityEntry
 Microsoft.EntityFrameworkCore                 → EntityState
+```
+
+### Creating a reactor
+```
+Regira.Entities.Reactors.Abstractions         → EntityReactorBase<T>, IEntityChange<T>, EntityChangeKind, HasChanged(), ChangedTo()
+Regira.Entities.DependencyInjection.Reactors  → AddReactor<T>()  // global: options.AddReactor<T>(); per entity: e.AddReactor<T>() needs no using
 ```
 
 ### Creating a normalizer

@@ -35,6 +35,11 @@ public enum DbContextWiring
     /// <c>HasConcurrencyTokenDbPrimer</c>, which <c>UseDefaults()</c> registers.
     /// </summary>
     ConcurrencyTokens = 1 << 5,
+    /// <summary>
+    /// Runs registered <c>IEntityReactor</c>s once the changes of a save are committed (after the primers, which run
+    /// inside the save). A context without reactors captures nothing.
+    /// </summary>
+    Reactors = 1 << 6,
 
-    All = PrimerInterceptors | NormalizerInterceptors | AutoTruncateInterceptors | UtcDateTimeConvention | ArchivedQueryFilter | ConcurrencyTokens
+    All = PrimerInterceptors | NormalizerInterceptors | AutoTruncateInterceptors | UtcDateTimeConvention | ArchivedQueryFilter | ConcurrencyTokens | Reactors
 }

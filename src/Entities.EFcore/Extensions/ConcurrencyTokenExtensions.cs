@@ -162,6 +162,7 @@ internal static class ConcurrencyTokenExtensions
         var entry = dbContext.Entry(incoming);
         entry.OriginalValues.SetValues(stored);
         entry.State = EntityState.Modified;
+        entry.MarkStoredOriginals();
 
         // after the state change, so nothing it does can touch the originals set here
         var undecided = new List<(IProperty, object?)>();

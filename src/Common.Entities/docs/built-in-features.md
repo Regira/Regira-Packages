@@ -265,7 +265,7 @@ services.UseEntities<ContosoContext>(e => e.UseDefaults());
 
 Registers a set of commonly used features for typical applications, including:
 - `AddDefaultInterceptors()` — **automatic DbContext wiring**: `UseEntities<TContext>()` contributes the
-  primer/normalizer/auto-truncate interceptors, the UTC date convention, the archived query filter and the
+  primer/normalizer/auto-truncate/reactor interceptors, the UTC date convention, the archived query filter and the
   concurrency-token convention to the context's options, so `AddDbContext` only needs the provider and the
   `DbContext` itself stays free of framework calls. Matches by assignability (an abstract-base registration also
   wires derived provider-specific contexts), in any registration order. Fine-grained control via
@@ -313,7 +313,7 @@ services.UseEntities<AppDbContext>(o =>
 `UseEntities()` registers a hosted service that validates the entity registrations at host start
 (Development environment by default). It fails fast — with actionable messages — on controller ↔ `For<>()`
 generic-arity mismatches (the controller check activates automatically when `Regira.Entities.Web` is
-referenced, or explicitly via `ValidateEntityControllers()`), warns when primers/normalizers are registered
+referenced, or explicitly via `ValidateEntityControllers()`), warns when primers/normalizers/reactors are registered
 without their SaveChanges interceptor (an informational note instead when the `RegisterPrimerContainer` +
 `ApplyPrimers()` pattern is detected), warns when `?q=` would be silently ignored for an entity and when an
 attachments owner's collection is not mapped to the link's `ObjectId`, and fails on a `[ServerOwned]`
@@ -424,6 +424,10 @@ Soft delete needs one thing from the application: the entity implements `IArchiv
 (`DbContextWiring.ArchivedQueryFilter`). The query filter is what hides archived rows — on lists, on
 `Details(id)`, and inside `Include(...)`. A model that ends up without it still flags rows on `DELETE` while
 nothing hides them; startup validation reports that as an error naming the entity.
+
+A soft delete writes `IsArchived` — and what the other primers stamp on the update, `LastModified` and a new
+concurrency token — and nothing else of the row. The delete-by-key idiom `Remove(new Order { Id = id })` therefore
+archives the row without overwriting its stored values with the stub's empty ones.
 
 A `DbContext` constructed outside the service collection — `new AppDbContext(options)` in tests, a design-time
 factory, a seeding tool — is not covered by that wiring and needs `.AddArchivedQueryFilter()` on its own

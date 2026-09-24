@@ -881,6 +881,26 @@ public class ProductPrimer : EntityPrimerBase<Product>
 // using Regira.Entities.DependencyInjection.Primers;   ← AddPrimer lives here
 ```
 
+### Reactors
+
+<!-- no-compile -->
+```csharp
+// Runs once a save that shipped an order is committed — in a DI scope of its own, so it may inject scoped services.
+public class OrderShippedReactor(IOrderMailer mailer) : EntityReactorBase<Order>
+{
+    // an insert holding the value, or an update that brought it there; change.Original holds the stored row
+    public override bool CanReact(IEntityChange<Order> change) => change.ChangedTo(x => x.Status, OrderStatus.Shipped);
+
+    public override Task React(IEntityChange<Order> change, CancellationToken token = default)
+        => mailer.SendShipped(change.Entity.Id, token);   // change.Entity: the committed row, navigations not loaded
+}
+// Registration: e.AddReactor<OrderShippedReactor>();   (reacts to Order only, whatever type the reactor is written against)
+// Inline:       e.React(x => x.Status, OrderStatus.Shipped, (change, services, token) => …);
+
+// Global reactor: options.AddReactor<YourGlobalReactor>();   (an EntityReactorBase<IHasTimestamps> reacts to every implementing entity)
+// using Regira.Entities.DependencyInjection.Reactors;   ← AddReactor lives here
+```
+
 ### Mapping — UseMapping / AddMapping (usually not needed)
 
 With Mapster (the default), `TEntity ↔ TDto`/`TInputDto` mapping — **including nested objects and child

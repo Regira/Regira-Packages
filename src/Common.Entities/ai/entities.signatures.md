@@ -685,7 +685,7 @@ using Regira.Entities.DependencyInjection.Extensions;
 // Registers in one call: paging defaults (DefaultPageSize=10, MaxPageSize=100), default primers
 // (HasCreated/HasLastModified/Archivable), default global filters (Ids/Archivables/HasCreated/HasLastModified),
 // and the default entity normalizer. Also calls AddDefaultInterceptors() (= WireDbContext(DbContextWiring.All)): UseEntities<TContext>()
-// then wires the primer/normalizer/auto-truncate interceptors + UTC date convention into the DbContext options
+// then wires the primer/normalizer/auto-truncate/reactor interceptors + UTC date convention into the DbContext options
 // automatically (AddDbContext only needs the provider; assignability match — an abstract-base registration
 // also wires derived provider-specific contexts, in any registration order). UTC date handling itself is on
 // by default process-wide (DateTimeDefaults.UseUtc) — disable with UseUtc(false).
@@ -774,6 +774,27 @@ public static EntityServiceCollectionOptions AddPrimer<TPrimer>(
 // Registers ArchivablePrimer + HasCreatedDbPrimer + HasLastModifiedDbPrimer + HasConcurrencyTokenDbPrimer
 public static EntityServiceCollectionOptions AddDefaultPrimers(
     this EntityServiceCollectionOptions options);
+```
+
+#### Reactors (global)
+
+<!-- no-compile -->
+```csharp
+using Regira.Entities.DependencyInjection.Reactors;
+
+// Reacts to every entity its IEntityReactor<T> covers (an interface or base type reaches every implementing
+// entity); a reactor implementing only IEntityReactor reacts to every entity.
+public static EntityServiceCollectionOptions AddReactor<TReactor>(
+    this EntityServiceCollectionOptions options)
+    where TReactor : class, IEntityReactor;
+
+// IServiceCollection forms
+public static IServiceCollection AddReactor<TReactor>(this IServiceCollection services)
+    where TReactor : class, IEntityReactor;
+public static IServiceCollection AddReactor<TEntity, TReactor>(this IServiceCollection services)
+    where TReactor : class, IEntityReactor<TEntity>;   // reacts to TEntity only
+public static IServiceCollection AddReactor<TEntity>(this IServiceCollection services,
+    Func<IServiceProvider, IEntityReactor<TEntity>> factory);   // factory gets the reaction's own scope
 ```
 
 #### Global Filter Query Builders
@@ -1035,6 +1056,24 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
         Func<TEntity, EntityEntry, TContext, Task> primeFunc);
 
     // class-based: AddPrimer<TPrimer>() (see above)
+
+    // Reactors — run once a save that changed a TEntity row is committed, in a DI scope of their own;
+    // reactFunc receives the change and that scope's IServiceProvider.
+    EntityServiceBuilder<TContext, TEntity, TKey> React(
+        Func<IEntityChange<TEntity>, IServiceProvider, CancellationToken, Task> reactFunc);
+
+    EntityServiceBuilder<TContext, TEntity, TKey> React(
+        Func<IEntityChange<TEntity>, bool> canReact,
+        Func<IEntityChange<TEntity>, IServiceProvider, CancellationToken, Task> reactFunc);
+
+    // when the save brought property to value (ChangedTo); an invalid selector throws ArgumentException here
+    EntityServiceBuilder<TContext, TEntity, TKey> React<TProp>(
+        Expression<Func<TEntity, TProp>> property, TProp value,
+        Func<IEntityChange<TEntity>, IServiceProvider, CancellationToken, Task> reactFunc);
+
+    // reacts to TEntity only — also a reactor written against an interface (options.AddReactor<T>() for all it covers)
+    EntityServiceBuilder<TContext, TEntity, TKey> AddReactor<TReactor>()
+        where TReactor : class, IEntityReactor<TEntity>;
 
     // Related child collections (managed by RelatedCollectionPrepper).
     // prepareFunc = optional parent-level prepare; configure = optional RelatedEntityBuilder
@@ -1452,6 +1491,59 @@ public interface IEntityPrimer<in T> : IEntityPrimer
 }
 ```
 
+### Reactors
+
+<!-- no-compile -->
+```csharp
+using Regira.Entities.Reactors.Abstractions;
+
+public enum EntityChangeKind { Added, Modified, Deleted }   // a soft delete is Modified (IsArchived → true)
+
+public interface IEntityChange
+{
+    EntityChangeKind Kind { get; }
+    object Entity { get; }                                // as committed; Deleted: as it was stored
+    object? Original { get; }                             // as stored before the save; null for Added
+    IReadOnlyCollection<string> ChangedProperties { get; }  // Modified only; complex members as "Address.City"
+}
+public interface IEntityChange<out TEntity> : IEntityChange
+{
+    new TEntity Entity { get; }
+    new TEntity? Original { get; }
+}
+
+public interface IEntityReactor
+{
+    bool CanReact(IEntityChange change);
+    Task React(IEntityChange change, CancellationToken token = default);
+}
+public interface IEntityReactor<in TEntity> : IEntityReactor
+{
+    bool CanReact(IEntityChange<TEntity> change);
+    Task React(IEntityChange<TEntity> change, CancellationToken token = default);
+}
+
+public abstract class EntityReactorBase<TEntity> : IEntityReactor<TEntity> where TEntity : class
+{
+    public virtual bool CanReact(IEntityChange<TEntity> change) => true;
+    public abstract Task React(IEntityChange<TEntity> change, CancellationToken token = default);
+}
+
+public static class EntityChangeExtensions
+{
+    // Modified with a committed value that differs from the stored one; a complex property matches any member
+    public static bool HasChanged<TEntity, TProp>(this IEntityChange<TEntity> change,
+        Expression<Func<TEntity, TProp>> property);
+    // an insert holding value, or an update that brought the property to it; never a delete
+    public static bool ChangedTo<TEntity, TProp>(this IEntityChange<TEntity> change,
+        Expression<Func<TEntity, TProp>> property, TProp value);
+}
+
+// Regira.Entities.Reactors — build one to unit-test a reactor
+public class EntityChange<TEntity>(EntityChangeKind kind, TEntity entity, TEntity? original = null,
+    IReadOnlyCollection<string>? changedProperties = null) : IEntityChange<TEntity> where TEntity : class;
+```
+
 ### Normalizers
 
 <!-- no-compile -->
@@ -1721,8 +1813,10 @@ public enum DbContextWiring
     ArchivedQueryFilter = 1 << 4,
     // IHasConcurrencyToken.ConcurrencyToken declared a concurrency token — without a DbContext change
     ConcurrencyTokens = 1 << 5,
+    // runs registered IEntityReactors once a save's changes are committed
+    Reactors = 1 << 6,
     All = PrimerInterceptors | NormalizerInterceptors | AutoTruncateInterceptors | UtcDateTimeConvention
-        | ArchivedQueryFilter | ConcurrencyTokens
+        | ArchivedQueryFilter | ConcurrencyTokens | Reactors
 }
 ```
 

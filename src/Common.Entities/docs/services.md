@@ -14,7 +14,7 @@ IEntityService<TEntity, TKey, TSearchObject, TSortBy, TIncludes>
 ## Service Layer Architecture
 
 - The default implementation is `EntityRepository`, which uses EF Core `DbContext` for data access
-- The `EntityRepository` is enriched by multiple helper services (QueryBuilders, Processors, Preppers, Primers)
+- The `EntityRepository` is enriched by multiple helper services (QueryBuilders, Processors, Preppers, Primers, Reactors)
 - Replace the default EntityService using `UseEntityService` with a custom implementation (e.g., `CachedEntityService` that adds caching on top of the repository)
 
 ## Standard EntityRepository Methods
@@ -272,6 +272,48 @@ public abstract class EntityPrimerBase<T> : IEntityPrimer<T>
 
     public abstract Task PrepareAsync(T entity, EntityEntry entry, CancellationToken token = default);
     public virtual bool CanPrepare(T? entity) => entity != null;
+}
+```
+
+### Entity Reactors
+
+- Run once the changes of a save are **committed** — the place for side effects that must not happen for a write
+  that fails or rolls back: sending mail, calling another system, enqueueing a background job, starting a
+  follow-up workflow when a status changes. What must be part of the save itself stays a primer
+- Committed means: at once for a save that commits on its own, at `Commit()` for the saves inside an explicit
+  `BeginTransaction()`, and when an ambient `TransactionScope` completes. A failed save, a rollback, or a
+  transaction disposed without committing reacts to nothing
+- Receive an `IEntityChange<TEntity>`: `Kind` (`Added`/`Modified`/`Deleted` — a soft delete is `Modified`),
+  `Entity` (the committed row, generated keys filled in), `Original` (the row as stored before the save) and
+  `ChangedProperties`, with the `HasChanged(x => x.Status)` and `ChangedTo(x => x.Status, value)` helpers. Values
+  are detached snapshots without navigations
+- The stored values come from the write path's own read (`Modify`) or a tracking query; for a writer that attached
+  the entity without them (`Update()` of a detached entity, a stub `Remove`) the save reads the row once — only for
+  entity types a reactor is registered for
+- Run in process before `SaveChanges()` returns, in registration order, in a DI scope of their own with a fresh
+  `DbContext` — a reactor that writes saves its own unit of work, and that save runs the reactors of what it wrote
+  (up to 8 levels deep). Hand slow work to a job system
+- A reactor that throws is logged and skipped: the save still succeeds and the other reactors still run
+- Wired into the DbContext options by `UseEntities(e => e.UseDefaults())`; without `UseDefaults()`, add
+  `DbContextWiring.Reactors` to `e.WireDbContext(...)`
+- Can be registered **globally** (`options.AddReactor<T>()` — a reactor on an interface or base type reaches every entity it covers) or **per entity** (`e.AddReactor<T>()` — that entity only, whatever type the reactor is written against)
+
+```csharp
+services.UseEntities<MyDbContext>(e => e.UseDefaults())
+    .For<Order>(e =>
+    {
+        // inline: the second argument is the reaction's own scoped service provider
+        e.React(x => x.Status, OrderStatus.Shipped, (change, services, token) =>
+            services.GetRequiredService<IOrderMailer>().SendShipped(change.Entity.Id, token));
+        // class-based
+        e.AddReactor<OrderInvoicingReactor>();
+    });
+
+public class OrderInvoicingReactor(IInvoiceService invoices) : EntityReactorBase<Order>
+{
+    public override bool CanReact(IEntityChange<Order> change) => change.ChangedTo(x => x.Status, OrderStatus.Delivered);
+    public override Task React(IEntityChange<Order> change, CancellationToken token = default)
+        => invoices.CreateFor(change.Entity.Id, token);
 }
 ```
 

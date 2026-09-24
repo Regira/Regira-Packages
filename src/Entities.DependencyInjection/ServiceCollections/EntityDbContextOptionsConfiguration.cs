@@ -7,6 +7,7 @@ using Regira.Entities.DependencyInjection.ServiceCollections.Models;
 using Regira.Entities.EFcore.Extensions;
 using Regira.Entities.EFcore.Normalizing;
 using Regira.Entities.EFcore.Primers;
+using Regira.Entities.EFcore.Reactors;
 
 namespace Regira.Entities.DependencyInjection.ServiceCollections;
 
@@ -14,7 +15,7 @@ namespace Regira.Entities.DependencyInjection.ServiceCollections;
 /// Registered as an <b>open generic</b> <see cref="IDbContextOptionsConfiguration{TContext}"/>, so EF applies it
 /// while building the options of <b>every</b> context registered via <c>AddDbContext</c>. It consults the
 /// <see cref="DbContextWiringRegistry"/> (assignability match) and contributes the selected plumbing —
-/// primer/normalizer/auto-truncate interceptors, the UTC date convention and the archived query filter.
+/// primer/normalizer/auto-truncate/reactor interceptors, the UTC date convention and the archived query filter.
 /// Contexts not registered with <c>UseEntities()</c> (directly or via a base type) are left untouched, as is
 /// a context constructed outside DI — it never consults the service collection at all.<br />
 /// Because the match happens at options-build time, it works for abstract-base registrations
@@ -45,6 +46,11 @@ public class EntityDbContextOptionsConfiguration<TContext> : IDbContextOptionsCo
         if (wiring.HasFlag(DbContextWiring.AutoTruncateInterceptors))
         {
             optionsBuilder.AddAutoTruncateInterceptors();
+        }
+        // after every interceptor that changes the pending rows: it captures them as they will be written
+        if (wiring.HasFlag(DbContextWiring.Reactors) && !optionsBuilder.HasInterceptor<EntityReactorInterceptor>())
+        {
+            optionsBuilder.AddInterceptors(new EntityReactorInterceptor(serviceProvider));
         }
         if (wiring.HasFlag(DbContextWiring.UtcDateTimeConvention))
         {

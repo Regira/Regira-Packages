@@ -11,7 +11,7 @@
     <AssemblyName>Regira.DAL.SqlServer</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.3.3</Version>
+    <Version>6.4.0</Version>
     <Description>SQL Server backup and restore for Regira using native BACKUP DATABASE / RESTORE DATABASE.</Description>
     <PackageTags>regira;dal;sqlserver;mssql;backup;restore</PackageTags>
   </PropertyGroup>

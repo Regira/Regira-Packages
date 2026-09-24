@@ -8,6 +8,7 @@ using Regira.Entities.DependencyInjection.Preppers;
 using Regira.Entities.DependencyInjection.Primers;
 using Regira.Entities.DependencyInjection.Processors;
 using Regira.Entities.DependencyInjection.QueryBuilders;
+using Regira.Entities.DependencyInjection.Reactors;
 using Regira.Entities.DependencyInjection.ServiceBuilders.Abstractions;
 using Regira.Entities.DependencyInjection.ServiceCollections;
 using Regira.Entities.DependencyInjection.ServiceCollections.Models;
@@ -26,6 +27,8 @@ using Regira.Entities.EFcore.Services;
 using Regira.Entities.Mapping.Abstractions;
 using Regira.Entities.Models;
 using Regira.Entities.Models.Abstractions;
+using Regira.Entities.Reactors;
+using Regira.Entities.Reactors.Abstractions;
 using Regira.Entities.Services.Abstractions;
 using System.Linq.Expressions;
 
@@ -418,6 +421,55 @@ public class EntityServiceBuilder<TContext, TEntity, TKey>(EntityServiceCollecti
         Services.AddPrimer(p => new EntityPrimer<TEntity>((item, entry)
             => primeFunc(item, entry, p.GetRequiredService<TContext>())));
         return this;
+    }
+
+    // Reactors
+    /// <summary>
+    /// Registers a reactor class for this entity: it runs once a save that changed a <typeparamref name="TEntity"/> row
+    /// is committed, in a DI scope of its own. It reacts to this entity only, also when it is written against an
+    /// interface or base type — register such a reactor with <c>options.AddReactor&lt;TReactor&gt;()</c> to reach every
+    /// entity it covers.
+    /// </summary>
+    public EntityServiceBuilder<TContext, TEntity, TKey> AddReactor<TReactor>()
+        where TReactor : class, IEntityReactor<TEntity>
+    {
+        Services.AddReactor<TEntity, TReactor>();
+        return this;
+    }
+    /// <summary>
+    /// Reacts to every committed change of this entity. <paramref name="reactFunc"/> receives the change and the
+    /// reaction's own scoped <see cref="IServiceProvider"/>.
+    /// </summary>
+    public EntityServiceBuilder<TContext, TEntity, TKey> React(Func<IEntityChange<TEntity>, IServiceProvider, CancellationToken, Task> reactFunc)
+    {
+        Services.AddReactor<TEntity>(p => new EntityReactor<TEntity>((change, token) => reactFunc(change, p, token)));
+        return this;
+    }
+    /// <summary>
+    /// Reacts to the committed changes of this entity that <paramref name="canReact"/> selects, e.g.
+    /// <c>change =&gt; change.HasChanged(x =&gt; x.Status)</c>. <paramref name="reactFunc"/> receives the change and the
+    /// reaction's own scoped <see cref="IServiceProvider"/>.
+    /// </summary>
+    public EntityServiceBuilder<TContext, TEntity, TKey> React(Func<IEntityChange<TEntity>, bool> canReact,
+        Func<IEntityChange<TEntity>, IServiceProvider, CancellationToken, Task> reactFunc)
+    {
+        Services.AddReactor<TEntity>(p => new EntityReactor<TEntity>((change, token) => reactFunc(change, p, token), canReact));
+        return this;
+    }
+    /// <summary>
+    /// Reacts when a committed save brought <paramref name="property"/> to <paramref name="value"/> — an inserted row
+    /// holding it, or a stored row that held another value (<see cref="EntityChangeExtensions.ChangedTo{TEntity,TProp}"/>).
+    /// <paramref name="reactFunc"/> receives the change and the reaction's own scoped <see cref="IServiceProvider"/>.
+    /// </summary>
+    /// <param name="property">The property, e.g. <c>x =&gt; x.Status</c>.</param>
+    /// <param name="value">The value it must have been changed to.</param>
+    /// <param name="reactFunc">Reacts to the change.</param>
+    public EntityServiceBuilder<TContext, TEntity, TKey> React<TProp>(Expression<Func<TEntity, TProp>> property, TProp value,
+        Func<IEntityChange<TEntity>, IServiceProvider, CancellationToken, Task> reactFunc)
+    {
+        // resolved here: an invalid selector must fail at registration, not on every commit
+        MemberPath.Of(property);
+        return React(change => change.ChangedTo(property, value), reactFunc);
     }
 
     // Preppers
