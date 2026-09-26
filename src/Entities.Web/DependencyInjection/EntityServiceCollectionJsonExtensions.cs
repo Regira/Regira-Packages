@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Regira.Entities.Web.Validation;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using HttpJsonOptions = Microsoft.AspNetCore.Http.Json.JsonOptions;
 
 namespace Regira.Entities.Web.DependencyInjection;
@@ -15,12 +16,14 @@ public static class EntityServiceCollectionJsonExtensions
     /// <item>Ignore nulls</item>
     /// <item>Ignore reference cycles</item>
     /// <item>Enums as string</item>
+    /// <item>Incoming <see cref="DateTime"/> properties normalized to UTC under the ambient policy
+    /// (<c>DateTimeDefaults.UseUtc</c>), before any prepper sees them — schema and wire format unchanged</item>
     /// </list>
     /// Applied to both the MVC options and the <c>Http.Json</c> options. The second set governs minimal-API
     /// results (<c>Results.Ok(...)</c>, <c>TypedResults.Json</c>) <b>and</b> is what <c>AddOpenApi()</c> reads
     /// when it generates schemas — without it the document would describe enums as integers while controllers
     /// serialize them as names, a mismatch nothing reports and one that reaches the SPA as wrong generated
-    /// types. An app that already had minimal endpoints will see their payloads pick up these three settings.
+    /// types. An app that already had minimal endpoints will see their payloads pick up these settings.
     /// <para>
     /// <paramref name="configure"/> customizes the MVC options, <paramref name="configureHttp"/> the
     /// <c>Http.Json</c> ones. A converter added to only one of them re-creates the same document/response
@@ -52,6 +55,11 @@ public static class EntityServiceCollectionJsonExtensions
                 ApplyDefaults(o.SerializerOptions);
                 configureHttp?.Invoke(o);
             })
+            // after every Configure: a source-generated context the app inserts into the resolver chain
+            // (TypeInfoResolverChain.Insert(0, AppJsonContext.Default)) is wrapped too, instead of routing its
+            // types around the UTC read
+            .PostConfigure<JsonOptions>(o => AddUtcRead(o.JsonSerializerOptions))
+            .PostConfigure<HttpJsonOptions>(o => AddUtcRead(o.SerializerOptions))
             .MapEntityExceptions();
 
         return services;
@@ -63,5 +71,10 @@ public static class EntityServiceCollectionJsonExtensions
         options.ReferenceHandler = ReferenceHandler.IgnoreCycles;
         options.Converters.Add(new JsonStringEnumConverter());
     }
+
+    // a modifier, not a converter: a custom DateTime converter blanks the type out of the OpenAPI schema
+    private static void AddUtcRead(JsonSerializerOptions options)
+        => options.TypeInfoResolver = (options.TypeInfoResolver ?? new DefaultJsonTypeInfoResolver())
+            .WithAddedModifier(UtcDateTimeJsonModifier.Apply);
 }
 #endif

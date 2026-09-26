@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Office.Word.Gotenberg</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.3.3</Version>
+    <Version>6.4.0</Version>
     <Description>Word to PDF conversion and page rendering through a Gotenberg server for Regira Office.</Description>
     <PackageTags>regira;office;word;gotenberg;libreoffice;pdf</PackageTags>
   </PropertyGroup>

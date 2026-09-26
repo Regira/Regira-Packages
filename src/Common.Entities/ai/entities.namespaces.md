@@ -67,6 +67,17 @@
 
 ---
 
+## Reactors (after the commit)
+
+| Namespace | Types |
+|---|---|
+| `Regira.Entities.Reactors.Abstractions` | `IEntityReactor`, `IEntityReactor<>`, `EntityReactorBase<>`, `IEntityChange`, `IEntityChange<>`, `EntityChangeKind`, `EntityChangeExtensions` *(`HasChanged()`, `ChangedTo()`)* |
+| `Regira.Entities.Reactors` | `EntityChange<>` *(build one to unit-test a reactor)*, `EntityReactor<>` |
+| `Regira.Entities.EFcore.Reactors` | `EntityReactorInterceptor` |
+| `Regira.Entities.DependencyInjection.Reactors` | `ServiceCollectionReactorExtensions` *(`AddReactor<>()` — on `IServiceCollection` and `EntityServiceCollectionOptions`)* |
+
+---
+
 ## Normalizing
 
 | Namespace | Types |
@@ -96,7 +107,7 @@
 | `Regira.Entities.DependencyInjection.Preppers` | `ServiceCollectionPrepperExtensions` *(`AddPrepper<>()` — on `IServiceCollection` and `EntityServiceCollectionOptions`)* |
 | `Regira.Entities.DependencyInjection.Processors` | `ServiceCollectionProcessorExtensions` *(`AddProcessor<>()` — on `IServiceCollection`; the per-entity `e.AddProcessor<>()` verb rides the `For<>()` builder)* |
 | `Regira.Entities.DependencyInjection.Mapping` | `ServiceCollectionMappingExtensions` *(`AddMapping<>()`, `AddAfterMapper<>()`, `AfterMap<>()` — on `EntityServiceCollectionOptions`)*, `MappedEntityServiceBuilder<>` |
-| `Regira.Entities.Web.DependencyInjection` | `EntityServiceCollectionJsonExtensions` *(`ConfigureDefaultJsonOptions()` — extension on `IServiceCollection`; applies cycles/nulls/enum-names to both the MVC and `Http.Json` options, and registers the entity-exception filter — see `entities.setup` → P3)*, `EntityServiceCollectionExceptionExtensions` *(`MapEntityExceptions()` — the filter on its own, for a host configuring JSON itself)* |
+| `Regira.Entities.Web.DependencyInjection` | `EntityServiceCollectionJsonExtensions` *(`ConfigureDefaultJsonOptions()` — extension on `IServiceCollection`; applies cycles/nulls/enum-names and the UTC read of request-body `DateTime`s to both the MVC and `Http.Json` options, and registers the entity-exception filter — see `entities.setup` → P3)*, `EntityServiceCollectionExceptionExtensions` *(`MapEntityExceptions()` — the filter on its own, for a host configuring JSON itself)* |
 
 ---
 
@@ -255,6 +266,12 @@ Regira.Entities.Attributes   → ServerOwnedAttribute   // [ServerOwned] on the 
 Regira.Entities.EFcore.Primers.Abstractions   → EntityPrimerBase<T>, IEntityPrimer<T>
 Microsoft.EntityFrameworkCore.ChangeTracking  → EntityEntry
 Microsoft.EntityFrameworkCore                 → EntityState
+```
+
+### Creating a reactor
+```
+Regira.Entities.Reactors.Abstractions         → EntityReactorBase<T>, IEntityChange<T>, EntityChangeKind, HasChanged(), ChangedTo()
+Regira.Entities.DependencyInjection.Reactors  → AddReactor<T>()  // global: options.AddReactor<T>(); per entity: e.AddReactor<T>() needs no using
 ```
 
 ### Creating a normalizer

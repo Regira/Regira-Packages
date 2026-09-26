@@ -130,8 +130,8 @@ public class EntityServiceCollectionOptions(IServiceCollection services)
 
     /// <summary>
     /// Selects the default DbContext plumbing (<see cref="Models.DbContextWiring.All"/>): the
-    /// primer/normalizer/auto-truncate SaveChanges interceptors, the UTC date convention and the archived
-    /// query filter — shorthand for <see cref="WireDbContext"/> with <see cref="Models.DbContextWiring.All"/>.
+    /// primer/normalizer/auto-truncate/reactor SaveChanges interceptors, the UTC date convention, the archived
+    /// query filter and the concurrency-token convention — shorthand for <see cref="WireDbContext"/> with <see cref="Models.DbContextWiring.All"/>.
     /// <c>UseEntities&lt;TContext&gt;()</c> wires the selection into the context's options automatically
     /// (assignability match — abstract-base registrations cover derived provider-specific contexts, in any
     /// registration order). Called by <c>UseDefaults()</c>; call it directly in setups that skip

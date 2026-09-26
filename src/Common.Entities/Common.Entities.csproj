@@ -11,13 +11,16 @@
     <AssemblyName>Regira.Entities</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.3.3</Version>
+    <Version>6.4.0</Version>
     <Description>Abstractions and base types for the Regira CRUD entity framework.</Description>
     <PackageTags>regira;entities;crud;data;model;filtering;sorting;search;pagination;repository;abstractions;mcp;ai-agents</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.IO.Storage\Common.IO.Storage.csproj" />
     <ProjectReference Include="..\Common\Common.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Regira.Entities.DependencyInjection" />
   </ItemGroup>
   <!-- MSBuild targets — auto-imported into consuming builds via NuGet buildTransitive -->
   <ItemGroup>

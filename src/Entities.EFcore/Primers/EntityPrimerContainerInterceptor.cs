@@ -50,6 +50,7 @@ public class EntityPrimerContainerInterceptor(IServiceProvider serviceProvider, 
             ? PrimerDiscovery.GetPrimers(serviceProvider, serviceCollection)
             : serviceProvider.GetServices<IEntityPrimer>().Distinct().ToArray();
 
+        ArchivablePrimer.BeginPass(context);
         var groupedEntries = context
             .GetPendingEntries()
             .GroupBy(e => e.Entity.GetType())
@@ -73,6 +74,7 @@ public class EntityPrimerContainerInterceptor(IServiceProvider serviceProvider, 
 
         // only now is it known which concurrency tokens a primer moves — those are compared with the client's value
         context.ApplyUndecidedClientTokens();
+        ArchivablePrimer.EndPass(context);
     }
 }
 

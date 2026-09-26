@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure;
@@ -10,8 +11,9 @@ namespace Regira.DAL.EFcore.Conversions;
 
 /// <summary>
 /// Model-finalizing convention that applies <see cref="UtcDateTimeConverter"/> to every
-/// <see cref="DateTime"/> (and nullable) property. Runs at convention precedence, so any
-/// explicit per-property conversion configured in <c>OnModelCreating</c> wins (= per-property opt-out).
+/// <see cref="DateTime"/> (and nullable) property, including those of complex types (<c>ComplexProperty</c> value
+/// objects, nested ones too). Runs at convention precedence, so any explicit per-property conversion configured in
+/// <c>OnModelCreating</c> wins (= per-property opt-out).
 /// </summary>
 public class UtcDateTimeConvention : IModelFinalizingConvention
 {
@@ -21,13 +23,24 @@ public class UtcDateTimeConvention : IModelFinalizingConvention
     {
         foreach (var entityType in modelBuilder.Metadata.GetEntityTypes())
         {
-            foreach (var property in entityType.GetDeclaredProperties())
+            Apply(entityType);
+        }
+    }
+
+    // A complex type's properties are not the entity type's, so a DateTime inside a value object was read back
+    // Unspecified — served without the Z — while Created on the same row was fine.
+    private static void Apply(IConventionTypeBase type)
+    {
+        foreach (var property in type.GetDeclaredProperties())
+        {
+            if (property.ClrType == typeof(DateTime) || property.ClrType == typeof(DateTime?))
             {
-                if (property.ClrType == typeof(DateTime) || property.ClrType == typeof(DateTime?))
-                {
-                    property.Builder.HasConversion(Converter);
-                }
+                property.Builder.HasConversion(Converter);
             }
+        }
+        foreach (var complexProperty in type.GetDeclaredComplexProperties())
+        {
+            Apply(complexProperty.ComplexType);
         }
     }
 }

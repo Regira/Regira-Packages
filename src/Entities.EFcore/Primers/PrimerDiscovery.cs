@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Regira.Entities.EFcore.Primers.Abstractions;
+using Regira.Entities.EFcore.Utilities;
 
 namespace Regira.Entities.EFcore.Primers;
 
@@ -27,61 +28,5 @@ namespace Regira.Entities.EFcore.Primers;
 internal static class PrimerDiscovery
 {
     public static IEntityPrimer[] GetPrimers(IServiceProvider serviceProvider, IEnumerable<ServiceDescriptor> descriptors)
-    {
-        var seen = new HashSet<object>();
-        var result = new List<IEntityPrimer>();
-        foreach (var descriptor in descriptors)
-        {
-            if (!IsPrimerInterfaceRegistration(descriptor))
-            {
-                continue;
-            }
-
-            // Dedupe the dual (typed + untyped) registration of one implementation while keeping distinct
-            // lambda factories: keyed on the implementation identity, not the (per-transient) instance.
-            var identity = descriptor.ImplementationInstance
-                           ?? (object?)descriptor.ImplementationFactory
-                           ?? descriptor.ImplementationType
-                           ?? (object)descriptor;
-            if (!seen.Add(identity))
-            {
-                continue;
-            }
-
-            if (Materialize(serviceProvider, descriptor) is { } primer)
-            {
-                result.Add(primer);
-            }
-        }
-        return [.. result];
-    }
-
-    // Registered as the primer interface itself — IEntityPrimer or a closed IEntityPrimer<TEntity>.
-    // Excludes concrete self-registrations (ServiceType is the implementation) and open-generic
-    // IEntityPrimer<> definitions (can't be materialized without a concrete entity type).
-    private static bool IsPrimerInterfaceRegistration(ServiceDescriptor d)
-    {
-        if (d.IsKeyedService || d.ServiceType.IsGenericTypeDefinition)
-        {
-            return false;
-        }
-        return d.ServiceType == typeof(IEntityPrimer)
-               || (d.ServiceType.IsGenericType && d.ServiceType.GetGenericTypeDefinition() == typeof(IEntityPrimer<>));
-    }
-
-    // Resolve the instance for exactly this descriptor — independent of GetServices ordering.
-    private static IEntityPrimer? Materialize(IServiceProvider sp, ServiceDescriptor d)
-    {
-        if (d.ImplementationInstance is IEntityPrimer instance)
-        {
-            return instance;
-        }
-        if (d.ImplementationFactory is { } factory)
-        {
-            return factory(sp) as IEntityPrimer;
-        }
-        return d.ImplementationType is { } type
-            ? ActivatorUtilities.CreateInstance(sp, type) as IEntityPrimer
-            : null;
-    }
+        => HookDiscovery.GetHooks<IEntityPrimer>(serviceProvider, descriptors, typeof(IEntityPrimer<>));
 }

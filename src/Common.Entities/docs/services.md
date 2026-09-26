@@ -14,7 +14,7 @@ IEntityService<TEntity, TKey, TSearchObject, TSortBy, TIncludes>
 ## Service Layer Architecture
 
 - The default implementation is `EntityRepository`, which uses EF Core `DbContext` for data access
-- The `EntityRepository` is enriched by multiple helper services (QueryBuilders, Processors, Preppers, Primers)
+- The `EntityRepository` is enriched by multiple helper services (QueryBuilders, Processors, Preppers, Primers, Reactors)
 - Replace the default EntityService using `UseEntityService` with a custom implementation (e.g., `CachedEntityService` that adds caching on top of the repository)
 
 ## Standard EntityRepository Methods
@@ -252,7 +252,8 @@ e.Related<TRelated, TRelatedKey>(x => x.Collection,
 - Can be registered **globally** (apply to an interface or base type) or **per entity**
 - Timestamp primers (`HasCreatedDbPrimer`, `HasLastModifiedDbPrimer`) write UTC values by default; the
   auto-wired UTC date convention (`UseDefaults()`) makes dates read from the database materialize as
-  `DateTimeKind.Utc` and serialize to JSON with the `Z` suffix (standalone EF: `.AddUtcDateTimeConvention()` /
+  `DateTimeKind.Utc` and serialize to JSON with the `Z` suffix; `ConfigureDefaultJsonOptions()` reads
+  request-body `DateTime` properties as UTC too, so a prepper sees both sides on one clock (standalone EF: `.AddUtcDateTimeConvention()` /
   `SetUtcDateTimeConvention()` — `Regira.DAL.EFcore.Extensions`). Disable UTC handling with
   `UseEntities(e => e.UseUtc(false))` → local time, values used as given; the convention's converter follows
   the same policy (one process-wide decision: `Regira.Utilities.DateTimeDefaults.UseUtc`, on by default)
@@ -271,6 +272,55 @@ public abstract class EntityPrimerBase<T> : IEntityPrimer<T>
 
     public abstract Task PrepareAsync(T entity, EntityEntry entry, CancellationToken token = default);
     public virtual bool CanPrepare(T? entity) => entity != null;
+}
+```
+
+### Entity Reactors
+
+- Run once the changes of a save are **committed** — the place for side effects that must not happen for a write
+  that fails or rolls back: sending mail, calling another system, enqueueing a background job, starting a
+  follow-up workflow when a status changes. What must be part of the save itself stays a primer
+- Committed means: at once for a save that commits on its own, at `Commit()` for the saves inside an explicit
+  `BeginTransaction()` — also for contexts sharing that transaction through `UseTransaction`, whichever of them
+  commits it — and when an ambient `TransactionScope` completes. A failed save, a rollback, or a transaction
+  disposed without committing reacts to nothing
+- Not seen: a rollback to a savepoint — the reactions of the saves made after it still run — and a transaction
+  committed outside EF, on the `DbTransaction` itself — its reactions never run. A transaction begun outside EF and
+  handed to `UseTransaction` is known to have ended only when it commits or rolls back through EF: on Npgsql, which
+  reuses the transaction object of a pooled connection, one disposed without either leaves its reactions to the
+  next such transaction on that connection
+- Receive an `IEntityChange<TEntity>`: `Kind` (`Added`/`Modified`/`Deleted` — a soft delete is `Modified`),
+  `Entity` (the committed row, generated keys filled in), `Original` (the row as stored before the save) and
+  `ChangedProperties`, with the `HasChanged(x => x.Status)` and `ChangedTo(x => x.Status, value)` helpers. Values
+  are detached snapshots without navigations
+- The stored values come from the entity as it was loaded — by a tracking query, `Modify` or the `Related()` sync.
+  Every other write (`Update()` of a detached entity, a stub `Attach` or `Remove`, a delete through the service)
+  has its rows read during the save, one query per entity type — only for entity types a reactor is registered for.
+  `ExecuteUpdate` / `ExecuteDelete` bypass the change tracker, so no reactor sees them
+- Run in process before `SaveChanges()` returns, in registration order, in a DI scope of their own with a fresh
+  `DbContext` — a reactor that writes saves its own unit of work, and that save runs the reactors of what it wrote
+  (up to 8 levels deep). Hand slow work to a job system
+- A reactor that throws is logged and skipped: the save still succeeds and the other reactors still run
+- Wired into the DbContext options by `UseEntities(e => e.UseDefaults())`; without `UseDefaults()`, add
+  `DbContextWiring.Reactors` to `e.WireDbContext(...)`
+- Can be registered **globally** (`options.AddReactor<T>()` — a reactor on an interface or base type reaches every entity it covers) or **per entity** (`e.AddReactor<T>()` — that entity only, whatever type the reactor is written against)
+
+```csharp
+services.UseEntities<MyDbContext>(e => e.UseDefaults())
+    .For<Order>(e =>
+    {
+        // inline: the second argument is the reaction's own scoped service provider
+        e.React(x => x.Status, OrderStatus.Shipped, (change, services, token) =>
+            services.GetRequiredService<IOrderMailer>().SendShipped(change.Entity.Id, token));
+        // class-based
+        e.AddReactor<OrderInvoicingReactor>();
+    });
+
+public class OrderInvoicingReactor(IInvoiceService invoices) : EntityReactorBase<Order>
+{
+    public override bool CanReact(IEntityChange<Order> change) => change.ChangedTo(x => x.Status, OrderStatus.Delivered);
+    public override Task React(IEntityChange<Order> change, CancellationToken token = default)
+        => invoices.CreateFor(change.Entity.Id, token);
 }
 ```
 

@@ -63,7 +63,7 @@ Store paid keys under `Regira:LicenseKeys` in `appsettings.json`. A single key c
 
 ## Core Understanding
 
-**The moving parts:** POCO entity (`IEntity<TKey>`) → `IEntityService` (default `EntityRepository`, DbContext-backed) → `EntityControllerBase`, with a read `TDto` / write `TInputDto` pair and five pipeline extension points: **QueryBuilders, Processors, Preppers, Primers, AfterMappers**.
+**The moving parts:** POCO entity (`IEntity<TKey>`) → `IEntityService` (default `EntityRepository`, DbContext-backed) → `EntityControllerBase`, with a read `TDto` / write `TInputDto` pair and six pipeline extension points: **QueryBuilders, Processors, Preppers, Primers, Reactors, AfterMappers**.
 
 ### Generic Type System
 
@@ -89,7 +89,7 @@ EntitySet → QueryBuilders (Filters → Sorting → Paging → Includes) → Pr
 
 **Write Pipeline:**
 ```
-Input → Mapping* → AfterInput* → Preppers → SaveChanges → Primers (Interceptors) → Submit
+Input → Mapping* → AfterInput* → Preppers → SaveChanges → Primers (Interceptors) → Submit → Commit → Reactors
 ```
 *Only executed in API controllers
 
@@ -103,7 +103,7 @@ Input → Mapping* → AfterInput* → Preppers → SaveChanges → Primers (Int
 
 **Extend, don't add endpoints.** Reach for a `SearchObject` property before a custom controller action; add actions only when the base methods genuinely can't express the operation.
 
-**Default `EntityRepository` vs a wrapping service.** Stay on the default while the custom logic fits a QueryBuilder / Processor / Prepper / Primer. Wrap (`EntityWrappingServiceBase`) when the behavior sits *around* the call rather than inside the pipeline — caching, auditing, cross-entity validation, combining data sources.
+**Default `EntityRepository` vs a wrapping service.** Stay on the default while the custom logic fits a QueryBuilder / Processor / Prepper / Primer / Reactor. Wrap (`EntityWrappingServiceBase`) when the behavior sits *around* the call rather than inside the pipeline — caching, auditing, cross-entity validation, combining data sources.
 
 ---
 
@@ -205,7 +205,7 @@ A complete copy-paste slice (every file, in order) is in [`entities.examples.md`
 
 Need custom filters? Add a `SearchObject` (Step 2) and switch to the still-simple
 `services.For<X, int, XSearchObject>()` with controller `EntityControllerBase<X, int, XSearchObject, XDto, XInputDto>`.
-Add `SortBy`/`Includes` enums, query builders, processors, preppers, primers, normalizers, or after-mappers **only** when an optional step below calls for them — and note that typed sorting/includes make the entity *complex* (Step 0).
+Add `SortBy`/`Includes` enums, query builders, processors, preppers, primers, reactors, normalizers, or after-mappers **only** when an optional step below calls for them — and note that typed sorting/includes make the entity *complex* (Step 0).
 
 > **⚠️ For a pager, use `/search`, not List.** `GET` (List) → `ListResult` (items only, no count); `GET /search`
 > → `SearchResult` with `count`. Both endpoints exist on simple **and** complex, so a simple entity can page too.
@@ -217,10 +217,10 @@ The table below lists the optional steps; the required steps (1–6, 11–15) fo
 |---|---|---|
 | 7. Processors | Skip by default | You need to fill `[NotMapped]` or other derived values after fetching from the database |
 | 8. Preppers | Skip by default | You must compute totals/codes/FKs, validate a required FK exists (→ 400 not 500), or manage child collections before the entity reaches EF Core |
-| 9. Primers | Skip by default | You need EF Core interceptor behavior during `SaveChanges()` or transaction-aware stamping across modified entities |
+| 9. Primers & Reactors | Skip by default | A **primer**: you need EF Core interceptor behavior during `SaveChanges()` or transaction-aware stamping across modified entities. A **reactor**: a side effect must follow a committed change — mail, a background job, a follow-up workflow when a status changes |
 | 10. Mapping & AfterMappers | Skip extra mapping config by default | DTO enrichment needs an after-mapper (`UseMapping<…>().After(...)`), or a nested/child mapping needs help Mapster's convention can't infer (`AddMapping<TSource, TTarget>()`) |
 
-**Mnemonic:** Preppers run synchronously inside `Add()` / `Modify()` / `Save()`, *before* the change tracker — so computed values (totals, codes, FKs) are set the moment `await service.Add(item)` returns. Primers run later, in the `SaveChanges` interceptor, and can inspect every entity in the transaction.
+**Mnemonic:** Preppers run synchronously inside `Add()` / `Modify()` / `Save()`, *before* the change tracker — so computed values (totals, codes, FKs) are set the moment `await service.Add(item)` returns. Primers run later, in the `SaveChanges` interceptor, and can inspect every entity in the transaction. Reactors run last, once the transaction is committed.
 
 ---
 
@@ -405,7 +405,7 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 
 ---
 
-## Steps 6–10 — Pipeline services: filters, processors, preppers, primers, mapping
+## Steps 6–10 — Pipeline services: filters, processors, preppers, primers, reactors, mapping
 
 *All optional except Step 6. Reach for one only when a row in the optional-steps table (§Entity Implementation Workflow) applies — and read §Step 0's "who writes it?" decision before adding anything that touches a child collection.*
 
@@ -504,8 +504,9 @@ Two shapes, and the choice is forced by whether you need the stored row:
 | 2 | **Preppers, in registration order** — `e.Prepare(...)` delegates, `e.AddPrepper<T>()` classes, and the `Related()` collection sync alike | `IEntityService.Add`/`Modify`/`Save`, **before** `SaveChanges()` | the mapped entity, plus the stored `original` on the `EntityPrepperBase` shape |
 | 3 | `SaveChanges()` | your call (base controllers make it for you) | — |
 | 4 | **Primers** | an EF `SaveChangesInterceptor`, **inside** the save | the `EntityEntry`, so `entry.State` and `entry.OriginalValues` |
+| 5 | **Reactors, in registration order** | **after the commit**, in a DI scope of their own | an `IEntityChange<T>`: the committed row and the stored one (§Step 9 → Reactors) |
 
-Two consequences worth designing around: register a prepper that must observe a synced collection **after** the `e.Related()` that syncs it, and remember that a primer sees the entity *after* every prepper has finished with it. Only stage 4 runs for a writer that bypasses `IEntityService` and saves through the raw `DbContext` — the reason a field a workflow service legitimately writes belongs in a prepper, never a primer ([`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update).
+What a prepper works with: `modified` is the mapped incoming entity — the instance EF tracks and saves, so a value a prepper sets on it (or on one of its incoming owned rows, before or after the sync) is what gets written. `original` is a **no-tracking** copy of the stored row, loaded like `Details` (every include flag). The `Related()` sync never rewrites `original`'s collection: it holds the stored rows when your `Includes` loads that navigation and `null` otherwise — on either side of the sync. The sync only sets EF states: incoming rows become `Added`/`Modified`, stored rows missing from the payload `Deleted`, and a `null` collection is left untouched (a prepper registered before `Related()` that sets it to `null` keeps the rows from changing on that save). A primer sees the entity *after* every prepper has finished with it. **No prepper runs on `DELETE`** — `Remove` goes straight to the `DbSet`: a rule that forbids deleting a row in some state belongs in an override of the controller's `Delete` (or of `Remove` on an `EntityWrappingServiceBase`); primers do see `Deleted` entries. Only stages 4 and 5 run for a writer that bypasses `IEntityService` and saves through the raw `DbContext` — the reason a field a workflow service legitimately writes belongs in a prepper, never a primer ([`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update).
 
 `e.Related()` takes an optional parent-level `prepareFunc` followed by an optional `configure` callback — signature `Related<TRelated, TRelatedKey>(x => x.Collection, prepareFunc?, configure?)`:
 - Sync only: `e.Related<TRelated, TRelatedKey>(x => x.Collection, prepareFunc?)` — syncs the collection, optional per-entity prepare.
@@ -576,6 +577,66 @@ Primers — like the normalizer and auto-truncate interceptors — run on `SaveC
 > ⚠️ **A primer runs on _every_ `SaveChanges()` (it's an EF interceptor); a prepper runs only on the `IEntityService` write path.** So a primer that restores a server-owned field from `entry.OriginalValues` also fires on — and reverts — a domain/workflow service's raw-`DbContext` write. When a second writer legitimately owns a field (a status/state machine), guard it with a **prepper** — `[ServerOwned]`/`e.ServerOwned(…)` is that prepper in declarative form (§Step 5), or `EntityPrepperBase<T>` when you need the full stored row — not a primer. The choice table is in [`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update; the full second-writer treatment is under → Server-generated sequential codes (*Primer vs prepper when a second writer exists*).
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — Additional Patterns > Primers
+
+#### Reactors — after the commit
+
+A reactor runs once the save that changed a row is **committed**: the place for a side effect that must not
+happen for a write that fails or rolls back — mail, a call to another system, a background job, a follow-up
+workflow when a status changes. What has to be part of the save itself (a history row written atomically with
+the change) stays a primer.
+
+<!-- no-compile -->
+```csharp
+// inline — the reaction's own scoped IServiceProvider is the second argument
+e.React(x => x.Status, OrderStatus.Shipped, (change, services, token) =>
+    services.GetRequiredService<IOrderMailer>().SendShipped(change.Entity.Id, token));
+
+// class form — constructor-injected, with its own CanReact rule
+public class OrderShippedReactor(IOrderMailer mailer) : EntityReactorBase<Order>
+{
+    public override bool CanReact(IEntityChange<Order> change) => change.ChangedTo(x => x.Status, OrderStatus.Shipped);
+    public override Task React(IEntityChange<Order> change, CancellationToken token = default)
+        => mailer.SendShipped(change.Entity.Id, token);
+}
+e.AddReactor<OrderShippedReactor>();   // per entity — reacts to this entity only, even when written against an interface
+options.AddReactor<AuditReactor>();    // global — an EntityReactorBase<IHasTimestamps> reacts to every entity implementing it
+```
+
+**What a reactor receives** — `IEntityChange<TEntity>`:
+- `Kind` — `Added`, `Modified` or `Deleted`. A soft delete of an `IArchivable` is `Modified`:
+  `change.ChangedTo(x => x.IsArchived, true)`.
+- `Entity` — the row as committed, store-generated keys filled in (for `Deleted`, as it was stored); `Original`
+  — the row as stored before the save, `null` for `Added`. Both are detached snapshots of the scalar and complex
+  properties: navigations are not loaded (re-read through a service for them), and changing them persists nothing.
+- `change.HasChanged(x => x.Status)` / `ChangedProperties` — `Modified` rows only; `Added` and `Deleted` report
+  none. `change.ChangedTo(x => x.Status, value)` covers both an insert holding the value and an update that
+  brought it there — the usual trigger for a pipeline.
+- The stored values are the database's on every write. An entity that a tracking query loaded, or that
+  `IEntityService.Modify` or a `Related()` sync loaded, already holds them. Any other write — `Update()` of a
+  detached entity, a stub `Attach(new Order { Id = id })` then edited, a stub `Remove(...)`, a delete through the
+  service — has its rows read during the save, one query per entity type, and only for entity types a reactor is
+  registered for. `ExecuteUpdate` / `ExecuteDelete` bypass the change tracker: no reactor (and no primer) sees them.
+
+**How reactors run:**
+- **After the commit, never before** — at once for a save that commits on its own; at `Commit()` for every save
+  inside an explicit `BeginTransaction()`, also when several contexts share that transaction through
+  `UseTransaction` and one of them commits it; when an ambient `TransactionScope` completes. A failed save, a
+  rollback and a transaction disposed without committing react to nothing. Not seen: a rollback to a savepoint
+  (the reactions of the saves made after it still run), and a commit made on the `DbTransaction` itself rather than
+  through a context `UseEntities` wires (its reactions never run). A transaction begun outside EF and handed to
+  `UseTransaction` must also commit or roll back through EF: on Npgsql, one disposed without either leaves its
+  reactions to the next such transaction on that pooled connection.
+- **In process, before `SaveChanges()` returns** — the caller waits for them. Hand slow or retryable work to a
+  job system: the reactor only enqueues it (`IBackgroundJobClient.Enqueue(...)`).
+- **In registration order, per changed row, in a DI scope of their own** with a fresh `DbContext`: a reactor that
+  writes calls `SaveChanges()` itself, and that save triggers the reactors of what it wrote. Nesting stops at 8
+  levels with a logged error — guard `CanReact` so a chain ends.
+- **A reactor that throws is logged and skipped** — the data is committed, so the save still succeeds and the
+  other reactors still run. The save's `CancellationToken` does not cancel them.
+- On **every** `SaveChanges()` — the `IEntityService` path and raw `DbContext` writers, sync and async alike.
+  Wired by `UseDefaults()` (`DbContextWiring.Reactors`); à la carte, add that flag to `e.WireDbContext(...)`.
+
+> **→ See:** [`entities.examples.md`](./entities.examples.md) — Additional Patterns > Reactors
 
 ### Step 10: Mapping & AfterMappers (Optional extra configuration)
 
@@ -839,15 +900,16 @@ Examples:
 - Filter query builders → Additional Patterns > Global filter query builder
 - Preppers (inline) → Setup
 - Primers → Additional Patterns > Primers
+- Reactors → Additional Patterns > Reactors
 
 ### UseDefaults() — What It Registers
 
 `options.UseDefaults()` is a convenience method that registers, in one call:
 
 - **Paging defaults** — `DefaultPageSize = 10`, `MaxPageSize = 100` (override either afterwards). An omitted `pageSize` uses the default; a `pageSize <= 0` opts out and falls back to the max; every request is capped by `MaxPageSize`.
-- **UTC date handling** — on by default, one policy per process (`Regira.Utilities.DateTimeDefaults.UseUtc`): timestamps are written as UTC and client-supplied dates/filter inputs are normalized. Disable with `e.UseUtc(false)` → values are used as given with `DateTime.Now` timestamps, and the UTC convention's converter goes inert automatically.
+- **UTC date handling** — on by default, one policy per process (`Regira.Utilities.DateTimeDefaults.UseUtc`): timestamps are written as UTC, request-body `DateTime`s are read as UTC by `ConfigureDefaultJsonOptions()` (a local offset is converted, an offset-less value is taken as UTC — so a prepper compares them with `original` on one clock), and the built-in `Created`/`LastModified` filters normalize their inputs. A `DateTime` on your own SearchObject is bound as sent: call `.AsUtc()` (`Regira.Utilities`) on it in your filter. Disable with `e.UseUtc(false)` → values are used as given with `DateTime.Now` timestamps, and the UTC convention's converter goes inert automatically.
 - **Default primers** — `HasCreatedDbPrimer`, `HasLastModifiedDbPrimer`, `ArchivablePrimer`, `HasConcurrencyTokenDbPrimer` (timestamps, soft-delete stamping, concurrency-token minting).
-- **Automatic DbContext wiring** (`AddDefaultInterceptors()`) — `UseEntities<TContext>()` contributes the primer/normalizer/auto-truncate interceptors, the UTC date convention, the archived query filter and the concurrency-token convention to the context's options itself, so `AddDbContext` only needs the provider and the `DbContext` needs no Regira call. Matches by assignability: an abstract-base registration (`UseEntities<AppContextBase>()`) also wires derived provider-specific contexts, in any registration order. Fine-grained control via `e.WireDbContext(DbContextWiring …)`: `None` opts out; without `UseDefaults()` use `e.AddDefaultInterceptors()` for the full set or pick pieces à la carte (e.g. `DbContextWiring.PrimerInterceptors`).
+- **Automatic DbContext wiring** (`AddDefaultInterceptors()`) — `UseEntities<TContext>()` contributes the primer/normalizer/auto-truncate/reactor interceptors, the UTC date convention, the archived query filter and the concurrency-token convention to the context's options itself, so `AddDbContext` only needs the provider and the `DbContext` needs no Regira call. Matches by assignability: an abstract-base registration (`UseEntities<AppContextBase>()`) also wires derived provider-specific contexts, in any registration order. Fine-grained control via `e.WireDbContext(DbContextWiring …)`: `None` opts out; without `UseDefaults()` use `e.AddDefaultInterceptors()` for the full set or pick pieces à la carte (e.g. `DbContextWiring.PrimerInterceptors`).
 - **Default global query filters** — `FilterIdsQueryBuilder`, `FilterArchivablesQueryBuilder`, `FilterHasCreatedQueryBuilder`, `FilterHasLastModifiedQueryBuilder`. These are int-keyed; for full key-typed filtering of a non-int entity also call `AddDefaultGlobalQueryFilters<TKey>()`. The query builder runs one variant per filter family and prefers the key-matching one, so a non-int entity's key-agnostic defaults (the archived opt-ins, timestamp/`Q` filtering) still apply when only the int variant is registered.
 
 > **Hiding archived rows is part of `UseDefaults()`** (`DbContextWiring.ArchivedQueryFilter`): the `e => !e.IsArchived` EF query filter is wired into the context's options, so archived rows are hidden on every list/count *and* inside included collections without a line in the `DbContext`. The registered query builder translates the opt-ins on top of it — a caller opts in per request with `?archived=included` (both) or `?archived=only` (the recycle bin); flip the app-wide default with `DefaultArchivedFilter = ArchivedFilter.Included` on `UseEntities()`. ⚠️ The wiring reaches contexts resolved from DI only: a hand-constructed `new AppDbContext(options)` takes `.AddArchivedQueryFilter()` on its options builder. Startup validation errors out naming the entity when a model ends up without the filter. Full round-trip: [`entities.patterns.md`](./entities.patterns.md) → Soft Delete.
@@ -866,15 +928,15 @@ in the Development environment by default. It catches, with actionable messages:
 - **Controller ↔ `For<>()` arity mismatches** — an `EntityControllerBase<…>` subclass whose generic
   arguments match no registered `IEntityService<…>` fails startup listing the registered alternatives
   (enabled by `ConfigureDefaultJsonOptions()` or `ValidateEntityControllers()`), plus a missing `IEntityMapper`.
-- **Unwired interceptors** — primers/normalizers registered in DI while the `DbContext` options lack
+- **Unwired interceptors** — primers/normalizers/reactors registered in DI while the `DbContext` options lack
   the matching interceptor (they would silently never run). Only applies to setups without `UseDefaults()`
   (which auto-wires the interceptors) that also skipped `e.WireDbContext(...)`.
 - **Ignored `?q=`** (warning) — entities without `IHasNormalizedContent` and without a custom filter.
 - **Two write paths** (warning) — an entity synced by a parent's `Related()` that also has its own `.For<>()`.
   Supported when the parent's input DTO omits the collection; the validator can't see DTO shapes, so it always
   reports the pairing. Detects top-level `Related()` calls, not ones nested inside a `configure` builder.
-- **Attachments the input DTO cannot carry** (warning) — an `IHasAttachments` entity whose `UseMapping`
-  input DTO declares no `Attachments` collection. Every parent write then maps the collection to `null`
+- **Attachments the input DTO cannot carry** (warning) — an `IHasAttachments` entity whose input DTO (its
+  `UseMapping` one, or else its entity controller's `TInputDto`) declares no `Attachments` collection. Every parent write then maps the collection to `null`
   ("not sent"), so attachment adds/removes/reorders through the entity controller are silently ignored
   (§Attachments step 3).
 - **Null attachment `Uri`** (warning) — an attachment controller is mapped while the null resolver is in
@@ -1102,7 +1164,7 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
        set => Attachments = value?.Cast<ProductAttachment>().ToArray();
    }
    ```
-3. **Mapped owner (`UseMapping`)? Declare the collection on the input DTO:** `public ICollection<EntityAttachmentInputDto>? Attachments { get; set; }` (or your derived attachment input DTO). Without it the convention map drops the incoming collection on every save and the sync reads that as "attachments not sent" — adds, removes and reorders through the parent are silently ignored (200 OK, no error; the `/{objectId}/attachments` sub-routes still work, which masks it). Startup validation warns. Mirror on the read DTO with `ICollection<EntityAttachmentDto>?`.
+3. **Owner with its own input DTO (on the controller or through `UseMapping`)? Declare the collection on it:** `public ICollection<EntityAttachmentInputDto>? Attachments { get; set; }` (or your derived attachment input DTO). Without it the convention map drops the incoming collection on every save and the sync reads that as "attachments not sent" — adds, removes and reorders through the parent are silently ignored (200 OK, no error; the `/{objectId}/attachments` sub-routes still work, which masks it). Startup validation warns. Mirror on the read DTO with `ICollection<EntityAttachmentDto>?`.
 4. Create a controller inheriting `EntityAttachmentControllerBase<TAttachment>` — **name it after the attachment type** (`ProductAttachmentController` or `ProductAttachmentsController` for a `ProductAttachment`; any other name makes `Uri` unresolvable, see 7) and set the class route to the **owner base path**, e.g. `[Route("products")]` (resource-relative — see the route-prefix note in §Step 13). The base controller appends the sub-routes `{objectId}/attachments`, `attachments/{id}`, `{objectId}/files`, ….
 5. Add `DbSet<Attachment>` and `DbSet<TAttachment>` to the DbContext and map **both** relationships in
    `OnModelCreating`. ⚠️ The owner side is the one EF cannot infer — `ObjectId` is not a conventional FK name, so
@@ -1256,7 +1318,7 @@ Load that file when implementing one of these:
 - **Optimistic concurrency (stale-write detection)** — a concurrency token on both DTOs, so a PUT/PATCH built on a stale read answers 409 instead of silently overwriting; the primer that makes an application-owned token move, and what each route is checked against.
 - **Server-generated sequential codes** — mint `REQ-2026-00001` from a primer on `Added` and restore it on `Modified`; includes when that primer has to be a prepper instead, and why the counter is primed from the highest code.
 - **Cross-entity aggregates & report endpoints** — a dashboard controller belongs to no entity, so it **bypasses the pipeline**: global filter row security does not apply unless you repeat the predicate.
-- **Domain actions on an entity resource** — a state change (`POST /{id}/approve`) as a second controller on the entity's route, answered with a re-read; **role-gated transitions** for privileged states, and the append-only history shape.
+- **Domain actions on an entity resource** — a state change (`POST /{id}/approve`) as a second controller on the entity's route, answered with a re-read; **role-gated transitions** for privileged states, the append-only history shape, and where what *follows* a transition belongs.
 - **Aggregates over a non-owned child collection** — a parent total rolled up from children that own their own FK. Eventually consistent, seeding needs a second pass, and a child query filter can zero it on restore.
 - **Role-gated write authorization filter** — one global filter mapping controller → required role, keyed on the generated write actions because the controllers serve reads over `POST` too.
 - **Writing to a related entity from a prepper** — the typed `e.Prepare(entity, dbContext)` overload; `EntityInputException<T>` must name the *serviced* entity or it escapes as a 500.
@@ -1393,7 +1455,7 @@ accepts search objects matching its own key type, so non-int entities need the m
 |---|---|---|
 | `HasCreatedDbPrimer` | `IHasCreated` | Sets `Created` (UTC) on insert; normalizes client-supplied values to UTC |
 | `HasLastModifiedDbPrimer` | `IHasLastModified` | Sets `LastModified` (UTC) on update |
-| `ArchivablePrimer` | `IArchivable` | Soft-delete: sets `IsArchived = true` |
+| `ArchivablePrimer` | `IArchivable` | Soft-delete: sets `IsArchived = true` and writes nothing else of the row (what the later primers stamp aside); undoes EF's cascade to the loaded dependents first, so they stay as they are — a dependent removed in the same raw save as its parent is kept too |
 | `HasConcurrencyTokenDbPrimer` | `IHasConcurrencyToken` | Mints a new `ConcurrencyToken` on every update (a soft delete included) and on insert when empty |
 | `AutoTruncatePrimer` | All entities | Truncates strings to `[MaxLength]` |
 
@@ -1416,7 +1478,7 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 - **Row-level scoping:** register a global filter query builder that applies the caller's scope (tenant/owner) to every query — inject `IHttpContextAccessor` in its constructor and filter on the claim. The claim reaches the principal the same way whichever scheme authenticated the caller (bearer token, cookie session, API key), so the filter needs no knowledge of which one is in use. The filter pipeline runs on **every controller path**: List, Search, `Details(id)` (the id goes through the same filters), and the write endpoints' existence checks — so `PUT`/`PATCH`/`DELETE` on a foreign row 404 as well.
 - **What a scoping filter cannot do:** validate **create** (the client supplies the FK — stamp/verify `OwnerId` from the claim in a prepper, never trust the body) or guard **direct `IEntityService` calls** in custom code, which bypass the controller's filtered existence checks. Two variants of the create hole bite hardest:
   - ⚠️ **An attachment upload is a create the filter never sees.** `POST /{owner}/{id}/files` takes the owner id from the **route**, stamps it on a new link row and saves — no query runs, so no global filter applies, and any authenticated caller can attach a file to a row they cannot read. `PUT`/`DELETE` on an existing link load it through the service first and *are* filtered; only the upload is exposed. Add a prepper on the **link** entity that re-runs the owner's scope over the owner's `DbSet` and throws an `EntityInputException<TLink>` when it resolves nothing — which answers **400**, not the 404 the read path gives a foreign row, since the write pipeline maps only 400 and 409. Override the controller's `virtual Add` and return `NotFound()` instead where the two must agree.
-  - ⚠️ **Read scope is not write scope.** The write endpoints' existence checks run the *same* filter, so a read scope you widened deliberately — a manager who may see their reports' rows — silently grants that manager `PATCH`/`DELETE` on them too. When the two differ, keep the filter at read width and put the ownership check in a prepper.
+  - ⚠️ **Read scope is not write scope.** The write endpoints' existence checks run the *same* filter, so a read scope you widened deliberately — a manager who may see their reports' rows — silently grants that manager `PATCH`/`DELETE` on them too. When the two differ, keep the filter at read width and put the ownership check in a prepper — plus an override of the controller's `Delete`, since no prepper runs on a delete.
 - **Scope before any early return.** The idiomatic query-builder shape opens with `if (so == null) return query;` — for a security filter that is a hole, because `Details(id)` and the write existence checks can run with a null search object and would skip the scoping entirely. Derive from `GlobalFilteredQueryBuilderBase<TEntity>` (it runs on every query and takes no search object), apply the ownership predicate unconditionally, and return `query.Where(_ => false)` when no identity resolves — an anonymous or stale-token call must see nothing, not everything. A seeder or hosted job has no request either, so its `IEntityService` reads see nothing too — and so does `Modify`, whose re-read of the stored row then finds none and saves nothing: give it an explicit identity through a context it sets (the shape of `WritableTenantContext` in [`entities.blueprints.md`](./entities.blueprints.md) → Multi-tenancy — IHasTenantId + global filter + primer), or have it read the `DbContext` directly. Don't equate "no `HttpContext`" with "system": work started from inside a request inherits that request's context.
 - **Multiple global filters accumulate (AND).** Every registered filter whose `TEntity` the entity satisfies runs, and their predicates compose — so an `IOwnedEntity`-wide filter and a `ShoppingList`-specific one both apply. `TEntity` may be an interface, a base class, **or the concrete entity type**. The one case that does *not* stack is the key variants of a single filter family (`FilterArchivablesQueryBuilder` vs `<Guid>`): one variant runs, preferring the key-matching one. Two filters deriving separately from `GlobalFilteredQueryBuilderBase<>` are always distinct families and never suppress each other. A filter scoped to a type **no registered entity satisfies** never runs at all — startup validation warns about this, which is your signal that a security filter is inert.
 - **Role/permission tiers** (admin vs editor): declare claim policies (`AddAuthorization(o => o.AddPolicy("EditorOnly", p => p.RequireClaim(...)))`) and gate the baseline with `MapControllers().RequireAuthorization("AdminOrEditor")`. For "everyone reads, some roles write", one global filter carries the tier — worked recipe with the traps in [`entities.patterns.md`](./entities.patterns.md) § Role-gated write authorization filter. ⚠️ Gate that filter on an allow-list of your own controllers, and remember `POST /{entity}/search` and `POST /{entity}/list` are reads. ⚠️ `RequireClaim`/`RequireRole` and any hand-written claim read must use the spelling the *validated* principal carries, and getting it wrong costs rows, not errors (next bullet). The claim contract is one lookup away in `security.instructions` → *Claims emitted per scheme* and *Claim normalization*. The schemes do **not** all agree on the role claim type (`role`, Entra's `roles`, and the long `ClaimTypes.Role` URI are all in play), so read roles with `User.FindRoles()` and scopes with `User.HasScope()` rather than a single `HasClaim`; on a normalized principal — every scheme except the API key — the canonical `sub`/`name`/`email`/`role` spellings are present alongside the provider's, so `RequireClaim("role", …)` does hold.
@@ -1483,9 +1545,9 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 |---|---|---|
 | Normalizer not running | Interceptor not wired — no `UseDefaults()` and no `WireDbContext(NormalizerInterceptors)` | Call `UseDefaults()` (or `e.WireDbContext(DbContextWiring.NormalizerInterceptors)`) — startup validation fails fast on this in Development |
 | Primers not running | Interceptor not wired — no `UseDefaults()` and no `WireDbContext(PrimerInterceptors)` | Same as above |
+| Reactor never runs | Interceptor not wired (no `UseDefaults()`, no `DbContextWiring.Reactors`); or the save ran inside a transaction that was never committed through EF | Wire it (startup validation warns); commit through the `IDbContextTransaction` — §Step 9 → Reactors |
 | `EntityControllerBase<>` constructor errors / DI fails to resolve controller | Explicit constructor injecting `IEntityService<>` declared inside the controller class | Remove the constructor — `EntityControllerBase<>` resolves its service internally via the framework; no constructor is needed or expected |
 | `EntityWrappingServiceBase` — infinite loop | Inner service is the wrapper itself | Ensure `UseEntityService<T>()` registers the wrapper; `AddTransient` registers the interface |
-| Custom Mapster mapping silently ignored in one module | Several DI modules each call `UseMapsterMapping()` — each registers a `TypeAdapterConfig` singleton and DI resolves the **last** one | Register the module whose custom mappings must win **last** (or consolidate all `AddMapping`/`MapWith` config into a single `UseMapsterMapping()` call) |
 | Startup throws a `LicenseException` naming entities | A registration bucket is full (free tier: 5 simple + 2 complex) | Compare the startup log line `N simple / N complex registered → tier =` against your §Step 0 tally, then apply an overflow remedy from §Step 0 |
 
 ### Troubleshooting — packages and provider versions

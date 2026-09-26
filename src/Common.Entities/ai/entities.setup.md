@@ -327,18 +327,20 @@ dotnet add package Serilog.Settings.Configuration
 > literals) is misread by the C# compiler/tooling on Windows as Windows-1252, producing mojibake
 > (`Lille Studio â€” Meeting rooms`) that survives into the database and out through the API.
 >
-> **Write plain ASCII and use `\uXXXX` escapes for any non-ASCII literal.** That is the only remedy that
+> **Write plain ASCII and use `\uXXXX` escapes for any non-ASCII literal** (`\UXXXXXXXX` above U+FFFF — every
+> emoji; a `@"..."` or raw string literal processes no escapes, so keep such text in a regular string). That is the only remedy that
 > holds when files are written by a tool: an `.editorconfig` configures *editors*, so a process writing bytes
 > directly ignores it and every file it creates is BOM-less regardless. Non-ASCII prose in comments is the
 > norm, so this bites early and the fix is a full reseed.
 >
 > Audit and escape an existing file without improvising a script — this reads first and writes once, so a
-> failure mid-way cannot truncate the source:
+> failure mid-way cannot truncate the source; it drops a BOM, and it holds no backslash for a shell to mangle
+> (`chr(92)`), so it runs unchanged from bash and PowerShell:
 > ```bash
 > # report every non-ASCII character, with its line number
 > grep -nP "[^\x00-\x7F]" Data/SeedCatalog.cs
-> # rewrite the file with \uXXXX escapes in place of them
-> python -c "import sys,io; p=sys.argv[1]; s=io.open(p,encoding='utf-8').read(); io.open(p,'w',encoding='ascii').write(''.join(c if ord(c)<128 else '\\\\u%04x'%ord(c) for c in s))" Data/SeedCatalog.cs
+> # rewrite the file with \uXXXX / \UXXXXXXXX escapes in place of them
+> python -c "import sys,io; p=sys.argv[1]; s=io.open(p,encoding='utf-8-sig').read(); e=lambda c: chr(92)+('u%04x'%ord(c) if ord(c)<65536 else 'U%08x'%ord(c)); io.open(p,'w',encoding='ascii').write(''.join(c if ord(c)<128 else e(c) for c in s))" Data/SeedCatalog.cs
 > ```
 >
 > If you do write non-ASCII, the file must carry a UTF-8 BOM — verify it after writing, per file, and pin the
@@ -389,7 +391,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 // ... usings from BasicApi
 using Microsoft.EntityFrameworkCore;
 
-// HTTP contract: ignore reference cycles + nulls, serialize enums as names — applied to BOTH the MVC
+// HTTP contract: ignore reference cycles + nulls, serialize enums as names, read DateTimes as UTC — applied to BOTH the MVC
 // options and Http.Json.JsonOptions, the set AddOpenApi() and minimal-API results read, so the generated
 // schema matches the wire format — plus the entity-exception filter (400 / 409) for every action.
 builder.Services.AddControllers();
@@ -422,7 +424,9 @@ builder.Services.AddEntityServices();
 > instead of names. Configuring only `AddControllers().AddJsonOptions(...)` fixes the controller wire format
 > but **not** `Http.Json.JsonOptions` — the set `AddOpenApi()` and minimal-API results (`Results.Ok(...)`)
 > read — so the generated schema types enums as integers while the API sends names, a mismatch nothing
-> reports that reaches the SPA as wrong types. `ConfigureDefaultJsonOptions()` applies all three to both; its
+> reports that reaches the SPA as wrong types. `ConfigureDefaultJsonOptions()` applies all three to both — plus
+> a UTC read of request-body `DateTime` properties (a local offset converted, an offset-less value taken as UTC)
+> that leaves the schema and the wire format alone; its
 > `configure` / `configureHttp` callbacks target the two sets separately (a converter added to only one
 > re-creates the mismatch).
 >

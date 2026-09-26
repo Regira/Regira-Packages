@@ -10,7 +10,7 @@ The proposal, in order:
 
 1. Extract the orchestration in `ControllerExtensions` into HTTP-neutral request handlers, one per operation (details, list, search, save, patch, delete).
 2. Dispatch them through a small in-house sender with pipeline behaviours. No third-party mediator library.
-3. Register the closed handlers from `For<>()`, where every type argument is already known.
+3. Resolve the default handler for each request by convention, with a registered closed handler as the per-entity override. `For<>()` registers nothing, and the DI package is untouched.
 4. Keep `EntityControllerBase` and its seven overloads exactly as they are for consumers, and have each action build a request and call the sender. Routes, arity contract, filters, validator, docs and tests stay unchanged. This is a minor version of `Regira.Entities.Web`.
 5. Expose the sender as a first-class API next to the controllers: hand-written domain actions, jobs, seeders and a consumer's own endpoints send the same requests the controllers send.
 6. Optionally, map minimal-API endpoints from the registrations with one call, `app.MapEntityEndpoints()`. An application that chooses it writes no controller subclass at all; the controllers stay in the package for applications that keep them.
@@ -143,21 +143,19 @@ Design decisions inside the handlers:
 
 The sender closes `IEntityRequestHandler<,>` over the request's runtime type and the response type, caches the closed type per request type, resolves it from the request scope, and wraps it in every registered `IEntityPipelineBehavior<,>` for that pair. It is roughly a hundred lines and has no dependency beyond `Microsoft.Extensions.DependencyInjection.Abstractions`, which `Regira.Entities` already references. The reasons to build rather than take a library are on their own section below.
 
-### Step 3: registration in `For<>()`
+### Step 3: default handlers by convention, overrides by registration
 
-The built-in container needs a one-to-one type-parameter mapping for open-generic registrations. `DetailsHandler<TEntity, TKey, TDto>` does not map onto `IEntityRequestHandler<,>`, so the handlers are registered closed at `For<>()` time, where `TEntity`, `TKey`, `TSearchObject`, `TSortBy` and `TIncludes` are known. The mapped builder `MappedEntityServiceBuilder<TContext, TEntity, TKey, TDto, TInputDto>` in `Entities.DependencyInjection` already carries the DTO pair.
+The sender asks the request scope for `IEntityRequestHandler<TRequest, TResponse>`. When nothing is registered, it builds the default by convention from the request type, `DetailsQuery<TEntity, TKey, TDto>` to `DetailsHandler<TEntity, TKey, TDto>`, through `ActivatorUtilities`, with the closed type cached per request type. The built-in container cannot express that mapping as an open-generic registration, since the handler's type parameters do not line up one to one with the interface's, which is why the default is built rather than registered. `For<>()` registers nothing, and the DI package is untouched.
+
+A consumer overrides one operation for one entity by registering a closed handler, which replaces the `virtual` action override without a controller subclass:
 
 ```csharp
-// inside the service builder's build step, once TDto and TInputDto are known
-services.TryAddTransient<
-    IEntityRequestHandler<DetailsQuery<TEntity, TKey, TDto>, DetailsResult<TDto>>,
-    DetailsHandler<TEntity, TKey, TDto>>();
-// ... same for list, search, save, patch, delete
+services.AddTransient<
+    IEntityRequestHandler<DetailsQuery<Product, int, ProductDto>, DetailsResult<ProductDto>>,
+    CachedProductDetailsHandler>();
 ```
 
-`TryAdd` lets a consumer override one operation for one entity by registering their own closed handler before `For<>()`, which replaces the `virtual` action override without a controller subclass. The free-tier registration count stays on `For<>()` and is unaffected.
-
-Open point: today the DTO pair is optional at registration and lives only on the controller. Handlers for an entity registered without DTOs can close over `TEntity` as both DTO types, which is what `EntityControllerBase<TEntity>` does now.
+The free-tier registration count stays on `For<>()` and is unaffected. The DTO pair travels on the request, so an entity registered without `UseMapping()` still works through the controllers exactly as `EntityControllerBase<TEntity>` does now.
 
 ### Step 4: controllers become adapters
 
@@ -219,16 +217,18 @@ What the framework knows per entity at startup, and where it comes from:
 
 | Fact | Source today |
 | --- | --- |
-| `TEntity`, `TKey`, `TSearchObject`, `TSortBy`, `TIncludes` | The `For<>()` overload that was called |
+| `TEntity`, `TKey`, `TSearchObject`, simple or complex | `EntityRegistrationLog`, which every `For<>()` overload already writes to |
+| `TSortBy`, `TIncludes` | Known in the complex `For<>()` overloads but not yet logged: two more `Type` fields on the same record |
 | `TDto`, `TInputDto` | `UseMapping<TDto, TInputDto>()`, which already registers an `EntityMappingRegistration` singleton with the three types. An entity without one gets `TEntity` as both, as `EntityControllerBase<TEntity>` does |
 | Attachment sub-routes | `HasAttachments()` and `WithAttachments()` |
-| Route | Nothing; today it is the controller's `[Route]`. Convention: the kebab-case plural of the entity name (`Product` to `products`, `PersonAttachment` to `person-attachments`), the spelling the SPA calls, with a per-entity override |
+| Route | Nothing; today it is the controller's `[Route]`. Convention: the kebab-case plural of the entity name (`Product` to `products`, `PersonAttachment` to `person-attachments`), the spelling the SPA calls, with a per-entity override through the web-side `Endpoints()` extension |
 
-Mechanism: `For<>()` records an endpoint descriptor (the closed types, the route, the per-entity options) as a singleton in `Entities.DependencyInjection`, which has no ASP.NET Core dependency. `MapEntityEndpoints()` in `Entities.Web` reads the descriptors and, once at startup, closes a generic `MapEntity<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto, TInputDto>` per descriptor with `MakeGenericMethod`. Every endpoint is a lambda that builds the request and calls the sender, so there is no reflection per request. The call returns the `RouteGroupBuilder`, and a callback hands out the per-entity group for policies that differ by entity.
+Nothing web-related enters the DI package. It already records each registration's types in `EntityRegistrationLog` and the DTO pair in `EntityMappingRegistration`, both plain `Type` data. Route and endpoint options are an extension method that `Entities.Web` defines on the builder, the way `UseAttachmentUris()`, `ConfigureDefaultJsonOptions()` and `ValidateEntityControllers()` already extend DI types from the web side; it stores an `EntityEndpointOptions` per entity in the service collection the builder exposes. `MapEntityEndpoints()` in `Entities.Web` joins the three at startup and closes a generic `MapEntity<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto, TInputDto>` per entity with `MakeGenericMethod`. Every endpoint is a lambda that builds the request and calls the sender, so there is no reflection per request. The call returns the `RouteGroupBuilder`, and a callback hands out the per-entity group for policies that differ by entity.
 
 Per-entity control lives on the registration, next to the pipeline configuration it belongs with:
 
 ```csharp
+// Endpoints(...) is an extension method from Regira.Entities.Web; the builder itself knows nothing of routes
 services.For<Product, ProductSearchObject, ProductSortBy, ProductIncludes>(e =>
 {
     e.UseMapping<ProductDto, ProductInputDto>();
@@ -288,18 +288,18 @@ The change touches no route, envelope or consumer signature, so the existing int
 | Front-end guide for `@regira/modules` mirroring the route table | 1 |
 | Recipes in `entities.patterns.md` calling the controller helpers directly | 5 places |
 
-**Versioning.** One minor of `Regira.Entities.Web`: new public types, no consumer adoption required. If the handlers move to `Entities.DependencyInjection` so a non-web host can use them, that package takes a minor too. The optional minimal-API surface is a minor of `Regira.Entities.Web` and `Regira.Entities.DependencyInjection`, since `For<>()` gains a route argument and an endpoint descriptor. No major: the controllers are neither removed nor changed in contract.
+**Versioning.** One minor of `Regira.Entities.Web`: new public types, no consumer adoption required. The optional minimal-API surface is a further minor of `Regira.Entities.Web`, and a patch of `Regira.Entities.DependencyInjection` for the two `Type` fields added to `EntityRegistrationLog`. No major: the controllers are neither removed nor changed in contract.
 
 **Rollout order.**
 
 1. Steps 1 and 2 with unit tests on the handlers and the sender, no controller change yet. `EntitySaveHelperTests` is the template for testing the helpers without a host.
-2. Step 3, with `StartupValidationTests` extended to assert the closed handler registrations exist for each `For<>()` shape.
+2. Step 3, with tests that the convention resolves a default handler for every request shape and that a registered closed handler wins over it.
 3. Step 4, run the full `Entities.Web.Testing` suite. The `Duration` field moving to a behaviour is the one observable change to check.
 4. Guide update through `/update-guide`: the web namespaces guide gains the `Operations` namespace, the patterns guide gains the handler-override recipe and the sender-from-a-job recipe, `CHANGELOG.md` gets the bullets.
 5. The optional minimal-API surface as its own change, starting from its work-item table, with the query-binding item spiked first because it decides whether `SearchObject` needs a `BindAsync`.
 
 **Open questions.**
 
-- Should the handlers live in `Regira.Entities.Web` or one package lower, so a non-web host can send the same requests from a job?
-- Does the DTO pair stay declared through `UseMapping<TDto, TInputDto>()`, with `TEntity` as the fallback for an unmapped entity, or does `For<>()` take the pair directly?
+- Do the result records and `EntitySaveHelper` move one package down later, so a non-web host can use the handlers without referencing `Regira.Entities.Web`?
+- For the endpoint mapper, does the DTO pair stay declared through `UseMapping<TDto, TInputDto>()`, with `TEntity` as the fallback for an unmapped entity?
 - Is the `Duration` field worth keeping once timing is a behaviour, or does it become opt-in?

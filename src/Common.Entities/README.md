@@ -72,6 +72,7 @@ Assuming a `Repository` with a `DbContext` is being used.
 1. SaveChanges (DbContext)
    1. Primers (Interceptors)
    1. Submit changes
+1. Reactors (after the commit)
 
 *\*: only executed when using API controllers*
 
@@ -80,6 +81,7 @@ Assuming a `Repository` with a `DbContext` is being used.
 - **Processors**: Modify entities after fetching (e.g. setting non-mapped properties)
 - **Preppers**: Executed by the Repository before saving to prepare entities
 - **Primers**: EF Core SaveChangesInterceptors triggered by DbContext when executing SaveChanges
+- **Reactors**: Run once the save is committed, in a DI scope of their own (e.g. sending mail, starting a follow-up workflow when a status changes)
 - **AfterMapper**: Decorates DTOs or Entities after Mapper completes (e.g. calculating URIs)
 
 ## Dependency Injection

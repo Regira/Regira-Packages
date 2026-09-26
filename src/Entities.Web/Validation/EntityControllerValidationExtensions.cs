@@ -10,7 +10,8 @@ public static class EntityControllerValidationExtensions
 {
     /// <summary>
     /// Registers the startup check that every <c>EntityControllerBase&lt;...&gt;</c> subclass has matching
-    /// <c>For&lt;&gt;()</c> registrations (see <see cref="ControllerRegistrationValidator"/>). Also registered
+    /// <c>For&lt;&gt;()</c> registrations (see <see cref="ControllerRegistrationValidator"/>), and hands the
+    /// controllers' DTOs to the checks that judge DTOs (<see cref="ControllerDtoShapeSource"/>). Also registered
     /// automatically by <c>UseEntities()</c>. Runs in Development by default.
     /// </summary>
     public static EntityServiceCollectionOptions ValidateEntityControllers(this EntityServiceCollectionOptions options)
@@ -23,6 +24,7 @@ public static class EntityControllerValidationExtensions
     public static IServiceCollection ValidateEntityControllers(this IServiceCollection services)
     {
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, ControllerRegistrationValidator>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityDtoShapeSource, ControllerDtoShapeSource>());
         return services;
     }
 }

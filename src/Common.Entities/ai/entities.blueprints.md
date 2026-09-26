@@ -349,7 +349,7 @@ modelBuilder.Entity<PartyRelationship>(entity =>
 ```
 
 - `Party` is `IArchivable`, so the archived query filter `UseDefaults()` wires in applies — on the `Party` root only, which covers both discriminator values.
-- Owned children **cascade**; the self-referencing relation FKs are **`Restrict`** (cascade on a self-reference is rejected by SQL Server, and archival goes through `IArchivable` anyway). Per the `OnDelete` rule in the instructions: deleting a still-referenced party surfaces as a 409 Conflict; guard it in a prepper for a field-level 400.
+- Owned children **cascade**; the self-referencing relation FKs are **`Restrict`** (cascade on a self-reference is rejected by SQL Server, and archival goes through `IArchivable` anyway). Per the `OnDelete` rule in the instructions: deleting a still-referenced party surfaces as a 409 Conflict (no prepper runs on a delete, so the 409 is the answer).
 - The unique index makes a duplicate edge a `UNIQUE constraint failed` instead of silent data drift.
 
 ### Registration

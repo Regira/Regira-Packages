@@ -116,9 +116,9 @@ public sealed class ProviderHarness(DbProvider provider) : IAsyncDisposable
     /// Builds a fresh ServiceProvider wired with UseEntities().For&lt;Widget&gt;().UseDefaults() over the
     /// harness's provider, with the primer + normalizer interceptors so Created / NormalizedContent /
     /// NormalizedTitle are populated on save. A default capability-interface sort is registered so the
-    /// interface-cast sorting path is exercised.
+    /// interface-cast sorting path is exercised. <paramref name="configure"/> adds what a fixture needs on top.
     /// </summary>
-    public ServiceProvider BuildServiceProvider()
+    public ServiceProvider BuildServiceProvider(Action<IServiceCollection>? configure = null)
     {
         var services = new ServiceCollection();
 
@@ -148,6 +148,7 @@ public sealed class ProviderHarness(DbProvider provider) : IAsyncDisposable
                 // ((IHasNormalizedTitle)x).NormalizedTitle cast-in-expression-tree that can fail to translate.
                 e.SortBy(query => query.SortQuery<Widget, int>());
             });
+        configure?.Invoke(services);
 
         return services.BuildServiceProvider();
     }

@@ -931,11 +931,15 @@ app.UseEndpoints(endpoints =>
 `auth/refresh-token` is public only when refresh tokens are registered — otherwise it answers `404` — and it is the
 one that most needs rate-limiting, since the refresh token it accepts is itself the credential.
 
-⚠️ **`POST users` (create user) is guarded** — the default suits an invite-only back office. For **self-registration**, override it:
+⚠️ **`POST users` (create user) requires a signed-in caller — any signed-in caller.** It carries no role check, so
+in an app with roles every user can create accounts: gate it like any other write (a role filter, or
+`[Authorize(Roles = …)]` on an override). It resolves `IEmailSender` (`Microsoft.AspNetCore.Identity.UI.Services`)
+per request, to mail the confirmation link — register one, or the call fails at runtime rather than at startup.
+For **self-registration**, override it:
 
 ```csharp
 [AllowAnonymous]
-public override Task<ActionResult<TUserDto>> Create(UserInput input) => base.Create(input);
+public override Task<IActionResult> Create(UserInput model, [FromServices] IEmailSender mailer) => base.Create(model, mailer);
 ```
 
 Open sign-up means anyone can create an account: rate-limit it, and keep any role/tenant assignment server-side rather than reading it from the payload.

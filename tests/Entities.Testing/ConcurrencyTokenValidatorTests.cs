@@ -8,6 +8,7 @@ using Regira.Entities.DependencyInjection.Extensions;
 using Regira.Entities.DependencyInjection.Mapping;
 using Regira.Entities.DependencyInjection.Primers;
 using Regira.Entities.DependencyInjection.ServiceCollections.Models;
+using Regira.Entities.DependencyInjection.Validation;
 using Regira.Entities.EFcore.Primers;
 using Regira.Entities.EFcore.Primers.Abstractions;
 using Regira.Entities.Models.Abstractions;
@@ -223,6 +224,48 @@ public class ConcurrencyTokenValidatorTests
             Assert.That(issues[0].Message, Does.Contain("last-write-wins"), "the message must carry the symptom");
             Assert.That(issues[0].Message, Does.Contain("public Guid Version { get; set; }"), "the message must carry the remedy");
         });
+    }
+
+    /// <summary>What Regira.Entities.Web contributes from the entity controllers' generic arguments.</summary>
+    private sealed class DeclaredShapes(params EntityMappingRegistration[] shapes) : IEntityDtoShapeSource
+    {
+        public IEnumerable<EntityMappingRegistration> GetDtoShapes() => shapes;
+    }
+
+    private sealed class ThrowingShapes : IEntityDtoShapeSource
+    {
+        public IEnumerable<EntityMappingRegistration> GetDtoShapes() => throw new InvalidOperationException("broken application part");
+    }
+
+    [Test]
+    public async Task A_Shape_Source_That_Throws_Is_Reported_Not_Swallowed()
+    {
+        // the DTO checks then judge UseMapping registrations only — that has to be said, not left for a silent pass
+        var issues = await Issues<Order>(null, register: s => s.AddSingleton<IEntityDtoShapeSource>(new ThrowingShapes()), minimum: LogLevel.Information);
+
+        Assert.That(issues, Has.Some.Matches<(LogLevel Level, string Message)>(i =>
+            i.Level == LogLevel.Information && i.Message.Contains("broken application part") && i.Message.Contains(nameof(ThrowingShapes))));
+    }
+
+    [Test]
+    public async Task A_Token_A_Controllers_Input_Dto_Cannot_Carry_Is_Reported_Without_UseMapping()
+    {
+        // The documented default declares the DTOs on the controller alone; the check used to see only UseMapping
+        // registrations and so stayed silent while every PUT went last-write-wins.
+        var issues = await Issues<Order>(null, register: s =>
+            s.AddSingleton<IEntityDtoShapeSource>(new DeclaredShapes(new EntityMappingRegistration(typeof(Order), typeof(OrderDto), typeof(BareDto)))));
+
+        Assert.That(issues, Has.Count.EqualTo(1));
+        Assert.That(issues[0].Message, Does.Contain("Order.Version").And.Contain(nameof(BareDto)));
+    }
+
+    [Test]
+    public async Task A_UseMapping_Registration_Wins_Over_A_Declared_Shape()
+    {
+        var issues = await Issues<Order>(new EntityMappingRegistration(typeof(Order), typeof(OrderDto), typeof(OrderInputDto)), register: s =>
+            s.AddSingleton<IEntityDtoShapeSource>(new DeclaredShapes(new EntityMappingRegistration(typeof(Order), typeof(OrderDto), typeof(BareDto)))));
+
+        Assert.That(issues, Is.Empty);
     }
 
     [Test]

@@ -78,7 +78,10 @@ public static class DbContextExtensions
         }
         foreach (var entity in relatedItemsToDelete)
         {
-            dbContext.Entry(entity).State = EntityState.Deleted;
+            var entry = dbContext.Entry(entity);
+            entry.State = EntityState.Deleted;
+            // the row comes from the stored collection, so its values are the stored ones
+            entry.MarkStoredOriginals();
         }
         foreach (var entity in relatedItemsToModify)
         {

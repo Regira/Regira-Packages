@@ -202,7 +202,7 @@ builder.Services
     .For<Product>(e => e.HasAttachments<MyDbContext, Product, ProductAttachment>(x => x.Attachments));
 ```
 
-> **Mapped owner (`UseMapping`)?** Declare the collection on the owner's input DTO —
+> **Owner with its own input DTO?** Declare the collection on the owner's input DTO —
 > `public ICollection<EntityAttachmentInputDto>? Attachments { get; set; }` — and mirror it on the read DTO
 > with `ICollection<EntityAttachmentDto>?`. Without the input property, the convention map yields a `null`
 > collection on every parent save, which the sync reads as "attachments not sent": adds, removes and
