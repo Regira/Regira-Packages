@@ -62,6 +62,29 @@ public class SpireTests() : WordTestsBase(new WordService(), "Spire")
     [Test]
     public override Task A_Parameter_Key_Is_Matched_Literally() => base.A_Parameter_Key_Is_Matched_Literally();
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public override Task A_Conditional_Block_Keeps_The_Branch_That_Holds(bool isPaid) => base.A_Conditional_Block_Keeps_The_Branch_That_Holds(isPaid);
+
+    [Test]
+    public override Task A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value() => base.A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value();
+
+    [Test]
+    public override Task Conditional_Blocks_Nest() => base.Conditional_Blocks_Nest();
+
+    [Test]
+    public override Task A_Conditional_Block_Drops_A_Table_Or_A_Cells_Content() => base.A_Conditional_Block_Drops_A_Table_Or_A_Cells_Content();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Header_Is_Resolved() => base.A_Conditional_Block_In_A_Header_Is_Resolved();
+
+    [Test]
+    public override void A_Malformed_Conditional_Block_Fails() => base.A_Malformed_Conditional_Block_Fails();
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public override Task A_Dropped_Branch_Inserts_No_Nested_Document(bool hasAppendix) => base.A_Dropped_Branch_Inserts_No_Nested_Document(hasAppendix);
+
     [TestCase(HeaderFooterType.Even, true)]
     [TestCase(HeaderFooterType.Even, false)]
     [TestCase(HeaderFooterType.FirstPage, true)]
@@ -75,6 +98,37 @@ public class SpireTests() : WordTestsBase(new WordService(), "Spire")
     [TestCase(FileFormat.Odt, "converted.odt")]
     [TestCase(FileFormat.EPub, "converted.epub")]
     public override Task Convert_To(FileFormat format, string outputName) => base.Convert_To(format, outputName);
+
+    [TestCase(FileFormat.Pdf, "application/pdf")]
+    [TestCase(FileFormat.Html, "text/html")]
+    [TestCase(FileFormat.Rtf, "text/rtf")]
+    [TestCase(FileFormat.Odt, "application/vnd.oasis.opendocument.text")]
+    [TestCase(FileFormat.EPub, "application/epub+zip")]
+    [TestCase(FileFormat.Doc, "application/msword")]
+    public override Task Convert_Tags_The_Actual_Output_Format(FileFormat format, string contentType)
+        => base.Convert_Tags_The_Actual_Output_Format(format, contentType);
+
+    /// <summary>
+    /// FreeSpire.Doc's free edition writes the first three pages of a longer document to PDF, followed by a notice
+    /// page in place of the rest. Rendering pages is not capped. Pins the vendor limit the guides state: an upgrade
+    /// that moves it fails here.
+    /// </summary>
+    [Test]
+    public async Task Free_Edition_Pdf_Stops_After_Three_Pages_While_Images_Cover_Every_Page()
+    {
+        using var pdf = await Service.Convert(TemplateInput("multipage.docx"), FileFormat.Pdf);
+        var pages = PageTexts(pdf.GetBytes()!);
+        var images = (await Service.ToImages(TemplateInput("multipage.docx"))).ToList();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(pages, Has.Length.EqualTo(4));
+            Assert.That(pages[2], Does.Contain("Page 3"));
+            Assert.That(pages[3], Does.Contain("you can only get the first 3 page"));
+            Assert.That(images, Has.Count.EqualTo(5));
+        });
+        images.ForEach(image => image.Dispose());
+    }
 
     [Test]
     public override Task From_A3_To_Pdf() => base.From_A3_To_Pdf();

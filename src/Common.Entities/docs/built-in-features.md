@@ -42,7 +42,10 @@ Task<int> SaveChanges(CancellationToken token = default)
 
 ### Input Exceptions
 
-**EntityInputException**: returned as BadRequest (400), with `InputErrors` as the ModelState payload.
+**EntityInputException**: returned as BadRequest (400), with `InputErrors` as the ModelState payload — a flat map
+of each key to its messages. The keys go out as thrown: System.Text.Json applies no dictionary-key policy, so
+`nameof(Order.Status)` reaches a camelCase client as `Status`. A host that sets `DictionaryKeyPolicy`, or serializes
+with Newtonsoft's camelCase resolver, camelCases them.
 
 ```csharp
 public abstract class EntityInputException(string message, Exception? innerException = null)
@@ -125,8 +128,10 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
   only a write racing it is caught, and the empty value never overwrites the token — with `IHasConcurrencyToken`
   the primer still mints a new one. `PATCH` carries the stored value unless its body sets the token; `DELETE`
   carries none. `[VersionStamp(Required = true)]` refuses such an update instead: `EntityInputException` → 400
-  with the token as the field, thrown before anything is attached. It serves on the marker's implementing
-  `ConcurrencyToken` property too. An insert is never refused, and `PATCH` still passes on the merge base.
+  keyed by the token's C# property name,
+  `{ "ConcurrencyToken": ["Required on an update: send the value read with the record."] }`, thrown before anything
+  is attached. It serves on the marker's implementing `ConcurrencyToken` property too. An insert is never refused,
+  and `PATCH` still passes on the merge base.
 - **The token must move on every write.** `IHasConcurrencyToken` takes care of it: `UseDefaults()` declares its
   `ConcurrencyToken` a concurrency token and `HasConcurrencyTokenDbPrimer` mints a new one on every insert and
   update. A token the database moves (SQL Server `rowversion`, PostgreSQL `xmin`) needs nothing; an

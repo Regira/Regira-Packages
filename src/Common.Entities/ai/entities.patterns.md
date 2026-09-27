@@ -220,7 +220,8 @@ every write path that reaches the row — CRUD PATCH, a domain action, an import
 ```csharp
 e.React(x => x.Status, OrderStatus.Shipped, (change, services, token) =>
 {
-    // hand the work to a job system; the reactor itself runs before SaveChanges() returns
+    // hand the work to a job system; the reactor itself runs inside the call that commits —
+    // SaveChanges(), or Commit() when the save ran inside a transaction
     services.GetRequiredService<IBackgroundJobClient>().Enqueue<IOrderMailer>(m => m.SendShipped(change.Entity.Id, CancellationToken.None));
     return Task.CompletedTask;
 });
@@ -1021,13 +1022,17 @@ What each write is checked against:
 | Write | Checked against |
 |---|---|
 | `PUT` carrying the token | the client's token — a stale one answers 409 |
-| `PUT` without it (`null`, empty, `Guid.Empty`, `0`) | nothing the client read: it writes, only a write racing it is caught, and the empty value never overwrites the token (the marker's primer still mints a new one). `[VersionStamp(Required = true)]` on the token refuses it instead — 400 with the token as the field, before anything is attached — for a client that must always prove what it read; on the marker, put the attribute on the implementing `ConcurrencyToken` property. An insert is never refused |
+| `PUT` without it (`null`, empty, `Guid.Empty`, `0`) | nothing the client read: it writes, only a write racing it is caught, and the empty value never overwrites the token (the marker's primer still mints a new one). `[VersionStamp(Required = true)]` on the token refuses it instead — 400 naming the token (below), before anything is attached — for a client that must always prove what it read; on the marker, put the attribute on the implementing `ConcurrencyToken` property. An insert is never refused |
 | `PATCH` | the token in the body when it carries one; otherwise the merge base supplies the value read at `PATCH` time |
 | `DELETE`, and child rows a save drops | no client token reaches them — only a write racing them is caught |
 | Your own code on the raw `DbContext` (load, copy the DTO, `SaveChanges()`) | the token the entity was **loaded** with — copying the client's token onto a tracked entity changes only its current value, so a stale client wins. Set the original yourself: `db.Entry(order).Property(x => x.ConcurrencyToken).OriginalValue = dto.ConcurrencyToken` |
 | Owned children (`Related()`) | each child's own token, when it declares one; one stale child fails the whole save. A CLR type EF maps more than once — a shared-type entity, an owned type with several owners — has no single model to read its token from, so only a write racing it is caught |
 | A data-column token | the stored row — only a write racing the save is caught |
 
+- A required stamp left out answers the flat `InputErrors` 400, keyed by the token's C# property name:
+  `{ "ConcurrencyToken": ["Required on an update: send the value read with the record."] }`. The camelCase naming
+  policy does not reach dictionary keys, so a client that sends `concurrencyToken` reads the error under
+  `ConcurrencyToken`, as it does every `InputErrors` key (`entities.instructions` → Response Types).
 - A token whose default is a legitimate value — an `int` version starting at `0` — cannot be told apart from an
   absent one. Start it at `1`, or use a `Guid`. A primer that increments an application-owned token counts from
   `entry.Property(...).OriginalValue`, the stored value, so a client that omits the token cannot reset it.

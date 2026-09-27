@@ -297,9 +297,13 @@ public abstract class EntityPrimerBase<T> : IEntityPrimer<T>
   Every other write (`Update()` of a detached entity, a stub `Attach` or `Remove`, a delete through the service)
   has its rows read during the save, one query per entity type — only for entity types a reactor is registered for.
   `ExecuteUpdate` / `ExecuteDelete` bypass the change tracker, so no reactor sees them
-- Run in process before `SaveChanges()` returns, in registration order, in a DI scope of their own with a fresh
-  `DbContext` — a reactor that writes saves its own unit of work, and that save runs the reactors of what it wrote
-  (up to 8 levels deep). Hand slow work to a job system
+- Run in process, inside the call that commits, which returns once they have run: `SaveChanges()` for a save that
+  commits on its own; `Commit()` / `CommitAsync()` for the saves inside `BeginTransaction()`, whose own
+  `SaveChanges()` returns before anything reacts; the `Dispose()` that ends a completed `TransactionScope`, which
+  runs them synchronously
+- Run in registration order, in a DI scope of their own with a fresh `DbContext` — a reactor that writes saves its
+  own unit of work, and that save runs the reactors of what it wrote (up to 8 levels deep). Hand slow work to a job
+  system
 - A reactor that throws is logged and skipped: the save still succeeds and the other reactors still run
 - Wired into the DbContext options by `UseEntities(e => e.UseDefaults())`; without `UseDefaults()`, add
   `DbContextWiring.Reactors` to `e.WireDbContext(...)`

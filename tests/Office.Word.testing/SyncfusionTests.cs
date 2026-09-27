@@ -110,6 +110,29 @@ public class SyncfusionTests() : WordTestsBase(CreateService(), "Syncfusion")
     [Test]
     public override Task A_Parameter_Key_Is_Matched_Literally() => base.A_Parameter_Key_Is_Matched_Literally();
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public override Task A_Conditional_Block_Keeps_The_Branch_That_Holds(bool isPaid) => base.A_Conditional_Block_Keeps_The_Branch_That_Holds(isPaid);
+
+    [Test]
+    public override Task A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value() => base.A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value();
+
+    [Test]
+    public override Task Conditional_Blocks_Nest() => base.Conditional_Blocks_Nest();
+
+    [Test]
+    public override Task A_Conditional_Block_Drops_A_Table_Or_A_Cells_Content() => base.A_Conditional_Block_Drops_A_Table_Or_A_Cells_Content();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Header_Is_Resolved() => base.A_Conditional_Block_In_A_Header_Is_Resolved();
+
+    [Test]
+    public override void A_Malformed_Conditional_Block_Fails() => base.A_Malformed_Conditional_Block_Fails();
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public override Task A_Dropped_Branch_Inserts_No_Nested_Document(bool hasAppendix) => base.A_Dropped_Branch_Inserts_No_Nested_Document(hasAppendix);
+
     [TestCase(HeaderFooterType.Even, true)]
     [TestCase(HeaderFooterType.Even, false)]
     [TestCase(HeaderFooterType.FirstPage, true)]
@@ -165,19 +188,12 @@ public class SyncfusionTests() : WordTestsBase(CreateService(), "Syncfusion")
         Assert.That(ex!.Message, Does.Contain("ToImages"));
     }
 
-    [Test]
-    public async Task Convert_Tags_The_Actual_Output_Format()
-    {
-        // Word.Spire reports a Word content type for every format; this backend does not.
-        using var pdf = await Service.Convert(TemplateInput("template.docx"), FileFormat.Pdf);
-        using var html = await Service.Convert(TemplateInput("template.docx"), FileFormat.Html);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(pdf.ContentType, Is.EqualTo("application/pdf"));
-            Assert.That(html.ContentType, Does.Contain("html"));
-        });
-    }
+    [TestCase(FileFormat.Pdf, "application/pdf")]
+    [TestCase(FileFormat.Html, "text/html")]
+    [TestCase(FileFormat.Rtf, "text/rtf")]
+    [TestCase(FileFormat.Odt, "application/vnd.oasis.opendocument.text")]
+    public override Task Convert_Tags_The_Actual_Output_Format(FileFormat format, string contentType)
+        => base.Convert_Tags_The_Actual_Output_Format(format, contentType);
 
     [TestCase(PageSize.A3, PageOrientation.Portrait, 842, 1191)]
     [TestCase(PageSize.A4, PageOrientation.Landscape, 842, 595)]

@@ -262,7 +262,7 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         return stream.ToArray().ToMemoryFile(Regira.Office.MimeTypes.ContentTypes.DOCX);
     }
 
-    private static string[] PageTexts(byte[] pdf)
+    protected static string[] PageTexts(byte[] pdf)
     {
         using var reader = Docnet.Core.DocLib.Instance.GetDocReader(pdf, new Docnet.Core.Models.PageDimensions(1d));
         return Enumerable.Range(0, reader.GetPageCount())
@@ -360,10 +360,205 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         });
     }
 
+    // ---- conditional blocks ----
+
+    public virtual async Task A_Conditional_Block_Keeps_The_Branch_That_Holds(bool isPaid)
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document("Intro", "{{#if IsPaid}}", "Thank you, {{Customer}}.", "{{else}}", "Please pay, {{Customer}}.", "{{/if}}", "Outro"),
+            GlobalParameters = new Dictionary<string, object> { ["IsPaid"] = isPaid, ["Customer"] = "Alice" }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var text = await ReadText(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, isPaid ? Does.Contain("Thank you, Alice.") : Does.Contain("Please pay, Alice."));
+            Assert.That(text, isPaid ? Does.Not.Contain("Please pay") : Does.Not.Contain("Thank you"));
+            Assert.That(text, Does.Contain("Intro").And.Contain("Outro"));
+            Assert.That(text, Does.Not.Contain("{{"), "the marker paragraphs go with the dropped branch");
+        });
+    }
+
+    public virtual async Task A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document(
+                "{{#if Missing}}", "MISSINGKEY", "{{/if}}",
+                "{{#if Blank}}", "BLANKVALUE", "{{/if}}",
+                "{{#if Zero}}", "ZEROVALUE", "{{/if}}",
+                "{{#if Off}}", "FALSEVALUE", "{{/if}}",
+                "{{#if NoRows}}", "EMPTYCOLLECTION", "{{/if}}",
+                "{{#if text}}", "TEXTVALUE", "{{/if}}",
+                "{{#if One}}", "NUMBERVALUE", "{{/if}}",
+                "{{#if Rows}}", "ROWSVALUE", "{{/if}}",
+                "{{#if !Missing}}", "NEGATEDVALUE", "{{/if}}"),
+            GlobalParameters = new Dictionary<string, object> { ["Blank"] = " ", ["Zero"] = 0, ["Off"] = false, ["Text"] = "yes", ["One"] = 1 },
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
+            {
+                ["NoRows"] = [],
+                ["Rows"] = TemplateRows()
+            }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var text = await ReadText(output);
+
+        Assert.Multiple(() =>
+        {
+            foreach (var dropped in new[] { "MISSINGKEY", "BLANKVALUE", "ZEROVALUE", "FALSEVALUE", "EMPTYCOLLECTION" })
+            {
+                Assert.That(text, Does.Not.Contain(dropped));
+            }
+            foreach (var kept in new[] { "TEXTVALUE", "NUMBERVALUE", "ROWSVALUE", "NEGATEDVALUE" })
+            {
+                Assert.That(text, Does.Contain(kept));
+            }
+        });
+    }
+
+    public virtual async Task Conditional_Blocks_Nest()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document(
+                "{{#if Outer}}",
+                "OUTERYES",
+                "{{#if Inner}}", "INNERYES", "{{else}}", "INNERNO", "{{/if}}",
+                "{{else}}",
+                "OUTERNO",
+                "{{#if !Inner}}", "HIDDENINNER", "{{/if}}",
+                "{{/if}}"),
+            GlobalParameters = new Dictionary<string, object> { ["Outer"] = true, ["Inner"] = false }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var text = await ReadText(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Does.Contain("OUTERYES").And.Contain("INNERNO"));
+            Assert.That(text, Does.Not.Contain("INNERYES").And.Not.Contain("OUTERNO").And.Not.Contain("HIDDENINNER"));
+        });
+    }
+
+    /// <summary>
+    /// A block around a table drops the table; a block inside a cell drops the cell's paragraphs and leaves the
+    /// cell with the paragraph Word requires.
+    /// </summary>
+    public virtual async Task A_Conditional_Block_Drops_A_Table_Or_A_Cells_Content()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Paragraph("{{#if ShowTable}}"),
+                Docx.Table(["TABLECELL"]),
+                Docx.Paragraph("{{/if}}"),
+                Docx.Table(["{{#if ShowNote}}", "CELLNOTE", "{{/if}}"], ["KEPTCELL"])
+            ]),
+            GlobalParameters = new Dictionary<string, object> { ["ShowTable"] = false, ["ShowNote"] = false }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var text = await ReadText(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Does.Contain("KEPTCELL"));
+            Assert.That(text, Does.Not.Contain("TABLECELL").And.Not.Contain("CELLNOTE").And.Not.Contain("{{"));
+            Assert.That(Docx.TableCount(output), Is.EqualTo(1));
+            Assert.That(Docx.CellsEndWithParagraphs(output), Is.True);
+        });
+    }
+
+    public virtual async Task A_Conditional_Block_In_A_Header_Is_Resolved()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document(Docx.Paragraphs("Body"), Docx.Paragraphs("{{#if Draft}}", "DRAFTMARK", "{{else}}", "FINALMARK", "{{/if}}")),
+            GlobalParameters = new Dictionary<string, object> { ["Draft"] = false }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var header = Docx.HeaderText(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(header, Does.Contain("FINALMARK"));
+            Assert.That(header, Does.Not.Contain("DRAFTMARK").And.Not.Contain("{{"));
+        });
+    }
+
+    /// <summary>
+    /// A block is resolved before nested documents are inserted, so a dropped branch's <c>&lt;{ key }&gt;</c> is
+    /// never filled.
+    /// </summary>
+    public virtual async Task A_Dropped_Branch_Inserts_No_Nested_Document(bool hasAppendix)
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document("MAINTEXT", "{{#if HasAppendix}}", "<{ Appendix }>", "{{/if}}"),
+            GlobalParameters = new Dictionary<string, object> { ["HasAppendix"] = hasAppendix },
+            DocumentParameters = new Dictionary<string, WordTemplateInput>
+            {
+                ["Appendix"] = new() { Template = Docx.Document("APPENDIXTEXT") }
+            }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var text = await ReadText(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Does.Contain("MAINTEXT"));
+            Assert.That(text, hasAppendix ? Does.Contain("APPENDIXTEXT") : Does.Not.Contain("APPENDIXTEXT"));
+            Assert.That(text, Does.Not.Contain("<{"));
+        });
+    }
+
+    public virtual void A_Malformed_Conditional_Block_Fails()
+    {
+        var creator = RequireCreator();
+        FormatException Fails(IMemoryFile template)
+            => Assert.ThrowsAsync<FormatException>(() => creator.Create(new WordTemplateInput { Template = template }))!;
+
+        var unclosed = Fails(Docx.Document("{{#if IsPaid}}", "Thank you."));
+        var unopened = Fails(Docx.Document("Thank you.", "{{/if}}"));
+        var twoElses = Fails(Docx.Document("{{#if IsPaid}}", "{{else}}", "{{else}}", "{{/if}}"));
+        var amongText = Fails(Docx.Document("Dear {{#if IsCompany}}Sir or Madam{{/if}},"));
+        var acrossSections = Fails(Docx.Document([Docx.Paragraph("{{#if IsPaid}}"), Docx.SectionBreak("Thank you."), Docx.Paragraph("{{/if}}")]));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(unclosed.Message, Does.Contain("{{#if IsPaid}}").And.Contain("{{/if}}"));
+            Assert.That(unopened.Message, Does.Contain("{{/if}}"));
+            Assert.That(twoElses.Message, Does.Contain("{{else}}"));
+            Assert.That(amongText.Message, Does.Contain("stands alone"));
+            Assert.That(acrossSections.Message, Does.Contain("{{#if IsPaid}}"));
+        });
+    }
+
+    protected async Task<string> ReadText(IMemoryFile file)
+        => await RequireTextExtractor().GetText(new WordTemplateInput { Template = file });
+
+
     public virtual async Task Convert_To(FileFormat format, string outputName)
     {
         using var output = await RequireConverter().Convert(TemplateInput("template.docx"), format);
         await AssertSaved(output, OutputPath(outputName));
+    }
+
+    /// <summary>
+    /// The content type names the format produced, so a web app can serve <c>output.ContentType</c> as it is.
+    /// </summary>
+    public virtual async Task Convert_Tags_The_Actual_Output_Format(FileFormat format, string contentType)
+    {
+        using var output = await RequireConverter().Convert(TemplateInput("template.docx"), format);
+
+        Assert.That(output.ContentType, Is.EqualTo(contentType));
     }
 
     public virtual async Task From_A3_To_Pdf()

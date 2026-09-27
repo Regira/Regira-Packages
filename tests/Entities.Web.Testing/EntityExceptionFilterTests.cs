@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using Regira.Entities.Models;
 using Regira.Entities.Web.Controllers;
 using Regira.Entities.Web.DependencyInjection;
+using System.Text.Json;
 
 namespace Entities.Web.Testing;
 
@@ -35,6 +36,27 @@ public class EntityExceptionFilterTests
         // returns, so a hand-written action and the generated one are indistinguishable to a client.
         var errors = Errors(context);
         Assert.Equal(["Only a submitted request can be approved."], Assert.IsType<string[]>(errors["Status"]));
+    }
+
+    // The body is a dictionary, so the camelCase naming policy of ConfigureDefaultJsonOptions() does not reach its keys:
+    // each goes out as it was thrown. The concurrency recipe documents the key a required version stamp left out gets.
+    [Fact]
+    public void InputException_Keys_Go_Out_As_Thrown()
+    {
+        var services = new ServiceCollection();
+        services.AddOptions();
+        services.ConfigureDefaultJsonOptions();
+        using var sp = services.BuildServiceProvider();
+        var json = sp.GetRequiredService<IOptions<JsonOptions>>().Value.JsonSerializerOptions;
+        var context = ContextFor(new EntityInputException<object>("rejected")
+        {
+            InputErrors = { ["ConcurrencyToken"] = "Required on an update: send the value read with the record." }
+        });
+
+        new EntityExceptionFilter().OnException(context);
+
+        Assert.Equal("""{"ConcurrencyToken":["Required on an update: send the value read with the record."]}""",
+            JsonSerializer.Serialize(Errors(context), json));
     }
 
     private static SerializableError Errors(ExceptionContext context) =>

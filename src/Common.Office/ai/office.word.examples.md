@@ -31,6 +31,30 @@ IMemoryFile contract = await word.Create(new WordTemplateInput
 });
 ```
 
+## Optional clauses
+
+The template wraps the early-termination clause in a conditional block — each marker in a paragraph of its own —
+and the code decides it with a flag:
+
+```text
+{{#if HasTerminationClause}}
+Either party may terminate this contract with {{NoticeDays}} days' notice.
+{{/if}}
+```
+
+```csharp
+IMemoryFile contract = await word.Create(new WordTemplateInput
+{
+    Template         = templateBytes!.ToMemoryFile(),
+    GlobalParameters = new Dictionary<string, object>
+    {
+        ["ClientName"]           = client.Name,
+        ["HasTerminationClause"] = contractData.NoticeDays > 0,
+        ["NoticeDays"]           = contractData.NoticeDays
+    }
+});
+```
+
 ## Convert to PDF for signing
 
 ```csharp

@@ -170,6 +170,64 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         });
     }
 
+    /// <summary>
+    /// A condition on a key the input does not give is false, so a template holding a block needs rendering even
+    /// without a single parameter.
+    /// </summary>
+    [Test]
+    public void A_Template_With_Conditional_Blocks_Needs_A_Creator()
+    {
+        var handler = new StubHandler();
+        var service = new WordService(handler.CreateClient());
+        var input = new WordTemplateInput { Template = Docx.Document("Intro", "{{#if IsDraft}}", "DRAFT", "{{/if}}") };
+
+        var ex = Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(input, FileFormat.Pdf));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex!.Message, Does.Contain("conditional blocks"));
+            Assert.That(handler.Requests, Is.Empty);
+        });
+    }
+
+    [Test]
+    public async Task A_Template_With_Conditional_Blocks_Is_Rendered_By_The_Creator_First()
+    {
+        var rendered = ReadAsset("lorem_ipsum.docx").GetBytes()!;
+        var creator = new StubCreator(rendered);
+        var handler = new StubHandler(_ => Pdf());
+        var service = new WordService(handler.CreateClient(), creator: creator);
+        var input = new WordTemplateInput { Template = Docx.Document("Intro", "{{#if IsDraft}}", "DRAFT", "{{/if}}") };
+
+        using var _ = await service.Convert(input, FileFormat.Pdf);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(creator.Inputs, Is.EqualTo(new[] { input }));
+            Assert.That(handler.Requests.Single().Uploads.Single().Bytes, Is.EqualTo(rendered));
+        });
+    }
+
+    /// <summary>
+    /// A marker counts in a paragraph's visible text only, as the creators read it: one in a deleted revision or a
+    /// field code is not a block.
+    /// </summary>
+    [Test]
+    public async Task Markers_Outside_The_Visible_Text_Need_No_Creator()
+    {
+        var handler = new StubHandler(_ => Pdf());
+        var service = new WordService(handler.CreateClient());
+        var template = Docx.Document([
+            Docx.Paragraph("Intro"),
+            new W.Paragraph(new W.DeletedRun(new W.Run(new W.DeletedText("{{#if IsDraft}}")))),
+            new W.Paragraph(new W.Run(new W.FieldCode(" QUOTE \"{{/if}}\" ")))
+        ]);
+
+        using var _ = await service.Convert(new WordTemplateInput { Template = template }, FileFormat.Pdf);
+
+        Assert.That(handler.Requests.Single().Uploads.Single().Bytes, Is.EqualTo(template.GetBytes()));
+    }
+
     [Test]
     public async Task A_Finished_Document_Skips_The_Creator()
     {

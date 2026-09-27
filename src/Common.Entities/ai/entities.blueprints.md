@@ -898,7 +898,6 @@ public record CategorySearchObject : SearchObject
     public bool? IsRoot { get; set; }
     public ICollection<int>? AncestorId { get; set; }   // recursive: any depth below these ids
     public ICollection<int>? OffspringId { get; set; }  // recursive: any depth above these ids
-    public ICollection<int>? RootId { get; set; }       // recursive: reachable from these seeds
 }
 
 // in the query filter — the TVF composes server-side inside the predicate (one SQL statement):
@@ -909,8 +908,6 @@ public override IQueryable<Category> Build(IQueryable<Category> query, CategoryS
         query = query.Where(x => dbContext.GetCategoryOffspring(so.AncestorId, 9).Any(o => o.ChildId == x.Id));
     if (so?.OffspringId?.Any() == true)
         query = query.Where(x => dbContext.GetCategoryAncestors(so.OffspringId, 9).Any(o => o.ParentId == x.Id));
-    if (so?.RootId?.Any() == true)
-        query = query.Where(x => dbContext.GetCategoryOffspring(so.RootId, 9).Any(o => o.RootId == x.Id));
     return query;
 }
 ```

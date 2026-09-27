@@ -150,6 +150,29 @@ public class AsposeTests() : WordTestsBase(new WordService(LicenseFromEnvironmen
     [Test]
     public override Task A_Parameter_Key_Is_Matched_Literally() => base.A_Parameter_Key_Is_Matched_Literally();
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public override Task A_Conditional_Block_Keeps_The_Branch_That_Holds(bool isPaid) => base.A_Conditional_Block_Keeps_The_Branch_That_Holds(isPaid);
+
+    [Test]
+    public override Task A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value() => base.A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value();
+
+    [Test]
+    public override Task Conditional_Blocks_Nest() => base.Conditional_Blocks_Nest();
+
+    [Test]
+    public override Task A_Conditional_Block_Drops_A_Table_Or_A_Cells_Content() => base.A_Conditional_Block_Drops_A_Table_Or_A_Cells_Content();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Header_Is_Resolved() => base.A_Conditional_Block_In_A_Header_Is_Resolved();
+
+    [Test]
+    public override void A_Malformed_Conditional_Block_Fails() => base.A_Malformed_Conditional_Block_Fails();
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public override Task A_Dropped_Branch_Inserts_No_Nested_Document(bool hasAppendix) => base.A_Dropped_Branch_Inserts_No_Nested_Document(hasAppendix);
+
     [TestCase(HeaderFooterType.Even, true)]
     [TestCase(HeaderFooterType.Even, false)]
     [TestCase(HeaderFooterType.FirstPage, true)]
@@ -207,13 +230,8 @@ public class AsposeTests() : WordTestsBase(new WordService(LicenseFromEnvironmen
     [TestCase(FileFormat.Html, "text/html")]
     [TestCase(FileFormat.Odt, "application/vnd.oasis.opendocument.text")]
     [TestCase(FileFormat.EPub, "application/epub+zip")]
-    public async Task Convert_Tags_The_Actual_Output_Format(FileFormat format, string contentType)
-    {
-        // Word.Spire reports a Word content type for every format; this backend does not.
-        using var output = await Service.Convert(TemplateInput("template.docx"), format);
-
-        Assert.That(output.ContentType, Is.EqualTo(contentType));
-    }
+    public override Task Convert_Tags_The_Actual_Output_Format(FileFormat format, string contentType)
+        => base.Convert_Tags_The_Actual_Output_Format(format, contentType);
 
     [Test]
     public async Task Convert_To_Html_Is_Self_Contained()

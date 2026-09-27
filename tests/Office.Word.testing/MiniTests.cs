@@ -34,6 +34,25 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
     [Test]
     public override Task GetText() => base.GetText();
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public override Task A_Conditional_Block_Keeps_The_Branch_That_Holds(bool isPaid) => base.A_Conditional_Block_Keeps_The_Branch_That_Holds(isPaid);
+
+    [Test]
+    public override Task A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value() => base.A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value();
+
+    [Test]
+    public override Task Conditional_Blocks_Nest() => base.Conditional_Blocks_Nest();
+
+    [Test]
+    public override Task A_Conditional_Block_Drops_A_Table_Or_A_Cells_Content() => base.A_Conditional_Block_Drops_A_Table_Or_A_Cells_Content();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Header_Is_Resolved() => base.A_Conditional_Block_In_A_Header_Is_Resolved();
+
+    [Test]
+    public override void A_Malformed_Conditional_Block_Fails() => base.A_Malformed_Conditional_Block_Fails();
+
 
     [Test]
     public async Task Create_Sets_Docx_ContentType()

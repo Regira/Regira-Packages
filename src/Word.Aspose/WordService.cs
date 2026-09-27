@@ -14,6 +14,7 @@ using Regira.Office.Word.Abstractions;
 using Regira.Office.Word.Aspose.Extensions;
 using Regira.Office.Word.Aspose.Internal;
 using Regira.Office.Word.Models;
+using Regira.Office.Word.Templating;
 using Regira.Utilities;
 using AsposeDocumentBuilder = Aspose.Words.DocumentBuilder;
 using AsposeParagraph = Aspose.Words.Paragraph;
@@ -66,7 +67,6 @@ public class WordService : IWordService
     {
         var doc = CreateDocument(input);
         var converted = ConvertDocument(doc, options);
-        // Unlike Word.Spire, the content type follows the actual output format.
         return Task.FromResult(converted.ToMemoryFile(GetContentType(options.OutputFormat)));
     }
 
@@ -166,6 +166,9 @@ public class WordService : IWordService
 
         var doc = LoadDocument(input.Template);
         reference ??= doc;
+
+        // first, so a dropped branch's placeholders are never filled or inserted
+        ResolveConditions(doc, input);
 
         if (input.DocumentParameters?.Any() == true)
         {
@@ -417,6 +420,39 @@ public class WordService : IWordService
         {
             // even-page stories only render once the document tells odd and even pages apart
             doc.FirstSection.PageSetup.OddAndEvenPagesHeaderFooter = true;
+        }
+    }
+
+    /// <summary>
+    /// Keeps the branch of each <c>{{#if Key}}</c> … <c>{{else}}</c> … <c>{{/if}}</c> block that holds and removes the
+    /// rest, marker paragraphs included — in the body, table cells, headers and footers.
+    /// </summary>
+    protected internal void ResolveConditions(Document doc, WordTemplateInput input)
+    {
+        var containers = doc.FindAllParagraphs()
+            .Where(paragraph => ConditionalBlocks.ContainsMarker(paragraph.GetText()))
+            .Select(paragraph => paragraph.ParentNode)
+            .OfType<CompositeNode>()
+            .Distinct()
+            .ToArray();
+
+        foreach (var container in containers)
+        {
+            var children = container.ToArray();
+            var texts = children
+                .Select(child => child is AsposeParagraph paragraph ? paragraph.GetText() : null)
+                .ToArray();
+
+            foreach (var index in ConditionalBlocks.Resolve(texts, input))
+            {
+                children[index].Remove();
+            }
+
+            if (container is Story or Cell && container.LastChild is null or Table)
+            {
+                // a cell, header or footer has to end with a paragraph
+                container.AppendChild(new AsposeParagraph(doc));
+            }
         }
     }
 

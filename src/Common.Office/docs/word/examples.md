@@ -149,6 +149,39 @@ IEnumerable<IImageFile> pages = await previews.ToImages(input);
 
 ---
 
+## Example 9: Keep an optional passage only when it applies
+
+The template wraps the discount paragraph and its table in a [conditional block](README.md#conditional-blocks),
+each marker in a paragraph of its own:
+
+```text
+{{#if Discounts}}
+Discounts granted on this order:
+[table "Discounts"]
+{{else}}
+No discounts apply to this order.
+{{/if}}
+```
+
+`Discounts` is a collection, so the block holds when it has rows:
+
+```csharp
+IMemoryFile doc = await word.Create(new WordTemplateInput
+{
+    Template             = templateBytes.ToMemoryFile(),
+    CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
+    {
+        ["Discounts"] = order.Discounts.Select(d => (IDictionary<string, object>)new Dictionary<string, object>
+        {
+            ["Description"] = d.Description,
+            ["Amount"]      = d.Amount.ToString("C")
+        }).ToList()
+    }
+});
+```
+
+---
+
 ## Overview
 
 1. [Index](README.md) — Overview, interfaces, models, and implementation notes

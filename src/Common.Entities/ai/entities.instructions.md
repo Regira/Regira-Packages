@@ -626,8 +626,11 @@ options.AddReactor<AuditReactor>();    // global — an EntityReactorBase<IHasTi
   through a context `UseEntities` wires (its reactions never run). A transaction begun outside EF and handed to
   `UseTransaction` must also commit or roll back through EF: on Npgsql, one disposed without either leaves its
   reactions to the next such transaction on that pooled connection.
-- **In process, before `SaveChanges()` returns** — the caller waits for them. Hand slow or retryable work to a
-  job system: the reactor only enqueues it (`IBackgroundJobClient.Enqueue(...)`).
+- **In process, inside the call that commits** — that call returns once they have run: `SaveChanges()` for a
+  save that commits on its own; `Commit()` / `CommitAsync()` for the saves inside `BeginTransaction()`, whose own
+  `SaveChanges()` returns before anything reacts; the `Dispose()` that ends a completed `TransactionScope`, which
+  runs them synchronously. Hand slow or retryable work to a job system: the reactor only enqueues it
+  (`IBackgroundJobClient.Enqueue(...)`).
 - **In registration order, per changed row, in a DI scope of their own** with a fresh `DbContext`: a reactor that
   writes calls `SaveChanges()` itself, and that save triggers the reactors of what it wrote. Nesting stops at 8
   levels with a logged error — guard `CanReact` so a chain ends.
@@ -1373,7 +1376,8 @@ verbatim; everything around them is the wrapper:
 
 // EntityInputException → 400. ⚠️ A FLAT map, with no ProblemDetails "errors" wrapper around it — this is
 // BadRequest(ModelState), not ValidationProblem(). Keys are the InputErrors keys verbatim — System.Text.Json
-// applies no dictionary-key policy — so nameof(Product.CategoryId) reaches the client as "CategoryId".
+// applies no dictionary-key policy — so nameof(Product.CategoryId) reaches the client as "CategoryId". A host that
+// sets DictionaryKeyPolicy, or serializes with Newtonsoft's camelCase resolver, camelCases these keys too.
 { "CategoryId": ["Category 99 does not exist"], "Code": ["Code is required"] }
 
 // Model binding / DataAnnotations failing first is a DIFFERENT shape — [ApiController]'s automatic 400,

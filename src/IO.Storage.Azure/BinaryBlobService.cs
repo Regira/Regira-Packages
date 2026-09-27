@@ -186,27 +186,16 @@ public class BinaryBlobService(AzureCommunicator communicator) : IFileService
     public async Task<string> Save(string identifier, byte[] bytes, string? contentType = null)
     {
         await communicator.Open();
-        var blob = GetBlobReference(identifier, contentType ?? ContentTypeUtility.GetContentType(identifier));
-        var headers = new BlobHttpHeaders
-        {
-            ContentEncoding = FileUtility.GetEncoding(bytes).HeaderName,
-            ContentType = ContentTypeUtility.GetContentType(identifier)
-        };
+        var blob = GetBlobReference(identifier);
+        var headers = new BlobHttpHeaders { ContentType = contentType ?? ContentTypeUtility.GetContentType(identifier) };
         await blob.UploadAsync(new BinaryData(bytes), new BlobUploadOptions { HttpHeaders = headers });
         return FileNameUtility.GetRelativeUri(identifier, Root);
     }
     public async Task<string> Save(string identifier, Stream stream, string? contentType = null)
     {
         await communicator.Open();
-        var blob = GetBlobReference(identifier, contentType ?? ContentTypeUtility.GetContentType(identifier));
-        stream.Position = 0;
-        var bomBytes = new byte[4];
-        var _ = await stream.ReadAsync(bomBytes, 0, 4);
-        var headers = new BlobHttpHeaders
-        {
-            ContentEncoding = FileUtility.GetEncoding(bomBytes).ToString(),
-            ContentType = ContentTypeUtility.GetContentType(identifier)
-        };
+        var blob = GetBlobReference(identifier);
+        var headers = new BlobHttpHeaders { ContentType = contentType ?? ContentTypeUtility.GetContentType(identifier) };
         stream.Position = 0;
         await blob.UploadAsync(stream, new BlobUploadOptions { HttpHeaders = headers });
         return FileNameUtility.GetRelativeUri(identifier, Root);
@@ -240,12 +229,13 @@ public class BinaryBlobService(AzureCommunicator communicator) : IFileService
 
     public Uri GetBlobUri(string identifier)
         => new(GetAbsoluteUri(identifier));
-    protected internal BlobClient GetBlobReference(string identifier, string? contentType = null)
+    protected internal BlobClient GetBlobReference(string identifier)
     {
         var prefixedFilename = FileNameUtility.GetRelativeUri(identifier, Root);
-        var blob = Container.GetBlobClient(prefixedFilename);
-        //blob.Properties.ContentType = contentType;
-        return blob;
+        return Container.GetBlobClient(prefixedFilename);
     }
+    [Obsolete("A BlobClient carries no content type: Save sets it on upload. Use GetBlobReference(identifier).")]
+    protected internal BlobClient GetBlobReference(string identifier, string? contentType = null)
+        => GetBlobReference(identifier);
 
 }

@@ -11,6 +11,7 @@ using Regira.Office.Word.Abstractions;
 using Regira.Office.Word.Models;
 using Regira.Office.Word.Syncfusion.Extensions;
 using Regira.Office.Word.Syncfusion.Internal;
+using Regira.Office.Word.Templating;
 using Regira.Utilities;
 using Syncfusion.DocIO;
 using Syncfusion.DocIO.DLS;
@@ -61,7 +62,6 @@ public class WordService : IWordService
     {
         using var doc = CreateDocument(input);
         var converted = ConvertDocument(doc, options);
-        // Unlike Word.Spire, the content type follows the actual output format.
         return Task.FromResult(converted.ToMemoryFile(GetContentType(options.OutputFormat)));
     }
 
@@ -189,6 +189,9 @@ public class WordService : IWordService
 
     private WordDocument FillDocument(WordDocument doc, WordTemplateInput input, WordDocument reference)
     {
+        // first, so a dropped branch's placeholders are never filled or inserted
+        ResolveConditions(doc, input);
+
         if (input.DocumentParameters?.Any() == true)
         {
             InsertDocuments(doc, input.DocumentParameters);
@@ -470,6 +473,48 @@ public class WordService : IWordService
         }
     }
 
+    /// <summary>
+    /// Keeps the branch of each <c>{{#if Key}}</c> … <c>{{else}}</c> … <c>{{/if}}</c> block that holds and removes the
+    /// rest, marker paragraphs included — in the body, table cells, headers and footers.
+    /// </summary>
+    protected internal void ResolveConditions(WordDocument doc, WordTemplateInput input)
+    {
+        var stories = doc.Sections.OfType<WSection>()
+            .SelectMany(section => new[]
+            {
+                section.Body,
+                section.HeadersFooters.Header, section.HeadersFooters.FirstPageHeader, section.HeadersFooters.EvenHeader, section.HeadersFooters.OddHeader,
+                section.HeadersFooters.Footer, section.HeadersFooters.FirstPageFooter, section.HeadersFooters.EvenFooter, section.HeadersFooters.OddFooter
+            });
+        var containers = stories
+            .SelectMany(story => story.Descendants())
+            .OfType<WParagraph>()
+            .Where(paragraph => ConditionalBlocks.ContainsMarker(paragraph.Text))
+            .Select(paragraph => paragraph.Owner)
+            .OfType<ICompositeEntity>()
+            .Distinct()
+            .ToArray();
+
+        foreach (var container in containers)
+        {
+            var children = container.ChildEntities;
+            var texts = children.OfType<IEntity>()
+                .Select(child => child is WParagraph paragraph ? paragraph.Text : null)
+                .ToArray();
+
+            foreach (var index in ConditionalBlocks.Resolve(texts, input).OrderByDescending(i => i))
+            {
+                children.RemoveAt(index);
+            }
+
+            // a cell, body, header or footer has to end with a paragraph
+            if (container is WTextBody body && (children.Count == 0 || children[children.Count - 1] is WTable))
+            {
+                body.AddParagraph();
+            }
+        }
+    }
+
     protected internal void ReplaceGlobalParameters(WordDocument doc, IDictionary<string, object> parameters)
     {
         // BookmarkCollection is not IEnumerable
@@ -706,6 +751,7 @@ public class WordService : IWordService
             RegiraFileFormat.Html => ContentTypes.HTML,
             RegiraFileFormat.Doc or RegiraFileFormat.Dot => ContentTypes.DOC,
             RegiraFileFormat.Docx or RegiraFileFormat.Dotx or RegiraFileFormat.Docm or RegiraFileFormat.Dotm => ContentTypes.DOCX,
+            RegiraFileFormat.Odt => "application/vnd.oasis.opendocument.text",
             _ => ContentTypeUtility.GetContentType($"x.{format.ToString().ToLowerInvariant()}")
         };
 

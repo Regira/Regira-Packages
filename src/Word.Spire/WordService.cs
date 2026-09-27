@@ -1,6 +1,7 @@
 ﻿using Regira.Drawing.SkiaSharp.Utilities;
 using Regira.IO.Abstractions;
 using Regira.IO.Extensions;
+using Regira.IO.Utilities;
 using Regira.Media.Drawing.Dimensions;
 using Regira.Media.Drawing.Models.Abstractions;
 using Regira.Office.MimeTypes;
@@ -8,6 +9,7 @@ using Regira.Office.Word.Abstractions;
 using Regira.Office.Word.Models;
 using Regira.Office.Word.Spire.Extensions;
 using Regira.Office.Word.Spire.Internal;
+using Regira.Office.Word.Templating;
 using Regira.TreeList;
 using Regira.Utilities;
 using Spire.Doc;
@@ -59,7 +61,7 @@ public class WordService : IWordService
     {
         using var doc = CreateDocument(input);
         var convertedStream = ConvertDocument(doc, options);
-        var file = convertedStream.ToMemoryFile(options.OutputFormat == RegiraFileFormat.Doc ? ContentTypes.DOC : ContentTypes.DOCX);
+        var file = convertedStream.ToMemoryFile(GetContentType(options.OutputFormat));
         return Task.FromResult(file);
     }
 
@@ -148,6 +150,9 @@ public class WordService : IWordService
         {
             doc.LoadFromStream(templateStream, SpireFileFormat.Auto, XHTMLValidationType.None);
         }
+
+        // first, so a dropped branch's placeholders are never filled or inserted
+        ResolveConditions(doc, input);
 
         if (input.DocumentParameters?.Any() == true)
         {
@@ -292,6 +297,17 @@ public class WordService : IWordService
         var spireFormat = (SpireFileFormat)Enum.Parse(typeof(SpireFileFormat), options.OutputFormat.ToString(), true);
         return doc.ToStream(spireFormat);
     }
+    protected internal static string GetContentType(RegiraFileFormat format)
+        => format switch
+        {
+            RegiraFileFormat.Pdf => ContentTypes.PDF,
+            RegiraFileFormat.Html => ContentTypes.HTML,
+            RegiraFileFormat.Doc or RegiraFileFormat.Dot => ContentTypes.DOC,
+            RegiraFileFormat.Docx or RegiraFileFormat.Dotx or RegiraFileFormat.Docm or RegiraFileFormat.Dotm => ContentTypes.DOCX,
+            RegiraFileFormat.Odt => "application/vnd.oasis.opendocument.text",
+            RegiraFileFormat.EPub => "application/epub+zip",
+            _ => ContentTypeUtility.GetContentType($"x.{format.ToString().ToLowerInvariant()}")
+        };
     protected internal Document ProcessInputOptions(Document doc, InputOptions? options, Document reference)
     {
         if (options?.RemoveEmptyParagraphs == true)
@@ -406,6 +422,38 @@ public class WordService : IWordService
         {
             // even-page stories only render once the document tells odd and even pages apart
             doc.Sections[0].PageSetup.DifferentOddAndEvenPagesHeaderFooter = true;
+        }
+    }
+    /// <summary>
+    /// Keeps the branch of each <c>{{#if Key}}</c> … <c>{{else}}</c> … <c>{{/if}}</c> block that holds and removes the
+    /// rest, marker paragraphs included — in the body, table cells, headers and footers.
+    /// </summary>
+    protected internal void ResolveConditions(Document doc, WordTemplateInput input)
+    {
+        var containers = doc.ToTreeList()
+            .FindAllParagraphs()
+            .Where(paragraph => ConditionalBlocks.ContainsMarker(paragraph.Text))
+            .Select(paragraph => paragraph.Owner)
+            .Distinct()
+            .ToArray();
+
+        foreach (var container in containers)
+        {
+            var children = container.ChildObjects;
+            var texts = children.Cast<DocumentObject>()
+                .Select(child => child is SpireParagraph paragraph ? paragraph.Text : null)
+                .ToArray();
+
+            foreach (var index in ConditionalBlocks.Resolve(texts, input).OrderByDescending(i => i))
+            {
+                children.RemoveAt(index);
+            }
+
+            // a cell, body, header or footer has to end with a paragraph
+            if (container is Body body && (children.Count == 0 || children[children.Count - 1] is Table))
+            {
+                body.AddParagraph();
+            }
         }
     }
     protected internal void ReplaceGlobalParameters(Document doc, IDictionary<string, object> parameters)
