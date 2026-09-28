@@ -18,6 +18,30 @@ internal static class Docx
 
     public static IEnumerable<W.Paragraph> Paragraphs(params string[] texts) => texts.Select(Paragraph);
 
+    /// <summary>A paragraph whose whole text is deleted under track changes.</summary>
+    public static W.Paragraph DeletedParagraph(string text)
+        => new(new W.DeletedRun(new W.Run(new W.DeletedText(text) { Space = SpaceProcessingModeValues.Preserve })) { Id = "1", Author = "Reviewer" });
+
+    /// <summary>
+    /// A paragraph that is a text edited under track changes: <paramref name="before"/>, then <paramref name="deleted"/>
+    /// deleted and <paramref name="inserted"/> inserted in its place, then <paramref name="after"/>.
+    /// </summary>
+    public static W.Paragraph EditedParagraph(string before, string deleted, string inserted, string after)
+        => new(
+            new W.Run(new W.Text(before) { Space = SpaceProcessingModeValues.Preserve }),
+            new W.DeletedRun(new W.Run(new W.DeletedText(deleted))) { Id = "2", Author = "Reviewer" },
+            new W.InsertedRun(new W.Run(new W.Text(inserted))) { Id = "3", Author = "Reviewer" },
+            new W.Run(new W.Text(after) { Space = SpaceProcessingModeValues.Preserve }));
+
+    /// <summary>A paragraph holding one complex field, with the given code and result.</summary>
+    public static W.Paragraph FieldParagraph(string code, string result)
+        => new(
+            new W.Run(new W.FieldChar { FieldCharType = W.FieldCharValues.Begin }),
+            new W.Run(new W.FieldCode(code) { Space = SpaceProcessingModeValues.Preserve }),
+            new W.Run(new W.FieldChar { FieldCharType = W.FieldCharValues.Separate }),
+            new W.Run(new W.Text(result)),
+            new W.Run(new W.FieldChar { FieldCharType = W.FieldCharValues.End }));
+
     /// <summary>A paragraph that ends its section, the way Word stores a section break.</summary>
     public static W.Paragraph SectionBreak(string text)
         => new(

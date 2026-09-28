@@ -13,6 +13,7 @@ using Regira.Office.Word.Templating;
 using Regira.TreeList;
 using Regira.Utilities;
 using Spire.Doc;
+using Spire.Doc.Collections;
 using Spire.Doc.Documents;
 using Spire.Doc.Fields;
 using System.Drawing;
@@ -432,7 +433,7 @@ public class WordService : IWordService
     {
         var containers = doc.ToTreeList()
             .FindAllParagraphs()
-            .Where(paragraph => ConditionalBlocks.ContainsMarker(paragraph.Text))
+            .Where(paragraph => ConditionalBlocks.ContainsMarker(GetVisibleText(paragraph)))
             .Select(paragraph => paragraph.Owner)
             .Distinct()
             .ToArray();
@@ -441,7 +442,7 @@ public class WordService : IWordService
         {
             var children = container.ChildObjects;
             var texts = children.Cast<DocumentObject>()
-                .Select(child => child is SpireParagraph paragraph ? paragraph.Text : null)
+                .Select(child => child is SpireParagraph paragraph ? GetVisibleText(paragraph) : null)
                 .ToArray();
 
             foreach (var index in ConditionalBlocks.Resolve(texts, input).OrderByDescending(i => i))
@@ -453,6 +454,41 @@ public class WordService : IWordService
             if (container is Body body && (children.Count == 0 || children[children.Count - 1] is Table))
             {
                 body.AddParagraph();
+            }
+        }
+    }
+    /// <summary>
+    /// The paragraph's text without its deleted revisions, and with an inline content control's — what
+    /// <see cref="SpireParagraph.Text"/> gives neither. Spire keeps a field's code on the field, out of the text.
+    /// </summary>
+    private static string GetVisibleText(SpireParagraph paragraph)
+    {
+        var text = new VisibleText();
+        Read(paragraph.ChildObjects);
+        return text.ToString();
+
+        void Read(DocumentObjectCollection items)
+        {
+            foreach (DocumentObject item in items)
+            {
+                switch (item)
+                {
+                    case Field:
+                        text.FieldStart();
+                        break;
+                    case FieldMark { Type: FieldMarkType.FieldSeparator }:
+                        text.FieldSeparator();
+                        break;
+                    case FieldMark { Type: FieldMarkType.FieldEnd }:
+                        text.FieldEnd();
+                        break;
+                    case TextRange range:
+                        text.Append(range.Text, range.IsDeleteRevision);
+                        break;
+                    case StructureDocumentTagInline control:
+                        Read(control.SDTContent.ChildObjects);
+                        break;
+                }
             }
         }
     }

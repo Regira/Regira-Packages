@@ -53,6 +53,12 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
     [Test]
     public override void A_Malformed_Conditional_Block_Fails() => base.A_Malformed_Conditional_Block_Fails();
 
+    [Test]
+    public override Task Markers_In_Deleted_Revisions_And_Field_Codes_Do_Not_Count() => base.Markers_In_Deleted_Revisions_And_Field_Codes_Do_Not_Count();
+
+    [Test]
+    public override Task A_Marker_Edited_Under_Track_Changes_Reads_As_Edited() => base.A_Marker_Edited_Under_Track_Changes_Reads_As_Edited();
+
 
     [Test]
     public async Task Create_Sets_Docx_ContentType()
@@ -204,6 +210,38 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
         var text = await Mini.GetText(input);
 
         Assert.That(text, Does.Contain("A spaced key"));
+    }
+
+    /// <summary>
+    /// A marker paragraph that stores the section break is emptied rather than removed, so the break stays.
+    /// </summary>
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task A_Section_Break_On_A_Marker_Paragraph_Survives(bool isDraft)
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Paragraph("Intro"),
+                Docx.Paragraph("{{#if IsDraft}}"),
+                Docx.Paragraph("DRAFTTEXT"),
+                Docx.SectionBreak("{{/if}}"),
+                Docx.Paragraph("Outro")
+            ]),
+            GlobalParameters = new Dictionary<string, object> { ["IsDraft"] = isDraft }
+        };
+
+        using var output = await Mini.Create(input);
+        using var doc = WordprocessingDocument.Open(new MemoryStream(output.GetBytes()!), false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(body.Descendants<W.SectionProperties>().Count(), Is.EqualTo(2), "the break and the final section");
+            Assert.That(body.InnerText, Does.Not.Contain("{{"));
+            Assert.That(body.InnerText, Does.Contain("Intro").And.Contain("Outro"));
+            Assert.That(body.InnerText, isDraft ? Does.Contain("DRAFTTEXT") : Does.Not.Contain("DRAFTTEXT"));
+        });
     }
 
     /// <summary>

@@ -489,7 +489,7 @@ public class WordService : IWordService
         var containers = stories
             .SelectMany(story => story.Descendants())
             .OfType<WParagraph>()
-            .Where(paragraph => ConditionalBlocks.ContainsMarker(paragraph.Text))
+            .Where(paragraph => ConditionalBlocks.ContainsMarker(GetVisibleText(paragraph)))
             .Select(paragraph => paragraph.Owner)
             .OfType<ICompositeEntity>()
             .Distinct()
@@ -499,7 +499,7 @@ public class WordService : IWordService
         {
             var children = container.ChildEntities;
             var texts = children.OfType<IEntity>()
-                .Select(child => child is WParagraph paragraph ? paragraph.Text : null)
+                .Select(child => child is WParagraph paragraph ? GetVisibleText(paragraph) : null)
                 .ToArray();
 
             foreach (var index in ConditionalBlocks.Resolve(texts, input).OrderByDescending(i => i))
@@ -511,6 +511,41 @@ public class WordService : IWordService
             if (container is WTextBody body && (children.Count == 0 || children[children.Count - 1] is WTable))
             {
                 body.AddParagraph();
+            }
+        }
+    }
+
+    /// <summary>
+    /// The paragraph's text without its field codes and deleted revisions, which <see cref="WParagraph.Text"/> holds.
+    /// </summary>
+    private static string GetVisibleText(WParagraph paragraph)
+    {
+        var text = new VisibleText();
+        Read(paragraph.Items);
+        return text.ToString();
+
+        void Read(ParagraphItemCollection items)
+        {
+            foreach (ParagraphItem item in items)
+            {
+                switch (item)
+                {
+                    case WField:
+                        text.FieldStart();
+                        break;
+                    case WFieldMark { Type: FieldMarkType.FieldSeparator }:
+                        text.FieldSeparator();
+                        break;
+                    case WFieldMark { Type: FieldMarkType.FieldEnd }:
+                        text.FieldEnd();
+                        break;
+                    case WTextRange range:
+                        text.Append(range.Text, range.IsDeleteRevision);
+                        break;
+                    case InlineContentControl control:
+                        Read(control.ParagraphItems);
+                        break;
+                }
             }
         }
     }

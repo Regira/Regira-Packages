@@ -210,10 +210,13 @@ Please pay {{Amount}} before {{DueDate}}.
 ```
 
 - `{{#if Key}}` holds when `GlobalParameters[Key]` is set to anything but `null`, `false`, an empty or blank
-  string, zero or an empty collection. A `CollectionParameters` key holds when its collection has rows, so
+  string, zero or an empty collection. An enum value always holds, its zero member included: compare it in code
+  (`["IsDraft"] = status == Status.Draft`). A `CollectionParameters` key holds when its collection has rows, so
   `{{#if Items}}` drops a heading together with its empty table. A key found in neither is false. Keys match
   regardless of case.
 - `{{#if !Key}}` negates. `{{else}}` is optional, and blocks nest.
+- Markers are read from the text Word shows: one in a field code or a tracked deletion is not a marker, and a
+  marker edited under track changes reads as edited.
 - The branch that does not hold goes, with everything in it — paragraphs, tables, a `<{ key }>` placeholder —
   and every marker paragraph goes too. Blocks are resolved before anything is filled, so a dropped branch's
   parameters, images and nested documents are never processed.

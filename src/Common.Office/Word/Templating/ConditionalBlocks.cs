@@ -12,7 +12,8 @@ namespace Regira.Office.Word.Templating;
 /// nest, and each one opens and closes among the children of one container — a body, table cell, header or footer.
 /// <para>
 /// The backends own the document model, this class owns the syntax and the decision: a backend lists a
-/// container's children as texts — a paragraph's text, <c>null</c> for anything else, such as a table — and
+/// container's children as texts — a paragraph's <see cref="VisibleText">visible text</see>, <c>null</c> for
+/// anything else, such as a table — and
 /// removes the children <see cref="Resolve(IReadOnlyList{string?}, WordTemplateInput)"/> names.
 /// </para>
 /// </summary>

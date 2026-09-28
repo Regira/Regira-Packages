@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Aspose.Words;
 using Aspose.Words.Drawing;
+using Aspose.Words.Fields;
 using Aspose.Words.Replacing;
 using Aspose.Words.Saving;
 using Aspose.Words.Tables;
@@ -430,7 +431,7 @@ public class WordService : IWordService
     protected internal void ResolveConditions(Document doc, WordTemplateInput input)
     {
         var containers = doc.FindAllParagraphs()
-            .Where(paragraph => ConditionalBlocks.ContainsMarker(paragraph.GetText()))
+            .Where(paragraph => ConditionalBlocks.ContainsMarker(GetVisibleText(paragraph)))
             .Select(paragraph => paragraph.ParentNode)
             .OfType<CompositeNode>()
             .Distinct()
@@ -440,7 +441,7 @@ public class WordService : IWordService
         {
             var children = container.ToArray();
             var texts = children
-                .Select(child => child is AsposeParagraph paragraph ? paragraph.GetText() : null)
+                .Select(child => child is AsposeParagraph paragraph ? GetVisibleText(paragraph) : null)
                 .ToArray();
 
             foreach (var index in ConditionalBlocks.Resolve(texts, input))
@@ -454,6 +455,38 @@ public class WordService : IWordService
                 container.AppendChild(new AsposeParagraph(doc));
             }
         }
+    }
+
+    /// <summary>
+    /// The paragraph's text without its field codes and deleted revisions, which <see cref="Node.GetText"/> holds,
+    /// and without that of a text box inside it, whose paragraphs are read on their own.
+    /// </summary>
+    private static string GetVisibleText(AsposeParagraph paragraph)
+    {
+        var text = new VisibleText();
+        foreach (Node node in paragraph.GetChildNodes(NodeType.Any, true))
+        {
+            if (node.GetAncestor(NodeType.Paragraph) != paragraph)
+            {
+                continue;
+            }
+            switch (node)
+            {
+                case FieldStart:
+                    text.FieldStart();
+                    break;
+                case FieldSeparator:
+                    text.FieldSeparator();
+                    break;
+                case FieldEnd:
+                    text.FieldEnd();
+                    break;
+                case Run run:
+                    text.Append(run.Text, run.IsDeleteRevision);
+                    break;
+            }
+        }
+        return text.ToString();
     }
 
     protected internal void ReplaceGlobalParameters(Document doc, IDictionary<string, object> parameters)

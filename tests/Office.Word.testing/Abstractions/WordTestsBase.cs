@@ -519,6 +519,57 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         });
     }
 
+    /// <summary>
+    /// A marker counts in a paragraph's visible text only: one in a deleted revision or a field code is not a block,
+    /// on every backend, as the Gotenberg check reads it.
+    /// </summary>
+    public virtual async Task Markers_In_Deleted_Revisions_And_Field_Codes_Do_Not_Count()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Paragraph("Intro"),
+                Docx.DeletedParagraph("{{#if IsDraft}}"),
+                Docx.Paragraph("DRAFTTEXT"),
+                Docx.FieldParagraph(" QUOTE \"{{/if}}\" ", "QUOTED"),
+                Docx.Paragraph("Outro")
+            ]),
+            GlobalParameters = new Dictionary<string, object> { ["IsDraft"] = false }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var text = await ReadText(output);
+
+        Assert.That(text, Does.Contain("Intro").And.Contain("DRAFTTEXT").And.Contain("Outro"));
+    }
+
+    /// <summary>
+    /// A key edited under track changes reads as edited: <c>{{#if IsPaid}}</c> changed to <c>{{#if IsSettled}}</c>
+    /// tests <c>IsSettled</c>.
+    /// </summary>
+    public virtual async Task A_Marker_Edited_Under_Track_Changes_Reads_As_Edited()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.EditedParagraph("{{#if ", "IsPaid", "IsSettled", "}}"),
+                Docx.Paragraph("PAIDTEXT"),
+                Docx.Paragraph("{{/if}}"),
+                Docx.Paragraph("Outro")
+            ]),
+            GlobalParameters = new Dictionary<string, object> { ["IsSettled"] = true }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var text = await ReadText(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Does.Contain("PAIDTEXT").And.Contain("Outro"));
+            Assert.That(text, Does.Not.Contain("{{"));
+        });
+    }
+
     public virtual void A_Malformed_Conditional_Block_Fails()
     {
         var creator = RequireCreator();
