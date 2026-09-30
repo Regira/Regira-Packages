@@ -138,13 +138,22 @@ services.AddControllers(options =>
     options.InputFormatters.Insert(0, new TextPlainInputFormatter()));
 ```
 
-### ControllerExtensions
+### ControllerExtensions and FormFileExtensions
 
 <!-- no-compile -->
 ```csharp
 // Return INamedFile as a download or inline
 return this.File(namedFile, inline: true);
+
+// Read an upload as an INamedFile
+var upload = formFile.ToNamedFile();
 ```
+
+- `File()` sends `X-Content-Type-Options: nosniff` and, with every file but a PDF, `Content-Security-Policy:
+  sandbox`, so a file served from the app's origin renders but runs no script, whatever its name or stored type. A PDF
+  goes without: a sandbox keeps the browser's PDF viewer from loading.
+- `ToNamedFile()` sets `ContentType` from the file name's extension (`application/octet-stream` when unknown), never
+  from the type the client declared. Restrict uploads by extension where it matters.
 
 ### RequestUtility
 

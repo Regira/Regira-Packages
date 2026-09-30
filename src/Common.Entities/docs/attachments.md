@@ -173,6 +173,11 @@ Endpoints exposed (with `[Route("products")]`):
 Every `{id}` is the id of the link row (`EntityAttachmentDto.Id`), not its `AttachmentId`; `{objectId}` is the
 owner's id.
 
+An upload's content type follows its file name, whatever the client declared, and a download is served with
+`X-Content-Type-Options: nosniff` and, for every file but a PDF, `Content-Security-Policy: sandbox`, so a file renders
+but runs no script on the API's origin. A write a [validator](services.md#entity-validators) refuses answers **400**
+with the error map.
+
 ### Dependency Injection
 
 Attachments need **two** registrations:
@@ -240,7 +245,7 @@ builder.Services
 
 1. [Index](../README.md) — Overview of Regira Entities
 1. [Entity Models](models.md) — Creating and structuring entity models
-1. [Services](services.md) — Implementing entity services and repositories
+1. [Services](services.md) — Implementing entity services, repositories and the write pipeline
 1. [Mapping](mapping.md) — Mapping Entities to and from DTOs
 1. [Web Endpoints](web-endpoints.md) — Exposing entity operations as HTTP endpoints
 1. [Normalizing](normalizing.md) — Data normalization techniques

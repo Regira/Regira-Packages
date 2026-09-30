@@ -151,8 +151,18 @@ services.UseEntities<ShopDbContext>(options =>
             // AfterMapper: Add category title to DTO
             dto.CategoryTitle = product.Category?.Title;
         });
+
+    // Validator: runs after every prepper, and on delete
+    e.Validate(async (ctx, db, token) =>
+    {
+        if (ctx.Operation != EntityWriteOperation.Remove && !await db.Categories.AnyAsync(c => c.Id == ctx.Item.CategoryId, token))
+            ctx.AddError(nameof(Product.CategoryId), $"Category {ctx.Item.CategoryId} does not exist.");
+    });
 });
 ```
+
+An unknown category answers **400** with `{ "CategoryId": ["Category 99 does not exist."] }` instead of the
+database's 409. More on validators: [Services → Entity Validators](services.md#entity-validators).
 
 ## Example 2: Category with Inline Configuration
 
@@ -376,7 +386,7 @@ services.UseEntities<ShopDbContext>(options => { /* ... */ })
 
 1. [Index](../README.md) — Overview of Regira Entities
 1. [Entity Models](models.md) — Creating and structuring entity models
-1. [Services](services.md) — Implementing entity services and repositories
+1. [Services](services.md) — Implementing entity services, repositories and the write pipeline
 1. [Mapping](mapping.md) — Mapping Entities to and from DTOs
 1. [Web Endpoints](web-endpoints.md) — Exposing entity operations as HTTP endpoints
 1. [Normalizing](normalizing.md) — Data normalization techniques

@@ -1899,6 +1899,8 @@ Every `{id}` is the **link** id (`EntityAttachmentDto.Id`), never `attachmentId`
 | `DELETE attachments/{id}` | remove the link and its file |
 | `GET files/{id}` · `GET {objectId}/files/{*fileName}` | download by link id · by the client `FileName` (`?inline=false` → attachment) |
 
+A write a validator refuses answers 400 with the error map.
+
 ---
 
 ## Exceptions

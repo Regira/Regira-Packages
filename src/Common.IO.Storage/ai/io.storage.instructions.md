@@ -355,6 +355,9 @@ using var newZip = new ZipFileService(new ZipFileCommunicator());
 await newZip.Save("data.csv", csvBytes);
 ```
 
+`List` and `Save` answer identifiers with `/` between folders, and a `FolderUri` — written with either separator —
+matches that folder as a whole: `dir2/dir2.1` does not include `dir2/dir2.10`.
+
 | `ZipFileCommunicator` | Type | Description |
 |---|---|---|
 | `SourceFile` | `IMemoryFile?` | Existing zip to open — omit to start empty |

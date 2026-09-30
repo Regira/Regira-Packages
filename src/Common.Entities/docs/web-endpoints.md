@@ -157,6 +157,14 @@ Save(inputDto) -> SaveResult
 Delete(id) -> DeleteResult
 ```
 
+> **Refused writes:** a [validator](services.md#entity-validators) that rejects a write makes every write endpoint,
+> `DELETE` included, answer **400** with all the errors in one body, each message of a field its own entry — `""` for
+> an error on the entity as a whole:
+>
+> ```json
+> { "Code": ["Code is taken.", "Code must start with ORD-."], "": ["The order is incomplete."] }
+> ```
+
 ### Notes
 
 - ⚠️ **Generated endpoints ship anonymous.** No controller base carries `[Authorize]`, so every scaffolded
@@ -224,7 +232,7 @@ public record DeleteResult<TDto>
 
 1. [Index](../README.md) — Overview of Regira Entities
 1. [Entity Models](models.md) — Creating and structuring entity models
-1. [Services](services.md) — Implementing entity services and repositories
+1. [Services](services.md) — Implementing entity services, repositories and the write pipeline
 1. [Mapping](mapping.md) — Mapping Entities to and from DTOs
 1. **[Web Endpoints](web-endpoints.md)** — Exposing entity operations as HTTP endpoints
 1. [Normalizing](normalizing.md) — Data normalization techniques

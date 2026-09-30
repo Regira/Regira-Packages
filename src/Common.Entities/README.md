@@ -135,7 +135,7 @@ public class OrderController : EntityControllerBase<Order, int, OrderSearchObjec
 
 1. **[Index](https://regira.github.io/Regira-Packages/src/Common.Entities/)** — Overview of Regira Entities
 1. [Entity Models](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/models.html) — Creating and structuring entity models
-1. [Services](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/services.html) — Implementing entity services and repositories
+1. [Services](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/services.html) — Implementing entity services, repositories and the write pipeline
 1. [Mapping](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/mapping.html) — Mapping Entities to and from DTOs
 1. [Web Endpoints](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/web-endpoints.html) — Exposing entity operations as HTTP endpoints
 1. [Normalizing](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/normalizing.html) — Data normalization techniques

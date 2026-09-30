@@ -269,8 +269,8 @@ e.Related<TRelated, TRelatedKey>(x => x.Collection,
   every validator, so the container meets a circular dependency and no entity service in the app resolves
 - Children are validated through their parent: a validator checks the entity a write service saves, not the rows a
   `Related()` sync writes — check `Lines` from the `Order` validator, with keys like `Lines[0].Quantity`
-- The context carries `Item`, `Original` (the stored row on `Modify`), `Operation` (`Add` / `Modify` / `Remove`)
-  and the `Errors` added so far; `AddError(key, message)` takes the property path, `""` for the whole entity
+- The context carries `Item`, `Original` (the stored row on `Modify`), `Operation` (`Add` / `Modify` / `Remove`;
+  a soft delete of an `IArchivable` is a `Remove`) and the `Errors` added so far; `AddError(key, message)` takes the property path, `""` for the whole entity
 - Validators read and never write — `ctx.Item` is the instance that gets saved, so a value a validator sets is still
   written; changing the entity is a prepper's job. A primer runs later, on `SaveChanges()`, so a value a primer
   stamps is not there yet
@@ -595,7 +595,7 @@ services
 
 1. [Index](../README.md) — Overview of Regira Entities
 1. [Entity Models](models.md) — Creating and structuring entity models
-1. **[Services](services.md)** — Implementing entity services and repositories
+1. **[Services](services.md)** — Implementing entity services, repositories and the write pipeline
 1. [Mapping](mapping.md) — Mapping Entities to and from DTOs
 1. [Web Endpoints](web-endpoints.md) — Exposing entity operations as HTTP endpoints
 1. [Normalizing](normalizing.md) — Data normalization techniques
