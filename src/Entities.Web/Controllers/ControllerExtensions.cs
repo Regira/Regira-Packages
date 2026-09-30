@@ -208,12 +208,7 @@ public static class ControllerExtensions
         }
         catch (EntityInputException<TEntity> ex)
         {
-            foreach (var error in ex.InputErrors)
-            {
-                ctrl.ModelState.AddModelError(error.Key, error.Value);
-            }
-
-            return ctrl.BadRequest(ctrl.ModelState);
+            return ctrl.BadRequest(ctrl.ModelState.AddEntityInputErrors(ex));
         }
         catch (EntityConstraintException)
         {
@@ -349,6 +344,11 @@ public static class ControllerExtensions
         {
             await service.Remove(item);
             affected = await service.SaveChanges();
+        }
+        catch (EntityInputException<TEntity> ex)
+        {
+            // a validator rejected the delete — a 400 like a save's, whether or not the exception filter is registered
+            return ctrl.BadRequest(ctrl.ModelState.AddEntityInputErrors(ex));
         }
         catch (EntityConstraintException)
         {

@@ -33,6 +33,7 @@
     <Project Path="src/Entities.EFcore/Entities.EFcore.csproj" />
     <Project Path="src/Entities.Mapping.AutoMapper/Entities.Mapping.AutoMapper.csproj" />
     <Project Path="src/Entities.Mapping.Mapster/Entities.Mapping.Mapster.csproj" />
+    <Project Path="src/Entities.Validation.FluentValidation/Entities.Validation.FluentValidation.csproj" />
     <Project Path="src/Entities.Web/Entities.Web.csproj" />
   </Folder>
   <Folder Name="/src/Globalization/">

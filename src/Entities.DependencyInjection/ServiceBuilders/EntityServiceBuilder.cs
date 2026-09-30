@@ -13,6 +13,7 @@ using Regira.Entities.DependencyInjection.ServiceBuilders.Abstractions;
 using Regira.Entities.DependencyInjection.ServiceCollections;
 using Regira.Entities.DependencyInjection.ServiceCollections.Models;
 using Regira.Entities.DependencyInjection.Validation;
+using Regira.Entities.DependencyInjection.Validators;
 using Regira.Entities.Normalizing.Abstractions;
 using Regira.Entities.EFcore.Preppers;
 using Regira.Entities.Preppers;
@@ -30,6 +31,7 @@ using Regira.Entities.Models.Abstractions;
 using Regira.Entities.Reactors;
 using Regira.Entities.Reactors.Abstractions;
 using Regira.Entities.Services.Abstractions;
+using Regira.Entities.Validators.Abstractions;
 using System.Linq.Expressions;
 
 namespace Regira.Entities.DependencyInjection.ServiceBuilders;
@@ -487,6 +489,50 @@ public class EntityServiceBuilder<TContext, TEntity, TKey>(EntityServiceCollecti
     public EntityServiceBuilder<TContext, TEntity, TKey> Prepare(Func<TEntity, TContext, Task> prepareFunc)
     {
         Services.AddPrepper(prepareFunc);
+        return this;
+    }
+
+    // Validators
+    /// <summary>
+    /// Registers a validator class. It runs after every prepper on <c>Add</c> and <c>Modify</c>, and on <c>Remove</c>;
+    /// the errors of every validator in scope reach the client as one 400.
+    /// <para>
+    /// A validator scoped to an interface or base type (<c>IEntityValidator&lt;IHasTenantId&gt;</c>) is accepted here when
+    /// <typeparamref name="TEntity"/> is in its scope, and then checks <b>every</b> entity in that scope, not only this one —
+    /// register such a validator once, with <c>options.AddValidator&lt;TValidator&gt;()</c>. A class registered more than
+    /// once runs once.
+    /// </para>
+    /// </summary>
+    public EntityServiceBuilder<TContext, TEntity, TKey> AddValidator<TValidator>()
+        where TValidator : class, IEntityValidator<TEntity>
+    {
+        Services.AddValidator<TEntity, TValidator>();
+        return this;
+    }
+    /// <summary>
+    /// Checks every write of this entity: <paramref name="validate"/> receives the context and rejects the write with
+    /// <c>ctx.AddError(key, message)</c>. It runs after every prepper on <c>Add</c> and <c>Modify</c>, and on <c>Remove</c>
+    /// (<c>ctx.Operation</c> tells them apart).
+    /// </summary>
+    public EntityServiceBuilder<TContext, TEntity, TKey> Validate(Action<IEntityValidatorContext<TEntity>> validate)
+    {
+        Services.AddValidator(validate);
+        return this;
+    }
+    /// <summary>
+    /// Checks every write of this entity against the request's <typeparamref name="TContext"/> — e.g. that a referenced row
+    /// exists. <paramref name="validate"/> rejects the write with <c>ctx.AddError(key, message)</c>.
+    /// </summary>
+    public EntityServiceBuilder<TContext, TEntity, TKey> Validate(Func<IEntityValidatorContext<TEntity>, TContext, Task> validate)
+    {
+        Services.AddValidator(validate);
+        return this;
+    }
+    /// <inheritdoc cref="Validate(Func{IEntityValidatorContext{TEntity},TContext,Task})"/>
+    /// <remarks><paramref name="validate"/> receives the write's cancellation token, to pass to its queries.</remarks>
+    public EntityServiceBuilder<TContext, TEntity, TKey> Validate(Func<IEntityValidatorContext<TEntity>, TContext, CancellationToken, Task> validate)
+    {
+        Services.AddValidator(validate);
         return this;
     }
 

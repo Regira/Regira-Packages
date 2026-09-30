@@ -12,6 +12,7 @@
 | `Entities.DependencyInjection` | `Regira.Entities.DependencyInjection` | `UseEntities()` / `.For<>()` DI builder |
 | `Entities.Mapping.Mapster` | `Regira.Entities.Mapping.Mapster` | Mapster integration |
 | *`Entities.Mapping.AutoMapper`* | *`Regira.Entities.Mapping.AutoMapper`* | *AutoMapper integration (deprecated)* |
+| `Entities.Validation.FluentValidation` | `Regira.Entities.Validation.FluentValidation` | FluentValidation rules in the write pipeline (§Step 8 → Validators) |
 
 Always prefer clear, conventional patterns over clever solutions. Default to the more feature-rich options when in doubt. Use the latest .NET version (net10) unless instructed otherwise.
 
@@ -63,7 +64,7 @@ Store paid keys under `Regira:LicenseKeys` in `appsettings.json`. A single key c
 
 ## Core Understanding
 
-**The moving parts:** POCO entity (`IEntity<TKey>`) → `IEntityService` (default `EntityRepository`, DbContext-backed) → `EntityControllerBase`, with a read `TDto` / write `TInputDto` pair and six pipeline extension points: **QueryBuilders, Processors, Preppers, Primers, Reactors, AfterMappers**.
+**The moving parts:** POCO entity (`IEntity<TKey>`) → `IEntityService` (default `EntityRepository`, DbContext-backed) → `EntityControllerBase`, with a read `TDto` / write `TInputDto` pair and seven pipeline extension points: **QueryBuilders, Processors, Preppers, Validators, Primers, Reactors, AfterMappers**.
 
 ### Generic Type System
 
@@ -89,7 +90,7 @@ EntitySet → QueryBuilders (Filters → Sorting → Paging → Includes) → Pr
 
 **Write Pipeline:**
 ```
-Input → Mapping* → AfterInput* → Preppers → SaveChanges → Primers (Interceptors) → Submit → Commit → Reactors
+Input → Mapping* → AfterInput* → Preppers → Validators → SaveChanges → Primers (Interceptors) → Submit → Commit → Reactors
 ```
 *Only executed in API controllers
 
@@ -103,7 +104,7 @@ Input → Mapping* → AfterInput* → Preppers → SaveChanges → Primers (Int
 
 **Extend, don't add endpoints.** Reach for a `SearchObject` property before a custom controller action; add actions only when the base methods genuinely can't express the operation.
 
-**Default `EntityRepository` vs a wrapping service.** Stay on the default while the custom logic fits a QueryBuilder / Processor / Prepper / Primer / Reactor. Wrap (`EntityWrappingServiceBase`) when the behavior sits *around* the call rather than inside the pipeline — caching, auditing, cross-entity validation, combining data sources.
+**Default `EntityRepository` vs a wrapping service.** Stay on the default while the custom logic fits a QueryBuilder / Processor / Prepper / Validator / Primer / Reactor. Wrap (`EntityWrappingServiceBase`) when the behavior sits *around* the call rather than inside the pipeline — caching, auditing, combining data sources. Refusing a write is a validator's job, cross-entity rules included (§Step 8 → Validators).
 
 ---
 
@@ -205,7 +206,7 @@ A complete copy-paste slice (every file, in order) is in [`entities.examples.md`
 
 Need custom filters? Add a `SearchObject` (Step 2) and switch to the still-simple
 `services.For<X, int, XSearchObject>()` with controller `EntityControllerBase<X, int, XSearchObject, XDto, XInputDto>`.
-Add `SortBy`/`Includes` enums, query builders, processors, preppers, primers, reactors, normalizers, or after-mappers **only** when an optional step below calls for them — and note that typed sorting/includes make the entity *complex* (Step 0).
+Add `SortBy`/`Includes` enums, query builders, processors, preppers, validators, primers, reactors, normalizers, or after-mappers **only** when an optional step below calls for them — and note that typed sorting/includes make the entity *complex* (Step 0).
 
 > **⚠️ For a pager, use `/search`, not List.** `GET` (List) → `ListResult` (items only, no count); `GET /search`
 > → `SearchResult` with `count`. Both endpoints exist on simple **and** complex, so a simple entity can page too.
@@ -216,11 +217,11 @@ The table below lists the optional steps; the required steps (1–6, 11–15) fo
 | Step | Default | Add it when |
 |---|---|---|
 | 7. Processors | Skip by default | You need to fill `[NotMapped]` or other derived values after fetching from the database |
-| 8. Preppers | Skip by default | You must compute totals/codes/FKs, validate a required FK exists (→ 400 not 500), or manage child collections before the entity reaches EF Core |
+| 8. Preppers & Validators | Skip by default | A **prepper**: you must compute totals/codes/FKs or manage child collections before the entity reaches EF Core. A **validator**: a write must be refused with a field-level 400 — a referenced row that must exist (a 400 instead of the database's 409), a status transition, a rule on delete |
 | 9. Primers & Reactors | Skip by default | A **primer**: you need EF Core interceptor behavior during `SaveChanges()` or transaction-aware stamping across modified entities. A **reactor**: a side effect must follow a committed change — mail, a background job, a follow-up workflow when a status changes |
 | 10. Mapping & AfterMappers | Skip extra mapping config by default | DTO enrichment needs an after-mapper (`UseMapping<…>().After(...)`), or a nested/child mapping needs help Mapster's convention can't infer (`AddMapping<TSource, TTarget>()`) |
 
-**Mnemonic:** Preppers run synchronously inside `Add()` / `Modify()` / `Save()`, *before* the change tracker — so computed values (totals, codes, FKs) are set the moment `await service.Add(item)` returns. Primers run later, in the `SaveChanges` interceptor, and can inspect every entity in the transaction. Reactors run last, once the transaction is committed.
+**Mnemonic:** Preppers run synchronously inside `Add()` / `Modify()` / `Save()`, *before* the change tracker — so computed values (totals, codes, FKs) are set the moment `await service.Add(item)` returns. Validators run right after the last prepper (and inside `Remove`), and refuse the write before anything is tracked. Primers run later, in the `SaveChanges` interceptor, and can inspect every entity in the transaction. Reactors run last, once the transaction is committed.
 
 ---
 
@@ -405,7 +406,7 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 
 ---
 
-## Steps 6–10 — Pipeline services: filters, processors, preppers, primers, reactors, mapping
+## Steps 6–10 — Pipeline services: filters, processors, preppers, validators, primers, reactors, mapping
 
 *All optional except Step 6. Reach for one only when a row in the optional-steps table (§Entity Implementation Workflow) applies — and read §Step 0's "who writes it?" decision before adding anything that touches a child collection.*
 
@@ -463,9 +464,9 @@ The same scoping applies to **after-mappers** (Step 10): `IEntityAfterMapper` is
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — Category entity (CategoryProcessor) / Additional Patterns > Inline processor
 
-### Step 8: Preppers (Optional)
+### Step 8: Preppers & Validators (Optional)
 
-Use to: manage child collections (if not using `e.Related()`), recalculate totals/codes/FKs before `SaveChanges()`.
+Use a prepper to: manage child collections (if not using `e.Related()`), recalculate totals/codes/FKs before `SaveChanges()`. Refusing a write is a validator's job (§Validators below).
 
 ⚠️ **On update, `modified` carries only what `TInputDto` sent.** Every other field is `default` — a required
 FK left off the DTO, a `[ServerOwned]` value, and any timestamp a primer stamps (primers run *after* every
@@ -474,8 +475,8 @@ ago). **Read those from `original`**, never from `modified` with a `== default` 
 silent, plausible and wrong — an SLA deadline derived from `modified.Created` drifts forward by the row's age
 on every edit, and the response is a 200. Restoring a value is the same move as any server-owned field
 ([`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update). A required FK
-that *is* on the DTO reaches the database unchecked: an existence check here turns its `409` into a
-field-level `400` (`EntityInputException<TEntity>`, §Error Handling).
+that *is* on the DTO reaches the database unchecked: an existence check in a validator turns its `409` into
+a field-level `400` (§Validators below).
 
 ⚠️ **A prepper enforcing a cap must count the change tracker's pending rows too.** A capacity, quota or
 duplicate check written as a `dbContext.Set<T>().CountAsync(...)`/`AnyAsync(...)` cannot see rows queued in
@@ -502,11 +503,12 @@ Two shapes, and the choice is forced by whether you need the stored row:
 |---|---|---|---|
 | 1 | DTO → entity mapping | the controller / your caller | the request payload |
 | 2 | **Preppers, in registration order** — `e.Prepare(...)` delegates, `e.AddPrepper<T>()` classes, and the `Related()` collection sync alike | `IEntityService.Add`/`Modify`/`Save`, **before** `SaveChanges()` | the mapped entity, plus the stored `original` on the `EntityPrepperBase` shape |
-| 3 | `SaveChanges()` | your call (base controllers make it for you) | — |
-| 4 | **Primers** | an EF `SaveChangesInterceptor`, **inside** the save | the `EntityEntry`, so `entry.State` and `entry.OriginalValues` |
-| 5 | **Reactors, in registration order** | **after the commit**, in a DI scope of their own | an `IEntityChange<T>`: the committed row and the stored one (§Step 9 → Reactors) |
+| 3 | **Validators, every one in scope** — `e.Validate(...)` delegates, `e.AddValidator<T>()` classes and the global ones alike | `IEntityService.Add`/`Modify`/`Save` after **every** prepper, and `Remove` | the entity as the preppers left it, and the stored `original` on `Modify`; all of their errors reach the client as one 400 (§Validators below) |
+| 4 | `SaveChanges()` | your call (base controllers make it for you) | — |
+| 5 | **Primers** | an EF `SaveChangesInterceptor`, **inside** the save | the `EntityEntry`, so `entry.State` and `entry.OriginalValues` |
+| 6 | **Reactors, in registration order** | **after the commit**, in a DI scope of their own | an `IEntityChange<T>`: the committed row and the stored one (§Step 9 → Reactors) |
 
-What a prepper works with: `modified` is the mapped incoming entity — the instance EF tracks and saves, so a value a prepper sets on it (or on one of its incoming owned rows, before or after the sync) is what gets written. `original` is a **no-tracking** copy of the stored row, loaded like `Details` (every include flag). The `Related()` sync never rewrites `original`'s collection: it holds the stored rows when your `Includes` loads that navigation and `null` otherwise — on either side of the sync. The sync only sets EF states: incoming rows become `Added`/`Modified`, stored rows missing from the payload `Deleted`, and a `null` collection is left untouched (a prepper registered before `Related()` that sets it to `null` keeps the rows from changing on that save). A primer sees the entity *after* every prepper has finished with it. **No prepper runs on `DELETE`** — `Remove` goes straight to the `DbSet`: a rule that forbids deleting a row in some state belongs in an override of the controller's `Delete` (or of `Remove` on an `EntityWrappingServiceBase`); primers do see `Deleted` entries. Only stages 4 and 5 run for a writer that bypasses `IEntityService` and saves through the raw `DbContext` — the reason a field a workflow service legitimately writes belongs in a prepper, never a primer ([`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update).
+What a prepper works with: `modified` is the mapped incoming entity — the instance EF tracks and saves, so a value a prepper sets on it (or on one of its incoming owned rows, before or after the sync) is what gets written. `original` is a **no-tracking** copy of the stored row, loaded like `Details` (every include flag). The `Related()` sync never rewrites `original`'s collection: it holds the stored rows when your `Includes` loads that navigation and `null` otherwise — on either side of the sync. The sync only sets EF states: incoming rows become `Added`/`Modified`, stored rows missing from the payload `Deleted`, and a `null` collection is left untouched (a prepper registered before `Related()` that sets it to `null` keeps the rows from changing on that save). A primer sees the entity *after* every prepper has finished with it. **No prepper runs on `DELETE`**; validators do, with `ctx.Operation == EntityWriteOperation.Remove` — the place for a rule that forbids deleting a row in some state (§Validators below). Primers see `Deleted` entries. Only stages 5 and 6 run for a writer that bypasses `IEntityService` and saves through the raw `DbContext` — the reason a field a workflow service legitimately writes belongs in a prepper, never a primer ([`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update).
 
 `e.Related()` takes an optional parent-level `prepareFunc` followed by an optional `configure` callback — signature `Related<TRelated, TRelatedKey>(x => x.Collection, prepareFunc?, configure?)`:
 - Sync only: `e.Related<TRelated, TRelatedKey>(x => x.Collection, prepareFunc?)` — syncs the collection, optional per-entity prepare.
@@ -523,6 +525,104 @@ What a prepper works with: `modified` is the mapped incoming entity — the inst
 | positive but matching nothing | **new** → `INSERT`, ⚠️ **with that id** | Only temp (negative) keys are cleared, so a store-generated key arrives as an explicit insert: a silently wrong PK on SQLite, and *"Cannot insert explicit value for identity column"* on SQL Server. It means the client is sending a stale id for a row someone else deleted — reload before saving rather than relying on the server to absorb it. (A **client-assigned** key type — `Guid`, `string` — is never cleared, because there a chosen key is the point.) |
 
 The **parent FK needs no stamping**. New children reach the store through the parent's navigation, so EF assigns the FK once the parent's key is generated — this holds for a brand-new parent saved with children in one call. Setting the FK yourself to a parent id that does not exist yet (`0`) is what breaks it.
+
+#### Validators — refusing a write
+
+A validator checks the entity a write is about to save or remove, and refuses the write by adding errors. It runs
+inside `Add` / `Modify` / `Save` after **every** prepper — the global ones and the `Related()` sync included,
+whatever the registration order — and inside `Remove`, where no prepper runs. Every validator in scope runs and
+adds to one list; when any error was added, the write service throws one `EntityInputException<TEntity>` of the
+entity it saves, before anything is tracked, and the client gets every error in one **400** (§Error Handling).
+Validators read and never write: `ctx.Item` is the instance that gets saved, so a value a validator sets is still
+written — changing the entity is a prepper's job.
+
+<!-- no-compile -->
+```csharp
+// inline — the second form receives the request's DbContext and the write's cancellation token
+// (async (ctx, db) => … is the same without the token)
+e.Validate(ctx =>
+{
+    if (ctx.Operation == EntityWriteOperation.Remove && ctx.Item.Status == OrderStatus.Shipped)
+        ctx.AddError(nameof(Order.Status), "A shipped order cannot be deleted.");
+});
+e.Validate(async (ctx, db, token) =>
+{
+    if (ctx.Operation != EntityWriteOperation.Remove && !await db.Customers.AnyAsync(c => c.Id == ctx.Item.CustomerId, token))
+        ctx.AddError(nameof(Order.CustomerId), $"Customer {ctx.Item.CustomerId} does not exist.");
+});
+
+// class form — constructor-injected, with a per-item opt-out
+public class OrderStatusValidator : EntityValidatorBase<Order>
+{
+    public override bool CanValidate(Order item) => item.Status != OrderStatus.Pending;
+    public override Task Validate(IEntityValidatorContext<Order> ctx, CancellationToken token = default)
+    {
+        if (ctx.Original is { } stored && !OrderStatusRules.CanMove(stored.Status, ctx.Item.Status))
+            ctx.AddError(nameof(Order.Status), "Status change not allowed.");
+        return Task.CompletedTask;
+    }
+}
+e.AddValidator<OrderStatusValidator>();
+options.AddValidator<TenantValidator>();   // global — an EntityValidatorBase<IHasTenantId> checks every tenant-owned entity
+```
+
+**What a validator receives** — `IEntityValidatorContext<TEntity>`:
+- `Item` — the entity about to be written, as the preppers left it; for `Remove`, the row the caller loaded.
+- `Original` — the row as stored, on `Modify`; `null` on `Add` and `Remove`. A `Modify` whose row is not found
+  runs no validator and answers `null` (not found), so `Original` is never `null` on a `Modify`.
+- `Operation` — `EntityWriteOperation.Add`, `Modify` or `Remove`. A soft delete of an `IArchivable` is a `Remove`.
+- `AddError(key, message)` — `key` is the property path (`CustomerId`, `Lines[0].Quantity`), `""` for the entity
+  as a whole; a key may carry several messages. `Errors` holds what every validator of this write added so far,
+  so a later one can skip an expensive check: no point querying for the customer when `CustomerId` already failed.
+
+**Which validators run — the scope rule.** A validator applies to an entity when the `TScope` of its
+`IEntityValidator<TScope>` is that entity, a base class of it or an interface it implements:
+
+| Scope | Runs for |
+|---|---|
+| `EntityValidatorBase<Order>` | `Order` only |
+| `EntityValidatorBase<Party>` | `Person` and `Organization`, whichever service saves them |
+| `EntityValidatorBase<IHasTenantId>` | every tenant-owned entity |
+
+- **The runtime type decides** — unlike preppers, which match the service's declared entity: a `Person` saved
+  through the `Party` service gets its `Person` validators too. The exception is still the service's own
+  `EntityInputException<Party>`, so the generated endpoint's typed `catch` matches.
+- ⚠️ **The place of registration never narrows the scope.** Every registration joins the one list every write
+  service imports: an `EntityValidatorBase<IHasCode>` added inside `For<Order>()` checks every entity that has a
+  code. Register an interface- or base-scoped validator once, with `options.AddValidator<T>()` in `UseEntities()`;
+  to keep one on a single entity, scope it to that entity's type. A class registered twice runs once; each
+  `Validate(...)` delegate is a validator of its own.
+- **Children are validated through their parent.** Validators check the entity a write service saves, not the rows a
+  `Related()` sync writes — validate `Lines` from the `Order` validator (key `Lines[0].Quantity`). A validator scoped
+  to a child without a `For<>()` never runs; startup validation warns.
+
+**What a refusal leaves behind.** A refused `Add` or `Modify` takes back what its preppers marked — the rows a
+`Related()` sync added, changed or deleted, and a prepper's edit to a row the scope loaded earlier — so a job that
+catches the exception and saves other entities in the same scope does not persist them. What the job itself changed
+before the write stays: when a validator runs for the item, `Add` and `Modify` first let EF detect pending edits, so
+the refusal can tell them from the preppers'. That pass covers every row the context tracks, so its cost grows through
+a batch that saves only at the end (§Bulk insert in [`entities.patterns.md`](./entities.patterns.md)); a write no
+validator runs for — nothing in scope, or only an `ISelectiveEntityValidator` that does not cover it — skips it, and so
+does the write service's constructor without validators. A subclass whose `ValidateItem` override refuses writes no
+registered validator runs for overrides `CanBeRefused` to keep the undo. Two edits a refusal cannot take back: one to a row
+already added or changed before the write — the tracker keeps no record of its values in between — and, on a context
+with `AutoDetectChangesEnabled = false`, a prepper's edit EF never detected, since detection is then the caller's. A
+refused `Remove` is checked before anything is marked.
+
+**Where they run.** `EntityWriteService` runs them; a subclass must take `IEnumerable<IEntityValidator>` and pass it
+to the base constructor — the constructor without it runs none. A custom `IEntityRepository` over another store
+imports `IEnumerable<IEntityValidator>` and calls `validators.ValidateItem(item, original, operation)` before it
+writes. An override of `Remove` that skips `base.Remove` skips them, as an `Add` override skips the preppers; mark
+extra rows for a delete in an override of `RemoveItem`, which runs once the validators passed. Startup validation
+warns about a write path that cannot run the validators in scope.
+
+**FluentValidation** — package `Regira.Entities.Validation.FluentValidation`. `o.UseFluentValidation(typeof(OrderValidator).Assembly)`
+inside `UseEntities()` registers the assembly's `AbstractValidator`s (scoped, so they can take the `DbContext`) and
+runs them in this stage under the same scope rule — an `AbstractValidator<IHasTenantId>` checks every tenant-owned
+entity. `Add` and `Modify` run the rules outside any rule set plus `EntityRuleSets.Add` / `EntityRuleSets.Modify`;
+`Remove` runs `EntityRuleSets.Remove` alone. `ctx.GetOriginal()` and `ctx.GetOperation()` read the write from any
+rule, and only `Severity.Error` refuses it. Recipe: [`entities.patterns.md`](./entities.patterns.md) → Input
+validation with FluentValidation.
 
 ### Relationship Patterns — Decision Table
 
@@ -881,7 +981,6 @@ Examples:
   - Override `Details(id)` — check the cache first, then call `base.Details(id)` and store the result
   - Override `Save(item)` (and `Remove(item)` if needed) — call base, then invalidate the cache entry
 - Security: e.g. modify the SearchObject using business rules to automatically filter results based on user permissions, without needing to add extra filters on every endpoint.
-- Validation
 
 **Registration:**
 - `e.AddTransient<IProductService, ProductService>()` — enables typed injection by interface
@@ -902,6 +1001,7 @@ Examples:
 
 - Filter query builders → Additional Patterns > Global filter query builder
 - Preppers (inline) → Setup
+- Validators → §Step 8 → Validators (this file). One scoped to an interface or base class checks every entity in its scope wherever it is registered, so this is its place
 - Primers → Additional Patterns > Primers
 - Reactors → Additional Patterns > Reactors
 
@@ -957,6 +1057,17 @@ in the Development environment by default. It catches, with actionable messages:
   filter guards row access, the rows it was meant to hide are being returned. The built-in defaults are
   reported as *information* instead: `UseDefaults()` registers the whole set whether or not the app has an
   `IArchivable` (or timestamped, or normalized-content) entity, so an inert one carries no signal.
+- **Entity validator no entity is in scope of** (warning) — a validator whose `TScope` no registered entity, nor a
+  type deriving from one, is, derives from or implements, so it never runs; typically one scoped to a `Related()`
+  child, which is validated through its parent (§Step 8 → Validators). A validator on `Person` with only
+  `For<Party>()` is not reported: a `Person` saved through the `Party` service runs it.
+- **Write path without the validators** (warning) — an entity with validators in scope (counting those of the
+  types deriving from it) whose write service or custom repository has no constructor taking
+  `IEnumerable<IEntityValidator>`: a write service on
+  `EntityWriteService`'s constructor without validators, or a service over another store. Services registered
+  through a factory are skipped. A validator scoped wider than what it checks implements `ISelectiveEntityValidator`
+  and counts, here and when a write runs, only for the entities it `Covers` — FluentValidation's, for those an
+  `AbstractValidator` applies to.
 - **Missing archived query filter** (**error**) — an `IArchivable` entity whose model carries no archived
   filter, from either route: the options wiring (`DbContextWiring.ArchivedQueryFilter`, on by default) or an
   explicit `modelBuilder.SetArchivedQueryFilter()`. `DELETE` flags those rows and nothing hides them. Reached
@@ -1256,8 +1367,13 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 
 ### EntityInputException (returns HTTP 400)
 
-Throw `EntityInputException<TEntity>` from a prepper or an action, and `InputErrors` becomes the field-level
-body of a **400**. `ConfigureDefaultJsonOptions()` registers the exception filter that maps it application-wide,
+A validator's errors (§Step 8 → Validators), or an `EntityInputException<TEntity>` thrown from a prepper or an
+action, become the field-level body of a **400**: `{ "Code": ["…", "…"] }`. `Errors` carries every message,
+several per field, and the body lists each. `InputErrors` is a view over it with one message per field (a field's
+messages joined by a space): setting a field there replaces that field's messages in `Errors`, so an error added to a
+caught rejection before it is rethrown reaches the body. With no errors, the exception's message goes out under the
+empty key. The generated `DELETE` answers a refused delete
+the same way. `ConfigureDefaultJsonOptions()` registers the exception filter that maps it application-wide,
 so a hand-written domain action (`POST {id}/approve`) answers exactly like the generated `PUT` — one of the two
 reasons that call is not optional.
 
@@ -1267,7 +1383,7 @@ reasons that call is not optional.
 > the filter matches, and what your own `catch` should. Worked example:
 > [`entities.patterns.md`](./entities.patterns.md) § Domain actions on an entity resource.
 
-> **→ See:** [`entities.examples.md`](./entities.examples.md) — Order + OrderLine entities (OrderManager)
+> **→ See:** [`entities.examples.md`](./entities.examples.md) — Order + OrderLine entities (the order-lines validator in `AddOrders`)
 
 ### EntityConstraintException (returns HTTP 409)
 
@@ -1278,8 +1394,8 @@ attachment controllers, and any hand-written action, through the same filter
 `ConfigureDefaultJsonOptions()` registers. The response detail is generic — the provider's
 constraint message can leak index names and other users' values, so it is logged server-side (warning) by
 the write service instead. Transient faults (deadlocks, timeouts) are **not** wrapped and keep surfacing as
-500s for alerting. When the client can fix the input, prefer an explicit check in a prepper +
-`EntityInputException` — a field-level 400 beats a generic 409.
+500s for alerting. When the client can fix the input, prefer an explicit check in a validator — a
+field-level 400 beats a generic 409.
 
 ### EntityConcurrencyException (returns HTTP 409)
 
@@ -1375,7 +1491,7 @@ verbatim; everything around them is the wrapper:
 { "item": { "id": 13, "code": "LMP-002", "title": "Floor lamp" }, "isNew": true, "affected": 1, "duration": 7 }
 
 // EntityInputException → 400. ⚠️ A FLAT map, with no ProblemDetails "errors" wrapper around it — this is
-// BadRequest(ModelState), not ValidationProblem(). Keys are the InputErrors keys verbatim — System.Text.Json
+// BadRequest(ModelState), not ValidationProblem(). Keys are the error keys verbatim — System.Text.Json
 // applies no dictionary-key policy — so nameof(Product.CategoryId) reaches the client as "CategoryId". A host that
 // sets DictionaryKeyPolicy, or serializes with Newtonsoft's camelCase resolver, camelCases these keys too.
 { "CategoryId": ["Category 99 does not exist"], "Code": ["Code is required"] }
@@ -1526,7 +1642,7 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 | Restore 404s / a repeated `DELETE` 404s, only on an entity with a custom read service | The service implements `Details(id, ct)` only and inherits the default `Details(id, archived, ct)`, which cannot see archived rows | Override **both** `Details` overloads on the custom read service / repository |
 | `DELETE` erases the row instead of archiving it | `IArchivable` not implemented, or `ArchivablePrimer` not registered | Implement `IArchivable`; use `UseDefaults()` |
 | A `Restrict` FK lets the parent delete anyway (no 409) | SQLite enforces foreign keys only when the connection string sets `Foreign Keys=True` | Add it to the connection string ([`entities.setup.md`](./entities.setup.md) → P3) |
-| Save/delete returns **409 Conflict** (`ProblemDetails` title "Conflict") on a valid-looking payload | A DB constraint rejected the change — required FK points at a nonexistent parent, duplicate unique key, or a delete under `Restrict` (§Error Handling); the response detail is generic — the constraint name is in the server log (warning) | Fix the data, or validate in a prepper and `throw new EntityInputException<TEntity>(…)` → field-level 400 (parameterize by the *serviced* entity) |
+| Save/delete returns **409 Conflict** (`ProblemDetails` title "Conflict") on a valid-looking payload | A DB constraint rejected the change — required FK points at a nonexistent parent, duplicate unique key, or a delete under `Restrict` (§Error Handling); the response detail is generic — the constraint name is in the server log (warning) | Fix the data, or check it in a validator → field-level 400 (§Step 8 → Validators) |
 | A user's edit silently overwrites another user's change — no 409 | No concurrency token, or it never round-trips: missing from the read or input DTO (the client then sends the default, which is not checked), or an application-owned token nothing re-mints | Implement `IHasConcurrencyToken` (or declare a token of your own and mint it in a primer) and put it on both DTOs ([`entities.patterns.md`](./entities.patterns.md) → Optimistic concurrency). Startup validation warns about a DTO without the property |
 | Every PUT/PATCH answers **409 "Concurrency conflict"**, even with a single user | The entity initializes its token (`= Guid.NewGuid()`) and the input DTO has no property for it, so each mapped entity carries a token the row never held; or the client resends the token it read before its own last save | Remove the initializer and add the property to both DTOs; take the new token from the `SaveResult` after each save. Startup validation reports the initializer as an error |
 | A dashboard/report endpoint answers **500 with an empty body** on a green build; the log says *"The LINQ expression … could not be translated"* or *"Translating this query requires the SQL APPLY operation"* | An untranslatable construct in the query: a record constructor in the projection, a correlated `SelectMany` (`CROSS APPLY` — absent on SQLite), **a method of your own called on the row**, date arithmetic between two columns on SQLite (`x.End - x.Start`), or a provider-specific `EF.Functions` member (`DateDiff*` is SQL Server only) | The full list with the translating alternative for each is in [`entities.patterns.md`](./entities.patterns.md) § Cross-entity aggregates & report endpoints |
@@ -1549,6 +1665,7 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 |---|---|---|
 | Normalizer not running | Interceptor not wired — no `UseDefaults()` and no `WireDbContext(NormalizerInterceptors)` | Call `UseDefaults()` (or `e.WireDbContext(DbContextWiring.NormalizerInterceptors)`) — startup validation fails fast on this in Development |
 | Primers not running | Interceptor not wired — no `UseDefaults()` and no `WireDbContext(PrimerInterceptors)` | Same as above |
+| A validator never runs | Its scope matches no registered entity (a `Related()` child is validated through its parent); the write service calls `EntityWriteService`'s constructor without validators; a custom repository never calls `ValidateItem`; or an override of `Remove` skips `base.Remove` | Startup validation warns about the first three — §Step 8 → Validators |
 | Reactor never runs | Interceptor not wired (no `UseDefaults()`, no `DbContextWiring.Reactors`); or the save ran inside a transaction that was never committed through EF | Wire it (startup validation warns); commit through the `IDbContextTransaction` — §Step 9 → Reactors |
 | `EntityControllerBase<>` constructor errors / DI fails to resolve controller | Explicit constructor injecting `IEntityService<>` declared inside the controller class | Remove the constructor — `EntityControllerBase<>` resolves its service internally via the framework; no constructor is needed or expected |
 | `EntityWrappingServiceBase` — infinite loop | Inner service is the wrapper itself | Ensure `UseEntityService<T>()` registers the wrapper; `AddTransient` registers the interface |

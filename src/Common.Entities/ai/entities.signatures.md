@@ -223,6 +223,38 @@ public interface IEntityWriteService<TEntity, TKey>
 }
 ```
 
+The default implementation, and the base of a custom write service:
+
+<!-- no-compile -->
+```csharp
+using Regira.Entities.EFcore.Services;
+
+public class EntityWriteService<TContext, TEntity, TKey>(
+    TContext dbContext,
+    IEntityReadService<TEntity, TKey> readService,
+    IEnumerable<IEntityPrepper> preppers,
+    IEnumerable<IEntityValidator> validators,
+    ILoggerFactory? loggerFactory = null) : IEntityWriteService<TEntity, TKey>
+    where TContext : DbContext
+    where TEntity : class, IEntity<TKey>
+{
+    // runs no validators — a subclass passes IEnumerable<IEntityValidator> to the constructor above
+    public EntityWriteService(TContext dbContext, IEntityReadService<TEntity, TKey> readService,
+        IEnumerable<IEntityPrepper> preppers, ILoggerFactory? loggerFactory = null);
+
+    // Add / Modify: PrepareItem, then ValidateItem, then the entity is tracked
+    public virtual Task PrepareItem(TEntity item, TEntity? original, CancellationToken token = default);
+    public virtual Task ValidateItem(TEntity item, TEntity? original, EntityWriteOperation operation,
+        CancellationToken token = default);
+    // Remove: ValidateItem, then RemoveItem — mark extra rows for a delete here, once the validators passed
+    protected virtual Task RemoveItem(TEntity item, CancellationToken token = default);
+    // whether a validator runs for the item: only then do Add / Modify detect pending edits and log what the write marks,
+    // for a refusal to take back; override it when a ValidateItem override refuses writes no registered validator runs for
+    protected virtual bool CanBeRefused(TEntity item);
+}
+// int-keyed: EntityWriteService<TContext, TEntity>, with the same two constructors
+```
+
 ### Combined (IEntityService)
 
 ```csharp
@@ -761,6 +793,50 @@ public static EntityServiceCollectionOptions AddPrepper<TContext, TEntity, TKey>
     where TEntity : class, IEntity<TKey>;
 ```
 
+#### Validators (global)
+
+<!-- no-compile -->
+```csharp
+using Regira.Entities.DependencyInjection.Validators;
+
+// A validator class for every entity its IEntityValidator<TScope> covers — an interface or base class reaches every
+// entity implementing it; one implementing only IEntityValidator checks every entity. A class registered twice runs once.
+public static EntityServiceCollectionOptions AddValidator<TValidator>(
+    this EntityServiceCollectionOptions options)
+    where TValidator : class, IEntityValidator;
+
+public static EntityServiceCollectionOptions AddValidator<TScope>(
+    this EntityServiceCollectionOptions options,
+    Action<IEntityValidatorContext<TScope>> validate)
+    where TScope : class;
+
+public static EntityServiceCollectionOptions AddValidator<TContext, TScope>(
+    this EntityServiceCollectionOptions options,
+    Func<IEntityValidatorContext<TScope>, TContext, Task> validate)
+    where TContext : DbContext
+    where TScope : class;
+// the same, receiving the write's cancellation token for its queries
+public static EntityServiceCollectionOptions AddValidator<TContext, TScope>(
+    this EntityServiceCollectionOptions options,
+    Func<IEntityValidatorContext<TScope>, TContext, CancellationToken, Task> validate)
+    where TContext : DbContext
+    where TScope : class;
+
+// IServiceCollection forms — the same scope rule
+public static IServiceCollection AddValidator<TValidator>(this IServiceCollection services)
+    where TValidator : class, IEntityValidator;
+public static IServiceCollection AddValidator<TScope, TValidator>(this IServiceCollection services)
+    where TValidator : class, IEntityValidator<TScope>;
+public static IServiceCollection AddValidator<TScope>(this IServiceCollection services,
+    Func<IServiceProvider, IEntityValidator<TScope>> factory);
+public static IServiceCollection AddValidator<TScope>(this IServiceCollection services,
+    Action<IEntityValidatorContext<TScope>> validate) where TScope : class;
+public static IServiceCollection AddValidator<TContext, TScope>(this IServiceCollection services,
+    Func<IEntityValidatorContext<TScope>, TContext, Task> validate) where TContext : DbContext where TScope : class;
+public static IServiceCollection AddValidator<TContext, TScope>(this IServiceCollection services,
+    Func<IEntityValidatorContext<TScope>, TContext, CancellationToken, Task> validate) where TContext : DbContext where TScope : class;
+```
+
 #### Primers (global)
 
 <!-- no-compile -->
@@ -1041,6 +1117,21 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
     EntityServiceBuilder<TContext, TEntity, TKey> AddPrepper<TPrepper>()
         where TPrepper : class, IEntityPrepper<TEntity>;
 
+    // Validators — run after every prepper on Add/Modify/Save, and on Remove; one 400 for all their errors
+    // inline (each call is a validator of its own):
+    EntityServiceBuilder<TContext, TEntity, TKey> Validate(Action<IEntityValidatorContext<TEntity>> validate);
+
+    EntityServiceBuilder<TContext, TEntity, TKey> Validate(
+        Func<IEntityValidatorContext<TEntity>, TContext, Task> validate);
+    // the same, receiving the write's cancellation token: e.Validate(async (ctx, db, token) => …)
+    EntityServiceBuilder<TContext, TEntity, TKey> Validate(
+        Func<IEntityValidatorContext<TEntity>, TContext, CancellationToken, Task> validate);
+
+    // class-based: a validator scoped to an interface or base class TEntity is in checks EVERY entity in that
+    // scope, not only this one (options.AddValidator<T>() is its place)
+    EntityServiceBuilder<TContext, TEntity, TKey> AddValidator<TValidator>()
+        where TValidator : class, IEntityValidator<TEntity>;
+
     // Server-owned scalar/FK: restored from the stored row on update, minted on create when
     // mintOnCreate is supplied and the property is unset. [ServerOwned] is the protect-only
     // attribute form (no registration needed once UseDefaults() has run).
@@ -1192,6 +1283,13 @@ public partial class EntityIntServiceBuilder<TContext, TEntity>
 
     // Int-key shortcuts (no TRelatedKey / TContext parameter needed)
     EntityIntServiceBuilder<TContext, TEntity> Prepare(Func<TEntity, TContext, Task> prepareFunc);
+
+    // Re-declared to keep the builder type through a chain
+    EntityIntServiceBuilder<TContext, TEntity> Validate(Action<IEntityValidatorContext<TEntity>> validate);
+    EntityIntServiceBuilder<TContext, TEntity> Validate(Func<IEntityValidatorContext<TEntity>, TContext, Task> validate);
+    EntityIntServiceBuilder<TContext, TEntity> Validate(Func<IEntityValidatorContext<TEntity>, TContext, CancellationToken, Task> validate);
+    EntityIntServiceBuilder<TContext, TEntity> AddValidator<TValidator>()
+        where TValidator : class, IEntityValidator<TEntity>;
 
     // Re-declared to keep the builder type through a chain — without it the next call falls back to
     // the base Related<TRelated, TRelatedKey>, whose key argument cannot be inferred (CS0411).
@@ -1471,6 +1569,113 @@ public interface IEntityPrepper<in TEntity> : IEntityPrepper
 }
 ```
 
+### Validators
+
+<!-- no-compile -->
+```csharp
+using Regira.Entities.Validators.Abstractions;
+
+public enum EntityWriteOperation { Add, Modify, Remove }   // a soft delete of an IArchivable is Remove
+
+public interface IEntityValidatorContext
+{
+    object Item { get; }                          // after every prepper; Remove: the row the caller loaded
+    object? Original { get; }                     // the stored row on Modify; null on Add and Remove
+    EntityWriteOperation Operation { get; }
+    IReadOnlyList<EntityInputError> Errors { get; }   // what every validator of this write added so far
+    void AddError(string key, string message);    // key: property path ("CustomerId", "Lines[0].Quantity"), "" = whole entity
+}
+public interface IEntityValidatorContext<out TEntity> : IEntityValidatorContext
+{
+    new TEntity Item { get; }
+    new TEntity? Original { get; }
+}
+
+public interface IEntityValidator
+{
+    Task Validate(IEntityValidatorContext context, CancellationToken token = default);
+}
+// TScope: the entity, a base class or an interface — matched against the item's runtime type
+// implement the typed Validate only: the untyped one forwards to it by default (a class implementing two scopes
+// implements the untyped one itself)
+public interface IEntityValidator<in TScope> : IEntityValidator
+{
+    Task Validate(IEntityValidatorContext<TScope> context, CancellationToken token = default);
+}
+
+public abstract class EntityValidatorBase<TScope> : IEntityValidator<TScope> where TScope : class
+{
+    public virtual bool CanValidate(TScope item) => true;   // per-item opt-out
+    public abstract Task Validate(IEntityValidatorContext<TScope> context, CancellationToken token = default);
+}
+
+// a validator scoped wider than what it checks (e.g. to IEntity): it runs only for the item types it covers, and startup
+// validation counts it only for those
+public interface ISelectiveEntityValidator : IEntityValidator
+{
+    bool Covers(Type entityType);
+}
+
+// Regira.Entities.Validators
+// build one to unit-test a validator
+public class EntityValidatorContext<TEntity>(EntityWriteOperation operation, TEntity item, TEntity? original = null)
+    : IEntityValidatorContext<TEntity> where TEntity : class;
+
+public static class EntityValidatorExtensions
+{
+    // runs every validator in scope of the item's runtime type, in order, against one context; throws one
+    // EntityInputException<TEntity> holding all their errors — what a custom repository calls before it writes
+    public static Task ValidateItem<TEntity>(this IEnumerable<IEntityValidator> validators, TEntity item,
+        TEntity? original, EntityWriteOperation operation, CancellationToken token = default) where TEntity : class;
+    // whether any validator runs for an item of itemType — when none does, ValidateItem cannot refuse
+    public static bool AnyApplyTo(this IEnumerable<IEntityValidator> validators, Type itemType);
+}
+
+public static class EntityScopeTypes
+{
+    // the type itself, then every type it derives from or implements — the scope rule of validators and global filters
+    public static IReadOnlyList<Type> Of(Type entityType);
+}
+
+// Regira.Entities.EFcore.Validators — what the builder's Validate(...) registers
+public class EntityValidator<TScope>(Action<IEntityValidatorContext<TScope>> validate)
+    : EntityValidatorBase<TScope> where TScope : class;
+public class EntityValidator<TContext, TScope>(TContext dbContext, Func<IEntityValidatorContext<TScope>, TContext, CancellationToken, Task> validate)
+    : EntityValidatorBase<TScope> where TContext : DbContext where TScope : class
+{
+    public EntityValidator(TContext dbContext, Func<IEntityValidatorContext<TScope>, TContext, Task> validate);
+}
+```
+
+FluentValidation adapter — package `Regira.Entities.Validation.FluentValidation`:
+
+<!-- no-compile -->
+```csharp
+using Regira.Entities.Validation.FluentValidation;
+
+// inside UseEntities(): registers the assemblies' validators (scoped) and the FluentEntityValidator stage
+public static EntityServiceCollectionOptions UseFluentValidation(
+    this EntityServiceCollectionOptions options, params Assembly[] assemblies);
+
+// Add/Modify run the rules outside any rule set plus Add/Modify; Remove runs Remove alone
+public static class EntityRuleSets
+{
+    public const string Add = "Add";
+    public const string Modify = "Modify";
+    public const string Remove = "Remove";
+}
+
+public static class ValidationContextExtensions
+{
+    public static T? GetOriginal<T>(this ValidationContext<T> context);                  // the stored row on Modify
+    public static EntityWriteOperation? GetOperation<T>(this ValidationContext<T> context); // null outside the pipeline
+}
+
+// an IEntityValidator<IEntity>: resolves IValidator<T> for every type in EntityScopeTypes.Of(item.GetType());
+// only Severity.Error failures refuse the write; covers the entities an AbstractValidator applies to
+public class FluentEntityValidator(IServiceProvider services) : EntityValidatorBase<IEntity>, ISelectiveEntityValidator;
+```
+
 ### Primers
 
 <!-- no-compile -->
@@ -1705,8 +1910,14 @@ using Regira.Entities.Models;
 public abstract class EntityInputException(string message, Exception? innerException = null)
     : Exception(message, innerException)
 {
-    public IDictionary<string, string> InputErrors { get; set; } = new Dictionary<string, string>(); // pre-initialized
+    // several messages per key: the 400 body is built from it (with none, Message goes out under the key "")
+    public IList<EntityInputError> Errors { get; set; }          // pre-initialized
+    // a view over Errors, one message per key (a key's messages joined by a space); setting a key replaces its
+    // messages in Errors — not a second store
+    public IDictionary<string, string> InputErrors { get; set; }
 }
+
+public record EntityInputError(string Key, string Message);   // Key "" = the entity as a whole
 
 public class EntityInputException<T>(string message, Exception? innerException = null)
     : EntityInputException(message, innerException)
@@ -1730,14 +1941,15 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
 }
 ```
 
-`ConfigureDefaultJsonOptions()` registers the filter that maps them — 400 with `InputErrors` as the body,
+`ConfigureDefaultJsonOptions()` registers the filter that maps them — 400 with `Errors` as the body,
 409 for `EntityConstraintException` and `EntityConcurrencyException` — so a **hand-written** action returns
 what the generated ones do.
 Catch the non-generic base if you handle it yourself: the generated write actions catch their own closed
 generic, which misses the one a prepper threw for a related entity (`EntityInputException<Product>` inside
 an `Order` write).
 
-`InputErrors` is initialized, so both forms work — a nested initializer for a fixed set, indexer assignment for a map you build:
+`InputErrors` is initialized, so both forms work — a nested initializer for a fixed set, indexer assignment for a map you build.
+`ctx.AddError(key, message)` in a validator is the other way in; both land in `Errors`:
 
 <!-- no-compile -->
 ```csharp

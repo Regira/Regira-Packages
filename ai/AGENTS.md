@@ -187,7 +187,7 @@ When the consumer project already contains Regira packages, inspect the project'
 
 | Installed package pattern | Module or family | Guidance | Use when | Main packages and defaults |
 |---------------------------|------------------|----------|----------|----------------------------|
-| `Regira.Entities*` | `Entities` | Dedicated module guides | CRUD APIs, entity services, DTO mapping, EF Core repositories, and generated endpoints | `Regira.Entities`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Mapping.Mapster` (default mapping), `Regira.Entities.Mapping.AutoMapper`, `Regira.Entities.EFcore`, `Regira.Entities.Web` |
+| `Regira.Entities*` | `Entities` | Dedicated module guides | CRUD APIs, entity services, DTO mapping, EF Core repositories, and generated endpoints | `Regira.Entities`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Mapping.Mapster` (default mapping), `Regira.Entities.Mapping.AutoMapper`, `Regira.Entities.Validation.FluentValidation` (FluentValidation rules as entity validators), `Regira.Entities.EFcore`, `Regira.Entities.Web` |
 | `Regira.IO.Storage*` | `IO.Storage` | Dedicated module guides | File storage, uploads, Azure Blob, SFTP, ZIP, or SimpleTCP file transfer | `Regira.IO.Storage`, `Regira.IO.Storage.Azure`, `Regira.IO.Storage.SSH`, `Regira.IO.Storage.GitHub`, `Regira.IO.Storage.SimpleTCP` |
 | `Regira.IO.Compression.SharpZipLib` | `IO.Compression` | No dedicated family guide | ZIP archive creation and extraction, especially password-protected ZIP files | `Regira.IO.Compression.SharpZipLib` |
 | `Regira.Office` | `Office` | Dedicated family overview | Office family overview or when the user still needs to choose between PDF, Excel, Word, Mail, OCR, and related submodules | `Regira.Office` |

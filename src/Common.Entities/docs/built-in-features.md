@@ -11,7 +11,6 @@ Samples:
 - Auditing (Can also be done using Primers for write operations)
 - Security
 - Caching
-- Validation
 
 ```csharp
 .For<Order>(e =>
@@ -42,8 +41,11 @@ Task<int> SaveChanges(CancellationToken token = default)
 
 ### Input Exceptions
 
-**EntityInputException**: returned as BadRequest (400), with `InputErrors` as the ModelState payload — a flat map
-of each key to its messages. The keys go out as thrown: System.Text.Json applies no dictionary-key policy, so
+**EntityInputException**: returned as BadRequest (400), with its errors as the ModelState payload — a flat map
+of each key to its messages. `Errors` holds every message, several per key, and is what the body is built from; with
+no errors, the exception's message goes out under the empty key. `InputErrors` is a view over `Errors` with one
+message per key, a key's messages joined by a space: setting a key replaces that key's messages in `Errors`, so a
+handler that adds one to a caught rejection before rethrowing it reaches the body. The keys go out as thrown: System.Text.Json applies no dictionary-key policy, so
 `nameof(Order.Status)` reaches a camelCase client as `Status`. A host that sets `DictionaryKeyPolicy`, or serializes
 with Newtonsoft's camelCase resolver, camelCases them.
 
@@ -51,8 +53,11 @@ with Newtonsoft's camelCase resolver, camelCases them.
 public abstract class EntityInputException(string message, Exception? innerException = null)
     : Exception(message, innerException)
 {
-    public IDictionary<string, string> InputErrors { get; set; } = new Dictionary<string, string>();
+    public IList<EntityInputError> Errors { get; set; }          // pre-initialized
+    public IDictionary<string, string> InputErrors { get; set; } // a view over Errors
 }
+
+public record EntityInputError(string Key, string Message);
 
 public class EntityInputException<T>(string message, Exception? innerException = null)
     : EntityInputException(message, innerException)
@@ -321,7 +326,8 @@ generic-arity mismatches (the controller check activates automatically when `Reg
 referenced, or explicitly via `ValidateEntityControllers()`), warns when primers/normalizers/reactors are registered
 without their SaveChanges interceptor (an informational note instead when the `RegisterPrimerContainer` +
 `ApplyPrimers()` pattern is detected), warns when `?q=` would be silently ignored for an entity and when an
-attachments owner's collection is not mapped to the link's `ObjectId`, and fails on a `[ServerOwned]`
+attachments owner's collection is not mapped to the link's `ObjectId`, when an entity validator applies to no
+registered entity or an entity's write path cannot run the validators in its scope, and fails on a `[ServerOwned]`
 declaration nothing can enforce.
 Configure via `UseEntities(o => o.ConfigureValidation(v => { v.Enabled = true; /* Production opt-in */ }))`.
 
@@ -373,6 +379,87 @@ public class Order : IEntity<int>
 - Scalars and FKs only. A navigation, a property without both accessors, and `IArchivable.IsArchived` (a
   restore has to be able to clear it) cannot be server-owned: the fluent form throws at registration, the
   attribute is skipped and reported by startup validation.
+
+### Validators
+
+A validator refuses a write. It runs after every prepper on `Add` / `Modify` / `Save`, and on `Remove`, where no
+prepper runs; the errors of every validator in scope reach the client as one 400, `DELETE` included.
+
+```csharp
+.For<Order>(e => e
+    .Validate(ctx =>
+    {
+        if (ctx.Operation == EntityWriteOperation.Remove && ctx.Item.Status == OrderStatus.Shipped)
+            ctx.AddError(nameof(Order.Status), "A shipped order cannot be deleted.");
+    })
+    .Validate(async (ctx, db, token) =>
+    {
+        if (ctx.Operation != EntityWriteOperation.Remove && !await db.Customers.AnyAsync(c => c.Id == ctx.Item.CustomerId, token))
+            ctx.AddError(nameof(Order.CustomerId), $"Customer {ctx.Item.CustomerId} does not exist.");
+    }));
+
+// global: one validator for every entity implementing the interface
+services.UseEntities<AppDbContext>(o => o.AddValidator<TenantValidator>());
+
+public class TenantValidator : EntityValidatorBase<IHasTenantId>
+{
+    public override Task Validate(IEntityValidatorContext<IHasTenantId> ctx, CancellationToken token = default)
+    {
+        if (string.IsNullOrEmpty(ctx.Item.TenantId))
+            ctx.AddError(nameof(IHasTenantId.TenantId), "A tenant is required.");
+        return Task.CompletedTask;
+    }
+}
+```
+
+| Scope | Runs for |
+|-------|----------|
+| `EntityValidatorBase<Order>` | `Order` only |
+| `EntityValidatorBase<Party>` | `Person` and `Organization`, whichever service saves them |
+| `EntityValidatorBase<IHasTenantId>` | every entity implementing `IHasTenantId` |
+
+- **The runtime type decides.** A `Person` saved through the `Party` service gets its `Person` validators too; the
+  exception is still the service's own `EntityInputException<Party>`.
+- **The place of registration never narrows the scope.** A validator on an interface added inside one `For<>()`
+  checks every entity implementing it. Register such a validator once, globally; a class registered twice runs once.
+- **Children are validated through their parent.** A validator checks the entity a write service saves, not the rows
+  a `Related()` sync writes — check `Lines` from the `Order` validator, with keys like `Lines[0].Quantity`.
+- **Validators read, preppers write.** `ctx.Item` is the instance that gets saved, so a value a validator sets is
+  still written; change the entity in a prepper.
+- **A custom write path** passes `IEnumerable<IEntityValidator>` to the `EntityWriteService` base constructor (the
+  constructor without it runs no validators), or — over another store — calls
+  `validators.ValidateItem(item, original, operation)` before it writes.
+
+**FluentValidation** — the `Regira.Entities.Validation.FluentValidation` package runs `AbstractValidator<T>` rules in
+this stage, under the same scope rule:
+
+```csharp
+services.UseEntities<AppDbContext>(o =>
+{
+    o.UseDefaults();
+    o.UseFluentValidation(typeof(OrderValidator).Assembly);   // registers the assembly's validators, scoped
+});
+
+public class OrderValidator : AbstractValidator<Order>
+{
+    public OrderValidator(AppDbContext db)
+    {
+        RuleFor(x => x.Code).NotEmpty().MaximumLength(20);
+        RuleFor(x => x.CustomerId)
+            .MustAsync((id, ct) => db.Customers.AnyAsync(c => c.Id == id, ct))
+            .WithMessage(x => $"Customer {x.CustomerId} does not exist");
+        RuleFor(x => x.Status)
+            .Must((_, status, ctx) => ctx.GetOriginal() is not { } stored || stored.Status <= status)
+            .WithMessage("Status change not allowed");
+        RuleSet(EntityRuleSets.Remove, () =>
+            RuleFor(x => x.Status).NotEqual(OrderStatus.Shipped).WithMessage("A shipped order cannot be deleted"));
+    }
+}
+```
+
+`Add` and `Modify` run the rules outside any rule set plus `EntityRuleSets.Add` / `EntityRuleSets.Modify`; `Remove`
+runs `EntityRuleSets.Remove` alone. `ctx.GetOriginal()` and `ctx.GetOperation()` read the write from any rule, and
+only `Severity.Error` failures refuse it.
 
 ### Primers
 

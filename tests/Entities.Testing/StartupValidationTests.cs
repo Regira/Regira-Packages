@@ -7,11 +7,15 @@ using Microsoft.Extensions.Logging;
 using Regira.Entities.DependencyInjection.Extensions;
 using Regira.Entities.DependencyInjection.QueryBuilders;
 using Regira.Entities.DependencyInjection.ServiceCollections.Models;
+using Regira.Entities.DependencyInjection.Validators;
 using Regira.Entities.Models.Abstractions;
 using Regira.Entities.QueryBuilders.Abstractions;
 using Regira.Entities.EFcore.Primers;
 using Regira.Entities.EFcore.Primers.Abstractions;
 using Regira.Entities.EFcore.QueryBuilders.GlobalFilterBuilders;
+using Regira.Entities.EFcore.Services;
+using Regira.Entities.Preppers.Abstractions;
+using Regira.Entities.Services.Abstractions;
 
 namespace Entities.Testing;
 
@@ -29,7 +33,7 @@ public class StartupValidationTests
     [TearDown]
     public void TearDown() => _connection.Close();
 
-    private sealed class CaptureLoggerProvider : ILoggerProvider
+    internal sealed class CaptureLoggerProvider : ILoggerProvider
     {
         public List<string> Warnings { get; } = [];
         public List<string> Errors { get; } = [];
@@ -50,7 +54,7 @@ public class StartupValidationTests
         }
     }
 
-    private static async Task RunHostedServices(ServiceProvider serviceProvider)
+    internal static async Task RunHostedServices(ServiceProvider serviceProvider)
     {
         foreach (var hostedService in serviceProvider.GetServices<IHostedService>())
         {
@@ -676,5 +680,78 @@ public class StartupValidationTests
         await RunHostedServices(sp);
 
         Assert.That(capture.Warnings, Has.None.Contains("circular dependency"));
+    }
+
+    // ── entity validators ───────────────────────────────────────────────────────
+
+    /// <summary>A write service that still calls the constructor without validators.</summary>
+    public class LegacyProductWriteService(ProductContext dbContext, IEntityReadService<Product, int> readService,
+        IEnumerable<IEntityPrepper> preppers, ILoggerFactory? loggerFactory = null)
+        : EntityWriteService<ProductContext, Product>(dbContext, readService, preppers, loggerFactory);
+
+    /// <summary>A wrapping service: the check follows it to the repository and write service behind it.</summary>
+    public class AuditedProductService(IEntityRepository<Product, int, Regira.Entities.Models.SearchObject<int>> repository) : EntityWrappingServiceBase<Product>(repository);
+
+    private async Task<CaptureLoggerProvider> StartWithValidation(Action<Regira.Entities.DependencyInjection.ServiceCollections.EntityServiceCollection<ProductContext>> configure,
+        Action<EntityServiceCollectionOptions>? options = null)
+    {
+        var capture = new CaptureLoggerProvider();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(capture));
+        services.AddDbContext<ProductContext>(db => db.UseSqlite(_connection));
+        configure(services.UseEntities<ProductContext>(o =>
+        {
+            o.ConfigureValidation(v => v.Enabled = true);
+            options?.Invoke(o);
+        }));
+
+        await using var sp = services.BuildServiceProvider();
+        await RunHostedServices(sp);
+        return capture;
+    }
+
+    [Test]
+    public async Task An_Entity_Validator_No_Registered_Entity_Is_In_Scope_Of_Warns()
+    {
+        // Category is written only through the Product it belongs to here — it has no For<>() — so a validator scoped
+        // to it never runs
+        var capture = await StartWithValidation(
+            s => s.For<Product>(e => e.Validate(_ => { })),
+            o => o.AddValidator<Category>(_ => { }));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(capture.Warnings, Has.Some.Contains("EntityValidator<Category>").And.Some.Contains("never runs"));
+            Assert.That(capture.Warnings, Has.None.Contains("EntityValidator<Product>"));
+        });
+    }
+
+    [Test]
+    public async Task A_Write_Service_On_The_Constructor_Without_Validators_Warns()
+    {
+        var capture = await StartWithValidation(s => s.For<Product>(e => e
+            .UseEntityService<AuditedProductService>()
+            .UseWriteService<LegacyProductWriteService>()
+            .Validate(_ => { })));
+
+        Assert.That(capture.Warnings, Has.Some.Contains("'LegacyProductWriteService'").And.Some.Contains("IEnumerable<IEntityValidator>"));
+    }
+
+    [Test]
+    public async Task A_Write_Path_That_Reaches_The_Validators_Is_Silent()
+    {
+        var capture = await StartWithValidation(s => s.For<Product>(e => e
+            .UseEntityService<AuditedProductService>()
+            .Validate(_ => { })));
+
+        Assert.That(capture.Warnings, Has.None.Contains("IEntityValidator"));
+    }
+
+    [Test]
+    public async Task A_Write_Service_Without_Validators_In_Scope_Is_Not_Reported()
+    {
+        var capture = await StartWithValidation(s => s.For<Product>(e => e.UseWriteService<LegacyProductWriteService>()));
+
+        Assert.That(capture.Warnings, Has.None.Contains("IEntityValidator"));
     }
 }

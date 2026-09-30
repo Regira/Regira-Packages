@@ -57,6 +57,19 @@
 
 ---
 
+## Validators
+
+| Namespace | Types |
+|---|---|
+| `Regira.Entities.Validators.Abstractions` | `IEntityValidator`, `IEntityValidator<>`, `EntityValidatorBase<>`, `ISelectiveEntityValidator`, `IEntityValidatorContext`, `IEntityValidatorContext<>`, `EntityWriteOperation` |
+| `Regira.Entities.Validators` | `EntityValidatorContext<>` *(build one to unit-test a validator)*, `EntityValidatorExtensions` *(`ValidateItem()` — for a custom repository; `AnyApplyTo()`)*, `EntityScopeTypes` |
+| `Regira.Entities.Models` | `EntityInputError` |
+| `Regira.Entities.EFcore.Validators` | `EntityValidator<>`, `EntityValidator<,>` *(what `e.Validate(...)` registers)* |
+| `Regira.Entities.DependencyInjection.Validators` | `ServiceCollectionValidatorExtensions` *(`AddValidator<>()` — on `IServiceCollection` and `EntityServiceCollectionOptions`)* |
+| `Regira.Entities.Validation.FluentValidation` | `EntityServiceCollectionOptionsExtensions` *(`UseFluentValidation()`)*, `EntityRuleSets`, `ValidationContextExtensions` *(`GetOriginal()`, `GetOperation()`)*, `FluentEntityValidator` — package `Regira.Entities.Validation.FluentValidation` |
+
+---
+
 ## Primers (EF Core SaveChanges Interceptors)
 
 | Namespace | Types |
@@ -253,6 +266,12 @@ Regira.Entities.Processing.Abstractions   → IEntityProcessor<TEntity, TInclude
 ### Creating a prepper
 ```
 Regira.Entities.Preppers.Abstractions   → EntityPrepperBase<TEntity>, IEntityPrepper<TEntity>
+```
+
+### Creating a validator
+```
+Regira.Entities.Validators.Abstractions         → EntityValidatorBase<T>, IEntityValidatorContext<T>, EntityWriteOperation
+Regira.Entities.DependencyInjection.Validators  → AddValidator<T>()  // global: options.AddValidator<T>(); per entity: e.AddValidator<T>() / e.Validate(...) need no using
 ```
 
 ### Marking a field server-owned

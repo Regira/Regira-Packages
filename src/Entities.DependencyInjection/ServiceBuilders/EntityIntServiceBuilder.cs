@@ -5,6 +5,7 @@ using Regira.Entities.DependencyInjection.QueryBuilders;
 using Regira.Entities.DependencyInjection.ServiceBuilders.Abstractions;
 using Regira.Entities.DependencyInjection.ServiceCollections.Models;
 using Regira.Entities.DependencyInjection.Validation;
+using Regira.Entities.DependencyInjection.Validators;
 using Regira.Entities.Normalizing.Abstractions;
 using Regira.Entities.EFcore.Preppers;
 using Regira.Entities.Preppers.Abstractions;
@@ -14,6 +15,7 @@ using Regira.Entities.EFcore.Services;
 using Regira.Entities.Models;
 using Regira.Entities.Models.Abstractions;
 using Regira.Entities.Services.Abstractions;
+using Regira.Entities.Validators.Abstractions;
 using System.Linq.Expressions;
 
 namespace Regira.Entities.DependencyInjection.ServiceBuilders;
@@ -172,6 +174,32 @@ public class EntityIntServiceBuilder<TContext, TEntity>(EntityServiceCollectionO
     {
         Services.AddTransient<IEntityPrepper>(p => new EntityPrepper<TContext, TEntity>(p.GetRequiredService<TContext>(), prepareFunc));
 
+        return this;
+    }
+    // Validators
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.AddValidator{TValidator}" />
+    public new EntityIntServiceBuilder<TContext, TEntity> AddValidator<TValidator>()
+        where TValidator : class, IEntityValidator<TEntity>
+    {
+        base.AddValidator<TValidator>();
+        return this;
+    }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Validate(Action{IEntityValidatorContext{TEntity}})" />
+    public new EntityIntServiceBuilder<TContext, TEntity> Validate(Action<IEntityValidatorContext<TEntity>> validate)
+    {
+        base.Validate(validate);
+        return this;
+    }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Validate(Func{IEntityValidatorContext{TEntity},TContext,Task})" />
+    public new EntityIntServiceBuilder<TContext, TEntity> Validate(Func<IEntityValidatorContext<TEntity>, TContext, Task> validate)
+    {
+        base.Validate(validate);
+        return this;
+    }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Validate(Func{IEntityValidatorContext{TEntity},TContext,CancellationToken,Task})" />
+    public new EntityIntServiceBuilder<TContext, TEntity> Validate(Func<IEntityValidatorContext<TEntity>, TContext, CancellationToken, Task> validate)
+    {
+        base.Validate(validate);
         return this;
     }
     // Server-owned fields

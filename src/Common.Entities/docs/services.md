@@ -14,7 +14,7 @@ IEntityService<TEntity, TKey, TSearchObject, TSortBy, TIncludes>
 ## Service Layer Architecture
 
 - The default implementation is `EntityRepository`, which uses EF Core `DbContext` for data access
-- The `EntityRepository` is enriched by multiple helper services (QueryBuilders, Processors, Preppers, Primers, Reactors)
+- The `EntityRepository` is enriched by multiple helper services (QueryBuilders, Processors, Preppers, Validators, Primers, Reactors)
 - Replace the default EntityService using `UseEntityService` with a custom implementation (e.g., `CachedEntityService` that adds caching on top of the repository)
 
 ## Standard EntityRepository Methods
@@ -239,6 +239,62 @@ e.Related<TRelated, TRelatedKey>(x => x.Collection,
         builder.Related(item => item.SubCollection);
         builder.Prepare(item => item.RecalculateTotals());
     });
+```
+
+### Entity Validators
+
+- Refuse a write: run inside `Add` / `Modify` / `Save` after **every** prepper (the global ones and the `Related()`
+  sync included, whatever the registration order), and inside `Remove`, where no prepper runs
+- Every validator in scope runs and adds its errors to one context; the write service then throws one
+  `EntityInputException<TEntity>` of the entity it saves, before anything is tracked, so the client gets every
+  error in one 400
+- Inline shortcut is available: `e.Validate(ctx => …)`, and `e.Validate(async (ctx, db) => …)` with the `DbContext`
+  — or `e.Validate(async (ctx, db, token) => …)` to pass the write's cancellation token to its queries
+- A `Modify` whose stored row is not found runs no validator: it answers `null` (not found)
+- A refused `Add` or `Modify` takes back what its preppers marked — the rows a `Related()` sync added, changed or
+  deleted, and a prepper's edit to a row the scope loaded earlier — so a later `SaveChanges()` in the same scope does
+  not persist them. What the caller changed before the write stays: when a validator runs for the item, `Add` and
+  `Modify` first let EF detect pending edits (a pass over every tracked row, skipped when `AutoDetectChangesEnabled` is
+  off, and for a write no validator runs for). A prepper's edit to a row
+  already added or changed before the write stays too: the tracker keeps no record of its values in between
+- Scoped like preppers and global filters — to the entity, a base class or an interface — but matched against the
+  item's **runtime** type: a validator on `Person` also runs when a `Person` is saved through the `Party` service.
+  The place of registration never narrows the scope: a validator on an interface registered inside one `For<>()`
+  checks every entity implementing it, so register such a validator once, with `options.AddValidator<T>()`
+- The context carries `Item`, `Original` (the stored row on `Modify`), `Operation` (`Add` / `Modify` / `Remove`)
+  and the `Errors` added so far; `AddError(key, message)` takes the property path, `""` for the whole entity
+- Validators read and never write — changing the entity is a prepper's job
+- A custom write service passes `IEnumerable<IEntityValidator>` to the `EntityWriteService` constructor; a service
+  over another store calls `validators.ValidateItem(item, original, operation)` itself. Startup validation warns
+  about a write path that cannot run them
+- FluentValidation: `Regira.Entities.Validation.FluentValidation` — `o.UseFluentValidation(assembly)` runs the
+  assembly's `AbstractValidator`s in this stage, under the same scope rule, with a rule set per write
+  (`EntityRuleSets.Add` / `Modify` / `Remove`)
+
+```csharp
+// interface
+public interface IEntityValidator<in TScope> : IEntityValidator
+{
+    Task Validate(IEntityValidatorContext<TScope> context, CancellationToken token = default);
+}
+// base class
+public abstract class EntityValidatorBase<TScope> : IEntityValidator<TScope>
+{
+    public virtual bool CanValidate(TScope item) => true;
+    public abstract Task Validate(IEntityValidatorContext<TScope> context, CancellationToken token = default);
+}
+```
+
+```csharp
+.For<Order>(e =>
+{
+    e.Validate(ctx =>
+    {
+        if (ctx.Operation == EntityWriteOperation.Remove && ctx.Item.Status == OrderStatus.Shipped)
+            ctx.AddError(nameof(Order.Status), "A shipped order cannot be deleted.");
+    });
+    e.AddValidator<OrderStatusValidator>();
+})
 ```
 
 ### Entity Primers

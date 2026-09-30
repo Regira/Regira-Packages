@@ -17,7 +17,7 @@ foreach (var product in products)
 await service.SaveChanges();      // one round-trip flushes the whole batch
 ```
 
-> ⚠️ **Writes batch; preppers do not.** `Add()` is only free while nothing is registered against the entity — a prepper that queries the `DbContext` (FK validation, price lookup, a per-row `FindAsync`) runs **inside the loop**, once per item. A 500-row seed wave against an entity with a two-query prepper issues ~1,000 round-trips before the single flush, and nothing in the code shape shows it. Hoist the lookup into a dictionary built once before the loop.
+> ⚠️ **Writes batch; preppers and validators do not.** `Add()` issues no round-trip while nothing is registered against the entity — a prepper or validator that queries the `DbContext` (an existence check, a price lookup, a per-row `FindAsync`) runs **inside the loop**, once per item. A 500-row seed wave against an entity with a two-query prepper issues ~1,000 round-trips before the single flush, and nothing in the code shape shows it. Hoist the lookup into a dictionary built once before the loop. Each `Add()` / `Modify()` of an entity a validator runs for also has EF compare every row the context tracks, so a refused write can tell the caller's edits from its preppers': that pass grows with everything tracked since the last flush, so a very large run saves in waves (*The change tracker is cleared after every `SaveChanges()`*, below) rather than in one flush at the end.
 
 Two timing facts drive how you order a bulk run:
 
@@ -634,9 +634,9 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
 - **Either shape returns a 400 here.** `ModelState` + `BadRequest` as above, or
   `throw new EntityInputException<CreditRequest>(…) { InputErrors = { [nameof(item.Status)] = "…" } }` — the
   filter `ConfigureDefaultJsonOptions()` registers maps the exception on **any** action, so this controller
-  and the generated one answer alike. That covers a prepper too: preppers run in
-  `EntityWriteService.PrepareItem`, reached from the `service.Modify(item)` above, and one throwing there
-  lands on the same filter rather than escaping as a 500. Catch it explicitly only to add context — and then
+  and the generated one answer alike. That covers the write pipeline too: validators and preppers run inside
+  the `service.Modify(item)` above, so a validator's errors — and a prepper that throws — land on the same
+  filter rather than escaping as a 500. Catch it explicitly only to add context — and then
   catch the non-generic base `EntityInputException`, since a prepper guarding a *related* entity throws
   `EntityInputException<Product>`.
 - **Write through `IEntityService`** — keeps preppers, primers and row security in play, so the action and the
@@ -722,9 +722,108 @@ protects nothing — the caller takes the other route. Put the role-per-target-s
 every transition goes through, and let the endpoint attributes only narrow it.
 
 **An append-only history** (a status log, an audit trail of transitions) is the same guard on its own entity:
-the workflow service is its only writer, so its prepper throws `EntityInputException` for any create or update
-made without the trusted-writer flag, the parent's input DTO leaves the collection out (one writer per save
+the workflow service is its only writer, so its validator refuses any create or update made without the
+trusted-writer flag, the parent's input DTO leaves the collection out (one writer per save
 path), and its controller exposes no `DELETE` (override it to return `405`).
+
+## Input validation with FluentValidation
+
+`Regira.Entities.Validation.FluentValidation` runs `AbstractValidator<T>` rules as the write pipeline's validator
+stage (entities.instructions §Step 8 → Validators): after every prepper, on `DELETE` too, with every error in one 400.
+Add the package and call `UseFluentValidation` inside `UseEntities()`:
+
+```csharp
+using FluentValidation;
+using Regira.Entities.DependencyInjection.ServiceCollections;
+using Regira.Entities.Validation.FluentValidation;
+
+public enum OrderStatus { Pending, Shipped, Delivered }
+
+public class Customer : IEntityWithSerial
+{
+    public int Id { get; set; }
+    [MaxLength(64)] public string? Name { get; set; }
+}
+
+public class Order : IEntityWithSerial
+{
+    public int Id { get; set; }
+    [MaxLength(20)] public string? Code { get; set; }
+    public int CustomerId { get; set; }
+    public OrderStatus Status { get; set; }
+    public ICollection<OrderLine>? Lines { get; set; }
+}
+
+public class OrderLine : IEntityWithSerial
+{
+    public int Id { get; set; }
+    public int OrderId { get; set; }
+    public int Quantity { get; set; }
+}
+
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+{
+    public DbSet<Customer> Customers => Set<Customer>();
+    public DbSet<Order> Orders => Set<Order>();
+}
+
+public static class OrderStatusRules
+{
+    public static bool CanMove(OrderStatus from, OrderStatus to) => to >= from;
+}
+
+public class OrderValidator : AbstractValidator<Order>
+{
+    public OrderValidator(AppDbContext db)
+    {
+        RuleFor(x => x.Code).NotEmpty().MaximumLength(20);
+
+        RuleFor(x => x.CustomerId)
+            .MustAsync((id, ct) => db.Customers.AnyAsync(c => c.Id == id, ct))
+            .WithMessage(x => $"Customer {x.CustomerId} does not exist");
+
+        // a Related() collection is validated through its parent — keys like Lines[1].Quantity
+        RuleForEach(x => x.Lines).ChildRules(line => line.RuleFor(l => l.Quantity).GreaterThan(0));
+
+        RuleFor(x => x.Status)
+            .Must((_, status, ctx) => ctx.GetOriginal() is not { } stored || OrderStatusRules.CanMove(stored.Status, status))
+            .WithMessage("Status change not allowed");
+
+        RuleSet(EntityRuleSets.Remove, () =>
+            RuleFor(x => x.Status).NotEqual(OrderStatus.Shipped).WithMessage("A shipped order cannot be deleted"));
+    }
+}
+
+public static class OrderServiceConfiguration
+{
+    public static EntityServiceCollection<AppDbContext> AddOrders(this IServiceCollection services)
+        => services
+            .UseEntities<AppDbContext>(o =>
+            {
+                o.UseDefaults();
+                // registers the assembly's validators (scoped, so they can take the DbContext)
+                o.UseFluentValidation(typeof(OrderValidator).Assembly);
+            })
+            .For<Order>(e => e.Related(x => x.Lines))
+            .For<Customer>();
+}
+```
+
+- **Scope** — an `AbstractValidator<T>` checks every entity that is, derives from or implements `T`, like an
+  `IEntityValidator<T>`: `AbstractValidator<IHasTenantId>` checks every tenant-owned entity, and
+  `AbstractValidator<Party>` a `Person` saved through any service. Several validators of one type all run.
+- **A rule set per write** — `Add` and `Modify` run the rules outside any rule set plus `EntityRuleSets.Add` or
+  `EntityRuleSets.Modify`; `Remove` runs `EntityRuleSets.Remove` alone, so the shape rules and their lookups stay
+  off a delete. A rule for inserts only goes in `RuleSet(EntityRuleSets.Add, …)`.
+- **The write, from any rule** — `ctx.GetOriginal()` is the stored row on `Modify` (`null` otherwise) and
+  `ctx.GetOperation()` the write, read from the `ValidationContext<T>` a three-argument `Must` receives. A child
+  validator shares that context data; its `GetOriginal()` answers `null` unless its `T` is the entity's type.
+- **Async** — rules always run through `ValidateAsync`, so `MustAsync` against the `DbContext` works; it runs
+  once per item, like a prepper (§Bulk insert / update).
+- **Only errors refuse** — `Severity.Warning` and `Severity.Info` failures neither block the save nor reach the
+  response. Keys are FluentValidation's property names; a rule on the whole object (`RuleFor(x => x)`) uses `""`.
+- **Entities, not input DTOs** — this stage checks the entity the pipeline writes. DataAnnotations on `TInputDto`
+  keep producing ASP.NET's own 400 before the pipeline runs.
 
 ## Role-gated write authorization filter
 

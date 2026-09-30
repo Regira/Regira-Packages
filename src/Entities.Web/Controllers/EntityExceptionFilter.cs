@@ -6,7 +6,7 @@ namespace Regira.Entities.Web.Controllers;
 
 /// <summary>
 /// Gives every MVC action the entity write pipeline's status mapping: <see cref="EntityInputException"/> →
-/// <b>400</b> with its <c>InputErrors</c> as ModelState, <see cref="EntityConstraintException"/> → <b>409</b>
+/// <b>400</b> with its errors as ModelState, <see cref="EntityConstraintException"/> → <b>409</b>
 /// with <see cref="EntityConstraintProblem"/>, <see cref="EntityConcurrencyException"/> → <b>409</b> with
 /// <see cref="EntityConcurrencyProblem"/>. Registered application-wide by
 /// <c>ConfigureDefaultJsonOptions()</c> (see <c>MapEntityExceptions()</c>).
@@ -25,17 +25,7 @@ public class EntityExceptionFilter : IExceptionFilter
         switch (context.Exception)
         {
             case EntityInputException input:
-                foreach (var error in input.InputErrors)
-                {
-                    context.ModelState.AddModelError(error.Key, error.Value);
-                }
-                // A rule breach with no field-level detail still belongs at 400 — carry the message itself
-                // rather than returning an empty ModelState the client cannot act on.
-                if (input.InputErrors.Count == 0)
-                {
-                    context.ModelState.AddModelError(string.Empty, input.Message);
-                }
-                context.Result = new BadRequestObjectResult(context.ModelState);
+                context.Result = new BadRequestObjectResult(context.ModelState.AddEntityInputErrors(input));
                 context.ExceptionHandled = true;
                 break;
             case EntityConstraintException:

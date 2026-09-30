@@ -38,6 +38,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\src\Entities.DependencyInjection\Entities.DependencyInjection.csproj" />
+      <ProjectReference Include="..\..\src\Entities.Validation.FluentValidation\Entities.Validation.FluentValidation.csproj" />
       <ProjectReference Include="..\Testing.Library\_Testing.Library.csproj" />
     </ItemGroup>
 

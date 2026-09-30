@@ -74,6 +74,38 @@ public class EntityExceptionFilterTests
         Assert.IsType<BadRequestObjectResult>(context.Result);
     }
 
+    // Errors is what the body is built from: several messages of one field stay separate entries, where InputErrors
+    // shows them joined.
+    [Fact]
+    public void InputException_Errors_Keep_Every_Message_Of_A_Field()
+    {
+        var ex = new EntityInputException<object>("rejected")
+        {
+            Errors = { new EntityInputError("Code", "At most 5 characters."), new EntityInputError("Code", "Upper case only.") }
+        };
+        var context = ContextFor(ex);
+
+        new EntityExceptionFilter().OnException(context);
+
+        Assert.Equal(["At most 5 characters.", "Upper case only."], Assert.IsType<string[]>(Errors(context)["Code"]));
+        Assert.Equal("At most 5 characters. Upper case only.", ex.InputErrors["Code"]);
+    }
+
+    // InputErrors is a view over Errors, not a second store: a field a handler adds to a caught rejection before it
+    // rethrows reaches the body next to the validators' errors.
+    [Fact]
+    public void InputException_A_Field_Added_Through_InputErrors_Joins_The_Errors()
+    {
+        var ex = new EntityInputException<object>("rejected") { Errors = { new EntityInputError("Name", "A name is required.") } };
+        ex.InputErrors["Code"] = "Code is taken.";
+        var context = ContextFor(ex);
+
+        new EntityExceptionFilter().OnException(context);
+
+        Assert.Equal(["A name is required."], Assert.IsType<string[]>(Errors(context)["Name"]));
+        Assert.Equal(["Code is taken."], Assert.IsType<string[]>(Errors(context)["Code"]));
+    }
+
     [Fact]
     public void InputException_Without_Field_Errors_Still_Carries_Its_Message()
     {

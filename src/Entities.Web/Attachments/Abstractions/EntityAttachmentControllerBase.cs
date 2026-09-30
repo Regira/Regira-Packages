@@ -79,12 +79,7 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
         }
         catch (EntityInputException<TEntity> ex)
         {
-            foreach (var error in ex.InputErrors)
-            {
-                ModelState.AddModelError(error.Key, error.Value);
-            }
-
-            return BadRequest(ModelState);
+            return BadRequest(ModelState.AddEntityInputErrors(ex));
         }
     }
 

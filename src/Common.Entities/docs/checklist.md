@@ -52,6 +52,7 @@ When implementing a new entity in an application:
 - [ ] Implement query filters
 - [ ] Add Processors
 - [ ] Add Preppers
+- [ ] Add Validators — the rules that refuse a write with a 400, on save and on delete
 - [ ] Add Primers
 - [ ] Configure child properties with Related method — an owned child (order lines, join rows) normally needs **no** own `.For<>()` registration or controller; it rides on the parent's endpoints. Adding one for a dedicated route is fine provided the parent's input DTO leaves that collection `null`
 - [ ] If the child is **sortable**, `SortOrder` must travel on the parent DTO (position drives `SetSortOrder()`), so the collection can't be omitted — guard any per-row field with a `Prepare` hook, and keep the child's FK on its input DTO

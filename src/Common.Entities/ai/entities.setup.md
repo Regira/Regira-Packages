@@ -431,7 +431,7 @@ builder.Services.AddEntityServices();
 > re-creates the mismatch).
 >
 > **The second reason to call it: the entity exceptions.** It also registers `EntityExceptionFilter`, which
-> maps `EntityInputException` → **400** (its `InputErrors` as ModelState) and `EntityConstraintException` →
+> maps `EntityInputException` → **400** (its `Errors` as ModelState) and `EntityConstraintException` →
 > **409** for *every* MVC action. Without it that mapping reaches only the generated write actions, so a
 > hand-written domain action on an entity controller — `POST {id}/approve` and its kind — answers a rule
 > breach with a 500 and a stack trace. `MapEntityExceptions()` registers the filter on its own for a host

@@ -26,7 +26,8 @@
         "src/Common.Entities/Common.Entities.csproj",
         "src/Entities.EFcore/Entities.EFcore.csproj",
         "src/Entities.DependencyInjection/Entities.DependencyInjection.csproj",
-        "src/Entities.Web/Entities.Web.csproj"
+        "src/Entities.Web/Entities.Web.csproj",
+        "src/Entities.Validation.FluentValidation/Entities.Validation.FluentValidation.csproj"
       ],
       "guideDirs": [
         "src/Common.Entities/ai",
