@@ -47,12 +47,12 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     [TestCase(FileFormat.Rtf)]
     [TestCase(FileFormat.Odt)]
     [TestCase(FileFormat.EPub)]
-    public void Convert_To_Anything_But_Pdf_Is_Not_Supported(FileFormat format)
+    public async Task Convert_To_Anything_But_Pdf_Is_Not_Supported(FileFormat format)
     {
         var handler = new StubHandler();
         var service = new WordService(handler.CreateClient());
 
-        var ex = Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(TemplateInput("template.docx"), format));
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(TemplateInput("template.docx"), format));
 
         Assert.Multiple(() =>
         {
@@ -63,18 +63,18 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
 
     [TestCase(FileFormat.Png)]
     [TestCase(FileFormat.Jpeg)]
-    public void Convert_To_Image_Points_At_ToImages(FileFormat format)
+    public async Task Convert_To_Image_Points_At_ToImages(FileFormat format)
     {
         var handler = new StubHandler();
         var service = new WordService(handler.CreateClient());
 
-        var ex = Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(TemplateInput("template.docx"), format));
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(TemplateInput("template.docx"), format));
 
         Assert.That(ex!.Message, Does.Contain("ToImages"));
     }
 
     [Test]
-    public void Template_Input_Without_Creator_Is_Rejected()
+    public async Task Template_Input_Without_Creator_Is_Rejected()
     {
         var handler = new StubHandler();
         var service = new WordService(handler.CreateClient());
@@ -82,7 +82,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         input.GlobalParameters = new Dictionary<string, object> { ["title"] = "A title" };
         input.Headers = [new WordHeaderFooterInput { Template = TemplateInput("add_header.docx") }];
 
-        var ex = Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(input, FileFormat.Pdf));
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(input, FileFormat.Pdf));
 
         Assert.Multiple(() =>
         {
@@ -94,13 +94,13 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     }
 
     [Test]
-    public void Settings_On_A_Non_OpenXml_Source_Are_Rejected()
+    public async Task Settings_On_A_Non_OpenXml_Source_Are_Rejected()
     {
         var handler = new StubHandler();
         var service = new WordService(handler.CreateClient());
         var options = new ConversionOptions { OutputFormat = FileFormat.Pdf, Settings = new DocumentSettings() };
 
-        var ex = Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(TemplateInput("template.odt"), options));
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(TemplateInput("template.odt"), options));
 
         Assert.Multiple(() =>
         {
@@ -110,12 +110,12 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     }
 
     [Test]
-    public void ToImages_Without_A_PdfToImageService_Throws()
+    public async Task ToImages_Without_A_PdfToImageService_Throws()
     {
         var handler = new StubHandler();
         var service = new WordService(handler.CreateClient());
 
-        var ex = Assert.ThrowsAsync<InvalidOperationException>(() => service.ToImages(TemplateInput("template.docx")));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.ToImages(TemplateInput("template.docx")));
 
         Assert.Multiple(() =>
         {
@@ -175,13 +175,13 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     /// without a single parameter.
     /// </summary>
     [Test]
-    public void A_Template_With_Conditional_Blocks_Needs_A_Creator()
+    public async Task A_Template_With_Conditional_Blocks_Needs_A_Creator()
     {
         var handler = new StubHandler();
         var service = new WordService(handler.CreateClient());
         var input = new WordTemplateInput { Template = Docx.Document("Intro", "{{#if IsDraft}}", "DRAFT", "{{/if}}") };
 
-        var ex = Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(input, FileFormat.Pdf));
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(input, FileFormat.Pdf));
 
         Assert.Multiple(() =>
         {
@@ -300,7 +300,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     }
 
     [Test]
-    public void A_Server_Error_Surfaces_Status_And_Body()
+    public async Task A_Server_Error_Surfaces_Status_And_Body()
     {
         var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
         {
@@ -308,7 +308,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         });
         var service = new WordService(handler.CreateClient());
 
-        var ex = Assert.ThrowsAsync<HttpRequestException>(() => service.Convert(TemplateInput("template.docx"), FileFormat.Pdf));
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => service.Convert(TemplateInput("template.docx"), FileFormat.Pdf));
 
         Assert.Multiple(() =>
         {
@@ -596,7 +596,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     }
 
     [Test]
-    public void AddGotenbergWord_Resolves_Without_The_Optional_Services()
+    public async Task AddGotenbergWord_Resolves_Without_The_Optional_Services()
     {
         var services = new ServiceCollection();
         services.AddGotenbergWord(o => o.BaseUrl = "http://gotenberg.test:3000");
@@ -605,7 +605,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         var toImages = provider.GetRequiredService<IWordToImagesService>();
 
         // resolved with the constructor's defaults: no rasteriser was registered
-        Assert.ThrowsAsync<InvalidOperationException>(() => toImages.ToImages(TemplateInput("template.docx")));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => toImages.ToImages(TemplateInput("template.docx")));
     }
 
     [Test]

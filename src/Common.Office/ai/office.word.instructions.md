@@ -106,7 +106,7 @@ Composite of all the above. `Word.Spire.WordService`, `Word.Syncfusion.WordServi
 |---|---|---|
 | `Template` | `IMemoryFile` | Source `.docx` template |
 | `GlobalParameters` | `IDictionary<string, object>?` | Simple `{{Key}}` replacements; also decide `{{#if Key}}` conditional blocks |
-| `CollectionParameters` | `IDictionary<string, ICollection<IDictionary<string, object>>>?` | Table row data — key matches a table placeholder; `{{#if Key}}` holds when it has rows |
+| `CollectionParameters` | `IDictionary<string, ICollection<IDictionary<string, object>>>?` | Table rows — the key is the Alt Text title of the table they fill (see *Collection Tables*); `{{#if Key}}` holds when it has rows |
 | `Images` | `ICollection<WordImage>?` | Image replacements (matched by name) |
 | `DocumentParameters` | `IDictionary<string, WordTemplateInput>?` | Nested documents, each inserted in place of a `<{ key }>` placeholder paragraph |
 | `Headers` | `ICollection<WordHeaderFooterInput>?` | Page headers |
@@ -185,6 +185,44 @@ IMemoryFile pdf = await word.Convert(new WordTemplateInput { Template = doc }, F
 string text = await word.GetText(new WordTemplateInput { Template = doc });
 ```
 
+### Collection Tables (Word.Spire, Word.Syncfusion and Word.Aspose)
+
+A `CollectionParameters` entry fills the table whose Alt Text title (Table Properties → Alt Text → Title) is its
+key. The table's second row is the template row: it is written once per row of the collection, in order, and the
+rows around it stay where they are — a header above it, a totals row below it:
+
+```text
+Alt Text title: Lines
+| Nr               | Description       | Price         |
+| {{ row_number }} | {{ Description }} | € {{ Price }} |
+| Total            |                   | {{ Total }}   |
+```
+
+```csharp
+CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
+{
+    ["Lines"] = orderLines.Select(l => (IDictionary<string, object>)new Dictionary<string, object>
+    {
+        ["Description"] = l.Description,
+        ["Price"]       = l.Price.ToString("N2")
+    }).ToList()
+}
+```
+
+- The first row stays as it is — a header, which may be left empty — so the template row is always the second.
+  Rows below it are ordinary content: `{{ Total }}` above is filled from `GlobalParameters`.
+- `{{ row_number }}` is the row's position, from 1. Every other tag in the template row reads the collection row,
+  regardless of case, and a tag the row does not have is left empty — a `GlobalParameters` key included, so keep
+  global values out of the template row. A tag whose key holds anything but ASCII letters, digits, `_` and `.` is
+  not a row field and is left for `GlobalParameters`.
+- Only the first paragraph of each cell is filled.
+- Values are written with `ToString()`: format numbers, amounts and dates in code.
+- The title is matched exactly, case included, and one table is filled per title — give each table its own. A key
+  without a table is skipped, and an empty collection leaves the table without its template row: wrap the table in
+  `{{#if Key}}` (see *Conditional Blocks*) to drop it together with its heading.
+- Word.Mini fills collections in MiniWord's own syntax instead (see *Word.Mini limits*); Word.Gotenberg fills them
+  through its `IWordCreator`.
+
 ### HTML Parameters (Word.Spire, Word.Syncfusion and Word.Aspose)
 
 Prefix `GlobalParameters` keys with `html_` to inject raw HTML:
@@ -228,8 +266,8 @@ Please pay {{Amount}} before {{DueDate}}.
   Footnotes, endnotes and comments are not read for markers.
 - A document uses blocks when one of its paragraphs is `{{#if Key}}` or `{{#if !Key}}` and nothing else, and only
   then are its blocks resolved. Everything else in a document that uses none stays as it is — marker text among
-  other text, a stray `{{else}}` or `{{/if}}`, another template language's `{{#each}}` — so a finished document
-  that writes about templates converts and reads unchanged.
+  other text, a stray `{{else}}` or `{{/if}}` — so a finished document that writes about templates converts and
+  reads unchanged.
 - In a document that uses blocks, these throw `FormatException`: a block that does not open and close in one
   container and section, a `{{/if}}` or `{{else}}` without its `{{#if}}`, a second `{{else}}`, a marker sharing its
   paragraph with other text, and a marker this syntax does not know, such as `{{#unless X}}` or `{{else if X}}`.

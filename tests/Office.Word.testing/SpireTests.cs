@@ -51,7 +51,7 @@ public class SpireTests() : WordTestsBase(new WordService(), "Spire")
     public override Task Nested_Documents_Do_Not_Wear_Out_The_Service() => base.Nested_Documents_Do_Not_Wear_Out_The_Service();
 
     [Test]
-    public override void A_Template_That_Includes_Itself_Fails() => base.A_Template_That_Includes_Itself_Fails();
+    public override Task A_Template_That_Includes_Itself_Fails() => base.A_Template_That_Includes_Itself_Fails();
 
     [Test]
     public override Task A_Missing_Collection_Table_Leaves_The_Others() => base.A_Missing_Collection_Table_Leaves_The_Others();
@@ -79,7 +79,7 @@ public class SpireTests() : WordTestsBase(new WordService(), "Spire")
     public override Task A_Conditional_Block_In_A_Header_Is_Resolved() => base.A_Conditional_Block_In_A_Header_Is_Resolved();
 
     [Test]
-    public override void A_Malformed_Conditional_Block_Fails() => base.A_Malformed_Conditional_Block_Fails();
+    public override Task A_Malformed_Conditional_Block_Fails() => base.A_Malformed_Conditional_Block_Fails();
 
     [Test]
     public override Task Markers_In_Deleted_Revisions_And_Field_Codes_Do_Not_Count() => base.Markers_In_Deleted_Revisions_And_Field_Codes_Do_Not_Count();

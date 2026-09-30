@@ -361,12 +361,12 @@ public class ServerOwnedTests
     }
 
     [Test]
-    public void The_Prepper_Is_A_No_Op_Without_An_Original()
+    public async Task The_Prepper_Is_A_No_Op_Without_An_Original()
     {
         var prepper = new AutoServerOwnedPrepper<Order>();
         var order = new Order { Code = "KEEP" };
 
-        Assert.DoesNotThrowAsync(() => prepper.Prepare(order, null));
+        await Assert.DoesNotThrowAsync(() => prepper.Prepare(order, null));
         Assert.That(order.Code, Is.EqualTo("KEEP"));
     }
 }

@@ -342,7 +342,7 @@ public class StaleReferenceTwoCollectionsTests
             Assert.That(alice.ReportedTickets!.Single(), Is.SameAs(alice.AssignedTickets!.Single()), "one instance in both collections");
 
             alice.ReportedTickets!.Single().ReporterId = bobId;
-            Assert.DoesNotThrowAsync(async () =>
+            await Assert.DoesNotThrowAsync(async () =>
             {
                 await service.Modify(alice);
                 await service.SaveChanges();

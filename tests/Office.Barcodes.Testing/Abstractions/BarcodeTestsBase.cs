@@ -84,7 +84,7 @@ public class BarcodeTestsBase
         }
 
         var input = Convert.ToBase64String(Enumerable.Range(0, 50000).Select((_, i) => (byte)(i % 8)).ToArray());
-        Assert.ThrowsAsync<InputException>(async () =>
+        await Assert.ThrowsAsync<InputException>(async () =>
         {
             await Writer.Create(input);
         });

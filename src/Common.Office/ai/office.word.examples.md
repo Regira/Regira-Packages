@@ -4,6 +4,10 @@
 
 ## Generate a contract from a template
 
+The template's service table has the Alt Text title `ServiceLines`, and its second row holds `{{Description}}`,
+`{{Quantity}}` and `{{UnitPrice}}`: that row is written once per service line (see *Collection Tables* in
+`office.word.instructions.md`).
+
 ```csharp
 IWordService word = new Regira.Office.Word.Spire.WordService();
 

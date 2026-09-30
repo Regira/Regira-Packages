@@ -189,7 +189,7 @@ public class FluentEntityValidatorTests
         unknown.CustomerId = 42;
 
         await service.Add(NewOrder());
-        var ex = Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(unknown))!;
+        var ex = (await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(unknown)))!;
 
         Assert.That(ex.Errors, Is.EqualTo(new[] { new EntityInputError("CustomerId", "Customer 42 does not exist") }));
     }
@@ -204,7 +204,7 @@ public class FluentEntityValidatorTests
         var back = NewOrder(OrderStatus.Pending);
         back.Id = id;
 
-        var ex = Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Modify(back))!;
+        var ex = (await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Modify(back)))!;
 
         Assert.That(ex.Errors, Is.EqualTo(new[] { new EntityInputError("Status", "Status change not allowed") }));
     }
@@ -223,9 +223,9 @@ public class FluentEntityValidatorTests
         recoded.Id = id;
         recoded.Code = "ORD-2";
 
-        var onAdd = Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(shippedOnAdd))!;
+        var onAdd = (await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(shippedOnAdd)))!;
         await service.Modify(shippedOnModify);
-        var onModify = Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Modify(recoded))!;
+        var onModify = (await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Modify(recoded)))!;
 
         Assert.Multiple(() =>
         {
@@ -245,13 +245,13 @@ public class FluentEntityValidatorTests
         var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
 
         await service.Remove((await service.Details(pending))!);
-        var ex = Assert.ThrowsAsync<EntityInputException<Order>>(async () => await service.Remove((await service.Details(shipped))!))!;
+        var ex = (await Assert.ThrowsAsync<EntityInputException<Order>>(async () => await service.Remove((await service.Details(shipped))!)))!;
 
         Assert.That(ex.Errors, Is.EqualTo(new[] { new EntityInputError("Status", "A shipped order cannot be deleted") }));
     }
 
     [Test]
-    public void Validators_On_An_Interface_And_A_Base_Class_Run_For_Every_Entity_In_Their_Scope()
+    public async Task Validators_On_An_Interface_And_A_Base_Class_Run_For_Every_Entity_In_Their_Scope()
     {
         Build();
         using var scope = _sp.CreateScope();
@@ -260,9 +260,9 @@ public class FluentEntityValidatorTests
         var untenanted = NewOrder();
         untenanted.TenantId = null;
 
-        var person = Assert.ThrowsAsync<EntityInputException<Party>>(() => parties.Add(new Person()))!;
-        var organization = Assert.ThrowsAsync<EntityInputException<Party>>(() => parties.Add(new Organization { TenantId = "acme" }))!;
-        var order = Assert.ThrowsAsync<EntityInputException<Order>>(() => orders.Add(untenanted))!;
+        var person = (await Assert.ThrowsAsync<EntityInputException<Party>>(() => parties.Add(new Person())))!;
+        var organization = (await Assert.ThrowsAsync<EntityInputException<Party>>(() => parties.Add(new Organization { TenantId = "acme" })))!;
+        var order = (await Assert.ThrowsAsync<EntityInputException<Order>>(() => orders.Add(untenanted)))!;
 
         Assert.Multiple(() =>
         {
@@ -287,7 +287,7 @@ public class FluentEntityValidatorTests
     }
 
     [Test]
-    public void A_Child_Rule_Reports_The_Indexed_Property_Path()
+    public async Task A_Child_Rule_Reports_The_Indexed_Property_Path()
     {
         Build();
         using var scope = _sp.CreateScope();
@@ -295,7 +295,7 @@ public class FluentEntityValidatorTests
         var order = NewOrder();
         order.Lines = [new OrderLine { Product = "Book", Quantity = 1 }, new OrderLine { Product = "Pen", Quantity = 0 }];
 
-        var ex = Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(order))!;
+        var ex = (await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(order)))!;
 
         Assert.That(Keys(ex), Is.EqualTo(new[] { "Lines[1].Quantity" }));
     }
@@ -334,7 +334,7 @@ public class FluentEntityValidatorTests
     }
 
     [Test]
-    public void Calling_UseFluentValidation_Twice_Reports_Each_Error_Once()
+    public async Task Calling_UseFluentValidation_Twice_Reports_Each_Error_Once()
     {
         Build(o => o.UseFluentValidation(typeof(OrderValidator).Assembly));
         using var scope = _sp.CreateScope();
@@ -342,7 +342,7 @@ public class FluentEntityValidatorTests
         var order = NewOrder();
         order.Code = null;
 
-        var ex = Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(order))!;
+        var ex = (await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(order)))!;
 
         Assert.That(Keys(ex), Is.EqualTo(new[] { "Code" }));
     }

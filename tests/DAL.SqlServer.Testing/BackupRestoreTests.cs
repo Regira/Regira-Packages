@@ -114,7 +114,7 @@ public class BackupRestoreTests
         await new SqlServerRestoreService(Options(copy)).Restore(_backup);
         await Execute(copy, "INSERT dbo.Products (Title) VALUES (N'Quince')");
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => new SqlServerRestoreService(Options(copy)).Restore(_backup));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new SqlServerRestoreService(Options(copy)).Restore(_backup));
         Assert.That(await CountProducts(copy), Is.EqualTo(4));
     }
 
@@ -139,7 +139,7 @@ public class BackupRestoreTests
         await new SqlServerRestoreService(Options(copy)).Restore(_backup);
         var notABackup = "not a backup"u8.ToArray().ToMemoryFile();
 
-        Assert.ThrowsAsync<SqlException>(() => new SqlServerRestoreService(Options(copy, overwrite: true)).Restore(notABackup));
+        await Assert.ThrowsAsync<SqlException>(() => new SqlServerRestoreService(Options(copy, overwrite: true)).Restore(notABackup));
         Assert.That(await CountProducts(copy), Is.EqualTo(3));
     }
 
@@ -235,7 +235,7 @@ public class BackupRestoreTests
         await Execute(owner, "CREATE TABLE dbo.Kept (Id int); INSERT dbo.Kept VALUES (1);");
         await Execute("master", $"ALTER DATABASE [{owner}] SET OFFLINE WITH ROLLBACK IMMEDIATE");
 
-        var ex = Assert.ThrowsAsync<InvalidOperationException>(() => new SqlServerRestoreService(Options(copy, overwrite: true)).Restore(_backup));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => new SqlServerRestoreService(Options(copy, overwrite: true)).Restore(_backup));
 
         await Execute("master", $"ALTER DATABASE [{owner}] SET ONLINE");
         await using var check = await Open(owner);
@@ -255,7 +255,7 @@ public class BackupRestoreTests
         options.LocalBackupDirectory = Path.Combine(_backupDirectory, "not-where-sql-server-writes");
         var logger = new WarningLogger<SqlServerBackupService>();
 
-        Assert.ThrowsAsync<IOException>(() => new SqlServerBackupService(options, logger).Backup());
+        await Assert.ThrowsAsync<IOException>(() => new SqlServerBackupService(options, logger).Backup());
 
         Assert.Multiple(() =>
         {

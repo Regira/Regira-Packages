@@ -294,7 +294,7 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         }
     }
 
-    public virtual void A_Template_That_Includes_Itself_Fails()
+    public virtual async Task A_Template_That_Includes_Itself_Fails()
     {
         var creator = RequireCreator();
         var nested = TemplateInput("nested_templates.docx");
@@ -302,8 +302,8 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         var header = TemplateInput("lorem_ipsum.docx");
         header.Headers!.Add(new WordHeaderFooterInput { Template = header });
 
-        var viaNesting = Assert.ThrowsAsync<InvalidOperationException>(() => creator.Create(nested));
-        var viaHeader = Assert.ThrowsAsync<InvalidOperationException>(() => creator.Create(header));
+        var viaNesting = await Assert.ThrowsAsync<InvalidOperationException>(() => creator.Create(nested));
+        var viaHeader = await Assert.ThrowsAsync<InvalidOperationException>(() => creator.Create(header));
 
         Assert.Multiple(() =>
         {
@@ -687,18 +687,18 @@ public abstract class WordTestsBase : WordAssetsTestsBase
     /// <summary>
     /// Every case opens a block somewhere, so the document uses blocks and its markers are checked.
     /// </summary>
-    public virtual void A_Malformed_Conditional_Block_Fails()
+    public virtual async Task A_Malformed_Conditional_Block_Fails()
     {
         var creator = RequireCreator();
-        FormatException Fails(IMemoryFile template)
-            => Assert.ThrowsAsync<FormatException>(() => creator.Create(new WordTemplateInput { Template = template }))!;
+        async Task<FormatException> Fails(IMemoryFile template)
+            => (await Assert.ThrowsAsync<FormatException>(() => creator.Create(new WordTemplateInput { Template = template })))!;
 
-        var unclosed = Fails(Docx.Document("{{#if IsPaid}}", "Thank you."));
-        var unopened = Fails(Docx.Document("{{#if IsPaid}}", "Paid.", "{{/if}}", "Thank you.", "{{/if}}"));
-        var twoElses = Fails(Docx.Document("{{#if IsPaid}}", "{{else}}", "{{else}}", "{{/if}}"));
-        var amongText = Fails(Docx.Document("Dear {{#if IsCompany}}Sir or Madam{{/if}},", "{{#if IsPaid}}", "Thank you.", "{{/if}}"));
-        var unknown = Fails(Docx.Document("{{#if IsDue}}", "{{#unless IsPaid}}", "Please pay.", "{{/unless}}", "{{/if}}"));
-        var acrossSections = Fails(Docx.Document([Docx.Paragraph("{{#if IsPaid}}"), Docx.SectionBreak("Thank you."), Docx.Paragraph("{{/if}}")]));
+        var unclosed = await Fails(Docx.Document("{{#if IsPaid}}", "Thank you."));
+        var unopened = await Fails(Docx.Document("{{#if IsPaid}}", "Paid.", "{{/if}}", "Thank you.", "{{/if}}"));
+        var twoElses = await Fails(Docx.Document("{{#if IsPaid}}", "{{else}}", "{{else}}", "{{/if}}"));
+        var amongText = await Fails(Docx.Document("Dear {{#if IsCompany}}Sir or Madam{{/if}},", "{{#if IsPaid}}", "Thank you.", "{{/if}}"));
+        var unknown = await Fails(Docx.Document("{{#if IsDue}}", "{{#unless IsPaid}}", "Please pay.", "{{/unless}}", "{{/if}}"));
+        var acrossSections = await Fails(Docx.Document([Docx.Paragraph("{{#if IsPaid}}"), Docx.SectionBreak("Thank you."), Docx.Paragraph("{{/if}}")]));
 
         Assert.Multiple(() =>
         {

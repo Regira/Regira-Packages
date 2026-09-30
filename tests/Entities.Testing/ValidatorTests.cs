@@ -251,7 +251,7 @@ public class ValidatorTests
     }
 
     [Test]
-    public void The_Errors_Of_Every_Validator_Arrive_In_One_Exception()
+    public async Task The_Errors_Of_Every_Validator_Arrive_In_One_Exception()
     {
         Build(s => s.For<Order>(e => e
             .Validate(ctx => ctx.AddError(nameof(Order.Code), "Code is taken."))
@@ -265,7 +265,7 @@ public class ValidatorTests
         var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
         var order = NewOrder();
 
-        var ex = Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(order))!;
+        var ex = (await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(order)))!;
 
         Assert.Multiple(() =>
         {
@@ -282,7 +282,7 @@ public class ValidatorTests
     }
 
     [Test]
-    public void Every_Validator_Runs_And_Sees_The_Errors_Before_It()
+    public async Task Every_Validator_Runs_And_Sees_The_Errors_Before_It()
     {
         IReadOnlyList<EntityInputError>? seenByLater = null;
         Build(s => s.For<Order>(e => e
@@ -292,7 +292,7 @@ public class ValidatorTests
         using var scope = _sp.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
 
-        Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(NewOrder()));
+        await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(NewOrder()));
         Assert.That(seenByLater, Is.EqualTo(new[] { new EntityInputError("CustomerId", "A customer is required.") }));
     }
 
@@ -321,7 +321,7 @@ public class ValidatorTests
         using var scope = _sp.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<IEntityService<Party>>();
 
-        var person = Assert.ThrowsAsync<EntityInputException<Party>>(() => service.Add(new Person { TenantId = "acme" }))!;
+        var person = (await Assert.ThrowsAsync<EntityInputException<Party>>(() => service.Add(new Person { TenantId = "acme" })))!;
         await service.Add(new Organization { Name = "Acme", TenantId = "acme" });
 
         Assert.Multiple(() =>
@@ -345,7 +345,7 @@ public class ValidatorTests
         var parties = scope.ServiceProvider.GetRequiredService<IEntityService<Party>>();
         await scope.ServiceProvider.GetRequiredService<IEntityService<Customer>>().Add(new Customer { Name = "Ada" });
 
-        var ex = Assert.ThrowsAsync<EntityInputException<Party>>(() => parties.Add(new Organization { Name = "Acme" }))!;
+        var ex = (await Assert.ThrowsAsync<EntityInputException<Party>>(() => parties.Add(new Organization { Name = "Acme" })))!;
 
         Assert.Multiple(() =>
         {
@@ -355,7 +355,7 @@ public class ValidatorTests
     }
 
     [Test]
-    public void A_Validator_Class_Registered_Twice_Runs_Once_While_Two_Delegates_Both_Run()
+    public async Task A_Validator_Class_Registered_Twice_Runs_Once_While_Two_Delegates_Both_Run()
     {
         Build(s => s
             .For<Order>(e => e
@@ -365,7 +365,7 @@ public class ValidatorTests
             .For<Party>(e => e.AddValidator<TenantValidator>()));
 
         using var scope = _sp.CreateScope();
-        var ex = Assert.ThrowsAsync<EntityInputException<Order>>(() =>
+        var ex = await Assert.ThrowsAsync<EntityInputException<Order>>(() =>
             scope.ServiceProvider.GetRequiredService<IEntityService<Order>>().Add(NewOrder(tenant: null)))!;
 
         Assert.Multiple(() =>
@@ -386,12 +386,12 @@ public class ValidatorTests
         var shipped = NewOrder();
         shipped.Status = OrderStatus.Shipped;
 
-        Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(shipped));
+        await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(shipped));
         Assert.That(_log.Calls, Is.EqualTo(new[] { "shipped" }));
     }
 
     [Test]
-    public void A_Global_Validator_Throws_For_The_Entity_Being_Saved_Not_For_Its_Scope()
+    public async Task A_Global_Validator_Throws_For_The_Entity_Being_Saved_Not_For_Its_Scope()
     {
         Build(s => s.For<Order>(), o => o.AddValidator<TenantValidator>());
 
@@ -399,20 +399,20 @@ public class ValidatorTests
         var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
 
         // the generated endpoints catch EntityInputException<TEntity> of their own entity
-        Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(NewOrder(tenant: null)));
+        await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(NewOrder(tenant: null)));
     }
 
     [Test]
-    public void A_Custom_Service_Running_The_Extension_Gets_The_Same_Errors()
+    public async Task A_Custom_Service_Running_The_Extension_Gets_The_Same_Errors()
     {
         Build(s => s.For<Order>(e => e.Validate(ctx => ctx.AddError(nameof(Order.Code), "Code is taken."))),
             o => o.AddValidator<TenantValidator>());
 
         using var scope = _sp.CreateScope();
-        var fromService = Assert.ThrowsAsync<EntityInputException<Order>>(() =>
+        var fromService = await Assert.ThrowsAsync<EntityInputException<Order>>(() =>
             scope.ServiceProvider.GetRequiredService<IEntityService<Order>>().Add(NewOrder(tenant: null)))!;
         var validators = scope.ServiceProvider.GetRequiredService<IEnumerable<IEntityValidator>>();
-        var fromExtension = Assert.ThrowsAsync<EntityInputException<Order>>(() =>
+        var fromExtension = await Assert.ThrowsAsync<EntityInputException<Order>>(() =>
             validators.ValidateItem(NewOrder(tenant: null), null, EntityWriteOperation.Add))!;
 
         Assert.That(fromExtension.Errors, Is.EqualTo(fromService.Errors));
@@ -450,8 +450,8 @@ public class ValidatorTests
         var modified = NewOrder("ORD-9");
         modified.Id = id;
 
-        Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(added));
-        Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Modify(modified));
+        await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(added));
+        await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Modify(modified));
 
         Assert.Multiple(() =>
         {
@@ -501,7 +501,7 @@ public class ValidatorTests
         var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
         var order = (await service.Details(id))!;
 
-        var ex = Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Remove(order))!;
+        var ex = (await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Remove(order)))!;
 
         Assert.Multiple(() =>
         {
@@ -544,7 +544,7 @@ public class ValidatorTests
             var rejected = NewOrder("BAD");
             rejected.Lines = [new OrderLine { Product = "Book", Quantity = 1 }];
 
-            Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(rejected));
+            await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(rejected));
             await service.Add(NewOrder("ORD-2"));
             await service.SaveChanges();
         }
@@ -582,7 +582,7 @@ public class ValidatorTests
         modified.Id = id;
         modified.Lines = [new OrderLine { Product = "Pen", Quantity = 2 }];
 
-        Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Modify(modified));
+        await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Modify(modified));
 
         Assert.That(db.ChangeTracker.Entries().Where(x => x.State != EntityState.Unchanged), Is.Empty);
         Assert.That(await service.SaveChanges(), Is.Zero);
@@ -610,7 +610,7 @@ public class ValidatorTests
             await scope.ServiceProvider.GetRequiredService<ShopContext>().Customers.SingleAsync();
             var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
 
-            Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(NewOrder()));
+            await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(NewOrder()));
             await service.SaveChanges();
         }
 
@@ -639,7 +639,7 @@ public class ValidatorTests
             customer.Name = "Renamed by the job";
             var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
 
-            Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(NewOrder()));
+            await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(NewOrder()));
             await service.SaveChanges();
         }
 
@@ -695,7 +695,7 @@ public class ValidatorTests
         var rejected = NewOrder("BAD");
         rejected.Lines = [new OrderLine { Product = "Book", Quantity = 1 }];
 
-        Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(rejected));
+        await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(rejected));
 
         Assert.That(db.ChangeTracker.Entries(), Is.Empty, "the Related() sync's line is taken back");
     }
@@ -759,14 +759,14 @@ public class ValidatorTests
     }
 
     [Test]
-    public void A_Class_Implementing_The_Typed_Interface_Directly_Runs_Its_Typed_Validate()
+    public async Task A_Class_Implementing_The_Typed_Interface_Directly_Runs_Its_Typed_Validate()
     {
         Build(s => s.For<Order>(e => e.AddValidator<DirectOrderValidator>()));
 
         using var scope = _sp.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
 
-        var ex = Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(NewOrder(code: null)))!;
+        var ex = (await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(NewOrder(code: null))))!;
         Assert.That(ex.Errors.Single().Key, Is.EqualTo(nameof(Order.Code)));
     }
 
@@ -969,7 +969,7 @@ public class ValidatorAttachmentTests
             var link = (await links.Details(linkId))!;
             Assert.That(link.Attachment, Is.Not.Null, "the link is loaded with its attachment");
 
-            Assert.ThrowsAsync<EntityInputException<TicketAttachment>>(() => links.Remove(link));
+            await Assert.ThrowsAsync<EntityInputException<TicketAttachment>>(() => links.Remove(link));
 
             Assert.That(db.ChangeTracker.Entries().Where(x => x.State == EntityState.Deleted), Is.Empty);
         }

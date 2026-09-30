@@ -306,7 +306,7 @@ public class SoftDeleteDependentsTests
             var failure = scope.ServiceProvider.GetRequiredService<PrimerFailure>();
             failure.Armed = true;
             db.Orders.Remove(await WithDependents(db.Orders, invoices: false).SingleAsync(x => x.Id == abandoned));
-            Assert.CatchAsync(() => db.SaveChangesAsync());
+            await Assert.CatchAsync(() => db.SaveChangesAsync());
             failure.Armed = false;
             db.ChangeTracker.Clear();   // the caller gives up on that save and carries on with the context
 

@@ -99,7 +99,7 @@ public class SyncfusionTests() : WordTestsBase(CreateService(), "Syncfusion")
     public override Task Nested_Documents_Do_Not_Wear_Out_The_Service() => base.Nested_Documents_Do_Not_Wear_Out_The_Service();
 
     [Test]
-    public override void A_Template_That_Includes_Itself_Fails() => base.A_Template_That_Includes_Itself_Fails();
+    public override Task A_Template_That_Includes_Itself_Fails() => base.A_Template_That_Includes_Itself_Fails();
 
     [Test]
     public override Task A_Missing_Collection_Table_Leaves_The_Others() => base.A_Missing_Collection_Table_Leaves_The_Others();
@@ -127,7 +127,7 @@ public class SyncfusionTests() : WordTestsBase(CreateService(), "Syncfusion")
     public override Task A_Conditional_Block_In_A_Header_Is_Resolved() => base.A_Conditional_Block_In_A_Header_Is_Resolved();
 
     [Test]
-    public override void A_Malformed_Conditional_Block_Fails() => base.A_Malformed_Conditional_Block_Fails();
+    public override Task A_Malformed_Conditional_Block_Fails() => base.A_Malformed_Conditional_Block_Fails();
 
     [Test]
     public override Task Markers_In_Deleted_Revisions_And_Field_Codes_Do_Not_Count() => base.Markers_In_Deleted_Revisions_And_Field_Codes_Do_Not_Count();
@@ -182,26 +182,26 @@ public class SyncfusionTests() : WordTestsBase(CreateService(), "Syncfusion")
 
 
     [Test]
-    public void Odt_Template_Is_Not_Supported()
+    public async Task Odt_Template_Is_Not_Supported()
     {
         // DocIO can save ODT but cannot load it.
-        var ex = Assert.ThrowsAsync<NotSupportedException>(() => Service.Create(TemplateInput("template.odt")));
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(() => Service.Create(TemplateInput("template.odt")));
         Assert.That(ex!.Message, Does.Contain("ODT"));
     }
 
     [Test]
-    public void Convert_To_EPub_Is_Not_Supported()
+    public async Task Convert_To_EPub_Is_Not_Supported()
     {
-        var ex = Assert.ThrowsAsync<NotSupportedException>(
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(
             () => Service.Convert(TemplateInput("template.docx"), FileFormat.EPub));
         Assert.That(ex!.Message, Does.Contain("EPUB"));
     }
 
     [TestCase(FileFormat.Png)]
     [TestCase(FileFormat.Jpeg)]
-    public void Convert_To_Image_Points_At_ToImages(FileFormat format)
+    public async Task Convert_To_Image_Points_At_ToImages(FileFormat format)
     {
-        var ex = Assert.ThrowsAsync<NotSupportedException>(
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(
             () => Service.Convert(TemplateInput("template.docx"), format));
         Assert.That(ex!.Message, Does.Contain("ToImages"));
     }

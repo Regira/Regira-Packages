@@ -141,7 +141,7 @@ public class PgDatabaseTests
     {
         await using var cn = await OpenServerConnection();
 
-        Assert.DoesNotThrowAsync(() => CreateService(HyphenatedDb).Drop(cn, HyphenatedDb));
+        await Assert.DoesNotThrowAsync(() => CreateService(HyphenatedDb).Drop(cn, HyphenatedDb));
     }
 
 
@@ -160,7 +160,7 @@ public class PgDatabaseTests
         await using var cn = await OpenServerConnection();
         await CreateService(HyphenatedDb).Create(cn, HyphenatedDb);
 
-        var ex = Assert.ThrowsAsync<Exception>(() => CreateService(HyphenatedDb, new CapturingProcessHelper()).Restore(Backup()));
+        var ex = await Assert.ThrowsAsync<Exception>(() => CreateService(HyphenatedDb, new CapturingProcessHelper()).Restore(Backup()));
 
         Assert.That(ex!.Message, Does.Contain(HyphenatedDb));
     }
@@ -201,7 +201,7 @@ public class PgDatabaseTests
         // stands in for a corrupt or truncated archive: `pg_restore --list` cannot read it
         var processHelper = new CapturingProcessHelper { ListExitCode = 1 };
 
-        Assert.ThrowsAsync<Exception>(() => CreateService(HyphenatedDb, processHelper, overwrite: true).Restore(Backup()));
+        await Assert.ThrowsAsync<Exception>(() => CreateService(HyphenatedDb, processHelper, overwrite: true).Restore(Backup()));
 
         // the database the backup was meant to replace is still there
         Assert.That(await CreateService(HyphenatedDb).Exists(cn, HyphenatedDb), Is.True);

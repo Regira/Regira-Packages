@@ -51,7 +51,7 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
     public override Task A_Conditional_Block_In_A_Header_Is_Resolved() => base.A_Conditional_Block_In_A_Header_Is_Resolved();
 
     [Test]
-    public override void A_Malformed_Conditional_Block_Fails() => base.A_Malformed_Conditional_Block_Fails();
+    public override Task A_Malformed_Conditional_Block_Fails() => base.A_Malformed_Conditional_Block_Fails();
 
     [Test]
     public override Task Markers_In_Deleted_Revisions_And_Field_Codes_Do_Not_Count() => base.Markers_In_Deleted_Revisions_And_Field_Codes_Do_Not_Count();
@@ -124,7 +124,7 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
 
 
     [Test]
-    public void Create_Rejects_DocumentParameters()
+    public async Task Create_Rejects_DocumentParameters()
     {
         var input = TemplateInput("parameters.docx");
         input.DocumentParameters = new Dictionary<string, WordTemplateInput>
@@ -132,18 +132,18 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
             ["nested"] = TemplateInput("doc-1.docx")
         };
 
-        var ex = Assert.ThrowsAsync<NotSupportedException>(() => Mini.Create(input));
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(() => Mini.Create(input));
         Assert.That(ex!.Message, Does.Contain(nameof(WordTemplateInput.DocumentParameters)));
     }
 
     [Test]
-    public void Create_Rejects_Headers_And_Footers()
+    public async Task Create_Rejects_Headers_And_Footers()
     {
         var input = TemplateInput("parameters.docx");
         input.Headers = [new WordHeaderFooterInput { Template = TemplateInput("add_header.docx") }];
         input.Footers = [new WordHeaderFooterInput { Template = TemplateInput("add_footer.docx") }];
 
-        var ex = Assert.ThrowsAsync<NotSupportedException>(() => Mini.Create(input));
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(() => Mini.Create(input));
         Assert.Multiple(() =>
         {
             Assert.That(ex!.Message, Does.Contain(nameof(WordTemplateInput.Headers)));
@@ -152,12 +152,12 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
     }
 
     [Test]
-    public void Create_Rejects_Unsupported_Options()
+    public async Task Create_Rejects_Unsupported_Options()
     {
         var input = TemplateInput("parameters.docx");
         input.Options = new InputOptions { EnforceEvenAmountOfPages = true };
 
-        var ex = Assert.ThrowsAsync<NotSupportedException>(() => Mini.Create(input));
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(() => Mini.Create(input));
         Assert.That(ex!.Message, Does.Contain(nameof(WordTemplateInput.Options)));
     }
 
@@ -174,7 +174,7 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
     }
 
     [Test]
-    public void Create_Rejects_A_Key_Used_Twice()
+    public async Task Create_Rejects_A_Key_Used_Twice()
     {
         var input = TemplateInput("parameters.docx");
         input.GlobalParameters = new Dictionary<string, object> { ["logo"] = "text" };
@@ -187,7 +187,7 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
             }
         ];
 
-        var ex = Assert.ThrowsAsync<ArgumentException>(() => Mini.Create(input));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => Mini.Create(input));
         Assert.That(ex!.Message, Does.Contain("logo"));
     }
 

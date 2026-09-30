@@ -16,7 +16,7 @@
     <PackageTags>regira;dal;postgresql;dapper;npgsql</PackageTags>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Dapper" Version="2.1.86" />
+    <PackageReference Include="Dapper" Version="2.1.89" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Npgsql" Version="10.0.3" />

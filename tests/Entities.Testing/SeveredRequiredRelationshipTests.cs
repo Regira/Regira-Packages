@@ -105,7 +105,7 @@ public class SeveredRequiredRelationshipTests
         Assert.That(loaded.Children, Is.Not.Empty, "the fixture only reproduces the trap while the links are tracked");
 
         // marking it Deleted already cascades to the tracked links, so this is where it fails — not at the flush
-        var ex = Assert.ThrowsAsync<EntityConstraintException>(() => service.Remove(loaded));
+        var ex = await Assert.ThrowsAsync<EntityConstraintException>(() => service.Remove(loaded));
 
         Assert.Multiple(() =>
         {
@@ -137,7 +137,7 @@ public class SeveredRequiredRelationshipTests
         var loaded = await db.Folders.Include(x => x.Children!).FirstAsync(x => x.Id == root.Id);
         await service.Remove(loaded); // deferred — nothing throws yet
 
-        var ex = Assert.ThrowsAsync<EntityConstraintException>(() => service.SaveChanges());
+        var ex = await Assert.ThrowsAsync<EntityConstraintException>(() => service.SaveChanges());
 
         Assert.Multiple(() =>
         {

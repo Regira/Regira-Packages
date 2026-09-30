@@ -51,7 +51,7 @@ public static class QRCodeTestExtensions
         }
 
         var input = Convert.ToBase64String(Enumerable.Range(0, 2500).Select((_, i) => (byte)(i % 8)).ToArray());
-        Assert.ThrowsAsync<InputException>(async () =>
+        await Assert.ThrowsAsync<InputException>(async () =>
         {
             await writer.Create(input);
         });

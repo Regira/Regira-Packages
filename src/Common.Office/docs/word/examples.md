@@ -28,7 +28,9 @@ await fileService.Save("invoices/INV-2024-0042.docx", doc.GetBytes()!);
 
 ## Example 2: Fill a table (collection parameter)
 
-The template contains a bookmark or placeholder row named `Items`. Each dictionary entry maps a column header to a cell value.
+The template holds a table whose Alt Text title is `Items`: a header row, then a template row whose cells hold
+`{{Description}}`, `{{Qty}}`, `{{UnitPrice}}` and `{{LineTotal}}`. The template row is written once per order line,
+and each dictionary fills one copy of it (see [Collection tables](README.md#collection-tables)).
 
 ```csharp
 IMemoryFile doc = await word.Create(new WordTemplateInput

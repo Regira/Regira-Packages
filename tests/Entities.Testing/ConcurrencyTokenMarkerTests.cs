@@ -236,7 +236,7 @@ public class ConcurrencyTokenMarkerTests
         var read = order.ConcurrencyToken;   // both clients read this
 
         await Write(sp, new Order { Id = order.Id, Status = "Paid", ConcurrencyToken = read });
-        var ex = Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(sp, new Order { Id = order.Id, Status = "Cancelled", ConcurrencyToken = read }));
+        var ex = await Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(sp, new Order { Id = order.Id, Status = "Cancelled", ConcurrencyToken = read }));
 
         var stored = await Stored(order.Id);
         Assert.Multiple(() =>
@@ -287,7 +287,7 @@ public class ConcurrencyTokenMarkerTests
             await db.SaveChangesAsync();
         }
 
-        Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(sp, new Order { Id = order.Id, Status = "Cancelled", ConcurrencyToken = read }));
+        await Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(sp, new Order { Id = order.Id, Status = "Cancelled", ConcurrencyToken = read }));
         Assert.That((await Stored(order.Id)).Status, Is.EqualTo("Picked"));
     }
 
@@ -303,7 +303,7 @@ public class ConcurrencyTokenMarkerTests
 
         using var scope = sp.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<IEntityService<Reservation, int>>();
-        var ex = Assert.ThrowsAsync<EntityInputException<Reservation>>(() => service.Modify(new Reservation { Id = reservation.Id, Room = "B2" }));
+        var ex = await Assert.ThrowsAsync<EntityInputException<Reservation>>(() => service.Modify(new Reservation { Id = reservation.Id, Room = "B2" }));
 
         var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
         await using var raw = Raw();
@@ -328,7 +328,7 @@ public class ConcurrencyTokenMarkerTests
         // the first client's save moves the token under the second
         await Write(sp, new Reservation { Id = reservation.Id, Room = "Edited elsewhere", ConcurrencyToken = read });
 
-        Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(sp, new Reservation { Id = reservation.Id, Room = "Stale", ConcurrencyToken = read }));
+        await Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(sp, new Reservation { Id = reservation.Id, Room = "Stale", ConcurrencyToken = read }));
 
         await using var raw = Raw();
         var current = (await raw.Reservations.FindAsync(reservation.Id))!.ConcurrencyToken;
@@ -366,7 +366,7 @@ public class ConcurrencyTokenMarkerTests
         // a caller that does hold a token is making a claim, and a stale one is still a conflict
         db.Remove(new Receipt { Id = id, ConcurrencyToken = Guid.NewGuid() });
 
-        Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => db.SaveChangesAsync());
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => db.SaveChangesAsync());
     }
 
     [Test]
