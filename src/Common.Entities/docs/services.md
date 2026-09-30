@@ -3,6 +3,8 @@
 The `IEntityService` is the core service interface for managing entities. It provides standard CRUD operations and can be customized or extended as needed.
 
 Possible combinations:
+
+<!-- no-compile -->
 ```csharp
 IEntityService<TEntity> // int ID
 IEntityService<TEntity, TKey>
@@ -21,6 +23,7 @@ IEntityService<TEntity, TKey, TSearchObject, TSortBy, TIncludes>
 
 ### Read Operations
 
+<!-- no-compile -->
 ```csharp
 // Get single entity details by ID
 Task<TEntity?> Details(TKey id, CancellationToken token = default)
@@ -47,6 +50,7 @@ Task<long> Count(IList<TSearchObject?> so, CancellationToken token = default)
 - A write built on a **stale read** — a concurrency token the row no longer holds, or a row another writer removed — surfaces as `EntityConcurrencyException`; catch that, not `DbUpdateConcurrencyException`. See [Built-in Features → Concurrency Exceptions](built-in-features.md#concurrency-exceptions)
 - An entity read with `Details(id)` can go straight back into `Modify()` with its navigations loaded. When a foreign key — on the entity or on a `Related()` child — was set to another key, `Modify()` drops the reference navigation still pointing at the stored principal and removes the row from that principal's loaded collections (it may still be in the graph through another path), so the new key is saved rather than overwritten by EF's attach fixup; the entity then carries that navigation as `null`. A `Related()` child stays with the parent whose collection lists it, whatever its own parent key says; move it through the collections. To clear a relation, set both the foreign key and the navigation to `null`: an empty key beside a loaded navigation is left to the navigation, which is what a request that sends only the nested object relies on
 
+<!-- no-compile -->
 ```csharp
 Task Save(TEntity item, CancellationToken token = default) // calls Add() or Modify() internally
 Task Add(TEntity item, CancellationToken token = default)
@@ -88,6 +92,7 @@ public abstract class FilteredQueryBuilderBase<TEntity, TKey, TSearchObject> : I
 - uses the configured `TSearchObject` for the Entity who's Filter is being executed
 - if no SearchObject is configured, a basic `SearchObject<TKey>` is provided
 
+<!-- no-compile -->
 ```csharp
 // interface
 public interface IGlobalFilteredQueryBuilder
@@ -179,6 +184,7 @@ public interface IEntityProcessor<TEntity, TIncludes>
 
 *Prepare child collections here, or calculated fields.*
 
+<!-- no-compile -->
 ```csharp
 // interface
 public interface IEntityPrepper<in TEntity> : IEntityPrepper
@@ -220,6 +226,7 @@ The signature is `Related(navigationExpression, prepareFunc, configure)`, where 
 - **`prepareFunc`** — a parent-level prepare callback, invoked with the parent entity.
 - **`configure`** — a `RelatedEntityBuilder` callback for shaping the child collection. Use `builder.Related(...)` to synchronize a nested sub-collection (recursively, to any depth) and `builder.Prepare(...)` to run a per-item prepare on each child.
 
+<!-- no-compile -->
 ```csharp
 // Sync the collection, with an optional parent-level prepare:
 e.Related<TRelated, TRelatedKey>(x => x.Collection, parentEntity => { /* ... */ });
@@ -267,17 +274,30 @@ e.Related<TRelated, TRelatedKey>(x => x.Collection,
   taking `IEntityReadService<Customer, int>` and refusing when `await customers.Details(id, token)` is `null` — or
   repeat the scope's predicate in the query. A validator never takes `IEntityService<>`: its write service imports
   every validator, so the container meets a circular dependency and no entity service in the app resolves
+- Queries on `db` track nothing while the validators run, `Find` / `FindAsync` included, so a uniqueness check that
+  returns the row being written — `db.Orders.FirstOrDefaultAsync(o => o.Code == ctx.Item.Code, token)` on a `PUT`
+  that keeps its code — leaves the write free to track its own instance. Only an explicit `AsTracking()` opts back
+  in, and the write then throws because another instance with the same key is tracked
 - Children are validated through their parent: a validator checks the entity a write service saves, not the rows a
   `Related()` sync writes — check `Lines` from the `Order` validator, with keys like `Lines[0].Quantity`
 - The context carries `Item`, `Original` (the stored row on `Modify`), `Operation` (`Add` / `Modify` / `Remove`;
   a soft delete of an `IArchivable` is a `Remove`) and the `Errors` added so far; `AddError(key, message)` takes the property path, `""` for the whole entity
+- On `Remove`, `Item` is the row as stored — the caller's instance when none is found — so a delete by key,
+  `Remove(new Order { Id = id })`, is judged by the row's state
 - Validators read and never write — `ctx.Item` is the instance that gets saved, so a value a validator sets is still
   written; changing the entity is a prepper's job. A primer runs later, on `SaveChanges()`, so a value a primer
   stamps is not there yet
 - A custom write service passes `IEnumerable<IEntityValidator>` to the `EntityWriteService` constructor (the
   constructor without it runs no validators); a service over another store calls
-  `validators.ValidateItem(item, original, operation)` itself. Startup validation warns about a write path that
-  cannot run them
+  `validators.ValidateItem(item, original, operation)` itself — for a delete, with the stored row — and
+  `validators.AnyApplyTo(item.GetType())` tells whether any of them can refuse the write. Startup validation warns
+  about a write path that cannot run them
+- An override of `Remove` that skips `base.Remove` skips the validators; mark extra rows for a delete in an override
+  of `RemoveItem`, which runs once the validators passed
+- A validator scoped wider than what it checks — to `IEntity`, say — implements `ISelectiveEntityValidator` and its
+  `Covers(entityType)`, so it runs only for the types it covers and startup validation counts it only for those
+- Unit-test a validator with an `EntityValidatorContext<TEntity>(operation, item, original)`: run `Validate` on it
+  and read its `Errors`
 - `AbstractValidator` rules run in this stage through the [FluentValidation adapter](built-in-features.md#validators)
 
 | Scope | Runs for |
@@ -286,6 +306,7 @@ e.Related<TRelated, TRelatedKey>(x => x.Collection,
 | `EntityValidatorBase<Party>` | `Person` and `Organization`, whichever service saves them |
 | `EntityValidatorBase<IHasCode>` | every entity implementing `IHasCode` |
 
+<!-- no-compile -->
 ```csharp
 // interface
 public interface IEntityValidator<in TScope> : IEntityValidator
@@ -301,6 +322,7 @@ public abstract class EntityValidatorBase<TScope> : IEntityValidator<TScope>
 }
 ```
 
+<!-- no-compile -->
 ```csharp
 .For<Order>(e =>
 {
@@ -319,6 +341,7 @@ public abstract class EntityValidatorBase<TScope> : IEntityValidator<TScope>
 })
 ```
 
+<!-- no-compile -->
 ```csharp
 // global: one validator for every entity implementing the interface
 services.UseEntities<AppDbContext>(o => o.AddValidator<CodeValidator>());
@@ -351,6 +374,7 @@ public class CodeValidator : EntityValidatorBase<IHasCode>
   `UseEntities(e => e.UseUtc(false))` → local time, values used as given; the convention's converter follows
   the same policy (one process-wide decision: `Regira.Utilities.DateTimeDefaults.UseUtc`, on by default)
 
+<!-- no-compile -->
 ```csharp
 // interface
 public interface IEntityPrimer<in T>
@@ -402,6 +426,7 @@ public abstract class EntityPrimerBase<T> : IEntityPrimer<T>
   `DbContextWiring.Reactors` to `e.WireDbContext(...)`
 - Can be registered **globally** (`options.AddReactor<T>()` — a reactor on an interface or base type reaches every entity it covers) or **per entity** (`e.AddReactor<T>()` — that entity only, whatever type the reactor is written against)
 
+<!-- no-compile -->
 ```csharp
 services.UseEntities<MyDbContext>(e => e.UseDefaults())
     .For<Order>(e =>
@@ -427,6 +452,7 @@ public class OrderInvoicingReactor(IInvoiceService invoices) : EntityReactorBase
 
 This example demonstrates how to configure entities with all helper services:
 
+<!-- no-compile -->
 ```csharp
 // Configure DbContext — only the provider; UseEntities(e => e.UseDefaults()) wires the interceptors
 services.AddDbContext<MyDbContext>(db =>
@@ -569,6 +595,7 @@ services
 
 **Tip**:
 
+<!-- no-compile -->
 ```csharp
 // Use extension methods to configure Entities.
 // Take the interface as the 'this' parameter; return the concrete EntityServiceCollection<TContext>

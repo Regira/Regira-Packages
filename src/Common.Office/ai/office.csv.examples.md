@@ -4,6 +4,7 @@
 
 ## Import customers from an uploaded CSV
 
+<!-- no-compile -->
 ```csharp
 public async Task<List<Customer>> ImportCustomers(IFormFile file)
 {
@@ -23,6 +24,8 @@ public async Task<List<Customer>> ImportCustomers(IFormFile file)
 
 `CustomerImportDto`:
 ```csharp
+using CsvHelper.Configuration.Attributes;   // [Name] — CsvHelper, a dependency of Regira.Office.Csv.CsvHelper
+
 public class CustomerImportDto
 {
     [Name("Name")]  public string? Name  { get; set; }
@@ -33,6 +36,7 @@ public class CustomerImportDto
 
 ## Export customers to a downloadable CSV
 
+<!-- no-compile -->
 ```csharp
 public async Task<IMemoryFile> ExportCustomers(IEnumerable<Customer> customers)
     => await new CsvManager<CustomerExportDto>()
@@ -49,12 +53,13 @@ public async Task<IMemoryFile> ExportCustomers(IEnumerable<Customer> customers)
 
 ## Controller action
 
+<!-- no-compile -->
 ```csharp
 [HttpGet("export")]
 public async Task<IActionResult> Export()
 {
     var customers = await _customerService.List();
     var file      = await _exportService.ExportCustomers(customers);
-    return this.File(file);
+    return this.File(file.ToBinaryFile("customers.csv"));   // File() takes an INamedFile: the name types the download
 }
 ```

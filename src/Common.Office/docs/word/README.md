@@ -1,4 +1,5 @@
 # Regira Office.Word
+<!-- {% raw %} -->
 
 Regira Office.Word provides Word document creation from templates, conversion, merging, and content extraction.
 
@@ -381,3 +382,5 @@ services.AddGotenbergWord(o =>
 
 1. **[Index](README.md)** — Overview, interfaces, models, and implementation notes
 1. [Examples](examples.md) — Template substitution, conversion, merge, and extraction
+
+<!-- {% endraw %} -->

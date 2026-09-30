@@ -119,6 +119,11 @@ Identifier  →                   invoices/2024/inv-001.pdf
 Path        →  /var/app/storage/invoices/2024/inv-001.pdf
 ```
 
+The local and SFTP backends resolve every identifier against the root and throw `UnauthorizedAccessException` when it
+escapes it (through `../`, say); zip extraction checks every entry the same way. Folder names compare as the file
+system does: regardless of case on Windows and macOS, exactly elsewhere. The check is on by default (`Contained = true`
+on `FileSystemOptions` and `SftpConfig`); turn it off only for trusted input.
+
 ### Converting between identifier and absolute URI
 
 `IFileService` provides helpers to move between the two representations:
@@ -175,7 +180,6 @@ var service = new BinaryFileService(new FileSystemOptions { RootFolder = "/var/a
 
 **Network shares** — for a UNC path protected by a username & password, use `NetworkFileService` with a `NetworkShareCommunicator`. The communicator authenticates against the share lazily on the first file operation (or eagerly via `await communicator.Open()`); dispose it on application shutdown to release the connection.
 
-<!-- no-compile -->
 ```csharp
 services.AddSingleton(new NetworkFileSystemOptions
 {
@@ -232,7 +236,9 @@ var service = new BinaryBlobService(communicator);
 
 `Save` stores its `contentType` as the blob's `Content-Type`, which decides whether a browser following a SAS or CDN
 link shows the file or downloads it. Without one — `null`, empty or blank — the type comes from the identifier's
-extension.
+extension. Never pass an upload's `IFormFile.ContentType`: the client chose it, so an `avatar.png` declared `text/html`
+would be served as a web page. Leave the argument out, or derive it from the name with
+`ContentTypeUtility.GetContentType(fileName)`.
 
 ---
 

@@ -63,18 +63,21 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 ### `IHtmlToPdfService`
 
+<!-- no-compile -->
 ```csharp
 Task<IMemoryFile> Create(HtmlInput input, CancellationToken cancellationToken = default);
 ```
 
 ### `IPdfMerger`
 
+<!-- no-compile -->
 ```csharp
 Task<IMemoryFile?>             Merge(IEnumerable<IMemoryFile> items, CancellationToken cancellationToken = default);
 ```
 
 ### `IPdfSplitter`
 
+<!-- no-compile -->
 ```csharp
 Task<IEnumerable<IMemoryFile>>  Split(IMemoryFile pdf, IEnumerable<PdfSplitRange> ranges, CancellationToken cancellationToken = default);
 Task<int>                       GetPageCount(IMemoryFile pdf, CancellationToken cancellationToken = default);
@@ -82,12 +85,14 @@ Task<int>                       GetPageCount(IMemoryFile pdf, CancellationToken 
 
 ### `IPdfEditor` (extends `IPdfMerger` + `IPdfSplitter`)
 
+<!-- no-compile -->
 ```csharp
 Task<IMemoryFile?>  RemovePages(IMemoryFile pdf, IEnumerable<int> pages, CancellationToken cancellationToken = default);
 ```
 
 ### `IPdfToImageService` / `IImagesToPdfService`
 
+<!-- no-compile -->
 ```csharp
 Task<IList<IImageFile>>  ToImages(IMemoryFile pdf, PdfToImagesOptions? options = null, CancellationToken cancellationToken = default);
 Task<IMemoryFile?>       ImagesToPdf(ImagesInput input, CancellationToken cancellationToken = default);
@@ -95,18 +100,21 @@ Task<IMemoryFile?>       ImagesToPdf(ImagesInput input, CancellationToken cancel
 
 ### `IPdfToImageAsyncService`
 
+<!-- no-compile -->
 ```csharp
 IAsyncEnumerable<IImageFile>  ToImagesAsync(IMemoryFile pdf, PdfToImagesOptions? options = null);
 ```
 
 ### `IPdfTextExtractor`
 
+<!-- no-compile -->
 ```csharp
 Task<string>          GetText(IMemoryFile pdf, CancellationToken cancellationToken = default);
 ```
 
 ### `IPdfTextService` (extends `IPdfTextExtractor`)
 
+<!-- no-compile -->
 ```csharp
 Task<IList<string>>   GetTextPerPage(IMemoryFile pdf, CancellationToken cancellationToken = default);
 Task<IMemoryFile?>    RemoveEmptyPages(IMemoryFile pdf, CancellationToken cancellationToken = default);
@@ -114,6 +122,7 @@ Task<IMemoryFile?>    RemoveEmptyPages(IMemoryFile pdf, CancellationToken cancel
 
 ### `IPdfPrinter`
 
+<!-- no-compile -->
 ```csharp
 string              DefaultPrinter { get; }
 Task<IList<string>> List(CancellationToken cancellationToken = default);
@@ -169,6 +178,7 @@ Composite: `IPdfEditor + IPdfImageService + IPdfTextService`. Implemented by `PD
 
 ## Usage
 
+<!-- no-compile -->
 ```csharp
 // HTML → PDF (SelectPdf)
 IHtmlToPdfService pdf = new Regira.Office.PDF.SelectPdf.PdfManager();

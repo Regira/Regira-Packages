@@ -12,6 +12,7 @@ Samples:
 - Security
 - Caching
 
+<!-- no-compile -->
 ```csharp
 .For<Order>(e =>
 {
@@ -22,12 +23,15 @@ Samples:
 ```
 
 Possible overrides:
+
+<!-- no-compile -->
 ```csharp
 // Read
 Task<TEntity?> Details(TKey id, CancellationToken token = default)
-Task<IList<TEntity>> List(TSearchObject? so = null, PagingInfo? pagingInfo = null, CancellationToken token = default)
+Task<TEntity?> Details(TKey id, ArchivedFilter? archived, CancellationToken token = default) // an archived-explicit read goes straight to the inner service: override both
+Task<IList<TEntity>> List(TSearchObject? so = null, PagingInfo? pagingInfo = null, CancellationToken token = default) // not virtual on the complex base
 Task<IList<TEntity>> List(IList<TSearchObject?> so, IList<TSortBy> sortBy, TIncludes? includes, PagingInfo? pagingInfo, CancellationToken token = default)
-Task<long> Count(TSearchObject? so, CancellationToken token = default)
+Task<long> Count(TSearchObject? so, CancellationToken token = default) // not virtual on the complex base
 Task<long> Count(IList<TSearchObject?> so, CancellationToken token = default)
 
 // Write
@@ -163,6 +167,7 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
 
 **SetDecimalPrecisionConvention**: *Automatically configures decimal properties.*
 
+<!-- no-compile -->
 ```csharp
 using Regira.DAL.EFcore.Extensions; // external namespace
 
@@ -182,6 +187,7 @@ automatically (`DbContextWiring.ArchivedQueryFilter`) and applied at model final
 registered through `AddDbContext` needs no soft-delete configuration of its own. The two forms below are for a
 context built outside that wiring.*
 
+<!-- no-compile -->
 ```csharp
 using Regira.Entities.EFcore.Extensions;
 
@@ -192,6 +198,7 @@ new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
     .Options);
 ```
 
+<!-- no-compile -->
 ```csharp
 using Regira.Entities.EFcore.Extensions;
 
@@ -212,6 +219,7 @@ implementing `IHasConcurrencyToken`.*
 `.IsConcurrencyToken(false)` in `OnModelCreating` still opts one entity type out. Call it on the options builder of
 a context built outside that wiring.*
 
+<!-- no-compile -->
 ```csharp
 using Regira.Entities.EFcore.Extensions;
 
@@ -232,6 +240,7 @@ own value converter is left alone, which doubles as the per-property opt-out. Us
 *(With `UseEntities(e => e.UseDefaults())` the convention is wired automatically — the forms below are for
 standalone EF usage without the entities stack.)*
 
+<!-- no-compile -->
 ```csharp
 using Regira.DAL.EFcore.Extensions; // external namespace
 
@@ -252,6 +261,7 @@ protected override void ConfigureConventions(ModelConfigurationBuilder configura
 **AddAutoTruncateInterceptors**: *Truncates string properties based on MaxLength attribute before saving to database,
 on `SaveChanges()` and `SaveChangesAsync()` alike. Adds the `AutoTruncateDbContextInterceptor`*.
 
+<!-- no-compile -->
 ```csharp
 using Regira.DAL.EFcore.Services; // external namespace
 
@@ -267,6 +277,7 @@ services.AddDbContext<MyDbContext>(db =>
 
 ### Defaults
 
+<!-- no-compile -->
 ```csharp
 using Regira.Entities.DependencyInjection.Extensions;
 
@@ -303,6 +314,7 @@ Registers a set of commonly used features for typical applications, including:
 
 ### Read behavior
 
+<!-- no-compile -->
 ```csharp
 services.UseEntities<AppDbContext>(o =>
 {
@@ -340,10 +352,11 @@ Configure via `UseEntities(o => o.ConfigureValidation(v => { v.Enabled = true; /
 | **AutoServerOwnedPrepper**   | *Restores every `[ServerOwned]` scalar from the stored row on update. Registered for all entities by `AddDefaultPreppers()`.* |
 | **ServerOwnedPrepper**       | *The fluent form: restores one property on update and mints it on create. Registered by `e.ServerOwned(...)`.* |
 
+<!-- no-compile -->
 ```csharp
 // use shortcut when configuring Entity (creates RelatedCollectionPrepper in background)
 .For<Order>(e => {
-    e.Related(x => x.OrderItems, (item, _) => item.OrderItems?.Prepare());
+    e.Related(x => x.OrderItems);
 });
 ```
 
@@ -353,6 +366,7 @@ A field left off `TInputDto` maps onto the entity as `null`/default on PUT **and
 back that way: a status-only PATCH resets a generated `Code` or a computed `Total`, returns 200 and logs
 nothing. Declare such a field server-owned and the write path restores it from the stored row instead.
 
+<!-- no-compile -->
 ```csharp
 public class Order : IEntity<int>
 {
@@ -389,6 +403,7 @@ checks a `Person` saved through any service. Every validator in scope runs, so a
 `Include(new PartyValidator())` in an assembly that also holds `PartyValidator` reports each `Party` message twice —
 the scope rule already runs it.
 
+<!-- no-compile -->
 ```csharp
 using FluentValidation;
 using Regira.Entities.DependencyInjection.Extensions;
@@ -419,7 +434,7 @@ public class OrderValidator : AbstractValidator<Order>
 ```
 
 `Add` and `Modify` run the rules outside any rule set plus `EntityRuleSets.Add` / `EntityRuleSets.Modify`; `Remove`
-runs `EntityRuleSets.Remove` alone. `ctx.GetOriginal()` and `ctx.GetOperation()` read the write from any rule, and
+runs `EntityRuleSets.Remove` alone, against the row as stored. `ctx.GetOriginal()` and `ctx.GetOperation()` read the write from any rule, and
 only `Severity.Error` failures refuse it.
 
 ### Primers
@@ -449,6 +464,7 @@ can apply the same convention via `AddUtcDateTimeConvention()` / `SetUtcDateTime
 
 UTC handling is one policy per process (`Regira.Utilities.DateTimeDefaults.UseUtc`, on by default):
 
+<!-- no-compile -->
 ```csharp
 services.UseEntities<AppDbContext>(e => e.UseDefaults()); // UTC (default)
 services.UseEntities<AppDbContext>(e => e.UseDefaults().UseUtc(false)); // local time; values used as given
@@ -528,6 +544,7 @@ keeps applying on both target frameworks.
 
 ### Query Extensions
 
+<!-- no-compile -->
 ```csharp
 public static class QueryExtensions
 {
@@ -556,18 +573,20 @@ public static class QueryExtensions
 
 ### Pagination
 
+<!-- no-compile -->
 ```csharp
 using Regira.DAL.Paging; // external namespace
 
 public static class QueryExtensions
 {
     public static IQueryable<T> PageQuery<T>(this IQueryable<T> query, PagingInfo? info)
-    public static IQueryable<T> PageQuery<T>(this IQueryable<T> query, int pageSize, int page = 1)
+    public static IQueryable<T> PageQuery<T>(this IQueryable<T> query, int? pageSize, int page = 1)
 }
 ```
 
 **Default & maximum page size** — configure these so List/Search endpoints page automatically instead of returning the full set. Enforced at the HTTP boundary only (by the MVC controllers, via the shared `ApplyPagingDefaults` clamp); direct `IEntityService` calls keep full control.
 
+<!-- no-compile -->
 ```csharp
 // Global (all entities)
 services.UseEntities<AppDbContext>(options =>
@@ -578,17 +597,17 @@ services.UseEntities<AppDbContext>(options =>
     options.MaxPageSize = 200;      // clamp larger requested pageSize values (null = no limit)
     // or
     options.SetPageSize(pageSize: 50, maxPageSize: 200);
-});
-
+})
 // Per-entity override (fully replaces the global values for that entity)
-services.For<Product>(e => e.SetPageSize(defaultPageSize: 25, maxPageSize: 100));
-services.For<AuditLog>(e => e.SetPageSize()); // opt out — never force-paged
+.For<Product>(e => e.SetPageSize(defaultPageSize: 25, maxPageSize: 100))
+.For<AuditLog>(e => e.SetPageSize()); // opt out — never force-paged
 ```
 
 > See [Web Endpoints → Paging](web-endpoints.md#paging) for the full behaviour.
 
 ## Entity Extensions
 
+<!-- no-compile -->
 ```csharp
 public static class EntityExtensions
 {

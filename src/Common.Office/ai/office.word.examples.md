@@ -8,6 +8,7 @@ The template's service table has the Alt Text title `ServiceLines`, and its seco
 `{{Quantity}}` and `{{UnitPrice}}`: that row is written once per service line (see *Collection Tables* in
 `office.word.instructions.md`).
 
+<!-- no-compile -->
 ```csharp
 IWordService word = new Regira.Office.Word.Spire.WordService();
 
@@ -46,6 +47,7 @@ Either party may terminate this contract with {{NoticeDays}} days' notice.
 {{/if}}
 ```
 
+<!-- no-compile -->
 ```csharp
 IMemoryFile contract = await word.Create(new WordTemplateInput
 {
@@ -61,6 +63,7 @@ IMemoryFile contract = await word.Create(new WordTemplateInput
 
 ## Convert to PDF for signing
 
+<!-- no-compile -->
 ```csharp
 IMemoryFile pdf = await word.Convert(
     new WordTemplateInput { Template = contract },
@@ -74,6 +77,7 @@ await _fileService.Save($"contracts/{client.Id}/contract-{DateTime.Today:yyyyMMd
 Word.Mini fills the template and a Gotenberg server produces the PDF. The example keeps to scalar
 parameters, which every creator fills the same way.
 
+<!-- no-compile -->
 ```csharp
 // Program.cs
 builder.Services.AddSingleton<IWordCreator, Regira.Office.Word.Mini.WordService>();
@@ -89,6 +93,7 @@ IMemoryFile pdf = await converter.Convert(new WordTemplateInput
 
 ## Merge addendum into the main contract
 
+<!-- no-compile -->
 ```csharp
 var addendum = await _fileService.GetBytes("templates/addendum.docx");
 

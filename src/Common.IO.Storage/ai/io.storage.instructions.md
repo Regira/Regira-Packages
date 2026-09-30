@@ -39,6 +39,7 @@ The IO abstraction hierarchy provides the common file contract used throughout I
 
 The standard concrete implementation of `IBinaryFile`.
 
+<!-- no-compile -->
 ```csharp
 var file = new BinaryFileItem
 {
@@ -50,6 +51,7 @@ var file = new BinaryFileItem
 
 Implicit conversions from `byte[]` and `Stream`:
 
+<!-- no-compile -->
 ```csharp
 BinaryFileItem f1 = pdfBytes;
 BinaryFileItem f2 = someStream;
@@ -61,15 +63,16 @@ Both live in `Regira.IO.Extensions` in **`Regira.Common`**. `GetBytes()`/`GetStr
 `HasContent()` come from `MemoryFileExtensions` and work on any `IMemoryFile`; the `ToBinaryFile(...)`
 factories come from `BinaryFileExtensions`.
 
+<!-- no-compile -->
 ```csharp
 byte[]? bytes  = file.GetBytes();
 Stream? stream = file.GetStream();
 long    length = file.GetLength();
 bool    hasIt  = file.HasContent();
 
-IBinaryFile f = bytes.ToBinaryFile("invoice.pdf");
-IBinaryFile f = stream.ToBinaryFile("data.csv");
-IBinaryFile f = memoryFile.ToBinaryFile("copy.pdf");
+IBinaryFile f1 = bytes.ToBinaryFile("application/pdf");   // byte[] / Stream overloads take a content type
+IBinaryFile f2 = stream.ToBinaryFile("text/csv");
+IBinaryFile f3 = memoryFile.ToBinaryFile("copy.pdf");      // the IMemoryFile overload takes a file name
 ```
 
 ⚠️ **`GetBytes()` is the accessor, not `.Bytes`.** `IMemoryFile` extends both `IMemoryBytesFile` (`Bytes`)
@@ -84,18 +87,28 @@ populated.
 ### `ContentTypeUtility`
 
 ```csharp
+using Regira.IO.Utilities;   // ContentTypeUtility, FileUtility — package Regira.Common
+
 string mime = ContentTypeUtility.GetContentType("report.pdf");  // "application/pdf"
 string? ext = ContentTypeUtility.GetExtension("image/webp");    // "webp" (no leading dot)
+
+// once at startup: the map is shared, so every later lookup reads the addition
+ContentTypeUtility.Extend(new Dictionary<string, string[]> { { "abc", ["application/x-abc"] } });
 ```
+
+The map ignores case and knows the common web types (`webp`, `avif`, `heic`, `json`, `md`, `webm`, `woff2`, `mjs`,
+…); an extension it does not know answers `application/octet-stream`.
 
 ### `FileUtility`
 
+<!-- no-compile -->
 ```csharp
 byte[]  bytes  = FileUtility.GetBytes(stream);
 Stream  stream = FileUtility.GetStream(bytes);
 string  text   = FileUtility.GetString(bytes, Encoding.UTF8);
 string  b64    = FileUtility.GetBase64String(bytes);
-byte[]  back   = FileUtility.GetBytesFromString(b64);  // Base64 → bytes
+byte[]  back   = FileUtility.GetBytes(b64);             // Base64 → bytes
+byte[]  encoded = FileUtility.GetBytesFromString(text); // text → bytes (encoding)
 ```
 
 ---
@@ -148,6 +161,7 @@ All backends implement this single interface.
 
 ### Read
 
+<!-- no-compile -->
 ```csharp
 Task<bool>                Exists(string identifier)
 Task<byte[]?>             GetBytes(string identifier)
@@ -158,6 +172,7 @@ IAsyncEnumerable<string>  ListAsync(FileSearchObject? so = null)  // NET10+
 
 ### Write
 
+<!-- no-compile -->
 ```csharp
 Task<string> Save(string identifier, byte[] bytes,  string? contentType = null)
 Task<string> Save(string identifier, Stream stream, string? contentType = null)
@@ -169,6 +184,7 @@ Task         Delete(string identifier)
 
 ### URI Helpers
 
+<!-- no-compile -->
 ```csharp
 string  Root { get; }
 string  GetAbsoluteUri(string identifier)   // relative → absolute
@@ -189,6 +205,7 @@ Filter parameter for `List()`.
 | `Recursive` | `bool` | `false` | Include subdirectories |
 | `Type` | `FileEntryTypes` | `All` | `Files`, `Directories`, or `All` |
 
+<!-- no-compile -->
 ```csharp
 var images = await storage.List(new FileSearchObject
 {
@@ -246,6 +263,7 @@ services.AddSingleton<IFileService, NetworkFileService>();
 
 **Text files** — wrap any `IFileService` with `DefaultTextFileService`:
 
+<!-- no-compile -->
 ```csharp
 var text = new DefaultTextFileService(anyFileService, Encoding.UTF8);
 string? content = await text.GetContents("config/app.json");
@@ -277,7 +295,9 @@ var service = new BinaryBlobService(communicator);
 
 `Save` stores its `contentType` as the blob's `Content-Type`, which decides whether a browser following a SAS or CDN
 link shows the file or downloads it. Without one — `null`, empty or blank — the type comes from the identifier's
-extension.
+extension. Never pass an upload's `IFormFile.ContentType`: the client chose it, so an `avatar.png` declared `text/html`
+would be served as a web page. Leave the argument out, or derive it from the name with
+`ContentTypeUtility.GetContentType(fileName)`.
 
 ---
 
@@ -316,13 +336,15 @@ var service = new SftpService(communicator);
 **Package:** `Regira.IO.Storage.GitHub`
 
 ```csharp
+ISerializer jsonSerializer = new JsonSerializer();   // e.g. Regira.Serializing.Newtonsoft
+
 var service = new GitHubService(
-    new GitHubOptions
+    new GitHubCommunicator(new GitHubOptions
     {
         Uri       = "https://api.github.com/repos/owner/repo",
         Key       = "ghp_xxxxxxxxxxxx",
         UserAgent = "MyApp/1.0"
-    },
+    }),
     jsonSerializer
 );
 ```
@@ -344,6 +366,7 @@ Fully implements `IFileService`: reads via the contents API; `Save`/`Move`/`Dele
 
 ### `ZipFileService` — browse an archive via IFileService
 
+<!-- no-compile -->
 ```csharp
 // Open an existing zip
 using var zipService = new ZipFileService(new ZipFileCommunicator { SourceFile = existingZip });
@@ -361,10 +384,11 @@ matches that folder as a whole: `dir2/dir2.1` does not include `dir2/dir2.10`.
 | `ZipFileCommunicator` | Type | Description |
 |---|---|---|
 | `SourceFile` | `IMemoryFile?` | Existing zip to open — omit to start empty |
-| `Password` | `string?` | Archive password (optional) |
+| `Password` | `string?` | Not read by `ZipFileService` — a password-protected zip needs `Regira.IO.Compression.SharpZipLib` |
 
 ### `ZipBuilder` — create archives
 
+<!-- no-compile -->
 ```csharp
 IMemoryFile zip = await new ZipBuilder()
     .For([new BinaryFileItem { FileName = "report.pdf", Bytes = pdfBytes },
@@ -376,9 +400,10 @@ IMemoryFile zip = await new ZipBuilder()
 
 `Zip` is an extension method; `Unzip` is static.
 
+<!-- no-compile -->
 ```csharp
 IMemoryFile archive        = files.Zip();
-IMemoryFile archive        = paths.Zip(baseFolder: "/var/exports");
+IMemoryFile folderArchive  = paths.Zip(baseFolder: "/var/exports");
 BinaryFileCollection items = ZipUtility.Unzip(existingZip);
 string[] extracted         = ZipUtility.Unzip(existingZip, targetDirectory: "/tmp/out");
 ```
@@ -392,6 +417,7 @@ requires — an archive made on Windows unzips into the same folders on Linux. `
 
 ### `FileProcessor` — recursive processing
 
+<!-- no-compile -->
 ```csharp
 await new FileProcessor(fileService).ProcessFiles(
     new FileSearchObject { FolderUri = "exports/", Recursive = true },
@@ -401,6 +427,7 @@ await new FileProcessor(fileService).ProcessFiles(
 
 ### `FileNameHelper` — unique filenames
 
+<!-- no-compile -->
 ```csharp
 var helper = new FileNameHelper(fileService);
 string safe = await helper.NextAvailableFileName("invoices/report.pdf");
@@ -411,6 +438,7 @@ Customise: `new FileNameHelper.Options { NumberPattern = " ({0})" }`
 
 ### `ExportHelper` — copy between services
 
+<!-- no-compile -->
 ```csharp
 await new ExportHelper(source, target)
     .Export(new FileSearchObject { FolderUri = "backups/", Recursive = true });
@@ -418,6 +446,7 @@ await new ExportHelper(source, target)
 
 ### `FileNameUtility` — path helpers
 
+<!-- no-compile -->
 ```csharp
 FileNameUtility.GetAbsoluteUri("folder/file.txt", root)
 FileNameUtility.GetRelativeUri(absolutePath, root)

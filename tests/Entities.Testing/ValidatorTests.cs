@@ -592,6 +592,111 @@ public class ValidatorTests
     }
 
     [Test]
+    public async Task A_Delete_By_Key_Is_Judged_By_The_Stored_Row()
+    {
+        Build(s => s.For<Order>(e => e.Validate(ctx =>
+        {
+            if (ctx.Operation == EntityWriteOperation.Remove && ctx.Item.Status == OrderStatus.Shipped)
+            {
+                ctx.AddError(nameof(Order.Status), "A shipped order cannot be deleted.");
+            }
+        })));
+        var shipped = await SeedOrder(OrderStatus.Shipped);
+        var pending = await SeedOrder();
+
+        using var scope = _sp.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
+
+        // the stub carries the key only: its Status is the default, Pending
+        await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Remove(new Order { Id = shipped }));
+        await service.Remove(new Order { Id = pending });
+        await service.SaveChanges();
+
+        using var check = _sp.CreateScope();
+        var stored = await check.ServiceProvider.GetRequiredService<ShopContext>().Orders.IgnoreQueryFilters().OrderBy(x => x.Id).ToListAsync();
+        Assert.That(stored.Select(x => (x.Id, x.IsArchived)), Is.EqualTo(new[] { (shipped, false), (pending, true) }));
+    }
+
+    [Test]
+    public async Task A_Delete_Of_A_Row_That_Is_Not_Stored_Is_Judged_By_The_Callers_Instance()
+    {
+        var seen = new List<string?>();
+        Build(s => s.For<Order>(e => e.Validate(ctx => seen.Add(ctx.Item.Code))));
+
+        using var scope = _sp.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
+        var added = NewOrder("ORD-9");
+        await service.Add(added);
+        await service.Remove(added);
+
+        Assert.That(seen, Is.EqualTo(new[] { "ORD-9", "ORD-9" }));
+    }
+
+    [Test]
+    public async Task A_Lookup_That_Returns_The_Row_Being_Written_Leaves_The_Write_Free_To_Track_It()
+    {
+        // the canonical uniqueness check: on an update that keeps its code, the lookup returns the stored row itself
+        Build(s => s.For<Order>(e => e.Validate(async (ctx, db, token) =>
+        {
+            var holder = await db.Orders.FirstOrDefaultAsync(o => o.Code == ctx.Item.Code, token);
+            if (ctx.Operation != EntityWriteOperation.Remove && holder != null && holder.Id != ctx.Item.Id)
+            {
+                ctx.AddError(nameof(Order.Code), "Code is taken.");
+            }
+        })));
+        var id = await SeedOrder();
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
+        var update = NewOrder();
+        update.Id = id;
+        update.Total = 5;
+        await service.Modify(update);
+        await service.SaveChanges();
+        await service.Remove(new Order { Id = id, Code = "ORD-1" });
+        await service.SaveChanges();
+
+        using var check = _sp.CreateScope();
+        var stored = await check.ServiceProvider.GetRequiredService<ShopContext>().Orders.IgnoreQueryFilters().SingleAsync(x => x.Id == id);
+        Assert.Multiple(() =>
+        {
+            Assert.That((stored.Total, stored.IsArchived), Is.EqualTo((5, true)));
+            Assert.That(db.ChangeTracker.QueryTrackingBehavior, Is.EqualTo(QueryTrackingBehavior.TrackAll), "restored after the validators ran");
+        });
+    }
+
+    [Test]
+    public async Task Find_In_A_Validator_Tracks_Nothing_Either()
+    {
+        var tracked = new List<int>();
+        Build(s => s.For<Order>(e => e.Validate(async (ctx, db, token) =>
+        {
+            await db.Orders.FindAsync([ctx.Item.Id], token);
+            tracked.Add(db.ChangeTracker.Entries<Order>().Count(x => x.Entity != ctx.Item));
+        })));
+        var id = await SeedOrder();
+
+        using var scope = _sp.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
+        var update = NewOrder();
+        update.Id = id;
+        update.Total = 5;
+        await service.Modify(update);
+        await service.SaveChanges();
+        await service.Remove(new Order { Id = id });
+        await service.SaveChanges();
+
+        using var check = _sp.CreateScope();
+        var stored = await check.ServiceProvider.GetRequiredService<ShopContext>().Orders.IgnoreQueryFilters().SingleAsync(x => x.Id == id);
+        Assert.Multiple(() =>
+        {
+            Assert.That(tracked, Is.EqualTo(new[] { 0, 0 }), "Find ran a query that followed the context's tracking behaviour");
+            Assert.That((stored.Total, stored.IsArchived), Is.EqualTo((5, true)));
+        });
+    }
+
+    [Test]
     public async Task A_Write_Service_On_The_Constructor_Without_Validators_Runs_None()
     {
         Build(s => s.For<Order>(e => e

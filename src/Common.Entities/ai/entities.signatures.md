@@ -244,10 +244,10 @@ public class EntityWriteService<TContext, TEntity, TKey>(
 
     // Add / Modify: PrepareItem, then ValidateItem, then the entity is tracked
     public virtual Task PrepareItem(TEntity item, TEntity? original, CancellationToken token = default);
-    // not virtual: validators are the one way to refuse a write
+    // not virtual: validators are the one way to refuse a write; their queries on this context track nothing
     public Task ValidateItem(TEntity item, TEntity? original, EntityWriteOperation operation,
         CancellationToken token = default);
-    // Remove: ValidateItem, then RemoveItem — mark extra rows for a delete here, once the validators passed
+    // Remove: ValidateItem with the stored row, then RemoveItem — mark extra rows for a delete here, once the validators passed
     protected virtual Task RemoveItem(TEntity item, CancellationToken token = default);
 }
 // int-keyed: EntityWriteService<TContext, TEntity>, with the same two constructors
@@ -447,6 +447,8 @@ The verb attribute is **inherited** by the override, so the route survives witho
 > (the body/array variants), but do expose `GET /search` (single search object, with count for paging)
 > alongside basic list via `GET /?q=…`. For response envelope shapes
 > (`item` / `items,count`) see `entities.instructions.md` §Step 13.
+
+A write a validator refuses — save, create, modify, patch or delete — answers 400 with the error map.
 
 ---
 
@@ -1578,7 +1580,7 @@ public enum EntityWriteOperation { Add, Modify, Remove }   // a soft delete of a
 
 public interface IEntityValidatorContext
 {
-    object Item { get; }                          // after every prepper; Remove: the row the caller loaded
+    object Item { get; }                          // after every prepper; Remove: the stored row (else the caller's instance)
     object? Original { get; }                     // the stored row on Modify; null on Add and Remove
     EntityWriteOperation Operation { get; }
     IReadOnlyList<EntityInputError> Errors { get; }   // what every validator of this write added so far
@@ -1899,7 +1901,8 @@ Every `{id}` is the **link** id (`EntityAttachmentDto.Id`), never `attachmentId`
 | `DELETE attachments/{id}` | remove the link and its file |
 | `GET files/{id}` · `GET {objectId}/files/{*fileName}` | download by link id · by the client `FileName` (`?inline=false` → attachment) |
 
-A write a validator refuses answers 400 with the error map.
+A write a validator refuses answers 400 with the error map. Validators scoped to the link entity run for these routes
+only: a `PUT` of the owner that syncs its `Attachments` runs the owner's validators alone.
 
 ---
 

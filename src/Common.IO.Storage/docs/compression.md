@@ -17,11 +17,14 @@ Regira IO.Compression provides ZIP archive creation and extraction with optional
 ## ZipManager
 
 ```csharp
+using Regira.IO.Compression.SharpZipLib;
+
 var zip = new ZipManager();
 ```
 
 ### Create a ZIP archive
 
+<!-- no-compile -->
 ```csharp
 // Returns a Stream containing the ZIP data
 Stream archive = zip.Zip(files);
@@ -34,6 +37,7 @@ Stream archive = zip.Zip(files, password: "s3cr3t");
 
 ### Extract a ZIP archive
 
+<!-- no-compile -->
 ```csharp
 BinaryFileCollection contents = await zip.Unzip(archiveStream);
 

@@ -41,6 +41,9 @@
 ### DI Registration
 
 ```csharp
+using Regira.Invoicing.Billit.Config;                // BillitConfig
+using Regira.Invoicing.Billit.DependencyInjection;   // AddBillit
+
 services.AddBillit(sp => new BillitConfig
 {
     PartyId = configuration["Billit:PartyId"],
@@ -51,6 +54,7 @@ services.AddBillit(sp => new BillitConfig
 
 ### `IInvoiceManager`
 
+<!-- no-compile -->
 ```csharp
 Task<ICreateInvoiceResult> Create(IInvoice item);
 Task<ISendInvoiceResult>   Send(params string[] ids);   // send by IDs
@@ -63,6 +67,7 @@ Task<ISendInvoiceResult>   Send(IInvoice input);         // send by invoice obje
 
 ### `IUblConverter`
 
+<!-- no-compile -->
 ```csharp
 XDocument Convert(UblDocumentInput input);
 ```
@@ -70,10 +75,12 @@ XDocument Convert(UblDocumentInput input);
 Produces a UBL 2.1 `Invoice` document.
 
 ```csharp
+IInvoice invoice = new Invoice { /* lines, parties, tax, etc. */ };
+
 var converter = new UblConverter();
 XDocument ubl = converter.Convert(new UblDocumentInput
 {
-    // IInvoice-based input with lines, parties, tax, etc.
+    Invoice = invoice   // required
 });
 ```
 
@@ -82,12 +89,14 @@ XDocument ubl = converter.Convert(new UblDocumentInput
 - **`UblConstants`** — Customization ID and Profile ID for Peppol BIS Billing 3.0
 
 - **`InvoiceTypeCode`**
-  - `380` — commercial invoice
-  - `381` — credit note
+  - `380` — commercial invoice (`Commercial`)
+  - `383` — debit note (`DebitNote`)
+  - credit notes have no type code — they are distinguished by the UBL root element name
 
 - **`PaymentMeansCode`**
-  - `31` — bank transfer
-  - `58` — SEPA credit transfer
+  - `1` — not defined (`NotDefined`)
+  - `42` — payment to bank account (`BankAccount`)
+  - `ZZZ` — mutually defined (`MutuallyDefined`)
 
 - **`TaxCategoryCode`**
   - `S` — standard rate
@@ -111,6 +120,7 @@ XDocument ubl = converter.Convert(new UblDocumentInput
 
 ### `PeppolService`
 
+<!-- no-compile -->
 ```csharp
 var service = new PeppolService(gatewaySettings, jsonSerializer);
 
@@ -126,6 +136,7 @@ Requests are HMAC-signed internally via `SealUtility.Generate()`.
 
 ## Typical End-to-End Flow
 
+<!-- no-compile -->
 ```csharp
 // 1. Build the invoice domain model
 IInvoice invoice = BuildInvoice(order);

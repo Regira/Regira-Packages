@@ -4,6 +4,7 @@
 
 ## DI Registration
 
+<!-- no-compile -->
 ```csharp
 // Program.cs
 services.AddSingleton<IImageService, Regira.Drawing.SkiaSharp.Services.ImageService>();
@@ -18,6 +19,7 @@ services.AddSingleton<IImageCreator>(sp =>
 
 ## Resize and convert uploaded image
 
+<!-- no-compile -->
 ```csharp
 public async Task<byte[]> ProcessProductImage(byte[] uploadedBytes)
 {
@@ -30,6 +32,7 @@ public async Task<byte[]> ProcessProductImage(byte[] uploadedBytes)
 
 ## Generate a thumbnail
 
+<!-- no-compile -->
 ```csharp
 public async Task<byte[]> CreateThumbnail(byte[] imageBytes)
 {
@@ -41,6 +44,7 @@ public async Task<byte[]> CreateThumbnail(byte[] imageBytes)
 
 ## Add a "SALE" watermark
 
+<!-- no-compile -->
 ```csharp
 public async Task<byte[]> AddWatermark(byte[] imageBytes)
 {

@@ -36,6 +36,7 @@
 
 ### `IEncrypter`
 
+<!-- no-compile -->
 ```csharp
 string Encrypt(string plainText, string? key = null);
 string Decrypt(string encryptedText, string? key = null);
@@ -81,11 +82,12 @@ string plain  = enc.Decrypt(cipher);
 
 ### `IHasher` — `Regira.Security.Abstractions`
 
+<!-- no-compile -->
 ```csharp
 using Regira.Security.Abstractions; // IHasher
 
-string Hash(string? plainText);
-bool   Verify(string? plainText, string hashedValue);
+string Hash(string plainText);
+bool   Verify(string plainText, string hashedValue);
 ```
 
 ### `Hasher` — PBKDF2 (in `Regira.Security`)
@@ -167,6 +169,7 @@ is whatever the issuer used, which `Algorithm` does not describe.
 
 ### `ITokenHelper` — `Regira.Security.Authentication.Jwt.Abstraction`
 
+<!-- no-compile -->
 ```csharp
 using Regira.Security.Authentication.Jwt.Abstraction; // ITokenHelper
 using Regira.Security.Authentication.Jwt.Models;      // JwtTokenOptions
@@ -207,6 +210,7 @@ services.AddJwtAuthentication(options =>
 
 ### `ClaimsPrincipal` Extension Methods — `Regira.Security.Authentication.Jwt.Extensions`
 
+<!-- no-compile -->
 ```csharp
 using Regira.Security.Authentication.Jwt.Extensions;
 
@@ -240,6 +244,7 @@ Two of them exist because the naive read is wrong:
 
 ### `IApiKeyOwnerService`
 
+<!-- no-compile -->
 ```csharp
 Task<ApiKeyOwner?> FindByOwner(string id);
 Task<ApiKeyOwner?> FindByKey(string apiKey);
@@ -304,6 +309,7 @@ which each scheme already resolves correctly.
 handler hands its claims to `ClaimsNormalizer.Normalize(...)` and gets an identity carrying the canonical
 spellings as well.
 
+<!-- no-compile -->
 ```csharp
 var identity = ClaimsNormalizer.Normalize(claims, authenticationType);   // ClaimNormalizationOptions optional
 ```
@@ -410,6 +416,7 @@ users are signed out at random.
 Implement `IRefreshTokenStore` over your own `DbContext` — five methods, of which only `TryRevoke` needs care — and
 register it first:
 
+<!-- no-compile -->
 ```csharp
 services.AddJwtAuthentication(…)
         .AddRefreshTokenStore<MyEfRefreshTokenStore>()
@@ -421,6 +428,7 @@ token is by definition one that was already revoked.
 
 ### Abstractions
 
+<!-- no-compile -->
 ```csharp
 // IRefreshTokenService
 Task<TokenPair>  Issue(string userId, IEnumerable<Claim> claims, string? audience = null, CancellationToken ct = default);
@@ -593,6 +601,7 @@ services.AddCookieAuthentication(configuration);
 
 ### Signing in and out
 
+<!-- no-compile -->
 ```csharp
 using Regira.Security.Authentication.Cookie.Extensions;
 
@@ -809,6 +818,8 @@ costs the request its other options.
 ### ⚠️ OpenAPI: two transformers, whatever the scheme count
 
 ```csharp
+using Regira.Security.Authentication.Web.OpenApi.Transformers;   // package Regira.Security.Authentication.Web
+
 services.AddOpenApi(options =>
 {
     options.AddDocumentTransformer<AuthenticationSchemeDocumentTransformer>();
@@ -857,6 +868,7 @@ factory. To carry an Identity role into the token and through every gate:
 1. **Store + emit.** Chain `.AddRoles<IdentityRole>()` (before `AddEntityFrameworkStores`, so the role store
    registers) and align the claim spelling with the JWT scheme:
 
+   <!-- no-compile -->
    ```csharp
    services.AddIdentityCore<AppUser>(o =>
        {
@@ -898,6 +910,7 @@ factory. To carry an Identity role into the token and through every gate:
 
 Three abstract base controllers over ASP.NET Core Identity's `UserManager<TUser>` — `Regira.Security.Authentication.Web.Controllers`. Subclass each with a closed `TUser : IdentityUser<string>` (`UserControllerBase` also needs `new()`). `[ApiController]` and the route templates live on the bases and are inherited — **do not add `[ApiController]`/`[Route]` to the subclass**:
 
+<!-- no-compile -->
 ```csharp
 using Regira.Security.Authentication.Web.Controllers;
 
@@ -937,6 +950,7 @@ in an app with roles every user can create accounts: gate it like any other writ
 per request, to mail the confirmation link — register one, or the call fails at runtime rather than at startup.
 For **self-registration**, override it:
 
+<!-- no-compile -->
 ```csharp
 [AllowAnonymous]
 public override Task<IActionResult> Create(UserInput model, [FromServices] IEmailSender mailer) => base.Create(model, mailer);

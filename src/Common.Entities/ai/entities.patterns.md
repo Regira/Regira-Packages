@@ -78,7 +78,7 @@ foreach (var product in products)
     await links.Add(new ProductAttachment
     {
         ObjectId = product.Id,
-        Attachment = new Attachment { FileName = "spec.pdf", ContentType = "application/pdf", Bytes = bytes }
+        Attachment = new Attachment { FileName = "spec.pdf", Bytes = bytes }
         // (set Attachment.Identifier to pick the storage key; otherwise it is derived from FileName)
     });
 
@@ -111,7 +111,7 @@ var links = sp.GetRequiredService<IEntityService<ProductAttachment, int>>();
 await links.Add(new ProductAttachment
 {
     ObjectId = product.Id,
-    Attachment = new Attachment { FileName = "spec.pdf", ContentType = "application/pdf", Bytes = bytes }
+    Attachment = new Attachment { FileName = "spec.pdf", Bytes = bytes }
 });
 await links.SaveChanges(); // pipeline writes the file, fills Path/Length, assigns AttachmentId
 ```
@@ -816,8 +816,9 @@ public static class OrderServiceConfiguration
   `PersonValidator` that calls `Include(new PartyValidator())` in an assembly that also holds `PartyValidator` runs
   the `Party` rules twice for a `Person`, and each message appears twice: rely on the scope rule instead of `Include`.
 - **A rule set per write** — `Add` and `Modify` run the rules outside any rule set plus `EntityRuleSets.Add` or
-  `EntityRuleSets.Modify`; `Remove` runs `EntityRuleSets.Remove` alone, so the shape rules and their lookups stay
-  off a delete. A rule for inserts only goes in `RuleSet(EntityRuleSets.Add, …)`.
+  `EntityRuleSets.Modify`; `Remove` runs `EntityRuleSets.Remove` alone, against the row as stored, so the shape
+  rules and their lookups stay off a delete and a delete by key is judged by the row's state. A rule for inserts
+  only goes in `RuleSet(EntityRuleSets.Add, …)`.
 - **The write, from any rule** — `ctx.GetOriginal()` is the stored row on `Modify` (`null` otherwise) and
   `ctx.GetOperation()` the write, read from the `ValidationContext<T>` a three-argument `Must` receives. A child
   validator shares that context data; its `GetOriginal()` answers `null` unless its `T` is the entity's type.

@@ -150,7 +150,9 @@ public class EntityWriteService<TContext, TEntity, TKey>(
         => item.IsNew() ? Add(item, token) : Modify(item, token);
     public virtual async Task Remove(TEntity item, CancellationToken token = default)
     {
-        await ValidateItem(item, null, EntityWriteOperation.Remove, token);
+        // a delete rule judges the row as stored: the caller may pass no more than its key, as Remove(new Order { Id = id }) does
+        var stored = CanBeRefused(item) ? await readService.Details(item.Id, ArchivedFilter.Included, token) : null;
+        await ValidateItem(stored ?? item, null, EntityWriteOperation.Remove, token);
         await RemoveItem(item, token);
     }
     /// <summary>
@@ -201,11 +203,25 @@ public class EntityWriteService<TContext, TEntity, TKey>(
     /// Runs the validators in scope of <paramref name="item"/> and throws an <see cref="EntityInputException{T}"/> of
     /// <typeparamref name="TEntity"/> holding every error they added. <see cref="Add"/> and <see cref="Modify"/> call it
     /// after the preppers — <see cref="Modify"/> only when the stored row was found — and <see cref="Remove"/> before
-    /// anything is marked. Not an override point: validators are the one way to refuse a write, and whether one runs for
-    /// the item decides whether <see cref="Add"/> and <see cref="Modify"/> record what a refusal takes back.
+    /// anything is marked, with the stored row. Not an override point: validators are the one way to refuse a write, and
+    /// whether one runs for the item decides whether <see cref="Add"/> and <see cref="Modify"/> record what a refusal takes back.<br />
+    /// A validator's queries on this write's context track nothing, <c>Find</c> / <c>FindAsync</c> included: a tracked copy
+    /// of the row being written would keep the write from tracking its own. Only an explicit <c>AsTracking()</c> opts back in.
     /// </summary>
-    public Task ValidateItem(TEntity item, TEntity? original, EntityWriteOperation operation, CancellationToken token = default)
-        => validators.ValidateItem(item, original, operation, token);
+    public async Task ValidateItem(TEntity item, TEntity? original, EntityWriteOperation operation, CancellationToken token = default)
+    {
+        var tracker = DbContext.ChangeTracker;
+        var tracking = tracker.QueryTrackingBehavior;
+        tracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
+        try
+        {
+            await validators.ValidateItem(item, original, operation, token);
+        }
+        finally
+        {
+            tracker.QueryTrackingBehavior = tracking;
+        }
+    }
 
     /// <summary>
     /// Saves changes to DB, and detaches all entries in ChangeTracker to prevent issues with stale entries in future operations.<br />

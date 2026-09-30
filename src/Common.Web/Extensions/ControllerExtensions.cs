@@ -1,4 +1,5 @@
 ﻿using System.Net.Mime;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Regira.IO.Abstractions;
 using Regira.IO.Extensions;
@@ -28,7 +29,7 @@ public static class ControllerExtensions
         ctrl.Response.Headers["Content-Disposition"] = disposition.ToString();
         // make content-disposition available for axios client
         ctrl.Response.Headers["Access-Control-Expose-Headers"] = "Content-Disposition";
-        // the stored ContentType may be user-supplied on upload; don't let browsers sniff around it
+        // the file is served as its stored type: a browser must not guess another from its bytes
         ctrl.Response.Headers["X-Content-Type-Options"] = "nosniff";
         // Belt-and-braces: GetStream() already hands back a rewound stream. FileStreamResult sends
         // Content-Length = stream.Length but copies from the current position, so were that ever not the
@@ -42,10 +43,11 @@ public static class ControllerExtensions
             : ContentTypeUtility.GetContentType(file.FileName);
         // a file that renders as a page runs its scripts on this origin — an upload named .html or .svg, or a type a client
         // declared before uploads were typed by name. The sandbox lets any file render and run nothing; only a PDF goes
-        // without, since a sandbox keeps the browser's PDF viewer from loading.
+        // without, since a sandbox keeps the browser's PDF viewer from loading. Appended, not set: a browser enforces every
+        // policy it receives, so one the app already sent still applies.
         if (!contentType.Split(';')[0].Trim().Equals("application/pdf", StringComparison.OrdinalIgnoreCase))
         {
-            ctrl.Response.Headers["Content-Security-Policy"] = "sandbox";
+            ctrl.Response.Headers.Append("Content-Security-Policy", "sandbox");
         }
         return ctrl.File(stream, contentType, inline ? null : file.FileName);
     }

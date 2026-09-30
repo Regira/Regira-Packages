@@ -19,13 +19,14 @@ public class AttachmentPrimer<TAttachment, TKey>(IAttachmentFileService<TAttachm
             entity.Length = entity.GetLength();
         }
 
-        if (string.IsNullOrWhiteSpace(entity.ContentType) && !string.IsNullOrWhiteSpace(entity.FileName))
-        {
-            entity.ContentType = ContentTypeUtility.GetContentType(entity.FileName);
-        }
-
         if (entry.State is EntityState.Added or EntityState.Modified)
         {
+            // the type follows the file name, whoever set it: a client cannot choose the type its file is served as
+            if (!string.IsNullOrWhiteSpace(entity.FileName))
+            {
+                entity.ContentType = ContentTypeUtility.GetContentType(entity.FileName);
+            }
+
             if (entity.HasContent())
             {
                 await fileService.SaveFile(entity, token);

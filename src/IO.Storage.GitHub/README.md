@@ -1,15 +1,19 @@
-# GitHub File Storage
+# Regira.IO.Storage.GitHub
 
-Based on REST API [Get repository content](https://docs.github.com/en/rest/repos/contents?apiVersion=2022-11-28).
+Stores files in a GitHub repository through the [Regira IO.Storage](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/) contracts, over the REST API's [repository contents](https://docs.github.com/en/rest/repos/contents) endpoints. `GitHubService` implements `IFileService` with a `GitHubCommunicator` and an `ISerializer`: reads come from the repository, and `Save`, `Move` and `Delete` each create a commit on the configured branch, so it is not suited to high-frequency writes.
 
-Implements `IFileService`. Supported operations: `Exists`, `GetBytes`, `GetStream`, `List`, `ListAsync` (NET10+).
-`Save`, `Move`, and `Delete` are not supported and throw `NotImplementedException`.
+## Installation
 
-## Tokens
+```xml
+<PackageReference Include="Regira.IO.Storage.GitHub" Version="6.*" />
+```
 
-[Create a token for readonly permissions on a selected Repository](https://github.com/settings/tokens?type=beta).
-- Only select repositories: select repository
-- Repository permissions: enable Contents -> Access: Read-only
+Public repositories can be read without a token. Writes and private repositories need a [fine-grained personal access token](https://github.com/settings/tokens?type=beta) limited to the repository, with the *Contents* permission — *Read-only* for reading, *Read and write* to save, move or delete.
+
+## Documentation
+
+- [GitHub storage](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/#github-githubservice) — construction, options and branch handling
+- [Regira IO.Storage](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/) — the `IFileService` contract and the other storage backends
 
 ## License
 

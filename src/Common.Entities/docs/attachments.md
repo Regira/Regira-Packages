@@ -12,6 +12,7 @@ All attachments for all entities are stored in one table.
 
 ### Models
 
+<!-- no-compile -->
 ```csharp
 public interface IAttachment : IBinaryFile, IHasTimestamps;
 public interface IAttachment<TKey> : IAttachment, IEntity<TKey>;
@@ -31,6 +32,7 @@ The Attachment is based on `IBinaryFile` (Part of [Regira.IO](../../Common.IO.St
 
 The `AttachmentFileService` handles the physical file storage and retrieval for attachments.
 
+<!-- no-compile -->
 ```csharp
 public class AttachmentFileService<TAttachment, TKey>(IFileService fileService) : IAttachmentFileService<TAttachment, TKey>
 {
@@ -77,6 +79,7 @@ public interface IEntityAttachment<TKey, TObjectKey, TAttachmentKey, TAttachment
 Inherit the **`EntityAttachment`** base (which maps to `EntityAttachment<int, int, int, Attachment>`) and
 set `ObjectType` in the constructor.
 
+<!-- no-compile -->
 ```csharp
 public class ProductAttachment : EntityAttachment
 {
@@ -94,6 +97,7 @@ After defining the model of the EntityAttachment, 2 interfaces have to be implem
 - `IHasAttachments`
 - `IHasAttachments<TEntityAttachment>`
 
+<!-- no-compile -->
 ```csharp
 // other properties and interfaces are omitted
 public class OwningEntity: IHasAttachments, IHasAttachments<MyEntityAttachment>
@@ -119,6 +123,7 @@ public class OwningEntity: IHasAttachments, IHasAttachments<MyEntityAttachment>
 
 ### DbContext
 
+<!-- no-compile -->
 ```csharp   
     // Add a DbSet for each EntityAttachment type
     public DbSet<MyEntityAttachment> MyEntityAttachments { get; set; } = null!;
@@ -149,6 +154,7 @@ The custom EntityAttachmentController must derive from `EntityAttachmentControll
 `[Route]` to the **owner base path** — the base actions append the sub-routes
 (`{objectId}/attachments`, `attachments/{id}`, `{objectId}/files`, `files/{id}`, …).
 
+<!-- no-compile -->
 ```csharp
 // using default DTOs (EntityAttachmentDto & EntityAttachmentInputDto))
 [ApiController, Route("products")]
@@ -173,10 +179,15 @@ Endpoints exposed (with `[Route("products")]`):
 Every `{id}` is the id of the link row (`EntityAttachmentDto.Id`), not its `AttachmentId`; `{objectId}` is the
 owner's id.
 
-An upload's content type follows its file name, whatever the client declared, and a download is served with
-`X-Content-Type-Options: nosniff` and, for every file but a PDF, `Content-Security-Policy: sandbox`, so a file renders
-but runs no script on the API's origin. A write a [validator](services.md#entity-validators) refuses answers **400**
-with the error map.
+An attachment's content type follows its file name — whatever the client declared, and whoever writes the row — and
+a download is served with `X-Content-Type-Options: nosniff` and, for every file but a PDF,
+`Content-Security-Policy: sandbox`, so a file renders but runs no script on the API's origin. A write a
+[validator](services.md#entity-validators) refuses answers **400** with the error map.
+
+Validators scoped to the link entity run for these endpoints only. A `PUT` of the owner whose input carries
+`Attachments` syncs the links itself — it adds one for each new entry with `NewBytes` and deletes the ones the array
+leaves out — and runs only the owner's validators. Repeat a link rule, such as the allowed file types or a file that
+must not be deleted, in the owner's validator, or keep `Attachments` off the owner's input DTO.
 
 ### Dependency Injection
 
@@ -187,6 +198,7 @@ Attachments need **two** registrations:
 2. **`HasAttachments<…>(x => x.Attachments)`** — chained on the owner's `For<>()` builder — registers the
    typed per-owner read/write services, the link prepper and DTO mapping.
 
+<!-- no-compile -->
 ```csharp
 builder.Services
     .AddHttpContextAccessor()                       // required for attachment Uri resolution

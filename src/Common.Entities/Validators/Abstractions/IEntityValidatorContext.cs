@@ -21,7 +21,8 @@ public interface IEntityValidatorContext
 {
     /// <summary>
     /// The entity about to be written: after every prepper for <see cref="EntityWriteOperation.Add"/> and
-    /// <see cref="EntityWriteOperation.Modify"/>, the row the caller loaded for <see cref="EntityWriteOperation.Remove"/>.
+    /// <see cref="EntityWriteOperation.Modify"/>; for <see cref="EntityWriteOperation.Remove"/>, the row as stored — the
+    /// caller's instance when no stored row is found — so a delete by key alone is judged by the row's state.
     /// </summary>
     object Item { get; }
     /// <summary>

@@ -34,6 +34,7 @@ Where the reference has to stay, two things need handling:
 `SaveChangesBreakingDeleteCycles` / `SaveChangesBreakingDeleteCyclesAsync` (`Regira.Entities.EFcore.Extensions`)
 do that. Call them from the context's own overrides — both of them, or synchronous callers stay broken:
 
+<!-- no-compile -->
 ```csharp
 public override int SaveChanges(bool acceptAllChangesOnSuccess)
     => this.SaveChangesBreakingDeleteCycles(base.SaveChanges, acceptAllChangesOnSuccess);

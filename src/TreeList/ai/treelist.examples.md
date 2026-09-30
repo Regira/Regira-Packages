@@ -4,6 +4,7 @@
 
 ## Build the tree from a flat list
 
+<!-- no-compile -->
 ```csharp
 using Regira.TreeList;
 
@@ -13,6 +14,7 @@ var tree = categories.ToTreeList(c => c.Parent!);
 
 ## Render a hierarchical menu
 
+<!-- no-compile -->
 ```csharp
 var ordered = tree.OrderByHierarchy(n => n.Value.SortOrder);
 foreach (var node in ordered)
@@ -24,6 +26,7 @@ foreach (var node in ordered)
 
 ## Find all subcategories of "Electronics"
 
+<!-- no-compile -->
 ```csharp
 var electronicsNode = tree.First(n => n.Value.Slug == "electronics");
 var allSubs         = electronicsNode.GetOffspring().Select(n => n.Value);
@@ -31,6 +34,7 @@ var allSubs         = electronicsNode.GetOffspring().Select(n => n.Value);
 
 ## Get breadcrumb for a category page
 
+<!-- no-compile -->
 ```csharp
 public IEnumerable<Category> GetBreadcrumb(Category category)
 {
@@ -43,6 +47,7 @@ public IEnumerable<Category> GetBreadcrumb(Category category)
 
 ## Build tree top-down (best performance when children are navigable)
 
+<!-- no-compile -->
 ```csharp
 var rootCategories = categories.Where(c => c.ParentId == null);
 
@@ -53,6 +58,7 @@ var tree = categories.ToTreeList(
 
 ## Get a flat, depth-first view of raw values
 
+<!-- no-compile -->
 ```csharp
 TreeView<Category> view = tree.ToTreeView();
 // view[0] is the first root category; view.Tree is the full TreeList

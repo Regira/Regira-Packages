@@ -568,7 +568,8 @@ options.AddValidator<TenantValidator>();   // global — an EntityValidatorBase<
 ```
 
 **What a validator receives** — `IEntityValidatorContext<TEntity>`:
-- `Item` — the entity about to be written, as the preppers left it; for `Remove`, the row the caller loaded.
+- `Item` — the entity about to be written, as the preppers left it; for `Remove`, the row as stored (the caller's
+  instance when none is found), so a delete by key — `Remove(new Order { Id = id })` — is judged by the row's state.
 - `Original` — the row as stored, on `Modify`; `null` on `Add` and `Remove`. A `Modify` whose row is not found
   runs no validator and answers `null` (not found), so `Original` is never `null` on a `Modify`.
 - `Operation` — `EntityWriteOperation.Add`, `Modify` or `Remove`. A soft delete of an `IArchivable` is a `Remove`.
@@ -603,6 +604,11 @@ options.AddValidator<TenantValidator>();   // global — an EntityValidatorBase<
   `await customers.Details(id, token)` is `null` — or repeat the scope's predicate in the query. Never inject
   `IEntityService<>` into a validator: its write service imports every validator, so the container meets a circular
   dependency and no entity service in the app resolves.
+- **Queries on `db` track nothing while the validators run**, `Find` / `FindAsync` included, so a lookup that returns
+  the row being written — a uniqueness check `db.Orders.FirstOrDefaultAsync(o => o.Code == ctx.Item.Code, token)` on a
+  `PUT` that keeps its code — leaves the write free to track its own instance. Only an explicit `AsTracking()` opts
+  back in, and a tracked copy of the row being written then makes the write throw *"cannot be tracked because another
+  instance with the same key value … is already being tracked"*, a 500.
 
 **What a refusal leaves behind.** A refused `Add` or `Modify` takes back what its preppers marked — the rows a
 `Related()` sync added, changed or deleted — and leaves the item itself untracked, even one the job loaded with tracking
@@ -613,7 +619,7 @@ marked.
 **Where they run.** `EntityWriteService` runs them; a subclass must take `IEnumerable<IEntityValidator>` and pass it
 to the base constructor — the constructor without it runs none. A custom `IEntityRepository` over another store
 imports `IEnumerable<IEntityValidator>` and calls `validators.ValidateItem(item, original, operation)` before it
-writes. An override of `Remove` that skips `base.Remove` skips them, as an `Add` override skips the preppers; mark
+writes — for a delete, with the stored row. An override of `Remove` that skips `base.Remove` skips them, as an `Add` override skips the preppers; mark
 extra rows for a delete in an override of `RemoveItem`, which runs once the validators passed. Startup validation
 warns about a write path that cannot run the validators in scope.
 
@@ -1289,6 +1295,13 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 6. Register **two** things: `.WithAttachments(_ => new BinaryFileService(...))` for the shared `Attachment` entity + file store + bytes→file primer, **and** `.For<Product>(e => e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments))` for the typed per-owner services + link prepper + DTO mapping. `HasAttachments` is an extension on the **base** `EntityServiceBuilder`, so it chains on every `For<>()` tier — a complex owner registers it exactly like the simple one shown here.
 7. *(web apps)* Call `options.UseAttachmentUris()` (before registering entities, on the **same** `UseEntities` options instance) and register `AddHttpContextAccessor()` so attachment DTOs resolve a `Uri` linking to the attachment controller's `GetFile` action.
 
+> ⚠️ **A link rule belongs in the owner's validator too.** Validators scoped to the link entity run for the
+> attachment endpoints — upload, replace, update and delete. A `PUT` of the owner whose input carries `Attachments`
+> (step 3) syncs the links itself: it adds one for each new entry with `NewBytes` and deletes the ones the array
+> leaves out, and only the owner's validators run. Repeat a link rule — allowed file types, a file that must not be
+> deleted — in the owner's validator (keys like `Attachments[0].NewFileName`), or keep `Attachments` off the owner's
+> input DTO.
+
 > ⚠️ **Marking one attachment as the primary one? Mark the link entity, don't point the owner at it.** An
 > owner FK to one of its own attachments makes the two tables reference each other: SQL Server refuses the
 > migration and every owner `DELETE` answers 500. Use `SortOrder` or a flag on the link entity; startup
@@ -1597,7 +1610,7 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 - **Multiple global filters accumulate (AND).** Every registered filter whose `TEntity` the entity satisfies runs, and their predicates compose — so an `IOwnedEntity`-wide filter and a `ShoppingList`-specific one both apply. `TEntity` may be an interface, a base class, **or the concrete entity type**. The one case that does *not* stack is the key variants of a single filter family (`FilterArchivablesQueryBuilder` vs `<Guid>`): one variant runs, preferring the key-matching one. Two filters deriving separately from `GlobalFilteredQueryBuilderBase<>` are always distinct families and never suppress each other. A filter scoped to a type **no registered entity satisfies** never runs at all — startup validation warns about this, which is your signal that a security filter is inert.
 - **Role/permission tiers** (admin vs editor): declare claim policies (`AddAuthorization(o => o.AddPolicy("EditorOnly", p => p.RequireClaim(...)))`) and gate the baseline with `MapControllers().RequireAuthorization("AdminOrEditor")`. For "everyone reads, some roles write", one global filter carries the tier — worked recipe with the traps in [`entities.patterns.md`](./entities.patterns.md) § Role-gated write authorization filter. ⚠️ Gate that filter on an allow-list of your own controllers, and remember `POST /{entity}/search` and `POST /{entity}/list` are reads. ⚠️ `RequireClaim`/`RequireRole` and any hand-written claim read must use the spelling the *validated* principal carries, and getting it wrong costs rows, not errors (next bullet). The claim contract is one lookup away in `security.instructions` → *Claims emitted per scheme* and *Claim normalization*. The schemes do **not** all agree on the role claim type (`role`, Entra's `roles`, and the long `ClaimTypes.Role` URI are all in play), so read roles with `User.FindRoles()` and scopes with `User.HasScope()` rather than a single `HasClaim`; on a normalized principal — every scheme except the API key — the canonical `sub`/`name`/`email`/`role` spellings are present alongside the provider's, so `RequireClaim("role", …)` does hold.
 - **Verify per identity, not per endpoint.** Log in as each role (and each tenant) and compare `GET /{entity}/search` totals: an administrator sees more than an owner, a second tenant sees none of the first's. A filter that never ran, a role claim that did not survive validation, and a scope matching no registered entity all answer **200 with fewer rows** — invisible to a build, to DI validation, and to a single-user smoke test. Do this once per app after the first scoped entity works, then whenever a filter or claim changes.
-- An attachment upload is typed by its file name, never by the `Content-Type` the client declared, and a download is served with `X-Content-Type-Options: nosniff` and, for every file but a PDF, `Content-Security-Policy: sandbox`, so it runs no script on the API's origin. Still restrict extensions at the app level when accepting uploads from untrusted users.
+- An attachment's content type follows its file name — never the `Content-Type` a client declared, whoever writes the row — and a download is served with `X-Content-Type-Options: nosniff` and, for every file but a PDF, `Content-Security-Policy: sandbox`, so it runs no script on the API's origin. Still restrict extensions at the app level when accepting uploads from untrusted users.
 
 ---
 

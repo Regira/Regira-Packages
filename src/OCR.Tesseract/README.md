@@ -1,3 +1,5 @@
+# Regira.Office.OCR.Tesseract
+
 https://github.com/charlesw/tesseract/
 
 https://medium.com/@fatih_yildizli/tesseract-ocr-implementation-in-net-core-spring-boot-6f876a5d4ae5

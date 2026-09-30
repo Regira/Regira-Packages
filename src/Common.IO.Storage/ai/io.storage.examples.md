@@ -10,34 +10,40 @@
 services.AddSingleton<IFileService>(_ =>
     new BinaryFileService(new FileSystemOptions { RootFolder = "/var/app/uploads" }));
 
-// Azure Blob for backups — let IoC construct both the communicator and the service
+// Azure Blob for backups — let IoC construct both the communicator and the service. Registered by its own type:
+// a second IFileService registration would replace the local store wherever IFileService is injected
 services.AddSingleton(new AzureOptions
 {
     ConnectionString = configuration["Azure:Storage"],
     ContainerName    = "product-images"
 });
 services.AddSingleton<AzureCommunicator>();
-services.AddSingleton<IFileService, BinaryBlobService>();
+services.AddSingleton<BinaryBlobService>();
 ```
 
 ## Upload an image
 
+<!-- no-compile -->
 ```csharp
 public async Task<string> UploadProductImage(int productId, IFormFile file)
 {
-    var bytes      = await file.GetBytesAsync();
-    var identifier = $"products/{productId}/{file.FileName}";
+    // the last segment of the client's name, whichever separator it used — never a path the client chose
+    var fileName   = FileNameUtility.SanitizeFilename(file.FileName.Split('/', '\\')[^1]);
+    var identifier = $"products/{productId}/{fileName}";
 
     // Ensure a unique name if the file already exists
     var helper = new FileNameHelper(_fileService);
     identifier = await helper.NextAvailableFileName(identifier);
 
-    return await _fileService.Save(identifier, bytes, file.ContentType);
+    // no content type: the store types the file by its identifier's extension, never by the IFormFile.ContentType the client chose
+    await using var stream = file.OpenReadStream();
+    return await _fileService.Save(identifier, stream);
 }
 ```
 
 ## List images for a product
 
+<!-- no-compile -->
 ```csharp
 public async Task<IEnumerable<string>> GetProductImages(int productId)
     => await _fileService.List(new FileSearchObject
@@ -51,6 +57,7 @@ public async Task<IEnumerable<string>> GetProductImages(int productId)
 
 ## Stream images for a product (NET10+)
 
+<!-- no-compile -->
 ```csharp
 public async IAsyncEnumerable<string> StreamProductImages(int productId)
 {
@@ -68,6 +75,7 @@ public async IAsyncEnumerable<string> StreamProductImages(int productId)
 
 ## Nightly backup via ExportHelper
 
+<!-- no-compile -->
 ```csharp
 public async Task BackupToAzure(IFileService local, IFileService azure)
     => await new ExportHelper(local, azure)
@@ -76,6 +84,7 @@ public async Task BackupToAzure(IFileService local, IFileService azure)
 
 ## ZIP download of all images for an order
 
+<!-- no-compile -->
 ```csharp
 public async Task<IMemoryFile> ZipOrderImages(IEnumerable<string> identifiers)
 {

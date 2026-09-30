@@ -7,6 +7,8 @@
 Mollie's `PaymentService` implements no interface — register and inject the concrete class.
 
 ```csharp
+using Regira.Payments.Mollie.Config;   // MollieConfig
+
 services.AddSingleton(_ => new Regira.Payments.Mollie.Services.PaymentService(
     new MollieConfig
     {
@@ -21,6 +23,7 @@ The `_paymentService` field below is the injected `Regira.Payments.Mollie.Servic
 
 ## Create a payment at checkout
 
+<!-- no-compile -->
 ```csharp
 public async Task<string> StartCheckout(Order order)
 {
@@ -38,6 +41,7 @@ public async Task<string> StartCheckout(Order order)
 
 ## Handle the Mollie webhook
 
+<!-- no-compile -->
 ```csharp
 [HttpPost("checkout/webhook/{orderId}")]
 public async Task<IActionResult> Webhook(string orderId)
@@ -53,6 +57,7 @@ public async Task<IActionResult> Webhook(string orderId)
 
 ## Check payment status
 
+<!-- no-compile -->
 ```csharp
 public async Task<bool> IsPaid(string paymentId)
 {

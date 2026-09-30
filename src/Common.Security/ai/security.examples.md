@@ -7,6 +7,8 @@
 
 ```csharp
 // Program.cs
+using Regira.Security.Abstractions; // IHasher
+
 services.AddSingleton<IHasher, Regira.Security.Hashing.BCryptNet.Hasher>();
 
 services.AddApiKeyAuthentication()
@@ -47,6 +49,7 @@ derived from, so a non-ASCII character contributes one byte rather than the two 
 
 ## Register a new staff member
 
+<!-- no-compile -->
 ```csharp
 public async Task Register(string email, string plainPassword)
 {
@@ -57,6 +60,7 @@ public async Task Register(string email, string plainPassword)
 
 ## Login and issue a token pair
 
+<!-- no-compile -->
 ```csharp
 public async Task<TokenPair?> Login(string email, string plainPassword)
 {
@@ -82,6 +86,7 @@ Without `AddRefreshTokens()` this is `_tokenHelper.Create(claims)` returning the
 
 ## Renew an expired access token
 
+<!-- no-compile -->
 ```csharp
 // POST auth/refresh-token  { "refreshToken": "…" }
 var pair = await _refreshTokenService.Refresh(refreshToken, async userId =>
@@ -97,6 +102,7 @@ removed an hour ago in force until the refresh token expired.
 
 ## The same portal on cookie sessions
 
+<!-- no-compile -->
 ```csharp
 services.AddCookieAuthentication(o =>
 {
@@ -142,6 +148,7 @@ straight back in.
 
 ## Read the caller, whatever signed them in
 
+<!-- no-compile -->
 ```csharp
 string? userId = User.FindUserId();
 IReadOnlyList<string> roles = User.FindRoles();   // covers "role", "roles" and ClaimTypes.Role
@@ -153,6 +160,7 @@ and scopes arrive as one space-delimited string rather than one claim each.
 
 ## Encrypt a third-party API key at rest
 
+<!-- no-compile -->
 ```csharp
 // AesEncrypter produces a different ciphertext each call — safe for stored secrets
 var enc = new AesEncrypter(new CryptoOptions { Secret = configuration["Crypto:Secret"] });

@@ -202,8 +202,72 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         Assert.Multiple(() =>
         {
             Assert.That(ConditionalMarkers.Any(template), Is.True, "within the limit");
-            Assert.That(ConditionalMarkers.Any(template, maxCharactersInPart: 1_000), Is.False, "beyond it");
+            Assert.That(ConditionalMarkers.Any(template, maxBytes: 1_000), Is.False, "beyond it");
         });
+    }
+
+    /// <summary>
+    /// A document that opens a block is created in-process, which loads every header and footer whole, so the scan reads
+    /// them all under one budget, past the block it found first: a header too large for it sends the document to Gotenberg.
+    /// </summary>
+    [Test]
+    public void The_Scan_Budget_Covers_The_Parts_After_The_First_Block()
+    {
+        var template = Docx.Document(Docx.Paragraphs("{{#if IsDraft}}", "DRAFT", "{{/if}}"), header: Docx.Paragraphs(new string('x', 20_000))).GetBytes()!;
+        var bodyOnly = Docx.Document("{{#if IsDraft}}", "DRAFT", "{{/if}}").GetBytes()!;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ConditionalMarkers.Any(bodyOnly, maxBytes: 10_000), Is.True, "the body fits the budget");
+            Assert.That(ConditionalMarkers.Any(template, maxBytes: 10_000), Is.False, "the body and its header do not");
+        });
+    }
+
+    /// <summary>
+    /// A creator other than Word.Mini loads every XML part, so the budget counts the footnotes of a document that opens a
+    /// block too, though no marker there counts.
+    /// </summary>
+    [Test]
+    public void The_Scan_Budget_Covers_Every_Xml_Part_Of_A_Document_That_Opens_A_Block()
+    {
+        var body = Docx.Paragraphs("{{#if IsDraft}}", "DRAFT", "{{/if}}").ToArray();
+        var smallFootnote = Docx.Document(body.Select(x => (W.Paragraph)x.CloneNode(true)), footnote: Docx.Paragraphs("Note")).GetBytes()!;
+        var largeFootnote = Docx.Document(body.Select(x => (W.Paragraph)x.CloneNode(true)), footnote: Docx.Paragraphs(new string('x', 20_000))).GetBytes()!;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ConditionalMarkers.Any(smallFootnote, maxBytes: 10_000), Is.True, "the document fits the budget");
+            Assert.That(ConditionalMarkers.Any(largeFootnote, maxBytes: 10_000), Is.False, "its footnotes do not");
+        });
+    }
+
+    /// <summary>
+    /// The scan reads a part through its own stream: a DTD there is refused, as the SDK refuses it, so an entity cannot
+    /// expand into a marker or into anything else.
+    /// </summary>
+    [Test]
+    public void The_Scan_Refuses_A_Dtd()
+    {
+        var template = Docx.Document("{{#if IsDraft}}", "DRAFT", "{{/if}}").GetBytes()!;
+        using var stream = new MemoryStream();
+        stream.Write(template);
+        using (var zip = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Update, true))
+        {
+            var entry = zip.GetEntry("word/document.xml")!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open()))
+            {
+                xml = reader.ReadToEnd();
+            }
+            entry.Delete();
+            // the marker exists only once the entity expands
+            xml = xml.Replace("{{#if IsDraft}}", "&marker;");
+            xml = xml.Insert(xml.IndexOf("<w:document", StringComparison.Ordinal), "<!DOCTYPE w:document [<!ENTITY marker \"{{#if IsDraft}}\">]>");
+            using var writer = new StreamWriter(zip.CreateEntry("word/document.xml").Open());
+            writer.Write(xml);
+        }
+
+        Assert.That(ConditionalMarkers.Any(stream.ToArray()), Is.False);
     }
 
     /// <summary>

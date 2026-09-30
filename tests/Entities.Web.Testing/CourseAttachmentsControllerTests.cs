@@ -1,7 +1,11 @@
 ﻿using Entities.Web.Testing.Infrastructure;
 using Entities.TestApi.Infrastructure;
 using Entities.TestApi.Infrastructure.Courses;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
 using Regira.Entities.Mapping.Models;
 using Regira.Entities.Models;
@@ -482,6 +486,37 @@ public class CourseAttachmentsControllerTests : IClassFixture<ContosoApiFactory>
 
         Assert.Equal(HttpStatusCode.OK, download.StatusCode);
         Assert.Equal(sandboxed, download.Headers.TryGetValues("Content-Security-Policy", out var csp) && csp.Contains("sandbox"));
+    }
+
+    /// <summary>A policy the app sends for every response; a browser enforces each policy it receives.</summary>
+    private sealed class AppPolicy : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use((context, nextMiddleware) =>
+            {
+                context.Response.Headers["Content-Security-Policy"] = "default-src 'self'";
+                return nextMiddleware();
+            });
+            next(app);
+        };
+    }
+
+    [Fact]
+    public async Task The_Sandbox_Adds_To_A_Policy_The_App_Sent()
+    {
+        using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddTransient<IStartupFilter, AppPolicy>()));
+        using var client = app.CreateClient();
+
+        var courseId = 7;
+        var content = new MultipartFormDataContent { { new ByteArrayContent("<script>alert(1)</script>"u8.ToArray()), "file", "page.html" } };
+        (await client.PostAsync($"/courses/{courseId}/files", content)).EnsureSuccessStatusCode();
+
+        var download = await client.GetAsync($"/courses/{courseId}/files/page.html");
+
+        Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+        Assert.Equal(["default-src 'self'", "sandbox"], download.Headers.GetValues("Content-Security-Policy"));
     }
 
     [Fact]

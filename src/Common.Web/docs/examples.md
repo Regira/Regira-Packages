@@ -1,4 +1,5 @@
 # Regira Web.HTML — Examples
+<!-- {% raw %} -->
 
 ## Example 1: Render a Razor invoice template
 
@@ -150,3 +151,5 @@ public IActionResult GetStatus(string taskId, IBackgroundTaskManager<ReportTask>
 
 1. [Index](../README.md) — Overview, template engines, middleware, and Swagger
 1. **[Examples](examples.md)** — HTML templating, exception handling, background tasks
+
+<!-- {% endraw %} -->

@@ -101,6 +101,7 @@ Absolute   Left   Right   Top   Bottom   HCenter   VCenter
 
 CSS-style distance from each edge:
 
+<!-- no-compile -->
 ```csharp
 new ImageEdgeOffset(top: 10, left: 20, bottom: 10, right: 20)
 new ImageEdgeOffset(10, 20)   // top + left only
@@ -127,6 +128,7 @@ Controls positioning when compositing layers.
 
 ### Parsing
 
+<!-- no-compile -->
 ```csharp
 Task<IImageFile?> Parse(Stream? stream)
 Task<IImageFile?> Parse(byte[]? bytes)
@@ -136,6 +138,7 @@ Task<IImageFile?> Parse(IMemoryFile file)
 
 ### Format
 
+<!-- no-compile -->
 ```csharp
 Task<ImageFormat> GetFormat(IImageFile input)
 Task<IImageFile>  ChangeFormat(IImageFile input, ImageFormat targetFormat)
@@ -143,6 +146,7 @@ Task<IImageFile>  ChangeFormat(IImageFile input, ImageFormat targetFormat)
 
 ### Transform
 
+<!-- no-compile -->
 ```csharp
 Task<ImageSize>  GetDimensions(IImageFile input)
 Task<IImageFile> Resize(IImageFile input, ImageSize wantedSize, int quality = 100)       // preserves aspect ratio
@@ -157,6 +161,7 @@ Task<IImageFile> FlipVertical(IImageFile input)
 
 ### Color
 
+<!-- no-compile -->
 ```csharp
 Task<Color>      GetPixelColor(IImageFile input, int x, int y)
 Task<IImageFile> MakeTransparent(IImageFile input, Color? color = null)  // null = auto-detect background
@@ -165,6 +170,7 @@ Task<IImageFile> MakeOpaque(IImageFile input)
 
 ### Draw / Create
 
+<!-- no-compile -->
 ```csharp
 Task<IImageFile> Create(ImageSize size, Color? backgroundColor = null, ImageFormat? format = null)
 Task<IImageFile> CreateTextImage(LabelImageOptions? options = null)
@@ -179,6 +185,7 @@ Fluent API for compositing multiple layers onto a single canvas.
 
 ### DI Registration
 
+<!-- no-compile -->
 ```csharp
 services.AddSingleton<IImageService, Regira.Drawing.SkiaSharp.Services.ImageService>();
 services.AddSingleton<IImageCreator, CanvasImageCreator>();
@@ -193,6 +200,7 @@ services.AddSingleton<IImageCreator>(provider =>
 
 ### Fluent API
 
+<!-- no-compile -->
 ```csharp
 var result = await new ImageBuilder(imageService, imageCreators)
     .SetBaseLayer(new CanvasImageOptions { Size = new ImageSize(800, 600), BackgroundColor = Color.White })
@@ -212,6 +220,7 @@ If no base layer is set, `Build()` auto-calculates a canvas that fits all added 
 
 ### Layer types
 
+<!-- no-compile -->
 ```csharp
 // Existing image — pin to bottom-right
 new ImageLayer {
@@ -238,12 +247,14 @@ new ImageLayer<LabelImageOptions> {
 
 Derive from `ImageCreatorBase<T>` and override the **async** `Create`. The input type `T` is what an `ImageLayer<T>.Source` carries; the builder routes each layer to the first creator whose `CanCreate` returns true.
 
+<!-- no-compile -->
 ```csharp
 public abstract Task<IImageFile?> Create(T input, CancellationToken cancellationToken = default);
 ```
 
 A real example ships in `Regira.Office.Barcodes` — it bridges a barcode/QR writer into the layer system, so a `BarcodeInput` can be added as an `ImageLayer`:
 
+<!-- no-compile -->
 ```csharp
 // Regira.Office.Barcodes.Drawing.BarcodeImageCreator
 public class BarcodeImageCreator(IBarcodeWriter barcodeWriter) : ImageCreatorBase<BarcodeInput>
@@ -259,6 +270,7 @@ services.AddSingleton<IImageCreator, BarcodeImageCreator>();
 
 ## Text Images
 
+<!-- no-compile -->
 ```csharp
 using var img = await imageService.CreateTextImage("Hello World");  // string converts implicitly to LabelImageOptions
 ```
@@ -278,6 +290,7 @@ Use `Color.Transparent` as background when compositing over another image.
 
 ## Simple DI Registration
 
+<!-- no-compile -->
 ```csharp
 // SkiaSharp (recommended)
 services.AddSingleton<IImageService, Regira.Drawing.SkiaSharp.Services.ImageService>();
@@ -290,6 +303,7 @@ services.AddSingleton<IImageService, Regira.Drawing.GDI.Services.ImageService>()
 
 ## Quick Example
 
+<!-- no-compile -->
 ```csharp
 using var image   = await imageService.Parse(inputBytes);
 using var resized = await imageService.Resize(image!, new ImageSize(200, 200));

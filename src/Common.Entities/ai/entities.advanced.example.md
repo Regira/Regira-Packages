@@ -412,27 +412,6 @@ public class ProjectAfterMapper(/*ILinkGenerator linkGenerator*/) : EntityAfterM
     public override void AfterMap(Project source, ProjectDto target)
         => target.Uri = $"BASE_PATH/{source.Slug}";
 }
-public class ProjectManager(IEntityRepository<Project, ProjectSearchObject, ProjectSortBy, ProjectIncludes> service)
-    : EntityWrappingServiceBase<Project, ProjectSearchObject, ProjectSortBy, ProjectIncludes>(service), IEntityService<Project, ProjectSearchObject, ProjectSortBy, ProjectIncludes>
-{
-    public override Task Add(Project item, CancellationToken token = default)
-    {
-        Validate(item);
-        return base.Add(item, token);
-    }
-    public override Task<Project?> Modify(Project item, CancellationToken token = default)
-    {
-        Validate(item);
-        return base.Modify(item, token);
-    }
-    // No Save override needed: base Save() routes to Add()/Modify() above (the write path calls Save()).
-
-    public void Validate(Project item)
-    {
-        if (item.ParentEntities?.Any(p => item.ChildEntities?.Any(c => c.ChildId == p.ParentId) == true) == true)
-            throw new EntityInputException<Project>("A project cannot be both parent and child of the same project.") { Item = item };
-    }
-}
 ```
 
 ## Service registration extensions
@@ -482,8 +461,6 @@ public static class ProjectServiceCollectionExtensions
                 e.AddSortBy<ProjectSortingQueryBuilder>();
                 e.AddIncludes<ProjectIncludingQueryBuilder>();
 
-                e.UseEntityService<ProjectManager>();
-
                 e.Related(item => item.Tags);
                 e.Related(item => item.ParentEntities, item => item.ParentEntities?.SetSortOrder());
                 e.Related(item => item.ChildEntities, item => item.ChildEntities?.SetSortOrder());
@@ -495,6 +472,14 @@ public static class ProjectServiceCollectionExtensions
                 // });
 
                 e.AddPrepper<ProjectPrepper>();
+                // refusing a write is a validator's job: it runs after every prepper and answers one 400
+                e.Validate(ctx =>
+                {
+                    var item = ctx.Item;
+                    if (ctx.Operation != EntityWriteOperation.Remove
+                        && item.ParentEntities?.Any(p => item.ChildEntities?.Any(c => c.ChildId == p.ParentId) == true) == true)
+                        ctx.AddError(string.Empty, "A project cannot be both parent and child of the same project.");
+                });
                 e.AddNormalizer<ProjectNormalizer>();
                 e.UseMapping<ProjectDto, ProjectInputDto>()
                     .After<ProjectAfterMapper>();

@@ -33,8 +33,10 @@ Regira Invoicing covers electronic invoice creation, UBL/Peppol conversion, and 
 
 ### DI Registration
 
-<!-- no-compile -->
 ```csharp
+using Regira.Invoicing.Billit.Config;                // BillitConfig
+using Regira.Invoicing.Billit.DependencyInjection;   // AddBillit
+
 services.AddBillit(sp => new BillitConfig
 {
     PartyId = configuration["Billit:PartyId"],

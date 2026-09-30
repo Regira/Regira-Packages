@@ -1,4 +1,4 @@
-﻿# FFMpeg Media (Video)
+# FFMpeg Media (Video)
 
 https://github.com/rosenbjerg/FFMpegCore
 

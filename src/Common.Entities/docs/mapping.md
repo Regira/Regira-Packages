@@ -13,6 +13,7 @@
 - After mappers decorate DTOs **after the mapping engine** completes
 - A base class `EntityAfterMapperBase` is provided
 
+<!-- no-compile -->
 ```csharp
 // interface
 public interface IEntityAfterMapper
@@ -47,6 +48,7 @@ You only need the explicit statements when:
 
 Both `UseMapsterMapping(...)` and `UseAutoMapper(...)` accept an optional callback to configure the underlying engine globally:
 
+<!-- no-compile -->
 ```csharp
 // Mapster — receives the shared TypeAdapterConfig
 options.UseMapsterMapping(config =>
@@ -74,6 +76,7 @@ Defaults applied by Regira (don't re-set these unless you mean to):
 
 ## Dependency Injection
 
+<!-- no-compile -->
 ```csharp   
 services
     .UseEntities<MyDbContext>(options => {

@@ -67,24 +67,28 @@ Each backend lives in its own namespace. Note that **QRCoder is write-only QR** 
 
 ### `IBarcodeWriter`
 
+<!-- no-compile -->
 ```csharp
 Task<IImageFile> Create(BarcodeInput input, CancellationToken cancellationToken = default);
 ```
 
 ### `IBarcodeReader`
 
+<!-- no-compile -->
 ```csharp
 Task<BarcodeReadResult?> Read(IImageFile img, BarcodeFormat? format = null, CancellationToken cancellationToken = default);
 ```
 
 ### `IQRCodeWriter`
 
+<!-- no-compile -->
 ```csharp
 Task<IImageFile> Create(QRCodeInput input, CancellationToken cancellationToken = default);
 ```
 
 ### `IQRCodeReader`
 
+<!-- no-compile -->
 ```csharp
 Task<BarcodeReadResult?> Read(IImageFile qrCode, CancellationToken cancellationToken = default);
 ```
@@ -93,6 +97,7 @@ Task<BarcodeReadResult?> Read(IImageFile qrCode, CancellationToken cancellationT
 
 QR-restricted convenience over the barcode services. Note that `Create` takes a **`QRCodeInput`** (a `string` works via its implicit conversion) and QR `Read` has **no `format` parameter** — it always scans for `BarcodeFormat.QRCode`:
 
+<!-- no-compile -->
 ```csharp
 Task<IImageFile>          Create(QRCodeInput input, CancellationToken cancellationToken = default);
 Task<BarcodeReadResult?>  Read(IImageFile qrCode, CancellationToken cancellationToken = default);
@@ -100,6 +105,7 @@ Task<BarcodeReadResult?>  Read(IImageFile qrCode, CancellationToken cancellation
 
 ### `IBarcodeService` (extends `IBarcodeReader` + `IBarcodeWriter`)
 
+<!-- no-compile -->
 ```csharp
 Task<IImageFile>          Create(BarcodeInput input, CancellationToken cancellationToken = default);
 Task<BarcodeReadResult?>  Read(IImageFile img, BarcodeFormat? format = null, CancellationToken cancellationToken = default);

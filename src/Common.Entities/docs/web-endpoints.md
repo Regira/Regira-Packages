@@ -14,6 +14,7 @@ Controllers provide a more traditional, attribute-based approach using `EntityCo
 
 ### Controller Selection
 
+<!-- no-compile -->
 ```csharp
 // basic (not recommended)
 EntityControllerBase<TEntity>
@@ -35,6 +36,7 @@ Keep controller `[Route]` attributes **resource-relative** — `[Route("[control
 - **At the host:** an IIS virtual directory / reverse-proxy path, or `app.UsePathBase("/api")`.
 - **In the app:** a global route-prefix convention (the prefix can come from configuration):
 
+<!-- no-compile -->
 ```csharp
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
@@ -64,12 +66,16 @@ Simple and complex controller bases expose different endpoint sets. **Simple** b
 #### Fetch Endpoints
 
 **Details (all bases):**
+
+<!-- no-compile -->
 ```csharp
 // GET /{entities}/{id} - Single entity
 Details(id) -> DetailsResult
 ```
 
 **List (all bases):**
+
+<!-- no-compile -->
 ```csharp
 // GET /{entities} - Basic List
 List() -> ListResult
@@ -83,6 +89,8 @@ List(searchObject, pagingInfo, includes[], sortBy[]) -> ListResult
 ```
 
 **Search (all bases):**
+
+<!-- no-compile -->
 ```csharp
 // GET /{entities}/search?q={keyword}&page=1 - List + Count combined
 // SearchResult carries a total Count alongside the items — use it to drive paging.
@@ -90,6 +98,8 @@ Search(searchObject, pagingInfo) -> SearchResult
 ```
 
 **Complex POST endpoints — complex bases only:**
+
+<!-- no-compile -->
 ```csharp
 // POST /{entities}/list (collection of SearchObjects in body)
 List([FromBody] searchObject[], pagingInfo, includes[], sortBy[]) -> ListResult
@@ -104,6 +114,7 @@ Search([FromBody] searchObject[], pagingInfo, includes[], sortBy[]) -> SearchRes
 
 List and Search endpoints accept optional `page` and `pageSize` query parameters. By default, when no `pageSize` is sent, the **full set** is returned. You can configure a default and/or maximum page size so endpoints page automatically:
 
+<!-- no-compile -->
 ```csharp
 // Global — applies to every entity controller
 services.UseEntities<AppDbContext>(options =>
@@ -114,13 +125,11 @@ services.UseEntities<AppDbContext>(options =>
     options.MaxPageSize = 200;      // any larger requested pageSize is clamped to this
     // or
     options.SetPageSize(pageSize: 50, maxPageSize: 200);
-});
-
+})
 // Per-entity override — fully replaces the global values for that entity
-services.For<Product>(e => e.SetPageSize(defaultPageSize: 25, maxPageSize: 100));
-
+.For<Product>(e => e.SetPageSize(defaultPageSize: 25, maxPageSize: 100))
 // Opt out — this entity is never force-paged, even when a global default is set
-services.For<AuditLog>(e => e.SetPageSize());
+.For<AuditLog>(e => e.SetPageSize());
 ```
 
 - Both values are optional; `null` means that aspect is off.
@@ -129,6 +138,7 @@ services.For<AuditLog>(e => e.SetPageSize());
 
 #### Save (Add/Modify/Patch)
 
+<!-- no-compile -->
 ```csharp
 // POST /{entities} - Create
 Create(inputDto) -> SaveResult
@@ -152,6 +162,7 @@ Save(inputDto) -> SaveResult
 
 #### DELETE Endpoint
 
+<!-- no-compile -->
 ```csharp
 // DELETE /{entities}/{id} - Delete
 Delete(id) -> DeleteResult

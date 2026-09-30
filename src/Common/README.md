@@ -120,6 +120,10 @@ ContentTypeUtility.Extend(new Dictionary<string, string[]>
 });
 ```
 
+The map is one shared instance, read without regard to case: `Extend` changes what every later lookup returns, so
+call it once at startup. It knows the common web types — `webp`, `avif`, `heic`, `json`, `md`, `webm`, `woff2`,
+`mjs` among them — and answers `application/octet-stream` for an extension it does not know.
+
 ---
 
 ## FileUtility

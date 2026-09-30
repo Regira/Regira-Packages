@@ -21,24 +21,30 @@ FFMpeg binaries must be available on `PATH` or configured via `FFMpegCore.Global
 Implements `ICompressService` and `IVideoService`.
 
 ```csharp
+using Regira.Media.FFMpeg;
+
 var vm = new VideoManager();
 ```
 
 ### Get video metadata
 
+<!-- no-compile -->
 ```csharp
 VideoSettings? info = await vm.GetInfo(videoFile);
-// info.Width, info.Height, info.Duration, info.Codec, …
+// info.Size (Size2D: width × height), info.FrameRate
 ```
 
 ### Compress
 
-Encodes to VP9/WebM. Returns `null` if the source is already smaller than the target.
+Encodes to VP9/WebM. A setting left `null` is derived from the source: `Size` becomes half its width and height,
+`FrameRate` 90% of its frame rate.
 
+<!-- no-compile -->
 ```csharp
 IMemoryFile? compressed = await vm.Compress(videoFile, new VideoSettings
 {
-    // override resolution, bitrate, codec, etc.
+    Size      = new Size2D(1280, 720),
+    FrameRate = 30
 });
 ```
 
@@ -46,18 +52,19 @@ IMemoryFile? compressed = await vm.Compress(videoFile, new VideoSettings
 
 Extracts a single frame as an `IImageFile`.
 
+<!-- no-compile -->
 ```csharp
 var snapshots = new SnapshotService(imageService);
 
 IImageFile? thumb = await snapshots.Snapshot(videoFile,
-    size: new Size2D(640, 360),
+    size: new ImageSize(640, 360),
     time: TimeSpan.FromSeconds(5));
 ```
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `input` | `IBinaryFile` | *(required)* | Source video |
-| `size` | `Size2D?` | `null` | Output dimensions |
+| `size` | `ImageSize?` | `null` | Output dimensions |
 | `time` | `TimeSpan?` | `null` | Frame position (defaults to first frame) |
 
 ## Notes

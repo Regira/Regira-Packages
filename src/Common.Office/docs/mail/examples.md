@@ -2,12 +2,13 @@
 
 ## Example 1: Send a plain HTML message
 
-The shortest possible send using implicit string conversions.
+The shortest possible send.
 
+<!-- no-compile -->
 ```csharp
 await mailer.Send(
-    sender:     "no-reply@example.com",
-    recipients: ["alice@example.com"],
+    sender:     new MailAddress { Email = "no-reply@example.com" },
+    recipients: [new MailRecipient { Email = "alice@example.com" }],
     subject:    "Order confirmed",
     message:    "<p>Your order <strong>#1042</strong> has been received.</p>"
 );
@@ -19,11 +20,12 @@ await mailer.Send(
 
 Build a `MessageObject` when you need fine-grained control over recipients, reply-to, or plain text.
 
+<!-- no-compile -->
 ```csharp
 var message = new MessageObject
 {
     From    = new MailAddress { Email = "orders@example.com", DisplayName = "Example Shop" },
-    ReplyTo = "support@example.com",
+    ReplyTo = new MailAddress { Email = "support@example.com" },
     To      =
     [
         new MailRecipient { Email = "alice@example.com",   DisplayName = "Alice" },
@@ -46,6 +48,7 @@ if (!result.Success)
 
 Attach one or more files by passing `BinaryFileItem` instances in the `Attachments` collection.
 
+<!-- no-compile -->
 ```csharp
 public async Task SendInvoice(IMailService mailer, string recipientEmail, byte[] pdfBytes)
 {
@@ -97,6 +100,9 @@ else
 Use `MailInput` from `Mail.Web` to receive and validate a send request over HTTP.
 
 ```csharp
+using Microsoft.AspNetCore.Mvc;
+using Regira.Office.Mail.Web;
+
 [ApiController]
 [Route("mail")]
 public class MailController(IMailService mailer) : ControllerBase

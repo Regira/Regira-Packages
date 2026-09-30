@@ -65,12 +65,14 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 ### `IWordCreator`
 
+<!-- no-compile -->
 ```csharp
 Task<IMemoryFile> Create(WordTemplateInput input, CancellationToken cancellationToken = default);
 ```
 
 ### `IWordConverter`
 
+<!-- no-compile -->
 ```csharp
 Task<IMemoryFile> Convert(WordTemplateInput input, FileFormat format, CancellationToken cancellationToken = default);
 Task<IMemoryFile> Convert(WordTemplateInput input, ConversionOptions options, CancellationToken cancellationToken = default);
@@ -80,12 +82,14 @@ The returned file's `ContentType` names the format produced — `application/pdf
 
 ### `IWordMerger`
 
+<!-- no-compile -->
 ```csharp
 Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default);
 ```
 
 ### `IWordTextExtractor` / `IWordImageExtractor` / `IWordToImagesService`
 
+<!-- no-compile -->
 ```csharp
 Task<string>                    GetText(WordTemplateInput input, CancellationToken cancellationToken = default);
 Task<IEnumerable<WordImage>>    GetImages(WordTemplateInput input, CancellationToken cancellationToken = default);
@@ -164,6 +168,7 @@ Docx  Doc  Dotx  Dot  Docm  Dotm  Pdf  Html  Rtf  Odt  EPub  Jpeg  Png
 
 ## Usage
 
+<!-- no-compile -->
 ```csharp
 IWordService word = new Regira.Office.Word.Spire.WordService();
 
@@ -198,6 +203,7 @@ Alt Text title: Lines
 | Total            |                   | {{ Total }}   |
 ```
 
+<!-- no-compile -->
 ```csharp
 CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
 {
@@ -227,6 +233,7 @@ CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, ob
 
 Prefix `GlobalParameters` keys with `html_` to inject raw HTML:
 
+<!-- no-compile -->
 ```csharp
 GlobalParameters = new Dictionary<string, object>
 {
@@ -289,6 +296,9 @@ and Word.Aspose take their licence through the constructor, because their vendor
 is touched:
 
 ```csharp
+using Regira.Office.Word.Syncfusion;   // SyncfusionWordConfig
+using Regira.Office.Word.Aspose;       // AsposeWordConfig
+
 IWordService word = new Regira.Office.Word.Spire.WordService();
 
 builder.Services.AddSingleton(new SyncfusionWordConfig { LicenseKey = builder.Configuration["Syncfusion:LicenseKey"] });
@@ -310,6 +320,10 @@ registers `IWordConverter` and `IWordToImagesService`, and takes an `IPdfToImage
 `ToImages`) and an `IWordCreator` (for template substitutions) from the container when they are there:
 
 ```csharp
+using Regira.Media.Drawing.Services.Abstractions;          // IImageService
+using Regira.Office.PDF.Abstractions;                      // IPdfToImageService
+using Regira.Office.Word.Gotenberg.DependencyInjection;    // AddGotenbergWord
+
 services.AddSingleton<IImageService, Regira.Drawing.SkiaSharp.Services.ImageService>();
 services.AddSingleton<IPdfToImageService, Regira.Office.PDF.DocNET.PdfManager>();
 services.AddSingleton<IWordCreator, Regira.Office.Word.Mini.WordService>();

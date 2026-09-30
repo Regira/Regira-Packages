@@ -4,6 +4,7 @@
 
 ## Export orders to Excel
 
+<!-- no-compile -->
 ```csharp
 public async Task<IMemoryFile> ExportOrders(IEnumerable<Order> orders)
 {
@@ -37,6 +38,7 @@ public class OrderRow
 
 ## Import supplier price list
 
+<!-- no-compile -->
 ```csharp
 public async Task<IEnumerable<PriceUpdate>> ImportPriceList(byte[] excelBytes)
 {
@@ -55,12 +57,13 @@ public class PriceUpdate
 
 ## Controller action
 
+<!-- no-compile -->
 ```csharp
 [HttpGet("orders/export")]
 public async Task<IActionResult> DownloadOrderReport()
 {
     var orders = _orderService.List();
     var file   = await _reportService.ExportOrders(orders);
-    return this.File(file);
+    return this.File(file.ToBinaryFile("orders.xlsx"));   // File() takes an INamedFile: the name types the download
 }
 ```

@@ -37,6 +37,7 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 Both backends implement this interface.
 
+<!-- no-compile -->
 ```csharp
 // Parameter-based
 Task<IMailResponse> Send(
@@ -128,6 +129,7 @@ var bcc = new MailRecipient { Email = "carol@example.com", RecipientType = Recip
 
 ## DI Registration
 
+<!-- no-compile -->
 ```csharp
 // SendGrid
 services.AddSendGrid(cfg => cfg.Key = configuration["Mail:SendGrid:Key"]!);
@@ -181,6 +183,7 @@ services.AddSingleton<IMailService, DummyMailer>();
 
 Accept email requests over HTTP with `Mail.Web`:
 
+<!-- no-compile -->
 ```csharp
 [HttpPost]
 public async Task<IActionResult> Send([FromBody] MailInput input, IMailService mailer)

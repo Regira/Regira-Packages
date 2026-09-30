@@ -32,6 +32,7 @@ Grandpa (level 0)
 
 ### Building the tree
 
+<!-- no-compile -->
 ```csharp
 var grandpa     = new FamilyMember { Id = 1, Name = "Grandpa" };
 var father      = new FamilyMember { Id = 2, Name = "Father",     Parents = [grandpa] };
@@ -56,6 +57,7 @@ var tree = allMembers.ToTreeList(
 
 ### Querying the tree
 
+<!-- no-compile -->
 ```csharp
 // Roots
 Console.WriteLine(tree.Roots.Length);              // 1
@@ -167,6 +169,7 @@ Total: **21 nodes** — the same ingredient value can appear multiple times as d
 
 ### Building the tree
 
+<!-- no-compile -->
 ```csharp
 // Ingredients
 var tomato     = new Ingredient { Id = 4,  Name = "Tomato" };
@@ -203,6 +206,7 @@ tree.Fill(recipes, node => node.Value switch
 
 ### Querying the tree
 
+<!-- no-compile -->
 ```csharp
 // Roots — one node per recipe
 Console.WriteLine(tree.Roots.Length);              // 3

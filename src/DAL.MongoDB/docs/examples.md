@@ -2,12 +2,13 @@
 
 ## Example 1: Connect to MongoDB and run a query
 
+<!-- no-compile -->
 ```csharp
 var settings = MongoSettings.FromConnectionString(
     configuration.GetConnectionString("MongoDB")!);
 
 var comm   = new MongoCommunicator(settings);
-var repo   = new ProductRepository(comm);
+var repo   = new ProductRepository(comm, serializer);   // serializer: an ISerializer, e.g. Regira.Serializing.Newtonsoft
 
 var products = await repo.List(new ProductSearchObject { Category = "electronics" });
 ```
@@ -16,29 +17,48 @@ var products = await repo.List(new ProductSearchObject { Category = "electronics
 
 ## Example 2: Custom MongoDB repository
 
+`List(searchObject)` hands the overrides the search object as a dictionary keyed by its property names, and the
+collection holds `BsonDocument`s, so the filter and the sort address fields by name.
+
 ```csharp
-public class ProductRepository(MongoCommunicator comm)
-    : MongoDbRepositoryBase<Product>(comm)
+public class Product
 {
-    protected override FilterDefinition<Product> GetFilter(object? so)
+    public string? Id { get; set; }
+    public string? Name { get; set; }
+    public string? Category { get; set; }
+    public decimal Price { get; set; }
+}
+
+public class ProductSearchObject
+{
+    public string? Category { get; set; }
+    public decimal? MinPrice { get; set; }
+}
+
+public class ProductRepository(MongoCommunicator comm, ISerializer serializer)
+    : MongoDbRepositoryBase<Product>(
+        comm,
+        serializer,
+        getIdFunc: p => p.Id,
+        setIdAction: (p, id) => p.Id = id,
+        collectionName: "products")
+{
+    protected override FilterDefinition<BsonDocument> GetFilter(IDictionary<string, object?>? so)
     {
-        var filter = Builders<Product>.Filter.Empty;
+        var filter = base.GetFilter(so);   // keeps the Id filter
 
-        if (so is ProductSearchObject search)
-        {
-            if (!string.IsNullOrEmpty(search.Category))
-                filter &= Builders<Product>.Filter.Eq(p => p.Category, search.Category);
+        if (so?.TryGetValue(nameof(ProductSearchObject.Category), out var category) == true && category != null)
+            filter &= Builders<BsonDocument>.Filter.Eq(nameof(Product.Category), category.ToString());
 
-            if (search.MinPrice.HasValue)
-                filter &= Builders<Product>.Filter.Gte(p => p.Price, search.MinPrice.Value);
-        }
+        if (so?.TryGetValue(nameof(ProductSearchObject.MinPrice), out var minPrice) == true && minPrice != null)
+            filter &= Builders<BsonDocument>.Filter.Gte(nameof(Product.Price), System.Convert.ToDecimal(minPrice));
 
         return filter;
     }
 
-    protected override IFindFluent<Product, Product> SortResult(
-        IFindFluent<Product, Product> query, object? so)
-        => query.SortBy(p => p.Name);
+    protected override IFindFluent<BsonDocument, BsonDocument> SortResult(
+        IFindFluent<BsonDocument, BsonDocument> result, IDictionary<string, object?> so)
+        => result.Sort(Builders<BsonDocument>.Sort.Ascending(nameof(Product.Name)));
 }
 ```
 
@@ -46,6 +66,7 @@ public class ProductRepository(MongoCommunicator comm)
 
 ## Example 3: Backup a MongoDB database
 
+<!-- no-compile -->
 ```csharp
 var options = new MongoOptions
 {
