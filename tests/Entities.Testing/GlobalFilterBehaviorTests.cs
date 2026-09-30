@@ -1,4 +1,6 @@
-﻿using Regira.Entities.EFcore.Extensions;
+﻿using Microsoft.Extensions.DependencyInjection;
+using Regira.Entities.DependencyInjection.QueryBuilders;
+using Regira.Entities.EFcore.Extensions;
 using Regira.Entities.EFcore.QueryBuilders;
 using Regira.Entities.EFcore.QueryBuilders.GlobalFilterBuilders;
 using Regira.Entities.Models;
@@ -263,5 +265,18 @@ public class GlobalFilterBehaviorTests
 
         Assert.That(result.Select(x => x.Id), Is.EquivalentTo(new[] { 1 }),
             "an interface-scoped and a concrete-scoped filter must compose, not shadow each other");
+    }
+
+    [Test]
+    public void RemoveGlobalQueryFilters_Removes_Every_Global_Filter()
+    {
+        var services = new ServiceCollection()
+            .AddGlobalFilterQueryBuilder<FilterIdsQueryBuilder<int>>()
+            .AddGlobalFilterQueryBuilder<FilterArchivablesQueryBuilder>()
+            .AddSingleton(new object());
+
+        services.RemoveGlobalQueryFilters();
+
+        Assert.That(services.Select(d => d.ServiceType), Is.EqualTo(new[] { typeof(object) }));
     }
 }

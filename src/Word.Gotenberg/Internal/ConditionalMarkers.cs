@@ -12,16 +12,26 @@ namespace Regira.Office.Word.Gotenberg.Internal;
 internal static class ConditionalMarkers
 {
     /// <summary>
+    /// The most characters a part may hold for the scan to read it. Every OOXML conversion is scanned in-process, and a
+    /// part is loaded whole: one that decompresses to more — a zip bomb, or a document far larger than any template —
+    /// is not read, and goes to Gotenberg as it is.
+    /// </summary>
+    internal const long MaxCharactersInPart = 32 * 1024 * 1024;
+
+    /// <summary>
     /// Whether the body, a header or a footer holds a paragraph that opens a block — what makes a document use blocks,
     /// as the creators decide it. Nothing else does, marker text among other text included: that document converts as
-    /// it is. A package that cannot be read holds none: it goes to Gotenberg as it is, which reports what is wrong
-    /// with it.
+    /// it is. A package that cannot be read holds none, a part beyond <see cref="MaxCharactersInPart"/> included: it
+    /// goes to Gotenberg as it is, which reports what is wrong with it.
     /// </summary>
     public static bool Any(byte[] source)
+        => Any(source, MaxCharactersInPart);
+
+    internal static bool Any(byte[] source, long maxCharactersInPart)
     {
         try
         {
-            return Find(source);
+            return Find(source, maxCharactersInPart);
         }
         catch (Exception ex)
             when (ex is OpenXmlPackageException or InvalidDataException or FileFormatException or XmlException)
@@ -30,10 +40,10 @@ internal static class ConditionalMarkers
         }
     }
 
-    private static bool Find(byte[] source)
+    private static bool Find(byte[] source, long maxCharactersInPart)
     {
         using var stream = new MemoryStream(source, false);
-        using var doc = WordprocessingDocument.Open(stream, false);
+        using var doc = WordprocessingDocument.Open(stream, false, new OpenSettings { MaxCharactersInPart = maxCharactersInPart });
         var mainPart = doc.MainDocumentPart;
         if (mainPart == null)
         {

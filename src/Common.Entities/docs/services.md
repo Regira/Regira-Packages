@@ -248,22 +248,31 @@ e.Related<TRelated, TRelatedKey>(x => x.Collection,
 - Every validator in scope runs and adds its errors to one context; the write service then throws one
   `EntityInputException<TEntity>` of the entity it saves, before the entity is tracked, so the client gets every
   error in one 400, `DELETE` included
-- Inline shortcut is available: `e.Validate(ctx => …)`, and `e.Validate(async (ctx, db) => …)` with the `DbContext`
-  — or `e.Validate(async (ctx, db, token) => …)` to pass the write's cancellation token to its queries
+- Inline shortcut is available: `e.Validate(ctx => …)` or `e.Validate(async ctx => …)`, and
+  `e.Validate(async (ctx, db) => …)` with the `DbContext` — or `e.Validate(async (ctx, db, token) => …)` to pass the
+  write's cancellation token to its queries. The write awaits an async delegate, so an error added after an `await`
+  still refuses it
 - A `Modify` whose stored row is not found runs no validator: it answers `null` (not found)
 - A refused `Add` or `Modify` takes back what its preppers marked — the rows a `Related()` sync added, changed or
-  deleted, and a prepper's edit to a row the scope loaded earlier — so a later `SaveChanges()` in the same scope does
-  not persist them. What the caller changed before the write stays: when a validator runs for the item, `Add` and
-  `Modify` first let EF detect pending edits (a pass over every tracked row, skipped for a write no validator runs
-  for). Two prepper edits a refusal cannot take back: one to a row already added or changed before the write — the
-  tracker keeps no record of its values in between — and, with `AutoDetectChangesEnabled` off, one EF never
-  detected, since detection is then the caller's
+  deleted, and a prepper's edit to a row the scope loaded earlier — and leaves the item itself untracked, even when
+  the caller tracked it, so a later `SaveChanges()` in the same scope persists none of the write. What the caller
+  changed on other rows before the write stays: when a validator runs for the item, `Add` and `Modify` first let EF
+  detect pending edits (a pass over every tracked row, skipped for a write no validator runs for). Two prepper edits a
+  refusal cannot take back: one to a row already added or changed before the write — the tracker keeps no record of
+  its values in between — and, with `AutoDetectChangesEnabled` off, one EF never detected, since detection is then the
+  caller's
 - Scoped like preppers and global filters — to the entity, a base class or an interface (table below) — but matched
   against the item's **runtime** type: a validator on `Person` also runs when a `Person` is saved through the
   `Party` service, and the exception is still the service's own `EntityInputException<Party>`
 - The place of registration never narrows the scope: a validator on an interface registered inside one `For<>()`
   checks every entity implementing it, so register such a validator once, with `options.AddValidator<T>()`; a class
   registered twice runs once
+- A lookup through the `DbContext` skips row security: global filters (tenant, owner) scope the entity services'
+  reads, not `db`, so `db.Customers.AnyAsync(…)` accepts another tenant's `CustomerId` and its 400 tells the client
+  that id exists. Where reads are scoped, check the reference through the filtered read service — a class validator
+  taking `IEntityReadService<Customer, int>` and refusing when `await customers.Details(id, token)` is `null` — or
+  repeat the scope's predicate in the query. A validator never takes `IEntityService<>`: its write service imports
+  every validator, so the container meets a circular dependency and no entity service in the app resolves
 - Children are validated through their parent: a validator checks the entity a write service saves, not the rows a
   `Related()` sync writes — check `Lines` from the `Order` validator, with keys like `Lines[0].Quantity`
 - The context carries `Item`, `Original` (the stored row on `Modify`), `Operation` (`Add` / `Modify` / `Remove`)
@@ -308,6 +317,7 @@ public abstract class EntityValidatorBase<TScope> : IEntityValidator<TScope>
     });
     e.Validate(async (ctx, db, token) =>
     {
+        // db sees every row: with scoped reads (tenants, owners), check through the filtered read service (above)
         if (ctx.Operation != EntityWriteOperation.Remove && !await db.Customers.AnyAsync(c => c.Id == ctx.Item.CustomerId, token))
             ctx.AddError(nameof(Order.CustomerId), $"Customer {ctx.Item.CustomerId} does not exist.");
     });

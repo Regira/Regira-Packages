@@ -244,13 +244,11 @@ public class EntityWriteService<TContext, TEntity, TKey>(
 
     // Add / Modify: PrepareItem, then ValidateItem, then the entity is tracked
     public virtual Task PrepareItem(TEntity item, TEntity? original, CancellationToken token = default);
-    public virtual Task ValidateItem(TEntity item, TEntity? original, EntityWriteOperation operation,
+    // not virtual: validators are the one way to refuse a write
+    public Task ValidateItem(TEntity item, TEntity? original, EntityWriteOperation operation,
         CancellationToken token = default);
     // Remove: ValidateItem, then RemoveItem — mark extra rows for a delete here, once the validators passed
     protected virtual Task RemoveItem(TEntity item, CancellationToken token = default);
-    // whether a validator runs for the item: only then do Add / Modify detect pending edits and log what the write marks,
-    // for a refusal to take back; override it when a ValidateItem override refuses writes no registered validator runs for
-    protected virtual bool CanBeRefused(TEntity item);
 }
 // int-keyed: EntityWriteService<TContext, TEntity>, with the same two constructors
 ```
@@ -809,6 +807,11 @@ public static EntityServiceCollectionOptions AddValidator<TScope>(
     this EntityServiceCollectionOptions options,
     Action<IEntityValidatorContext<TScope>> validate)
     where TScope : class;
+// async ctx => … binds here, and the write awaits it
+public static EntityServiceCollectionOptions AddValidator<TScope>(
+    this EntityServiceCollectionOptions options,
+    Func<IEntityValidatorContext<TScope>, Task> validate)
+    where TScope : class;
 
 public static EntityServiceCollectionOptions AddValidator<TContext, TScope>(
     this EntityServiceCollectionOptions options,
@@ -825,12 +828,10 @@ public static EntityServiceCollectionOptions AddValidator<TContext, TScope>(
 // IServiceCollection forms — the same scope rule
 public static IServiceCollection AddValidator<TValidator>(this IServiceCollection services)
     where TValidator : class, IEntityValidator;
-public static IServiceCollection AddValidator<TScope, TValidator>(this IServiceCollection services)
-    where TValidator : class, IEntityValidator<TScope>;
-public static IServiceCollection AddValidator<TScope>(this IServiceCollection services,
-    Func<IServiceProvider, IEntityValidator<TScope>> factory);
 public static IServiceCollection AddValidator<TScope>(this IServiceCollection services,
     Action<IEntityValidatorContext<TScope>> validate) where TScope : class;
+public static IServiceCollection AddValidator<TScope>(this IServiceCollection services,
+    Func<IEntityValidatorContext<TScope>, Task> validate) where TScope : class;
 public static IServiceCollection AddValidator<TContext, TScope>(this IServiceCollection services,
     Func<IEntityValidatorContext<TScope>, TContext, Task> validate) where TContext : DbContext where TScope : class;
 public static IServiceCollection AddValidator<TContext, TScope>(this IServiceCollection services,
@@ -1118,9 +1119,12 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
         where TPrepper : class, IEntityPrepper<TEntity>;
 
     // Validators — run after every prepper on Add/Modify/Save, and on Remove; one 400 for all their errors
-    // inline (each call is a validator of its own):
+    // inline (each call is a validator of its own; the write awaits an async one):
     EntityServiceBuilder<TContext, TEntity, TKey> Validate(Action<IEntityValidatorContext<TEntity>> validate);
+    // e.Validate(async ctx => …)
+    EntityServiceBuilder<TContext, TEntity, TKey> Validate(Func<IEntityValidatorContext<TEntity>, Task> validate);
 
+    // e.Validate(async (ctx, db) => …) with the request's DbContext
     EntityServiceBuilder<TContext, TEntity, TKey> Validate(
         Func<IEntityValidatorContext<TEntity>, TContext, Task> validate);
     // the same, receiving the write's cancellation token: e.Validate(async (ctx, db, token) => …)
@@ -1248,6 +1252,9 @@ public partial class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, T
     EntitySearchObjectServiceBuilder<...> Filter(
         Func<IQueryable<TEntity>, TSearchObject?, IQueryable<TEntity>> filterFunc);
 
+    // Re-declared to keep the builder type through a chain, here and on the complex builders:
+    // Validate(...) and React(...) — every overload — AddValidator<T>(), AddReactor<T>() and ServerOwned(...)
+
     // NEW: single-type-arg Related shortcut for int-keyed children (related key is int,
     // independent of the parent TKey). Use the inherited Related<TRelated, TRelatedKey> for non-int related keys.
     EntitySearchObjectServiceBuilder<...> Related<TRelated>(
@@ -1286,10 +1293,12 @@ public partial class EntityIntServiceBuilder<TContext, TEntity>
 
     // Re-declared to keep the builder type through a chain
     EntityIntServiceBuilder<TContext, TEntity> Validate(Action<IEntityValidatorContext<TEntity>> validate);
+    EntityIntServiceBuilder<TContext, TEntity> Validate(Func<IEntityValidatorContext<TEntity>, Task> validate);
     EntityIntServiceBuilder<TContext, TEntity> Validate(Func<IEntityValidatorContext<TEntity>, TContext, Task> validate);
     EntityIntServiceBuilder<TContext, TEntity> Validate(Func<IEntityValidatorContext<TEntity>, TContext, CancellationToken, Task> validate);
     EntityIntServiceBuilder<TContext, TEntity> AddValidator<TValidator>()
         where TValidator : class, IEntityValidator<TEntity>;
+    // React(...) — every overload — and AddReactor<TReactor>() likewise return EntityIntServiceBuilder<TContext, TEntity>
 
     // Re-declared to keep the builder type through a chain — without it the next call falls back to
     // the base Related<TRelated, TRelatedKey>, whose key argument cannot be inferred (CS0411).
@@ -1603,6 +1612,7 @@ public interface IEntityValidator<in TScope> : IEntityValidator
     Task Validate(IEntityValidatorContext<TScope> context, CancellationToken token = default);
 }
 
+// one scope: AddValidator refuses a subclass that implements IEntityValidator<T> for a second one, which it would never run
 public abstract class EntityValidatorBase<TScope> : IEntityValidator<TScope> where TScope : class
 {
     public virtual bool CanValidate(TScope item) => true;   // per-item opt-out
@@ -1638,8 +1648,11 @@ public static class EntityScopeTypes
 }
 
 // Regira.Entities.EFcore.Validators — what the builder's Validate(...) registers
-public class EntityValidator<TScope>(Action<IEntityValidatorContext<TScope>> validate)
-    : EntityValidatorBase<TScope> where TScope : class;
+public class EntityValidator<TScope>(Func<IEntityValidatorContext<TScope>, Task> validate)
+    : EntityValidatorBase<TScope> where TScope : class
+{
+    public EntityValidator(Action<IEntityValidatorContext<TScope>> validate);
+}
 public class EntityValidator<TContext, TScope>(TContext dbContext, Func<IEntityValidatorContext<TScope>, TContext, CancellationToken, Task> validate)
     : EntityValidatorBase<TScope> where TContext : DbContext where TScope : class
 {

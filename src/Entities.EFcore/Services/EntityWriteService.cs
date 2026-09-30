@@ -67,7 +67,7 @@ public class EntityWriteService<TContext, TEntity, TKey>(
         var refusable = CanBeRefused(item);
         if (refusable)
         {
-            DetectPendingChanges();
+            DetectCallerChanges();
         }
         using (var marked = refusable ? new ChangeTrackerLog(DbContext) : null)
         {
@@ -84,7 +84,7 @@ public class EntityWriteService<TContext, TEntity, TKey>(
         var refusable = CanBeRefused(item);
         if (refusable)
         {
-            DetectPendingChanges();
+            DetectCallerChanges();
         }
 
         // The write path resolves its row archived-inclusive, decoupled from the public read contract:
@@ -110,11 +110,11 @@ public class EntityWriteService<TContext, TEntity, TKey>(
         // ([ServerOwned] restores from the stored row), and the check has to compare the client's value.
         var clientTokens = DbContext.CaptureClientTokens(item);
 
-        // no stored row, no validation (below), so nothing to take back either
+        // no stored row, no validation (below): nothing refuses the write, so there is no log to keep
         using (var marked = refusable && original != null ? new ChangeTrackerLog(DbContext) : null)
         {
             await PrepareItem(item, original, token);
-            // no stored row, no update to check: Modify answers null (not found), as it did before validators
+            // no stored row, no update to check: Modify answers null (not found)
             if (original != null)
             {
                 await ValidateMarked(marked, item, original, EntityWriteOperation.Modify, token);
@@ -131,8 +131,9 @@ public class EntityWriteService<TContext, TEntity, TKey>(
 
     /// <summary>
     /// Runs <see cref="ValidateItem"/> after the preppers, before the entity is tracked. A <c>Related()</c> sync has already
-    /// marked child rows by then, so a refused write takes back everything <paramref name="marked"/> saw marked: nothing
-    /// of it reaches a later <see cref="SaveChanges"/> in the same scope. No log (<c>null</c>): nothing can refuse the write.
+    /// marked child rows by then, so a refused write takes back everything <paramref name="marked"/> saw marked, and stops
+    /// tracking <paramref name="item"/> itself should the caller have tracked it: nothing of the write reaches a later
+    /// <see cref="SaveChanges"/> in the same scope. No log (<c>null</c>): nothing can refuse the write.
     /// </summary>
     private async Task ValidateMarked(ChangeTrackerLog? marked, TEntity item, TEntity? original, EntityWriteOperation operation, CancellationToken token)
     {
@@ -158,17 +159,16 @@ public class EntityWriteService<TContext, TEntity, TKey>(
                 Logger?.LogWarning(detectionFailure, "Detecting the changes a refused {EntityType} write made failed; edits to rows tracked before the write may stay",
                     typeof(TEntity).FullName);
             }
-            marked.Undo();
+            marked.Undo(item);
             throw;
         }
     }
     /// <summary>
     /// Whether a validator runs for <paramref name="item"/>, so that the write can be refused. Only then do <see cref="Add"/>
     /// and <see cref="Modify"/> let EF detect pending edits and record what the write marks, for a refusal to take back —
-    /// a pass over every tracked row that a write nothing can refuse does not pay. A subclass whose
-    /// <see cref="ValidateItem"/> refuses writes no registered validator runs for overrides this to keep that undo.
+    /// a pass over every tracked row that a write nothing can refuse does not pay.
     /// </summary>
-    protected virtual bool CanBeRefused(TEntity item) => validators.AnyApplyTo(item.GetType());
+    private bool CanBeRefused(TEntity item) => validators.AnyApplyTo(item.GetType());
     /// <summary>
     /// Lets EF notice the edits made to tracked rows, whose values it otherwise compares only when it saves. Before a write,
     /// so what the caller changed beforehand is recorded as the caller's and a refusal leaves it alone; on a refusal, so
@@ -180,6 +180,23 @@ public class EntityWriteService<TContext, TEntity, TKey>(
         if (DbContext.ChangeTracker.AutoDetectChangesEnabled)
         {
             DbContext.ChangeTracker.DetectChanges();
+        }
+    }
+    /// <summary>
+    /// <see cref="DetectPendingChanges"/> before a write that can be refused. A required relationship the caller severed on a
+    /// row tracked earlier makes EF throw here; that failure is the caller's, not this write's, so it is logged and left to
+    /// <see cref="SaveChanges"/>, which reports it as it would for a write no validator runs for.
+    /// </summary>
+    private void DetectCallerChanges()
+    {
+        try
+        {
+            DetectPendingChanges();
+        }
+        catch (InvalidOperationException ex) when (ex.IsSeveredRequiredRelationship())
+        {
+            Logger?.LogWarning(ex, "Detecting the pending changes before a {EntityType} write failed; SaveChanges reports it",
+                typeof(TEntity).FullName);
         }
     }
     public virtual Task Save(TEntity item, CancellationToken token = default)
@@ -237,9 +254,10 @@ public class EntityWriteService<TContext, TEntity, TKey>(
     /// Runs the validators in scope of <paramref name="item"/> and throws an <see cref="EntityInputException{T}"/> of
     /// <typeparamref name="TEntity"/> holding every error they added. <see cref="Add"/> and <see cref="Modify"/> call it
     /// after the preppers — <see cref="Modify"/> only when the stored row was found — and <see cref="Remove"/> before
-    /// anything is marked.
+    /// anything is marked. Not an override point: validators are the one way to refuse a write, and whether one runs for
+    /// the item decides whether <see cref="Add"/> and <see cref="Modify"/> record what a refusal takes back.
     /// </summary>
-    public virtual Task ValidateItem(TEntity item, TEntity? original, EntityWriteOperation operation, CancellationToken token = default)
+    public Task ValidateItem(TEntity item, TEntity? original, EntityWriteOperation operation, CancellationToken token = default)
         => validators.ValidateItem(item, original, operation, token);
 
     /// <summary>

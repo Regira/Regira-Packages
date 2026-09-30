@@ -262,10 +262,8 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
     }
 
     /// <summary>
-    /// Keeps the branch of each <c>{{#if Key}}</c> … <c>{{else}}</c> … <c>{{/if}}</c> block that holds and removes the
-    /// rest, marker paragraphs included — in the body, table cells, text boxes, headers and footers — before MiniWord
-    /// sees the template, so conditions read the same as on the other backends. MiniWord's own <c>@if</c> is left
-    /// alone. A template with no paragraph opening a block uses no blocks and is returned as it is.
+    /// Resolves the template's conditional blocks, as <see cref="ConditionalBlocks"/> describes them, before MiniWord sees
+    /// it, so they read the same as on the other backends; MiniWord's own <c>@if</c> is left alone.
     /// </summary>
     internal static byte[] ResolveConditions(byte[] template, WordTemplateInput input)
     {
@@ -289,6 +287,7 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
 
             foreach (var container in containers)
             {
+                var lastBlock = LastBlock(container);
                 foreach (var segment in Segments(container))
                 {
                     var texts = segment.Select(child => child is W.Paragraph paragraph ? GetOwnText(paragraph) : null).ToArray();
@@ -297,7 +296,11 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
                         Remove(segment[index]);
                     }
                 }
-                EndWithParagraph(container);
+                // a container that ends as the template wrote it is left as it is
+                if (LastBlock(container) != lastBlock)
+                {
+                    EndWithParagraph(container);
+                }
             }
         }
 
@@ -315,9 +318,9 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
 
     /// <summary>
     /// The container's block content — paragraphs, tables, content controls — cut into sections: a paragraph carrying
-    /// section properties ends its section. A block cannot span a section break, as on the other backends, where
-    /// each section has a body of its own. Everything else among the children (cell properties, bookmark ends,
-    /// the final section properties) is never part of a block and stays.
+    /// section properties ends its section, and so does a content control holding one. A block cannot span a section
+    /// break, as on the other backends, where each section has a body of its own. Everything else among the children
+    /// (cell properties, bookmark ends, the final section properties) is never part of a block and stays.
     /// </summary>
     private static IEnumerable<List<OpenXmlElement>> Segments(OpenXmlElement container)
     {
@@ -329,7 +332,8 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
                 continue;
             }
             segment.Add(child);
-            if (child is W.Paragraph { ParagraphProperties.SectionProperties: not null })
+            if (child is W.Paragraph { ParagraphProperties.SectionProperties: not null }
+                || child is W.SdtBlock control && control.Descendants<W.SectionProperties>().Any())
             {
                 yield return segment;
                 segment = [];
@@ -337,6 +341,9 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
         }
         yield return segment;
     }
+
+    private static OpenXmlElement? LastBlock(OpenXmlElement container)
+        => container.ChildElements.LastOrDefault(child => child is W.Paragraph or W.Table or W.SdtBlock);
 
     /// <summary>
     /// Removes a block's child. A paragraph carrying section properties keeps them and nothing else, so the section
@@ -362,11 +369,12 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
 
     /// <summary>
     /// Whatever holds paragraphs ends with one — a body, cell, header, footer, text box or content control; Word
-    /// refuses a cell or text box without one — so one is added when a dropped branch took the last.
+    /// refuses a cell or text box without one — so one is added when the resolved blocks leave the container empty or
+    /// ending in a table or a content control.
     /// </summary>
     private static void EndWithParagraph(OpenXmlElement container)
     {
-        var last = container.ChildElements.LastOrDefault(child => child is W.Paragraph or W.Table or W.SdtBlock);
+        var last = LastBlock(container);
         if (last is W.Paragraph)
         {
             return;

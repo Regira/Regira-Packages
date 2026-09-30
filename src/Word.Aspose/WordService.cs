@@ -424,11 +424,7 @@ public class WordService : IWordService
         }
     }
 
-    /// <summary>
-    /// Keeps the branch of each <c>{{#if Key}}</c> … <c>{{else}}</c> … <c>{{/if}}</c> block that holds and removes the
-    /// rest, marker paragraphs included — in the body, table cells, text boxes, headers and footers. A document with
-    /// no paragraph opening a block uses no blocks and is left as it is.
-    /// </summary>
+    /// <summary>Resolves the document's conditional blocks, as <see cref="ConditionalBlocks"/> describes them.</summary>
     protected internal void ResolveConditions(Document doc, WordTemplateInput input)
     {
         var paragraphs = doc.FindAllParagraphs()
@@ -757,14 +753,5 @@ public class WordService : IWordService
         };
 
     protected internal static string GetContentType(RegiraFileFormat format)
-        => format switch
-        {
-            RegiraFileFormat.Pdf => ContentTypes.PDF,
-            RegiraFileFormat.Html => ContentTypes.HTML,
-            RegiraFileFormat.Doc or RegiraFileFormat.Dot => ContentTypes.DOC,
-            RegiraFileFormat.Docx or RegiraFileFormat.Dotx or RegiraFileFormat.Docm or RegiraFileFormat.Dotm => ContentTypes.DOCX,
-            RegiraFileFormat.Odt => "application/vnd.oasis.opendocument.text",
-            RegiraFileFormat.EPub => "application/epub+zip",
-            _ => ContentTypeUtility.GetContentType($"x.{format.ToString().ToLowerInvariant()}")
-        };
+        => WordContentTypes.Of(format);
 }

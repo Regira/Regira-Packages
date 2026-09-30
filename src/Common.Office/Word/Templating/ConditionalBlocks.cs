@@ -9,9 +9,10 @@ namespace Regira.Office.Word.Templating;
 /// <summary>
 /// Conditional blocks in a Word template. A paragraph holding only <c>{{#if Key}}</c> opens a block, one holding
 /// only <c>{{else}}</c> starts its alternative, and one holding only <c>{{/if}}</c> closes it; <c>{{#if !Key}}</c>
-/// negates the condition. The branch that holds stays, the other goes, and so do the marker paragraphs. Blocks
-/// nest, and each one opens and closes among the children of one container — a body, table cell, text box, header or
-/// footer. Footnotes, endnotes and comments are not read.
+/// negates the condition. The branch that holds stays, the other goes, and so do the marker paragraphs, with anything
+/// else they carry. Blocks nest, and each one opens and closes among the children of one container — a body, table
+/// cell, text box, content control around whole paragraphs, header or footer. Footnotes, endnotes and comments are not
+/// read.
 /// <para>
 /// A document uses blocks when one of its paragraphs <see cref="OpensBlock">opens one</see>, and only then are its
 /// blocks resolved. Everything else in a document that uses none stays as it is — marker text among other text, a
@@ -27,7 +28,9 @@ namespace Regira.Office.Word.Templating;
 /// </summary>
 internal static class ConditionalBlocks
 {
-    private const RegexOptions Options = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
+    // NonBacktracking: the texts come from the document, and the #if marker's optional runs of white space would
+    // otherwise take quadratic time on a long run of spaces
+    private const RegexOptions Options = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.NonBacktracking;
     // #if, else and /if, and anything written like them — {{#unless X}}, {{else if X}}, {{/unless}} — so a marker
     // this syntax does not know fails rather than staying in the document as text
     private static readonly Regex AnyMarker = new(@"\{\{\s*(?:#|/|else\b)[^{}]*\}\}", Options);
@@ -35,7 +38,7 @@ internal static class ConditionalBlocks
     private static readonly Regex ElseMarker = new(@"^\{\{\s*else\s*\}\}$", Options);
     private static readonly Regex EndMarker = new(@"^\{\{\s*/if\s*\}\}$", Options);
 
-    private const string Containers = "body, table cell, text box, header or footer, within one section";
+    private const string Containers = "body, table cell, text box, content control, header or footer, within one section";
 
     /// <summary>
     /// Whether the paragraph text opens a block — <c>{{#if Key}}</c> or <c>{{#if !Key}}</c> and nothing else — the test
@@ -68,13 +71,26 @@ internal static class ConditionalBlocks
     {
         var removed = new HashSet<int>();
         var open = new Stack<Block>();
+        // the open blocks whose current branch does not hold: a child goes while any of them is open
+        var dropping = 0;
+        void Push(Block block)
+        {
+            open.Push(block);
+            dropping += block.Holds ? 0 : 1;
+        }
+        Block Pop()
+        {
+            var block = open.Pop();
+            dropping -= block.Holds ? 0 : 1;
+            return block;
+        }
 
         for (var i = 0; i < children.Count; i++)
         {
             var text = Clean(children[i]);
             if (!ContainsMarker(text))
             {
-                if (open.Any(block => !block.Holds))
+                if (dropping > 0)
                 {
                     removed.Add(i);
                 }
@@ -85,7 +101,7 @@ internal static class ConditionalBlocks
             if (IfMarker.Match(text!) is { Success: true } opening)
             {
                 var condition = evaluate(opening.Groups["key"].Value);
-                open.Push(new Block(text!, opening.Groups["not"].Success ? !condition : condition));
+                Push(new Block(text!, opening.Groups["not"].Success ? !condition : condition));
             }
             else if (ElseMarker.IsMatch(text!))
             {
@@ -93,12 +109,12 @@ internal static class ConditionalBlocks
                 {
                     throw new FormatException($"The template's {text} has no {{{{#if}}}} before it in the same {Containers}.");
                 }
-                var block = open.Pop();
+                var block = Pop();
                 if (block.InElse)
                 {
                     throw new FormatException($"The template's {block.Marker} has more than one {{{{else}}}}.");
                 }
-                open.Push(block with { InElse = true });
+                Push(block with { InElse = true });
             }
             else if (EndMarker.IsMatch(text!))
             {
@@ -106,7 +122,7 @@ internal static class ConditionalBlocks
                 {
                     throw new FormatException($"The template's {text} has no {{{{#if}}}} before it in the same {Containers}.");
                 }
-                open.Pop();
+                Pop();
             }
             else if (IsWholeMarker(text!))
             {
@@ -116,7 +132,7 @@ internal static class ConditionalBlocks
             else
             {
                 throw new FormatException(
-                    $"The template's paragraph \"{text}\" holds a conditional marker among other text. " +
+                    $"The template's paragraph \"{Excerpt(text!)}\" holds a conditional marker among other text. " +
                     "Each {{#if Key}}, {{else}} and {{/if}} stands alone in its own paragraph.");
             }
         }
@@ -129,6 +145,10 @@ internal static class ConditionalBlocks
         return removed;
     }
 
+    // enough of a paragraph to find it, without a whole page of document text in the message
+    private static string Excerpt(string text)
+        => text.Length <= 80 ? text : text[..80] + "…";
+
     private static bool IsWholeMarker(string text)
         => text.StartsWith("{{", StringComparison.Ordinal)
             && AnyMarker.Match(text) is { Success: true, Index: 0 } marker && marker.Length == text.Length;
@@ -136,17 +156,21 @@ internal static class ConditionalBlocks
     /// <summary>
     /// A key found in <see cref="WordTemplateInput.GlobalParameters"/> holds when its value <see cref="IsTrue(object?)">is
     /// true</see>; one found in <see cref="WordTemplateInput.CollectionParameters"/> holds when the collection has
-    /// rows. A key found in neither is false. Keys match regardless of case, as the <c>{{Key}}</c> substitution does.
+    /// rows. A key found in neither is false. Keys match regardless of case, as the <c>{{Key}}</c> substitution does,
+    /// and an exact match in either comes before a match that differs in case.
     /// </summary>
     internal static bool Evaluate(WordTemplateInput input, string key)
     {
-        if (TryFind(input.GlobalParameters, key, out var value))
+        foreach (var ignoreCase in new[] { false, true })
         {
-            return IsTrue(value);
-        }
-        if (TryFind(input.CollectionParameters, key, out var rows))
-        {
-            return rows?.Count > 0;
+            if (TryFind(input.GlobalParameters, key, ignoreCase, out var value))
+            {
+                return IsTrue(value);
+            }
+            if (TryFind(input.CollectionParameters, key, ignoreCase, out var rows))
+            {
+                return rows?.Count > 0;
+            }
         }
         return false;
     }
@@ -231,16 +255,16 @@ internal static class ConditionalBlocks
         }
     }
 
-    private static bool TryFind<T>(IDictionary<string, T>? values, string key, out T? value)
+    private static bool TryFind<T>(IDictionary<string, T>? values, string key, bool ignoreCase, out T? value)
     {
         value = default;
         if (values == null)
         {
             return false;
         }
-        if (values.TryGetValue(key, out value))
+        if (!ignoreCase)
         {
-            return true;
+            return values.TryGetValue(key, out value);
         }
         foreach (var pair in values)
         {

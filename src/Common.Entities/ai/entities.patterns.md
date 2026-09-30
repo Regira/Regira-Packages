@@ -17,7 +17,7 @@ foreach (var product in products)
 await service.SaveChanges();      // one round-trip flushes the whole batch
 ```
 
-> ⚠️ **Writes batch; preppers and validators do not.** `Add()` issues no round-trip while nothing is registered against the entity — a prepper or validator that queries the `DbContext` (an existence check, a price lookup, a per-row `FindAsync`) runs **inside the loop**, once per item. A 500-row seed wave against an entity with a two-query prepper issues ~1,000 round-trips before the single flush, and nothing in the code shape shows it. Hoist the lookup into a dictionary built once before the loop. Each `Add()` / `Modify()` of an entity a validator runs for also has EF compare every row the context tracks, so a refused write can tell the caller's edits from its preppers': that pass grows with everything tracked since the last flush, so a very large run saves in waves (*The change tracker is cleared after every `SaveChanges()`*, below) rather than in one flush at the end.
+> ⚠️ **Writes batch; preppers and validators do not.** `Add()` issues no round-trip while nothing is registered against the entity — a prepper or validator that queries the `DbContext` (an existence check, a price lookup, a per-row `FindAsync`) runs **inside the loop**, once per item. A 500-row seed wave against an entity with a two-query prepper issues ~1,000 round-trips before the single flush, and nothing in the code shape shows it. Hoist the lookup into a dictionary built once before the loop. Each `Add()` / `Modify()` of an entity a validator runs for also has EF compare every row the context tracks, so a refused write can tell the caller's edits from its preppers': that pass grows with everything tracked since the last flush, so across one flush its total grows with the square of the row count. A very large run saves in waves (*The change tracker is cleared after every `SaveChanges()`*, below) rather than in one flush at the end, or sets `ChangeTracker.AutoDetectChangesEnabled = false` for the run, which skips the pass: detection is then the job's, and a refusal cannot take back a prepper's edit EF never detected.
 
 Two timing facts drive how you order a bulk run:
 
@@ -778,6 +778,7 @@ public class OrderValidator : AbstractValidator<Order>
     {
         RuleFor(x => x.Code).NotEmpty().MaximumLength(20);
 
+        // db sees every row: with scoped reads, check through the filtered read service (entities.instructions §Step 8 → Validators)
         RuleFor(x => x.CustomerId)
             .MustAsync((id, ct) => db.Customers.AnyAsync(c => c.Id == id, ct))
             .WithMessage(x => $"Customer {x.CustomerId} does not exist");
@@ -811,7 +812,9 @@ public static class OrderServiceConfiguration
 
 - **Scope** — an `AbstractValidator<T>` checks every entity that is, derives from or implements `T`, like an
   `IEntityValidator<T>`: `AbstractValidator<IHasTenantId>` checks every tenant-owned entity, and
-  `AbstractValidator<Party>` a `Person` saved through any service. Several validators of one type all run.
+  `AbstractValidator<Party>` a `Person` saved through any service. Several validators of one type all run — so a
+  `PersonValidator` that calls `Include(new PartyValidator())` in an assembly that also holds `PartyValidator` runs
+  the `Party` rules twice for a `Person`, and each message appears twice: rely on the scope rule instead of `Include`.
 - **A rule set per write** — `Add` and `Modify` run the rules outside any rule set plus `EntityRuleSets.Add` or
   `EntityRuleSets.Modify`; `Remove` runs `EntityRuleSets.Remove` alone, so the shape rules and their lookups stay
   off a delete. A rule for inserts only goes in `RuleSet(EntityRuleSets.Add, …)`.

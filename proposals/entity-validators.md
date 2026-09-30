@@ -1,8 +1,8 @@
 # Entity validators for Regira Entities
 
-As of 2026-09-29. Sources: the `Regira-Packages` repository, branch `wip` at `2b1d25d`, as read on 2026-09-29. FluentValidation behaviour comes from its documented public API and has not been checked against a build in this repository; step 5's tests pin it down.
+As of 2026-09-29. Sources: the `Regira-Packages` repository, branch `wip`, as read on 2026-09-29. FluentValidation behaviour comes from its documented public API and has not been checked against a build in this repository; step 5's tests pin it down.
 
-**Status: implemented in `e30cc0d`, which departs from this proposal in places.** For example, a refused `Add` or `Modify` takes back the rows a `Related()` sync marked, where this page keeps their states. For the current behaviour, read `entities.instructions` § Step 8 → Validators and `docs/services.md` → Entity Validators, not this page.
+**Status: implemented in the 6.5.0 packages, which depart from this proposal in places.** For example, a refused `Add` or `Modify` takes back the rows a `Related()` sync marked, where this page keeps their states. For the current behaviour, read `entities.instructions` § Step 8 → Validators and `docs/services.md` → Entity Validators, not this page.
 
 ## Recommendation
 

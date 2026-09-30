@@ -43,21 +43,40 @@ internal sealed class ChangeTrackerLog : IDisposable
     }
 
     /// <summary>
-    /// Stops tracking every entity the log saw tracked, and returns every entity tracked before it to the state it had.
+    /// Stops tracking every entity the log saw tracked and <paramref name="item"/>, the refused write's own entity, and
+    /// returns every other entity tracked before the log to the state it had. The item leaves the tracker even when the
+    /// caller tracked it earlier: its values are what the write was refused for, whoever set them.
     /// </summary>
-    public void Undo()
+    public void Undo(object item)
     {
         Dispose();
         foreach (var entry in _tracked)
         {
             entry.State = EntityState.Detached;
         }
-        foreach (var (entry, state) in _stateBefore.Values)
+        foreach (var (entity, (entry, state)) in _stateBefore)
         {
-            if (entry.State != state)
+            if (!ReferenceEquals(entity, item) && entry.State != state)
             {
                 entry.State = state;
             }
+        }
+        // Entry() detects the item's changes first, and a required relationship the caller severed on it would throw
+        // there, in place of the refusal
+        var changeTracker = _dbContext.ChangeTracker;
+        var autoDetect = changeTracker.AutoDetectChangesEnabled;
+        changeTracker.AutoDetectChangesEnabled = false;
+        try
+        {
+            var own = _dbContext.Entry(item);
+            if (own.State != EntityState.Detached)
+            {
+                own.State = EntityState.Detached;
+            }
+        }
+        finally
+        {
+            changeTracker.AutoDetectChangesEnabled = autoDetect;
         }
     }
 

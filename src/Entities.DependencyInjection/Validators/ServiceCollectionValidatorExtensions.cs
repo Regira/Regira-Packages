@@ -20,9 +20,14 @@ public static class ServiceCollectionValidatorExtensions
     /// implementing it — and as each <see cref="IEntityValidator{TScope}"/> it implements, for code that injects it directly.
     /// A class registered more than once runs once.
     /// </summary>
+    /// <exception cref="ArgumentException">
+    /// <typeparamref name="TValidator"/> derives from <see cref="EntityValidatorBase{TScope}"/> and implements
+    /// <see cref="IEntityValidator{TScope}"/> for another scope too, which the base class never runs.
+    /// </exception>
     public static IServiceCollection AddValidator<TValidator>(this IServiceCollection services)
         where TValidator : class, IEntityValidator
     {
+        EnsureEveryScopeRuns(typeof(TValidator));
         // TryAddEnumerable: the same interface-scoped validator added in several For<>() blocks must not report its errors twice
         services.TryAddEnumerable(ServiceDescriptor.Transient<IEntityValidator, TValidator>());
         foreach (var scope in EntityValidatorScope.ScopesOf(typeof(TValidator)))
@@ -31,22 +36,53 @@ public static class ServiceCollectionValidatorExtensions
         }
         return services;
     }
-    /// <inheritdoc cref="AddValidator{TValidator}(IServiceCollection)"/>
-    public static IServiceCollection AddValidator<TScope, TValidator>(this IServiceCollection services)
-        where TValidator : class, IEntityValidator<TScope>
-        => services.AddValidator<TValidator>();
-    /// <summary>Registers a validator for <typeparamref name="TScope"/>, created by <paramref name="factory"/>.</summary>
-    public static IServiceCollection AddValidator<TScope>(this IServiceCollection services, Func<IServiceProvider, IEntityValidator<TScope>> factory)
+    /// <summary>
+    /// <see cref="EntityValidatorBase{TScope}"/> implements the untyped <see cref="IEntityValidator.Validate"/> the pipeline
+    /// calls by casting to its own scope: a subclass that adds a second <see cref="IEntityValidator{TScope}"/> would see that
+    /// scope's <c>Validate</c> never run, and an item outside the base scope fail the cast. Unless the class implements the
+    /// untyped method itself, it is refused here rather than at its first write.
+    /// </summary>
+    private static void EnsureEveryScopeRuns(Type validatorType)
     {
-        services.AddTransient<IEntityValidator>(factory);
-        services.AddTransient(factory);
-        return services;
+        var baseScope = BaseScopeOf(validatorType);
+        if (baseScope == null)
+        {
+            return;
+        }
+        var otherScopes = EntityValidatorScope.ScopesOf(validatorType).Where(scope => scope != baseScope).ToArray();
+        var dispatcher = validatorType.GetInterfaceMap(typeof(IEntityValidator)).TargetMethods.Single().DeclaringType;
+        if (otherScopes.Length == 0 || dispatcher is not { IsGenericType: true } || dispatcher.GetGenericTypeDefinition() != typeof(EntityValidatorBase<>))
+        {
+            return;
+        }
+        throw new ArgumentException(
+            $"{validatorType.Name} derives from EntityValidatorBase<{baseScope.Name}> and also implements " +
+            $"{string.Join(", ", otherScopes.Select(scope => $"IEntityValidator<{scope.Name}>"))}. The base class runs only its own " +
+            $"Validate, for items it can cast to {baseScope.Name}, so the other scope's Validate would never run. Split it into one " +
+            "validator per scope, or implement IEntityValidator<TScope> for each scope and IEntityValidator.Validate directly.",
+            nameof(validatorType));
+    }
+    private static Type? BaseScopeOf(Type validatorType)
+    {
+        for (var type = validatorType.BaseType; type != null; type = type.BaseType)
+        {
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(EntityValidatorBase<>))
+            {
+                return type.GetGenericArguments()[0];
+            }
+        }
+        return null;
     }
     /// <summary>
     /// Registers <paramref name="validate"/> as a validator for <typeparamref name="TScope"/> — the entity type, a base
     /// class or an interface. Each call adds a validator of its own.
     /// </summary>
     public static IServiceCollection AddValidator<TScope>(this IServiceCollection services, Action<IEntityValidatorContext<TScope>> validate)
+        where TScope : class
+        => services.AddTransient<IEntityValidator>(_ => new EntityValidator<TScope>(validate));
+    /// <inheritdoc cref="AddValidator{TScope}(IServiceCollection,Action{IEntityValidatorContext{TScope}})"/>
+    /// <remarks>An <c>async</c> delegate binds here, and the write awaits it.</remarks>
+    public static IServiceCollection AddValidator<TScope>(this IServiceCollection services, Func<IEntityValidatorContext<TScope>, Task> validate)
         where TScope : class
         => services.AddTransient<IEntityValidator>(_ => new EntityValidator<TScope>(validate));
     /// <summary>
@@ -80,6 +116,14 @@ public static class ServiceCollectionValidatorExtensions
         where TScope : class
     {
         options.Services.AddValidator(validate);
+        return options;
+    }
+    /// <inheritdoc cref="AddValidator{TScope}(EntityServiceCollectionOptions,Action{IEntityValidatorContext{TScope}})"/>
+    /// <remarks>An <c>async</c> delegate binds here, and the write awaits it.</remarks>
+    public static EntityServiceCollectionOptions AddValidator<TScope>(this EntityServiceCollectionOptions options, Func<IEntityValidatorContext<TScope>, Task> validate)
+        where TScope : class
+    {
+        options.Services.AddValidator<TScope>(validate);
         return options;
     }
     /// <summary>

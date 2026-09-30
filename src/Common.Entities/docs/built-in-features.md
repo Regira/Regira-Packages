@@ -45,7 +45,8 @@ Task<int> SaveChanges(CancellationToken token = default)
 of each key to its messages. `Errors` holds every message, several per key, and is what the body is built from; with
 no errors, the exception's message goes out under the empty key. `InputErrors` is a view over `Errors` with one
 message per key, a key's messages joined by a space: setting a key replaces that key's messages in `Errors`, so a
-handler that adds one to a caught rejection before rethrowing it reaches the body. The keys go out as thrown: System.Text.Json applies no dictionary-key policy, so
+handler that adds one to a caught rejection before rethrowing it reaches the body. Assigning a whole dictionary
+copies its entries, so a change made to that dictionary afterwards does not reach the exception. The keys go out as thrown: System.Text.Json applies no dictionary-key policy, so
 `nameof(Order.Status)` reaches a camelCase client as `Status`. A host that sets `DictionaryKeyPolicy`, or serializes
 with Newtonsoft's camelCase resolver, camelCases them.
 
@@ -385,9 +386,15 @@ public class Order : IEntity<int>
 A validator refuses a write; [Entity Validators](services.md#entity-validators) explains the stage — where it runs,
 which validators apply to an entity, and what a refusal leaves behind. The `Regira.Entities.Validation.FluentValidation`
 package runs `AbstractValidator<T>` rules in that stage, under the same scope rule: an `AbstractValidator<Party>`
-checks a `Person` saved through any service.
+checks a `Person` saved through any service. Every validator in scope runs, so a `PersonValidator` that calls
+`Include(new PartyValidator())` in an assembly that also holds `PartyValidator` reports each `Party` message twice —
+the scope rule already runs it.
 
 ```csharp
+using FluentValidation;
+using Regira.Entities.DependencyInjection.Extensions;
+using Regira.Entities.Validation.FluentValidation;
+
 services.UseEntities<AppDbContext>(o =>
 {
     o.UseDefaults();
@@ -399,6 +406,7 @@ public class OrderValidator : AbstractValidator<Order>
     public OrderValidator(AppDbContext db)
     {
         RuleFor(x => x.Code).NotEmpty().MaximumLength(20);
+        // db sees every row: with scoped reads, check through the filtered read service (services.md → Entity Validators)
         RuleFor(x => x.CustomerId)
             .MustAsync((id, ct) => db.Customers.AnyAsync(c => c.Id == id, ct))
             .WithMessage(x => $"Customer {x.CustomerId} does not exist");

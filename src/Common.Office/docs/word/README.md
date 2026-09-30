@@ -234,17 +234,20 @@ IMemoryFile doc = await word.Create(new WordTemplateInput
   `bool` before passing it. A JSON value is read by its kind, so a JSON `false`, `0`, `[]` or `{}` is false. An enum
   value always holds, its zero member included: compare it in code (`["IsDraft"] = status == Status.Draft`). A
   `CollectionParameters` key holds when its collection has rows, so `{{#if Items}}` drops a heading together with
-  its empty table. A key found in neither is false, and keys match regardless of case.
+  its empty table. A key found in neither is false, and keys match regardless of case, an exact match first.
 - `{{#if !Key}}` negates. `{{else}}` is optional, and blocks nest.
 - Markers are read from the text Word shows: one in a field code or a tracked deletion is not a marker, and a
   marker edited under track changes reads as edited.
 - The branch that does not hold goes with everything in it — paragraphs, tables, a `<{ key }>` placeholder — and
-  the marker paragraphs go too. Blocks are resolved before anything is filled, so a dropped branch's parameters,
-  images and nested documents are never processed.
+  the marker paragraphs go too, whichever branch holds, with anything else they carry: a page break, a bookmark, a
+  picture anchored to one. Keep those in a paragraph of their own; only a section break stored on a marker
+  paragraph stays. Blocks are resolved before anything is filled, so a dropped branch's parameters, images and
+  nested documents are never processed.
 - There is no comparison syntax: compute the flag in code (`["IsOverdue"] = dueDate < DateTime.Today`).
 - A block inside a collection table's template row is decided once, for every row.
-- A block opens and closes in the same body, table cell, text box, header or footer, and within one section.
-  Footnotes, endnotes and comments are not read for markers.
+- A block opens and closes in the same body, table cell, text box, content control, header or footer, and within
+  one section — a content control around whole paragraphs is a container of its own, so a block cannot open outside
+  one and close inside it. Footnotes, endnotes and comments are not read for markers.
 - A document uses blocks when one of its paragraphs is `{{#if Key}}` or `{{#if !Key}}` and nothing else, and only
   then are its blocks resolved. Everything else in a document that uses none stays as it is — marker text among
   other text, a stray `{{else}}` or `{{/if}}` — so a finished document that writes about templates converts and
@@ -332,7 +335,7 @@ When none of the four resolves — a configuration key that is missing, say — 
 `WordService` implements `IWordConverter` and `IWordToImagesService`, through the LibreOffice route of a [Gotenberg](https://gotenberg.dev) server (MIT, a Docker image bundling LibreOffice and Chromium). It is the route to PDF output and page images without a vendor licence.
 
 - **PDF only.** `Convert` produces PDF; every other `FileFormat` throws `NotSupportedException`. Sources can be Word (`.doc`, `.dot`, `.docx`, `.dotx`, `.docm`, `.dotm`), OpenDocument (`.odt`, `.ott`), `.rtf`, `.txt`, `.html`/`.htm` or `.epub` — the format is read from the file name when the template is a named file, otherwise from its content.
-- **Templates.** Gotenberg converts finished documents. An input carrying `GlobalParameters`, `CollectionParameters`, `Images`, `DocumentParameters`, `Headers`, `Footers` or non-default `InputOptions` is rendered first by the `IWordCreator` the service was given, and throws `NotSupportedException` without one. So is an OOXML template holding a [conditional block](#conditional-blocks), even without parameters, since a key the input does not give is false. Word.Mini renders the first three, in its own template syntax; headers, footers, nested documents and input options need a creator with a document model — Word.Spire, Word.Syncfusion or Word.Aspose — since Word.Mini refuses them.
+- **Templates.** Gotenberg converts finished documents. An input carrying `GlobalParameters`, `CollectionParameters`, `Images`, `DocumentParameters`, `Headers`, `Footers` or non-default `InputOptions` is rendered first by the `IWordCreator` the service was given, and throws `NotSupportedException` without one. So is an OOXML template holding a [conditional block](#conditional-blocks), even without parameters, since a key the input does not give is false; the scan for one reads no part beyond 32 Mi characters, and such a document is uploaded as it is. Word.Mini renders the first three, in its own template syntax; headers, footers, nested documents and input options need a creator with a document model — Word.Spire, Word.Syncfusion or Word.Aspose — since Word.Mini refuses them.
 - **Page settings.** The LibreOffice route has no page-size or margin fields, so `ConversionOptions.Settings` is written into the document's section properties before upload, together with the table and picture scaling. That needs an OOXML source (`.docx`, `.dotx`, `.docm`, `.dotm`), and honours every `PageSize`.
 - **Page images.** Gotenberg has no route that rasterises a PDF. `ToImages` converts to PDF and hands the result to the `IPdfToImageService` the service was given — `Regira.Office.PDF.DocNET`, for example — which returns one image per page.
 - **Layout.** LibreOffice lays a document out differently from Word. A font missing from the Gotenberg image is substituted, which moves line and page breaks, so page images and page counts can differ from what Word shows. Install the fonts your documents use in the image.

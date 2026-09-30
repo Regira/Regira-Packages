@@ -394,6 +394,11 @@ FileNameUtility.SanitizeFilename(@"CON\report:v2.txt")   // → "_XXX_/report_v2
 FileNameUtility.GetUncShareRoot(@"\\server\share\sub")   // → @"\\server\share" (null for non-UNC)
 ```
 
+`SanitizeFilename` makes a path valid, not safe: `..` segments and a leading separator pass through. The file
+services refuse an identifier that leaves their root while `Contained` is on (the default); for a path you build
+yourself from untrusted input, `FileNameUtility.EnsureContained(Path.Combine(root, path), root)` returns the full path
+or throws `UnauthorizedAccessException`.
+
 ## Overview
 
 1. **[Index](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/)** — Overview, interface, and implementation reference

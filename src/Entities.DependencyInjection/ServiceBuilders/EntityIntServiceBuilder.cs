@@ -14,6 +14,7 @@ using Regira.Entities.QueryBuilders.Abstractions;
 using Regira.Entities.EFcore.Services;
 using Regira.Entities.Models;
 using Regira.Entities.Models.Abstractions;
+using Regira.Entities.Reactors.Abstractions;
 using Regira.Entities.Services.Abstractions;
 using Regira.Entities.Validators.Abstractions;
 using System.Linq.Expressions;
@@ -190,6 +191,12 @@ public class EntityIntServiceBuilder<TContext, TEntity>(EntityServiceCollectionO
         base.Validate(validate);
         return this;
     }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Validate(Func{IEntityValidatorContext{TEntity},Task})" />
+    public new EntityIntServiceBuilder<TContext, TEntity> Validate(Func<IEntityValidatorContext<TEntity>, Task> validate)
+    {
+        base.Validate(validate);
+        return this;
+    }
     /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Validate(Func{IEntityValidatorContext{TEntity},TContext,Task})" />
     public new EntityIntServiceBuilder<TContext, TEntity> Validate(Func<IEntityValidatorContext<TEntity>, TContext, Task> validate)
     {
@@ -200,6 +207,34 @@ public class EntityIntServiceBuilder<TContext, TEntity>(EntityServiceCollectionO
     public new EntityIntServiceBuilder<TContext, TEntity> Validate(Func<IEntityValidatorContext<TEntity>, TContext, CancellationToken, Task> validate)
     {
         base.Validate(validate);
+        return this;
+    }
+    // Reactors
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.AddReactor{TReactor}" />
+    public new EntityIntServiceBuilder<TContext, TEntity> AddReactor<TReactor>()
+        where TReactor : class, IEntityReactor<TEntity>
+    {
+        base.AddReactor<TReactor>();
+        return this;
+    }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.React(Func{IEntityChange{TEntity},IServiceProvider,CancellationToken,Task})" />
+    public new EntityIntServiceBuilder<TContext, TEntity> React(Func<IEntityChange<TEntity>, IServiceProvider, CancellationToken, Task> reactFunc)
+    {
+        base.React(reactFunc);
+        return this;
+    }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.React(Func{IEntityChange{TEntity},bool},Func{IEntityChange{TEntity},IServiceProvider,CancellationToken,Task})" />
+    public new EntityIntServiceBuilder<TContext, TEntity> React(Func<IEntityChange<TEntity>, bool> canReact,
+        Func<IEntityChange<TEntity>, IServiceProvider, CancellationToken, Task> reactFunc)
+    {
+        base.React(canReact, reactFunc);
+        return this;
+    }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.React{TProp}(Expression{Func{TEntity,TProp}},TProp,Func{IEntityChange{TEntity},IServiceProvider,CancellationToken,Task})" />
+    public new EntityIntServiceBuilder<TContext, TEntity> React<TProp>(Expression<Func<TEntity, TProp>> property, TProp value,
+        Func<IEntityChange<TEntity>, IServiceProvider, CancellationToken, Task> reactFunc)
+    {
+        base.React(property, value, reactFunc);
         return this;
     }
     // Server-owned fields

@@ -506,7 +506,7 @@ public class EntityServiceBuilder<TContext, TEntity, TKey>(EntityServiceCollecti
     public EntityServiceBuilder<TContext, TEntity, TKey> AddValidator<TValidator>()
         where TValidator : class, IEntityValidator<TEntity>
     {
-        Services.AddValidator<TEntity, TValidator>();
+        Services.AddValidator<TValidator>();
         return this;
     }
     /// <summary>
@@ -517,6 +517,13 @@ public class EntityServiceBuilder<TContext, TEntity, TKey>(EntityServiceCollecti
     public EntityServiceBuilder<TContext, TEntity, TKey> Validate(Action<IEntityValidatorContext<TEntity>> validate)
     {
         Services.AddValidator(validate);
+        return this;
+    }
+    /// <inheritdoc cref="Validate(Action{IEntityValidatorContext{TEntity}})"/>
+    /// <remarks>An <c>async</c> delegate binds here, and the write awaits it.</remarks>
+    public EntityServiceBuilder<TContext, TEntity, TKey> Validate(Func<IEntityValidatorContext<TEntity>, Task> validate)
+    {
+        Services.AddValidator<TEntity>(validate);
         return this;
     }
     /// <summary>

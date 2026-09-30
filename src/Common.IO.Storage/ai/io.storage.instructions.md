@@ -138,7 +138,7 @@ Path        →  /var/app/storage/invoices/2024/inv-001.pdf
 | `Identifier` | Relative key — `Prefix + FileName` — portable across backend swaps |
 | `Path` | `Root + Identifier` — full absolute address |
 
-> **Path containment.** The local and SFTP backends resolve every identifier against `Root` and throw `UnauthorizedAccessException` when it escapes the root (e.g. via `../`); zip extraction enforces the same containment. This is on by default (`Contained = true` in `FileSystemOptions`/`SftpConfig`) — only disable it for trusted, non-user input.
+> **Path containment.** The local and SFTP backends resolve every identifier against `Root` and throw `UnauthorizedAccessException` when it escapes the root (e.g. via `../`); zip extraction enforces the same containment. Folder names compare as the file system does: regardless of case on Windows and macOS, exactly elsewhere. This is on by default (`Contained = true` in `FileSystemOptions`/`SftpConfig`) — only disable it for trusted, non-user input.
 
 ---
 
@@ -423,6 +423,11 @@ FileNameUtility.Combine("folder", "sub", "file.txt")
 FileNameUtility.SanitizeFilename(@"CON\report:v2.txt")   // → "_XXX_/report_v2.txt" ('\' on Windows): Windows-invalid characters and reserved segment names are replaced on every platform
 FileNameUtility.GetUncShareRoot(@"\\server\share\sub")   // → @"\\server\share" (null for non-UNC)
 ```
+
+> ⚠️ `SanitizeFilename` is not a traversal guard: `..` segments and a leading separator pass through. Contain an
+> untrusted path with `Contained = true` on the service (the default) or with
+> `FileNameUtility.EnsureContained(Path.Combine(root, path), root)`, which returns the full path or throws
+> `UnauthorizedAccessException`.
 
 ---
 

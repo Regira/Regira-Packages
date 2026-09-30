@@ -74,12 +74,18 @@ public static class FileNameUtility
             : null;
     }
 
+    // folder names compare as the file system does by default: regardless of case on Windows and macOS, exactly
+    // elsewhere — where a case-insensitive test would let "../uploads/x" out of "/data/Uploads" into its twin
+    private static readonly StringComparison PathComparison = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+        ? StringComparison.OrdinalIgnoreCase
+        : StringComparison.Ordinal;
+
     public static string EnsureContained(string absolutePath, string root)
     {
         var normalized = Path.GetFullPath(absolutePath);
         var normalizedRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-        if (!normalized.StartsWith(normalizedRoot, StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(normalized.TrimEnd(Path.DirectorySeparatorChar), normalizedRoot.TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+        if (!normalized.StartsWith(normalizedRoot, PathComparison)
+            && !string.Equals(normalized.TrimEnd(Path.DirectorySeparatorChar), normalizedRoot.TrimEnd(Path.DirectorySeparatorChar), PathComparison))
         {
             throw new UnauthorizedAccessException($"Path '{absolutePath}' escapes the root context.");
         }

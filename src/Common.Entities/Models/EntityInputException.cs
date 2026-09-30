@@ -27,7 +27,9 @@ public abstract class EntityInputException(string message, Exception? innerExcep
     /// <summary>
     /// Field name → message: <see cref="Errors"/> seen with one message per field, the messages of a field joined by a
     /// space. It is a view, not a second store — setting a field replaces that field's messages in <see cref="Errors"/>,
-    /// and assigning a dictionary replaces them all.
+    /// and assigning a dictionary replaces them all with a copy of its entries: a change made to that dictionary later
+    /// does not reach the exception, and keys match exactly, whatever comparer it had. Add errors through the view
+    /// (<c>InputErrors = { ["Name"] = "…" }</c>) to keep them on the exception.
     /// </summary>
     public IDictionary<string, string> InputErrors
     {

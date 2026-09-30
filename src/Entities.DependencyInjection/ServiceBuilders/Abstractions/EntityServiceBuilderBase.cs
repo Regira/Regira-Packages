@@ -227,13 +227,19 @@ public class EntityServiceBuilderBase<TEntity, TKey>(EntityServiceCollectionOpti
     public EntityServiceBuilderBase<TEntity, TKey> AddValidator<TValidator>()
         where TValidator : class, IEntityValidator<TEntity>
     {
-        Services.AddValidator<TEntity, TValidator>();
+        Services.AddValidator<TValidator>();
         return this;
     }
     /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Validate(Action{IEntityValidatorContext{TEntity}})"/>
     public EntityServiceBuilderBase<TEntity, TKey> Validate(Action<IEntityValidatorContext<TEntity>> validate)
     {
         Services.AddValidator(validate);
+        return this;
+    }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Validate(Func{IEntityValidatorContext{TEntity},Task})"/>
+    public EntityServiceBuilderBase<TEntity, TKey> Validate(Func<IEntityValidatorContext<TEntity>, Task> validate)
+    {
+        Services.AddValidator<TEntity>(validate);
         return this;
     }
 

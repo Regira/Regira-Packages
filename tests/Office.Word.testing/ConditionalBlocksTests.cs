@@ -103,6 +103,23 @@ public class ConditionalBlocksTests
     }
 
     [Test]
+    public void An_Exact_Key_Comes_Before_One_That_Differs_In_Case()
+    {
+        var input = new WordTemplateInput
+        {
+            GlobalParameters = new Dictionary<string, object> { ["items"] = "x" },
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>> { ["Items"] = [] }
+        };
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ConditionalBlocks.Evaluate(input, "Items"), Is.False, "the collection, matched exactly");
+            Assert.That(ConditionalBlocks.Evaluate(input, "items"), Is.True, "the parameter, matched exactly");
+            Assert.That(ConditionalBlocks.Evaluate(input, "ITEMS"), Is.True, "no exact match: the parameters come first");
+        });
+    }
+
+    [Test]
     public void Resolve_Names_The_Markers_And_The_Dropped_Branch()
     {
         string?[] children = ["Intro", "{{#if IsPaid}}", "Paid", null, "{{ else }}", "Due", "{{ /if }}", "Outro"];
@@ -190,5 +207,50 @@ public class ConditionalBlocksTests
         var ex = Assert.Throws<FormatException>(() => ConditionalBlocks.Resolve(["{{#if IsPaid}}", marker, "{{/if}}"], _ => true));
 
         Assert.That(ex!.Message, Does.Contain(marker).And.Contain("not a conditional marker"));
+    }
+
+    /// <summary>
+    /// The document decides how long a paragraph is: a marker's runs of white space must not make reading one
+    /// quadratic, which took seconds at twenty thousand spaces.
+    /// </summary>
+    [Test]
+    public void A_Long_Run_Of_Spaces_Is_Read_In_Linear_Time()
+    {
+        var text = "{{#if" + new string(' ', 200_000) + "}}";
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+
+        var opens = ConditionalBlocks.OpensBlock(text);
+        var ex = Assert.Throws<FormatException>(() => ConditionalBlocks.Resolve(["{{#if IsPaid}}", text, "{{/if}}"], _ => true));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(opens, Is.False, "no key");
+            Assert.That(ex!.Message, Does.Contain("not a conditional marker"));
+            Assert.That(watch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(2)));
+        });
+    }
+
+    [Test]
+    public void A_Paragraph_Quoted_In_A_Message_Is_Cut_Short()
+    {
+        var paragraph = "Dear {{#if IsCompany}}Sir or Madam{{/if}}, " + new string('x', 500);
+
+        var ex = Assert.Throws<FormatException>(() => ConditionalBlocks.Resolve(["{{#if IsPaid}}", paragraph, "{{/if}}"], _ => true));
+
+        Assert.That(ex!.Message, Does.Contain("Dear {{#if IsCompany}}").And.Not.Contain(new string('x', 100)));
+    }
+
+    [Test]
+    public void Deeply_Nested_Blocks_Drop_What_An_Outer_Block_Drops()
+    {
+        // twenty levels, the outermost false: every child between its markers goes, whatever the inner blocks say
+        var opening = Enumerable.Range(0, 20).Select(i => $"{{{{#if Level{i}}}}}");
+        var closing = Enumerable.Repeat("{{/if}}", 20);
+        string?[] children = ["Intro", .. opening, "Deep", .. closing, "Outro"];
+
+        var removed = ConditionalBlocks.Resolve(children, key => key != "Level0");
+
+        Assert.That(Enumerable.Range(0, children.Length).Where(i => !removed.Contains(i)).Select(i => children[i]),
+            Is.EqualTo(new[] { "Intro", "Outro" }));
     }
 }

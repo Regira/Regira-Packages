@@ -141,13 +141,20 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
         item.ObjectId = objectId;
         item.Attachment = file.ToNamedFile().ToAttachment();
 
-        await service.Save(item);
-        var affected = await service.SaveChanges();
-        var savedModel = mapper.Map<TDto>(item);
+        try
+        {
+            await service.Save(item);
+            var affected = await service.SaveChanges();
+            var savedModel = mapper.Map<TDto>(item);
 
-        sw.Stop();
+            sw.Stop();
 
-        return this.SaveResult(savedModel, affected, true, sw.ElapsedMilliseconds);
+            return this.SaveResult(savedModel, affected, true, sw.ElapsedMilliseconds);
+        }
+        catch (EntityInputException<TEntity> ex)
+        {
+            return BadRequest(ModelState.AddEntityInputErrors(ex));
+        }
     }
     [HttpPut("{objectId}/files/{id}")]
     public virtual async Task<ActionResult<SaveResult<TDto>>> Modify([FromRoute] int objectId, [FromRoute] int id, IFormFile file)
@@ -171,13 +178,20 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
         item.ObjectId = objectId;
         item.Attachment = file.ToNamedFile().ToAttachment();
 
-        await service.Save(item);
-        var affected = await service.SaveChanges();
-        var savedModel = mapper.Map<TDto>(item);
+        try
+        {
+            await service.Save(item);
+            var affected = await service.SaveChanges();
+            var savedModel = mapper.Map<TDto>(item);
 
-        sw.Stop();
+            sw.Stop();
 
-        return this.SaveResult(savedModel, affected, false, sw.ElapsedMilliseconds);
+            return this.SaveResult(savedModel, affected, false, sw.ElapsedMilliseconds);
+        }
+        catch (EntityInputException<TEntity> ex)
+        {
+            return BadRequest(ModelState.AddEntityInputErrors(ex));
+        }
     }
 
 

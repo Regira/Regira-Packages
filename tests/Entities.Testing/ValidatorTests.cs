@@ -9,6 +9,7 @@ using Regira.Entities.Attachments.Models;
 using Regira.Entities.DependencyInjection.Attachments;
 using Regira.Entities.DependencyInjection.Extensions;
 using Regira.Entities.DependencyInjection.Preppers;
+using Regira.Entities.DependencyInjection.QueryBuilders;
 using Regira.Entities.DependencyInjection.ServiceCollections;
 using Regira.Entities.DependencyInjection.ServiceCollections.Models;
 using Regira.Entities.DependencyInjection.Validators;
@@ -17,6 +18,7 @@ using Regira.Entities.EFcore.Services;
 using Regira.Entities.Models;
 using Regira.Entities.Models.Abstractions;
 using Regira.Entities.Preppers.Abstractions;
+using Regira.Entities.QueryBuilders.Abstractions;
 using Regira.Entities.Services.Abstractions;
 using Regira.Entities.Validators;
 using Regira.Entities.Validators.Abstractions;
@@ -55,6 +57,8 @@ public class ValidatorTests
     {
         public int Id { get; set; }
         public int OrderId { get; set; }
+        // the back-reference through which attaching a line pulls its order into the tracker
+        public Order? Order { get; set; }
         [MaxLength(64)] public string? Product { get; set; }
         public int Quantity { get; set; }
     }
@@ -171,6 +175,44 @@ public class ValidatorTests
             }
             return Task.CompletedTask;
         }
+    }
+
+    /// <summary>Row security over customers: the rows of another tenant stay out of every read through the entity services.</summary>
+    public class OwnCustomersOnly : GlobalFilteredQueryBuilderBase<Customer>
+    {
+        public override IQueryable<Customer> Build(IQueryable<Customer> query, ISearchObject<int>? so)
+            => query.Where(x => !x.Name!.StartsWith("other:"));
+    }
+
+    /// <summary>Checks the order's customer through the filtered read service, so the lookup honours row security.</summary>
+    public class OrderCustomerValidator(IEntityReadService<Customer, int> customers) : EntityValidatorBase<Order>
+    {
+        public override async Task Validate(IEntityValidatorContext<Order> context, CancellationToken token = default)
+        {
+            if (context.Item.CustomerId is { } id && await customers.Details(id, token) == null)
+            {
+                context.AddError(nameof(Order.CustomerId), "The customer does not exist.");
+            }
+        }
+    }
+
+    /// <summary>The same check through the entity service, whose write service imports every validator again.</summary>
+    public class OrderCustomerThroughEntityServiceValidator(IEntityService<Customer> customers) : EntityValidatorBase<Order>
+    {
+        public override async Task Validate(IEntityValidatorContext<Order> context, CancellationToken token = default)
+        {
+            if (context.Item.CustomerId is { } id && await customers.Details(id, token) == null)
+            {
+                context.AddError(nameof(Order.CustomerId), "The customer does not exist.");
+            }
+        }
+    }
+
+    /// <summary>Derives from the base class for orders and adds a second scope, which the base class never runs.</summary>
+    public class OrderAndTenantValidator : EntityValidatorBase<Order>, IEntityValidator<IHasTenantId>
+    {
+        public override Task Validate(IEntityValidatorContext<Order> context, CancellationToken token = default) => Task.CompletedTask;
+        public Task Validate(IEntityValidatorContext<IHasTenantId> context, CancellationToken token = default) => Task.CompletedTask;
     }
 
     private SqliteConnection _connection = null!;
@@ -365,8 +407,8 @@ public class ValidatorTests
             .For<Party>(e => e.AddValidator<TenantValidator>()));
 
         using var scope = _sp.CreateScope();
-        var ex = await Assert.ThrowsAsync<EntityInputException<Order>>(() =>
-            scope.ServiceProvider.GetRequiredService<IEntityService<Order>>().Add(NewOrder(tenant: null)))!;
+        var ex = (await Assert.ThrowsAsync<EntityInputException<Order>>(() =>
+            scope.ServiceProvider.GetRequiredService<IEntityService<Order>>().Add(NewOrder(tenant: null))))!;
 
         Assert.Multiple(() =>
         {
@@ -409,11 +451,11 @@ public class ValidatorTests
             o => o.AddValidator<TenantValidator>());
 
         using var scope = _sp.CreateScope();
-        var fromService = await Assert.ThrowsAsync<EntityInputException<Order>>(() =>
-            scope.ServiceProvider.GetRequiredService<IEntityService<Order>>().Add(NewOrder(tenant: null)))!;
+        var fromService = (await Assert.ThrowsAsync<EntityInputException<Order>>(() =>
+            scope.ServiceProvider.GetRequiredService<IEntityService<Order>>().Add(NewOrder(tenant: null))))!;
         var validators = scope.ServiceProvider.GetRequiredService<IEnumerable<IEntityValidator>>();
-        var fromExtension = await Assert.ThrowsAsync<EntityInputException<Order>>(() =>
-            validators.ValidateItem(NewOrder(tenant: null), null, EntityWriteOperation.Add))!;
+        var fromExtension = (await Assert.ThrowsAsync<EntityInputException<Order>>(() =>
+            validators.ValidateItem(NewOrder(tenant: null), null, EntityWriteOperation.Add)))!;
 
         Assert.That(fromExtension.Errors, Is.EqualTo(fromService.Errors));
     }
@@ -458,6 +500,45 @@ public class ValidatorTests
             Assert.That(db.Entry(added).State, Is.EqualTo(EntityState.Detached));
             Assert.That(db.Entry(modified).State, Is.EqualTo(EntityState.Detached));
         });
+    }
+
+    [Test]
+    public async Task A_Rejected_Write_Of_An_Item_The_Caller_Tracks_Is_Not_Saved()
+    {
+        Build(s => s.For<Order>(e => e.Validate(ctx =>
+        {
+            if (ctx.Item.Status == OrderStatus.Shipped)
+            {
+                ctx.AddError(nameof(Order.Status), "Rejected.");
+            }
+        })));
+        var id = await SeedOrder();
+
+        using (var scope = _sp.CreateScope())
+        {
+            // a job that loads and adds its rows through the context, and writes them through the service
+            var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
+            var modified = await db.Orders.SingleAsync(x => x.Id == id);
+            modified.Status = OrderStatus.Shipped;
+            var added = NewOrder("ORD-2");
+            added.Status = OrderStatus.Shipped;
+            db.Orders.Add(added);
+
+            await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Modify(modified));
+            await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(added));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(db.Entry(modified).State, Is.EqualTo(EntityState.Detached));
+                Assert.That(db.Entry(added).State, Is.EqualTo(EntityState.Detached));
+            });
+            await service.SaveChanges();
+        }
+
+        using var check = _sp.CreateScope();
+        var stored = await check.ServiceProvider.GetRequiredService<ShopContext>().Orders.IgnoreQueryFilters().ToListAsync();
+        Assert.That(stored.Select(x => (x.Id, x.Status)), Is.EqualTo(new[] { (id, OrderStatus.Pending) }));
     }
 
     [Test]
@@ -577,14 +658,20 @@ public class ValidatorTests
         using var scope = _sp.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
         var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
-        // drops the stored line and adds another: the sync marks one row Deleted and one Added
+        // drops the stored line and adds another: the sync marks one row Deleted and one Added, and attaching the new
+        // line pulls the order in through its back-reference
         var modified = NewOrder("ORD-9");
         modified.Id = id;
         modified.Lines = [new OrderLine { Product = "Pen", Quantity = 2 }];
+        modified.Lines.Single().Order = modified;
 
         await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Modify(modified));
 
-        Assert.That(db.ChangeTracker.Entries().Where(x => x.State != EntityState.Unchanged), Is.Empty);
+        Assert.Multiple(() =>
+        {
+            Assert.That(db.ChangeTracker.Entries().Where(x => x.State != EntityState.Unchanged), Is.Empty);
+            Assert.That(db.Entry(modified).State, Is.EqualTo(EntityState.Detached));
+        });
         Assert.That(await service.SaveChanges(), Is.Zero);
     }
 
@@ -672,38 +759,11 @@ public class ValidatorTests
         });
     }
 
-    /// <summary>Refuses from an override of ValidateItem, which no registered validator covers.</summary>
-    public class RefusingOrderWriteService(ShopContext dbContext, IEntityReadService<Order, int> readService,
-        IEnumerable<IEntityPrepper> preppers, IEnumerable<IEntityValidator> validators, ILoggerFactory? loggerFactory = null)
-        : EntityWriteService<ShopContext, Order>(dbContext, readService, preppers, validators, loggerFactory)
-    {
-        public override Task ValidateItem(Order item, Order? original, EntityWriteOperation operation, CancellationToken token = default)
-            => item.Code == "BAD"
-                ? throw new EntityInputException<Order>("Rejected.") { Item = item }
-                : base.ValidateItem(item, original, operation, token);
-        protected override bool CanBeRefused(Order item) => true;
-    }
-
-    [Test]
-    public async Task An_Override_Refusing_Without_Validators_Keeps_The_Undo_Through_CanBeRefused()
-    {
-        Build(s => s.For<Order>(e => e.Related(x => x.Lines).UseWriteService<RefusingOrderWriteService>()));
-
-        using var scope = _sp.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
-        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
-        var rejected = NewOrder("BAD");
-        rejected.Lines = [new OrderLine { Product = "Book", Quantity = 1 }];
-
-        await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(rejected));
-
-        Assert.That(db.ChangeTracker.Entries(), Is.Empty, "the Related() sync's line is taken back");
-    }
-
     [Test]
     public async Task A_Write_Leaves_Detection_To_A_Caller_That_Turned_It_Off()
     {
-        Build(s => s.For<Order>().For<Customer>());
+        // a validator runs for the Order write, which would otherwise detect pending changes before it
+        Build(s => s.For<Order>(e => e.Validate(_ => { })).For<Customer>());
         using (var seed = _sp.CreateScope())
         {
             var seedDb = seed.ServiceProvider.GetRequiredService<ShopContext>();
@@ -771,6 +831,14 @@ public class ValidatorTests
     }
 
     [Test]
+    public void A_Base_Class_Validator_With_A_Second_Scope_Is_Refused_At_Registration()
+    {
+        var ex = Assert.Throws<ArgumentException>(() => Build(s => s.For<Order>(e => e.AddValidator<OrderAndTenantValidator>())));
+
+        Assert.That(ex!.Message, Does.Contain("IEntityValidator<IHasTenantId>"));
+    }
+
+    [Test]
     public async Task A_DbContext_Validator_Receives_The_Token_Of_The_Write()
     {
         var seen = CancellationToken.None;
@@ -785,6 +853,95 @@ public class ValidatorTests
         await scope.ServiceProvider.GetRequiredService<IEntityService<Order>>().Add(NewOrder(), cts.Token);
 
         Assert.That(seen, Is.EqualTo(cts.Token));
+    }
+
+    [Test]
+    public async Task A_Validator_Checks_A_Reference_Through_The_Filtered_Read_Service()
+    {
+        Build(s => s
+                .For<Customer>()
+                .For<Order>(e => e.AddValidator<OrderCustomerValidator>()),
+            o => o.AddGlobalFilterQueryBuilder<OwnCustomersOnly>());
+        int ownId, otherId;
+        using (var seed = _sp.CreateScope())
+        {
+            var db = seed.ServiceProvider.GetRequiredService<ShopContext>();
+            var own = new Customer { Name = "Ada" };
+            var other = new Customer { Name = "other:Grace" };
+            db.Customers.AddRange(own, other);
+            await db.SaveChangesAsync();
+            (ownId, otherId) = (own.Id, other.Id);
+        }
+
+        using var scope = _sp.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
+        var accepted = NewOrder();
+        accepted.CustomerId = ownId;
+        var foreign = NewOrder();
+        foreign.CustomerId = otherId;
+
+        await service.Add(accepted);
+        var ex = (await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(foreign)))!;
+
+        Assert.That(ex.Errors.Single().Key, Is.EqualTo(nameof(Order.CustomerId)), "another tenant's customer reads as missing");
+    }
+
+    [Test]
+    public void A_Validator_Taking_An_Entity_Service_Makes_Every_Entity_Service_Unresolvable()
+    {
+        // every write service imports IEnumerable<IEntityValidator>, so a validator needing an entity service needs itself
+        Build(s => s
+            .For<Customer>()
+            .For<Order>(e => e.AddValidator<OrderCustomerThroughEntityServiceValidator>()));
+
+        using var scope = _sp.CreateScope();
+
+        var ex = Assert.Throws<InvalidOperationException>(() => scope.ServiceProvider.GetRequiredService<IEntityService<Customer>>());
+        Assert.That(ex!.Message, Does.Contain("circular dependency"));
+    }
+
+    [Test]
+    public async Task An_Async_Delegate_Refuses_After_Its_First_Await()
+    {
+        Build(s => s.For<Order>(e => e
+                .Validate(async ctx =>
+                {
+                    await Task.Yield();
+                    ctx.AddError(nameof(Order.Code), "Code is taken.");
+                })
+                .Validate(async (ctx, db) =>
+                {
+                    if (!await db.Customers.AnyAsync(c => c.Id == ctx.Item.CustomerId))
+                    {
+                        ctx.AddError(nameof(Order.CustomerId), "The customer does not exist.");
+                    }
+                })),
+            o => o.AddValidator<IHasTenantId>(async ctx =>
+            {
+                await Task.Delay(1);
+                ctx.AddError(nameof(IHasTenantId.TenantId), "The tenant is closed.");
+            }));
+
+        using var scope = _sp.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
+
+        var ex = (await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(NewOrder())))!;
+        Assert.That(ex.Errors.Select(x => x.Key), Is.EquivalentTo(new[] { "TenantId", "Code", "CustomerId" }));
+    }
+
+    [Test]
+    public async Task Validate_And_React_Keep_The_Complex_Builder_Through_A_Chain()
+    {
+        // compiles only while Validate and React return the complex builder, which declares SortBy
+        Build(s => s.For<Order, SearchObject<int>, EntitySortBy, EntityIncludes>(e => e
+            .Validate(ctx => ctx.AddError(string.Empty, "Rejected."))
+            .React((_, _, _) => Task.CompletedTask)
+            .SortBy((query, _) => query.OrderBy(x => x.Code))));
+
+        using var scope = _sp.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
+
+        await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(NewOrder()));
     }
 
     [Test]
@@ -811,6 +968,30 @@ public class ValidatorTests
             Assert.That(ex.Errors, Is.EqualTo(new[] { new EntityInputError("Code", "Upper case only."), new EntityInputError("Total", "Must be positive.") }));
             Assert.That(ex.InputErrors.Keys, Is.EqualTo(new[] { "Code", "Total" }));
             Assert.Throws<ArgumentException>(() => ex.InputErrors.Add("Code", "Again."));
+        });
+    }
+
+    [Test]
+    public void InputErrors_Lets_A_Foreach_Remove_Entries_As_A_Dictionary_Does()
+    {
+        var ex = new EntityInputException<Order>("rejected")
+        {
+            InputErrors = { ["Code"] = "Code is taken.", ["Name"] = "A name is required.", ["Total"] = "Must be positive." }
+        };
+        var visited = new List<string>();
+
+        foreach (var (key, _) in ex.InputErrors)
+        {
+            visited.Add(key);
+            // removes the entry being visited and one not visited yet
+            ex.InputErrors.Remove(key);
+            ex.InputErrors.Remove("Total");
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(visited, Is.EqualTo(new[] { "Code", "Name" }));
+            Assert.That(ex.Errors, Is.Empty);
         });
     }
 
@@ -842,6 +1023,19 @@ public class ValidatorTests
         var warnings = await StartupWarnings(s => s.For<Party>(), o => o.AddValidator<PersonValidator>());
 
         Assert.That(warnings, Has.None.Contains("PersonValidator"));
+    }
+
+    [Test]
+    public async Task Startup_Checks_The_Write_Path_Past_A_Keyed_Entity_Service()
+    {
+        var warnings = await StartupWarnings(s =>
+        {
+            s.For<Party>(e => e.UseWriteService<LegacyPartyWriteService>());
+            // registered last, yet not what the write path resolves
+            s.AddKeyedScoped<IEntityService<Party, int>>("archive", (p, _) => p.GetRequiredService<IEntityService<Party, int>>());
+        }, o => o.AddValidator<PersonValidator>());
+
+        Assert.That(warnings, Has.Some.Contains("'LegacyPartyWriteService'"));
     }
 
     [Test]

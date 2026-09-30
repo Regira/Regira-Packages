@@ -2,6 +2,7 @@ using System.IO.Compression;
 using IO.Testing.Helpers;
 using Regira.IO.Extensions;
 using Regira.IO.Models;
+using Regira.IO.Storage;
 using Regira.IO.Storage.Compression;
 
 namespace IO.Testing.Compression;
@@ -197,6 +198,29 @@ public class ZipUtilityTests
             Assert.That(extracted, Is.EqualTo(new[] { Path.Combine(targetDir, "dir1", "file1.1.txt") }));
             Assert.That(unzipped.Single().Identifier, Is.EqualTo("dir1/file1.1.txt"));
             Assert.That(unzipped.Single().FileName, Is.EqualTo("file1.1.txt"));
+        });
+    }
+    [Test]
+    public async Task ZipFileService_Lists_Entries_As_Unzip_Names_Them()
+    {
+        // expandable: ZipFileService opens its archive for update
+        var zipStream = new MemoryStream();
+        using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create, true))
+        {
+            // an entry name as some Windows tools write it
+            using var writer = new StreamWriter(archive.CreateEntry(@"dir1\file1.1.txt").Open());
+            writer.Write("file1.1.txt");
+        }
+        zipStream.Position = 0;
+        using var zipService = new ZipFileService(new ZipFileCommunicator { SourceFile = zipStream.ToMemoryFile() });
+
+        var all = await zipService.List();
+        var inFolder = await zipService.List(new FileSearchObject { FolderUri = @"dir1\" });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(all, Is.EqualTo(new[] { "dir1/file1.1.txt" }));
+            Assert.That(inFolder, Is.EqualTo(new[] { "dir1/file1.1.txt" }));
         });
     }
 }

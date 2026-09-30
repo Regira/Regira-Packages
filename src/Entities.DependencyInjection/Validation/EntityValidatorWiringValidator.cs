@@ -63,10 +63,12 @@ internal sealed class EntityValidatorWiringValidator : IEntityRegistrationValida
     /// Follows the registered implementation of <paramref name="serviceType"/> through the entity services its constructors
     /// take, until one takes the validators (<see cref="Reach.Runs"/>) or one writes without handing the write on
     /// (<see cref="Reach.Blocked"/>). A factory registration, a missing one or a cycle ends the walk as <see cref="Reach.Unknown"/>.
+    /// Keyed registrations are passed over: they are not what the write path resolves, and one registered last would stand
+    /// in for the registration that is — its implementation type reads <c>null</c>, which ends the walk as unknown.
     /// </summary>
     private static (Reach Reach, Type? BlockedBy) Check(IServiceCollection services, Type serviceType, Type entityType, HashSet<Type> visited)
     {
-        var implementation = services.LastOrDefault(d => d.ServiceType == serviceType)?.ImplementationType;
+        var implementation = services.LastOrDefault(d => d.ServiceType == serviceType && !d.IsKeyedService)?.ImplementationType;
         if (implementation == null || !visited.Add(implementation))
         {
             return (Reach.Unknown, null);

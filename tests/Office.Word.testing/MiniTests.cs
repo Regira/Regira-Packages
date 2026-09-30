@@ -256,6 +256,47 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
         });
     }
 
+    /// <summary>A content control holding a section break ends its section, so a block cannot span it.</summary>
+    [Test]
+    public async Task A_Block_Across_A_Section_Break_In_A_Content_Control_Fails()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Paragraph("{{#if IsDraft}}"),
+                new W.SdtBlock(new W.SdtProperties(new W.SdtId { Val = 1 }), new W.SdtContentBlock(Docx.SectionBreak("Chapter 1"))),
+                Docx.Paragraph("{{/if}}")
+            ]),
+            GlobalParameters = new Dictionary<string, object> { ["IsDraft"] = false }
+        };
+
+        var ex = await Assert.ThrowsAsync<FormatException>(() => Mini.Create(input));
+
+        Assert.That(ex!.Message, Does.Contain("section"));
+    }
+
+    /// <summary>A container that ends as the template wrote it — here in a content control — gets no paragraph added.</summary>
+    [Test]
+    public async Task A_Container_Ending_As_The_Template_Wrote_It_Is_Left_As_It_Is()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Paragraph("{{#if IsDraft}}"),
+                Docx.Paragraph("DRAFTTEXT"),
+                Docx.Paragraph("{{/if}}"),
+                Docx.ContentControl("Signature")
+            ]),
+            GlobalParameters = new Dictionary<string, object> { ["IsDraft"] = true }
+        };
+
+        using var output = await Mini.Create(input);
+        using var doc = WordprocessingDocument.Open(new MemoryStream(output.GetBytes()!), false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+
+        Assert.That(body.ChildElements.Last(child => child is not W.SectionProperties), Is.InstanceOf<W.SdtBlock>());
+    }
+
     /// <summary>
     /// <c>{{ title }}</c> split over two runs the way Word saves an edited tag, and a table row holding
     /// <c>{{ Items.Name }}</c>.

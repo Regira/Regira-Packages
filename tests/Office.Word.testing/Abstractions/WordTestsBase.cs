@@ -699,6 +699,8 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         var amongText = await Fails(Docx.Document("Dear {{#if IsCompany}}Sir or Madam{{/if}},", "{{#if IsPaid}}", "Thank you.", "{{/if}}"));
         var unknown = await Fails(Docx.Document("{{#if IsDue}}", "{{#unless IsPaid}}", "Please pay.", "{{/unless}}", "{{/if}}"));
         var acrossSections = await Fails(Docx.Document([Docx.Paragraph("{{#if IsPaid}}"), Docx.SectionBreak("Thank you."), Docx.Paragraph("{{/if}}")]));
+        // a content control around whole paragraphs is a container of its own
+        var intoContentControl = await Fails(Docx.Document([Docx.Paragraph("{{#if IsPaid}}"), Docx.ContentControl("Thank you.", "{{/if}}")]));
 
         Assert.Multiple(() =>
         {
@@ -708,6 +710,7 @@ public abstract class WordTestsBase : WordAssetsTestsBase
             Assert.That(amongText.Message, Does.Contain("stands alone"));
             Assert.That(unknown.Message, Does.Contain("{{#unless IsPaid}}").And.Contain("not a conditional marker"));
             Assert.That(acrossSections.Message, Does.Contain("{{#if IsPaid}}").And.Contain("section"));
+            Assert.That(intoContentControl.Message, Does.Contain("content control"));
         });
     }
 

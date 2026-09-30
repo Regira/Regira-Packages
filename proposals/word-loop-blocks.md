@@ -1,6 +1,6 @@
 # Loop blocks in Word templates
 
-As of 2026-09-30. Sources: the `Regira-Packages` repository, branch `wip` at `7b3937a`, as read on 2026-09-30. The working tree's uncommitted changes touch no Word source. Vendor loop features are named from their own documentation and were not measured here. Nothing on this page has been built.
+As of 2026-09-30. Sources: the `Regira-Packages` repository, branch `wip`, as read on 2026-09-30. The working tree's uncommitted changes touch no Word source. Vendor loop features are named from their own documentation and were not measured here. Nothing on this page has been built.
 
 **Status: proposal, targeted at 6.5.1. Four decisions are open (see *Decisions*).**
 

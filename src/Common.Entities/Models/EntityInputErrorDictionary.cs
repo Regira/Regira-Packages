@@ -68,8 +68,17 @@ internal sealed class EntityInputErrorDictionary(EntityInputException owner) : I
 
     public void CopyTo(KeyValuePair<string, string>[] array, int arrayIndex) => this.ToList().CopyTo(array, arrayIndex);
 
+    // over the keys as they stood when the loop began, passing over one removed since: a Dictionary lets a foreach remove entries
     public IEnumerator<KeyValuePair<string, string>> GetEnumerator()
-        => Keys.Select(key => new KeyValuePair<string, string>(key, this[key])).GetEnumerator();
+    {
+        foreach (var key in Keys)
+        {
+            if (TryGetValue(key, out var value))
+            {
+                yield return new KeyValuePair<string, string>(key, value);
+            }
+        }
+    }
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
     private int IndexOf(string key)

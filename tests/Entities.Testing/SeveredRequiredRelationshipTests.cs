@@ -148,6 +148,57 @@ public class SeveredRequiredRelationshipTests
     }
 
     [Test]
+    public async Task A_Relationship_Severed_Before_A_Validated_Write_Is_Reported_By_SaveChanges()
+    {
+        // a write a validator runs for detects the pending changes first — on a severed link, where EF throws
+        IServiceCollection services = new ServiceCollection();
+        services.AddDbContext<FolderContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<FolderContext>().For<Folder>(e => e.Validate(_ => { }));
+        await using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FolderContext>();
+        await db.Database.EnsureCreatedAsync();
+        var root = new Folder { Title = "Root" };
+        var child = new Folder { Title = "Child" };
+        db.Folders.AddRange(root, child);
+        await db.SaveChangesAsync();
+        db.FolderLinks.Add(new FolderLink { ParentId = root.Id, ChildId = child.Id });
+        await db.SaveChangesAsync();
+        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Folder, int>>();
+
+        // the job's own edit, which EF cannot apply: a link's parent is required
+        root.Children!.Clear();
+        await service.Add(new Folder { Title = "Other" });
+
+        var ex = await Assert.ThrowsAsync<EntityConstraintException>(() => service.SaveChanges());
+        Assert.That(ex!.InnerException, Is.InstanceOf<InvalidOperationException>());
+    }
+
+    [Test]
+    public async Task A_Refused_Write_Of_An_Item_Whose_Relationship_The_Caller_Severed_Stays_A_Refusal()
+    {
+        IServiceCollection services = new ServiceCollection();
+        services.AddDbContext<FolderContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<FolderContext>(o => o.UseDefaults()).For<Folder>(e => e.Validate(ctx => ctx.AddError(string.Empty, "Rejected.")));
+        await using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FolderContext>();
+        await db.Database.EnsureCreatedAsync();
+        var root = new Folder { Title = "Root" };
+        var child = new Folder { Title = "Child" };
+        db.Folders.AddRange(root, child);
+        await db.SaveChangesAsync();
+        db.FolderLinks.Add(new FolderLink { ParentId = root.Id, ChildId = child.Id });
+        await db.SaveChangesAsync();
+        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Folder, int>>();
+
+        // the item the job writes is the one whose required link it severed: detecting its changes throws in EF
+        root.Children!.Clear();
+
+        await Assert.ThrowsAsync<EntityInputException<Folder>>(() => service.Modify(root));
+    }
+
+    [Test]
     public void IsSeveredRequiredRelationship_Only_Matches_That_Failure()
     {
         Assert.Multiple(() =>

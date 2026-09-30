@@ -124,9 +124,9 @@ public static class ZipUtility
 
         foreach (var entry in entries)
         {
-            using var zipStream = entry.Open();
             // read '\' as a separator too, so an entry some Windows tool wrote with backslashes still
-            // extracts into its folders, and a "..\" in it is caught by the containment check
+            // extracts into its folders, and a "..\" in it is caught by the containment check — which runs before
+            // anything of the entry is read
             var entryPath = FileNameUtility.ConvertForwardSlashes(entry.FullName).TrimEnd(Path.DirectorySeparatorChar);
             var fullPath = FileNameUtility.EnsureContained(Path.Combine(targetDirectory, entryPath), targetDirectory);
             if (IsDirectory(entry))
@@ -137,6 +137,7 @@ public static class ZipUtility
             {
                 var directory = Path.GetDirectoryName(fullPath);
                 Directory.CreateDirectory(directory!);
+                using (var zipStream = entry.Open())
                 using (var fileStream = File.Create(fullPath))
                 {
                     zipStream.CopyTo(fileStream);

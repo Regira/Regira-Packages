@@ -190,6 +190,22 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         });
     }
 
+    /// <summary>
+    /// Every OOXML conversion is scanned in-process for blocks, so a part beyond the scan's limit — a zip bomb among them —
+    /// is not read, and the document goes to Gotenberg as it is.
+    /// </summary>
+    [Test]
+    public void A_Part_Beyond_The_Scan_Limit_Is_Not_Read()
+    {
+        var template = Docx.Document(new string('x', 2_000), "{{#if IsDraft}}", "DRAFT", "{{/if}}").GetBytes()!;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ConditionalMarkers.Any(template), Is.True, "within the limit");
+            Assert.That(ConditionalMarkers.Any(template, maxCharactersInPart: 1_000), Is.False, "beyond it");
+        });
+    }
+
     [Test]
     public async Task A_Template_With_Conditional_Blocks_Is_Rendered_By_The_Creator_First()
     {

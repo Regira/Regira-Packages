@@ -147,7 +147,8 @@ internal static class ConcurrencyTokenExtensions
     /// </para>
     /// </summary>
     /// <exception cref="EntityInputException{T}">A required version stamp (<see cref="IsRequiredVersionStamp"/>) the
-    /// client left out. Thrown before anything is attached, so the tracker is as the caller left it.</exception>
+    /// client left out. Thrown before this method attaches anything; what the preppers marked before it — the rows a
+    /// <c>Related()</c> sync added, changed or deleted — stays marked.</exception>
     internal static EntityEntry TrackAsUpdateOf<TEntity>(this DbContext dbContext, TEntity incoming, TEntity stored, ClientConcurrencyTokens clientTokens)
         where TEntity : class
     {
