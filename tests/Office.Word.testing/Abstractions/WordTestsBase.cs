@@ -570,6 +570,123 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         });
     }
 
+    /// <summary>
+    /// A document where no paragraph opens a block uses none, so a finished document that writes about templates
+    /// creates and reads as it is: marker text among other text, and another template language's tags on lines of
+    /// their own — a bare <c>{{else}}</c> included.
+    /// </summary>
+    public virtual async Task Marker_Text_In_A_Document_Without_Blocks_Stays_As_It_Is()
+    {
+        var documents = new (IMemoryFile Template, string[] Kept)[]
+        {
+            (Docx.Document("Intro", "Wrap optional text in {{#if Key}} and {{/if}}."),
+                ["Wrap optional text in {{#if Key}} and {{/if}}."]),
+            (Docx.Document("A Handlebars sample:", "{{#each items}}", "{{name}}", "{{else}}", "No items.", "{{/each}}"),
+                ["{{#each items}}", "{{else}}", "No items.", "{{/each}}"]),
+            (Docx.Document("A block closes with", "{{/if}}"),
+                ["{{/if}}"])
+        };
+
+        foreach (var (template, kept) in documents)
+        {
+            using var output = await RequireCreator().Create(new WordTemplateInput { Template = template });
+            var created = await ReadText(output);
+            var read = await RequireTextExtractor().GetText(new WordTemplateInput { Template = template });
+
+            Assert.Multiple(() =>
+            {
+                foreach (var text in kept)
+                {
+                    Assert.That(created, Does.Contain(text));
+                    Assert.That(read, Does.Contain(text));
+                }
+            });
+        }
+    }
+
+    /// <summary>
+    /// A dropped branch that was all a text box or a content control held leaves the paragraph Word requires there.
+    /// </summary>
+    public virtual async Task A_Conditional_Block_In_A_Text_Box_Or_Content_Control_Leaves_A_Paragraph()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Paragraph("KEPTTEXT"),
+                Docx.TextBox("{{#if IsPaid}}", "PAIDSTAMP", "{{/if}}"),
+                Docx.ContentControl("{{#if IsPaid}}", "PAIDNOTE", "{{/if}}"),
+                Docx.Paragraph("Outro")
+            ]),
+            GlobalParameters = new Dictionary<string, object> { ["IsPaid"] = false }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var text = Docx.BodyText(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Does.Contain("KEPTTEXT").And.Contain("Outro"));
+            Assert.That(text, Does.Not.Contain("PAIDSTAMP").And.Not.Contain("PAIDNOTE").And.Not.Contain("{{"));
+            Assert.That(Docx.Count<W.TextBoxContent>(output), Is.GreaterThan(0), "the text box stays");
+            Assert.That(Docx.TextBodiesEndWithParagraphs(output), Is.True);
+        });
+    }
+
+    /// <summary>
+    /// A footnote, endnote or comment is not part of a template's blocks: a block in a footnote stays as text beside
+    /// one the body resolves.
+    /// </summary>
+    public virtual async Task A_Block_In_A_Footnote_Stays_As_Text()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document(
+                [Docx.FootnoteReference("Intro"), Docx.Paragraph("{{#if IsDraft}}"), Docx.Paragraph("DRAFTTEXT"), Docx.Paragraph("{{/if}}")],
+                footnote: Docx.Paragraphs("{{#if IsDraft}}", "FOOTNOTETEXT", "{{/if}}")),
+            GlobalParameters = new Dictionary<string, object> { ["IsDraft"] = false }
+        };
+
+        using var output = await RequireCreator().Create(input);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Docx.BodyText(output), Does.Contain("Intro").And.Not.Contain("DRAFTTEXT"));
+            Assert.That(Docx.FootnoteText(output), Does.Contain("{{#if IsDraft}}").And.Contain("FOOTNOTETEXT"));
+        });
+    }
+
+    /// <summary>
+    /// A marker paragraph that also ends a section goes, and the section break stays without the paragraph's own
+    /// formatting.
+    /// </summary>
+    public virtual async Task A_Marker_Paragraph_Ending_A_Section_Leaves_Only_The_Break()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Paragraph("{{#if IsDraft}}"),
+                Docx.Paragraph("DRAFTTEXT"),
+                Docx.SectionBreak("{{/if}}", pageBreakBefore: true),
+                Docx.Paragraph("NEXTSECTION")
+            ]),
+            GlobalParameters = new Dictionary<string, object> { ["IsDraft"] = false }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var text = Docx.BodyText(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Does.Contain("NEXTSECTION"));
+            Assert.That(text, Does.Not.Contain("DRAFTTEXT").And.Not.Contain("{{"));
+            Assert.That(Docx.Count<W.SectionProperties>(output), Is.EqualTo(2), "the section break stays");
+            Assert.That(Docx.Count<W.PageBreakBefore>(output), Is.Zero);
+        });
+    }
+
+    /// <summary>
+    /// Every case opens a block somewhere, so the document uses blocks and its markers are checked.
+    /// </summary>
     public virtual void A_Malformed_Conditional_Block_Fails()
     {
         var creator = RequireCreator();
@@ -577,9 +694,10 @@ public abstract class WordTestsBase : WordAssetsTestsBase
             => Assert.ThrowsAsync<FormatException>(() => creator.Create(new WordTemplateInput { Template = template }))!;
 
         var unclosed = Fails(Docx.Document("{{#if IsPaid}}", "Thank you."));
-        var unopened = Fails(Docx.Document("Thank you.", "{{/if}}"));
+        var unopened = Fails(Docx.Document("{{#if IsPaid}}", "Paid.", "{{/if}}", "Thank you.", "{{/if}}"));
         var twoElses = Fails(Docx.Document("{{#if IsPaid}}", "{{else}}", "{{else}}", "{{/if}}"));
-        var amongText = Fails(Docx.Document("Dear {{#if IsCompany}}Sir or Madam{{/if}},"));
+        var amongText = Fails(Docx.Document("Dear {{#if IsCompany}}Sir or Madam{{/if}},", "{{#if IsPaid}}", "Thank you.", "{{/if}}"));
+        var unknown = Fails(Docx.Document("{{#if IsDue}}", "{{#unless IsPaid}}", "Please pay.", "{{/unless}}", "{{/if}}"));
         var acrossSections = Fails(Docx.Document([Docx.Paragraph("{{#if IsPaid}}"), Docx.SectionBreak("Thank you."), Docx.Paragraph("{{/if}}")]));
 
         Assert.Multiple(() =>
@@ -588,7 +706,8 @@ public abstract class WordTestsBase : WordAssetsTestsBase
             Assert.That(unopened.Message, Does.Contain("{{/if}}"));
             Assert.That(twoElses.Message, Does.Contain("{{else}}"));
             Assert.That(amongText.Message, Does.Contain("stands alone"));
-            Assert.That(acrossSections.Message, Does.Contain("{{#if IsPaid}}"));
+            Assert.That(unknown.Message, Does.Contain("{{#unless IsPaid}}").And.Contain("not a conditional marker"));
+            Assert.That(acrossSections.Message, Does.Contain("{{#if IsPaid}}").And.Contain("section"));
         });
     }
 

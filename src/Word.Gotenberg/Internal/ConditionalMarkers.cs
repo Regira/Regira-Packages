@@ -1,3 +1,4 @@
+using System.Xml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
 using Regira.Office.Word.Templating;
@@ -11,8 +12,10 @@ namespace Regira.Office.Word.Gotenberg.Internal;
 internal static class ConditionalMarkers
 {
     /// <summary>
-    /// Whether the body, a header or a footer holds a marker. A package that cannot be read holds none: it goes to
-    /// Gotenberg as it is, which reports what is wrong with it.
+    /// Whether the body, a header or a footer holds a paragraph that opens a block — what makes a document use blocks,
+    /// as the creators decide it. Nothing else does, marker text among other text included: that document converts as
+    /// it is. A package that cannot be read holds none: it goes to Gotenberg as it is, which reports what is wrong
+    /// with it.
     /// </summary>
     public static bool Any(byte[] source)
     {
@@ -20,7 +23,8 @@ internal static class ConditionalMarkers
         {
             return Find(source);
         }
-        catch (Exception ex) when (ex is OpenXmlPackageException or InvalidDataException or FileFormatException)
+        catch (Exception ex)
+            when (ex is OpenXmlPackageException or InvalidDataException or FileFormatException or XmlException)
         {
             return false;
         }
@@ -43,7 +47,7 @@ internal static class ConditionalMarkers
         return roots
             .OfType<DocumentFormat.OpenXml.OpenXmlElement>()
             .SelectMany(root => root.Descendants<Paragraph>())
-            .Any(paragraph => ConditionalBlocks.ContainsMarker(GetOwnText(paragraph)));
+            .Any(paragraph => ConditionalBlocks.OpensBlock(GetOwnText(paragraph)));
     }
 
     /// <summary>

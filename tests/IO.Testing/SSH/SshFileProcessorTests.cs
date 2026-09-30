@@ -1,5 +1,4 @@
 ﻿using IO.Testing.Helpers;
-using Microsoft.Extensions.Configuration;
 using Regira.IO.Storage.SSH;
 
 namespace IO.Testing.SSH;
@@ -11,30 +10,21 @@ namespace IO.Testing.SSH;
 public class SshFileProcessorTests
 {
     private const string TEST_FOLDER = "file_processor";
-    public StorageTestHelper.IStorageTestContext StorageTestContext { get; set; }
+    public StorageTestHelper.IStorageTestContext StorageTestContext { get; set; } = null!;
 
     [SetUp]
-    public void Setup() => StorageTestContext = StorageTestHelper.CreateDecoratedFileService((_, _)
-        =>
+    public void Setup()
     {
-        var configBuilder = new ConfigurationBuilder();
-        configBuilder.AddUserSecrets(GetType().Assembly, true);
-        var configuration = configBuilder.Build();
-        var sshSection = configuration.GetSection("Storage:SSH") ??
-                         throw new NullReferenceException("Section Storage:SSH is missing");
-        var config = new SftpConfig
-        {
-            ContainerName = sshSection["ContainerName"],
-            Host = sshSection["Host"]!,
-            Port = int.Parse(sshSection["Port"]!),
-            UserName = sshSection["Username"]!,
-            Password = sshSection["Password"]
-        };
-
-        return new SftpService(new SftpCommunicator(config));
-    });
+        var config = TestSecrets.Ssh();
+        StorageTestContext = StorageTestHelper.CreateDecoratedFileService((_, _)
+            => new SftpService(new SftpCommunicator(config)));
+    }
     [TearDown]
-    public async Task TearDown() => await StorageTestContext.DisposeAsync();
+    public async Task TearDown()
+    {
+        // unset when Setup ignored the fixture
+        if (StorageTestContext != null) await StorageTestContext.DisposeAsync();
+    }
 
     [Test]
     public Task Recursive_Directories() => StorageTestContext.Test_Recursive_Directories(TEST_FOLDER);

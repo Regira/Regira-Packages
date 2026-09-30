@@ -27,7 +27,8 @@ public class ZipUtilityTests
     [TearDown]
     public void TearDown()
     {
-        Directory.Delete(new DirectoryInfo(Path.Combine(_assetsDir, "..\\unzipped")).FullName, true);
+        var unzippedDir = new DirectoryInfo(Path.Combine(_assetsDir, "..", "unzipped"));
+        if (unzippedDir.Exists) unzippedDir.Delete(true);
         TestFilesCreator.Clear(_assetsDir);
     }
 
@@ -36,7 +37,7 @@ public class ZipUtilityTests
     public void Test_ZipArchive()
     {
         var files = Directory.GetFiles(_assetsDir, "*", SearchOption.AllDirectories);
-        var targetDir = new DirectoryInfo(Path.Combine(_assetsDir, "..\\unzipped")).FullName;
+        var targetDir = new DirectoryInfo(Path.Combine(_assetsDir, "..", "unzipped")).FullName;
 
         using (var zipStream = new MemoryStream())
         {
@@ -60,7 +61,7 @@ public class ZipUtilityTests
                 foreach (var entry in archive2.Entries)
                 {
                     using var entryStream = entry.Open();
-                    var fullPath = Path.Combine(targetDir, entry.FullName.TrimStart('\\'));
+                    var fullPath = Path.Combine(targetDir, entry.FullName.TrimStart('\\', '/'));
                     Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
                     using var fileStream = File.Create(fullPath);
                     entryStream.CopyTo(fileStream);
@@ -79,7 +80,7 @@ public class ZipUtilityTests
     [Test]
     public void Create_Zip()
     {
-        var targetDir = new DirectoryInfo(Path.Combine(_assetsDir, "..\\unzipped")).FullName;
+        var targetDir = new DirectoryInfo(Path.Combine(_assetsDir, "..", "unzipped")).FullName;
         var files = Directory.GetFiles(_assetsDir, "*", SearchOption.AllDirectories);
 
         // create zip
@@ -102,9 +103,9 @@ public class ZipUtilityTests
     [Test]
     public void Update_Zip_Add_Files()
     {
-        var targetDir = Path.Combine(_assetsDir, "..\\unzipped");
-        var dir1Files = Directory.GetFiles(_assetsDir, "dir1\\*", SearchOption.AllDirectories);
-        var dir2Files = Directory.GetFiles(_assetsDir, "dir2\\*", SearchOption.AllDirectories)
+        var targetDir = Path.Combine(_assetsDir, "..", "unzipped");
+        var dir1Files = Directory.GetFiles(Path.Combine(_assetsDir, "dir1"), "*", SearchOption.AllDirectories);
+        var dir2Files = Directory.GetFiles(Path.Combine(_assetsDir, "dir2"), "*", SearchOption.AllDirectories)
             .Select(path => new BinaryFileItem
             {
                 Identifier = path.Substring(_assetsDir.Length).TrimStart('\\'),
@@ -137,9 +138,9 @@ public class ZipUtilityTests
     [Test]
     public void Update_Zip_Remove_Files()
     {
-        var targetDir = Path.Combine(_assetsDir, "..\\unzipped");
+        var targetDir = Path.Combine(_assetsDir, "..", "unzipped");
         var files = Directory.GetFiles(_assetsDir, "*", SearchOption.AllDirectories);
-        var dir2Files = _sourceFiles.Where(f => f.Path!.Contains("\\dir2\\")).ToArray();
+        var dir2Files = _sourceFiles.Where(f => f.Path!.Contains($"{Path.DirectorySeparatorChar}dir2{Path.DirectorySeparatorChar}")).ToArray();
 
         // create zip
         using var zipFile = ZipUtility.Zip(files);
@@ -161,5 +162,41 @@ public class ZipUtilityTests
         var expectedFiles = files.Where(f => dir2Files.All(f2 => f2.Path != f)).Select(f => f.Substring(_assetsDir.Length)).ToArray();
         var actualFiles = unzippedFiles.Select(f => f.Substring(targetDir.Length)).ToArray();
         Assert.That(actualFiles, Is.EquivalentTo(expectedFiles));
+    }
+
+    [Test]
+    public void Zip_Names_Entries_With_Forward_Slashes()
+    {
+        var files = Directory.GetFiles(_assetsDir, "*", SearchOption.AllDirectories);
+
+        using var zipFile = ZipUtility.Zip(files, _assetsDir);
+        using var archive = new ZipArchive(zipFile.GetStream()!, ZipArchiveMode.Read, true);
+
+        var entryNames = archive.Entries.Select(e => e.FullName).ToArray();
+        Assert.That(entryNames, Has.Member("dir2/dir2.1/file2.1.1.log"));
+        Assert.That(entryNames, Has.None.Contains("\\"));
+    }
+    [Test]
+    public void Unzip_Reads_Backslashes_As_Separators()
+    {
+        var targetDir = new DirectoryInfo(Path.Combine(_assetsDir, "..", "unzipped")).FullName;
+        using var zipStream = new MemoryStream();
+        using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create, true))
+        {
+            // an entry name as some Windows tools write it
+            using var writer = new StreamWriter(archive.CreateEntry(@"dir1\file1.1.txt").Open());
+            writer.Write("file1.1.txt");
+        }
+        var zipBytes = zipStream.ToArray();
+
+        var extracted = ZipUtility.Unzip(zipBytes.ToBinaryFile(), targetDir);
+        using var unzipped = ZipUtility.Unzip(zipBytes.ToBinaryFile());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(extracted, Is.EqualTo(new[] { Path.Combine(targetDir, "dir1", "file1.1.txt") }));
+            Assert.That(unzipped.Single().Identifier, Is.EqualTo("dir1/file1.1.txt"));
+            Assert.That(unzipped.Single().FileName, Is.EqualTo("file1.1.txt"));
+        });
     }
 }

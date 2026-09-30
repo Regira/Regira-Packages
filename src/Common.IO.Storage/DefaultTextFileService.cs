@@ -15,10 +15,10 @@ public class DefaultTextFileService(IFileService binaryFileService, Encoding? en
         using var stream = await GetStream(identifier);
         return FileUtility.GetString(stream);
     }
-    public Task<string> Save(string identifier, string contents, string? contentType = null)
+    public async Task<string> Save(string identifier, string contents, string? contentType = null)
     {
         using var stream = FileUtility.GetStreamFromString(contents, encoding);
-        return Save(identifier, stream, contentType);
+        return await Save(identifier, stream, contentType);
     }
 
 

@@ -275,6 +275,10 @@ var service = new BinaryBlobService(communicator);
 | `ContainerName` | `string` | *(required)* | Blob container name |
 | `CreateContainerIfNotExists` | `bool` | `true` | Auto-create the container on `Open()`; set `false` to fail fast on a misconfigured name |
 
+`Save` stores its `contentType` as the blob's `Content-Type`, which decides whether a browser following a SAS or CDN
+link shows the file or downloads it. Without one — `null`, empty or blank — the type comes from the identifier's
+extension.
+
 ---
 
 ### SSH / SFTP — `SftpService`
@@ -365,14 +369,19 @@ IMemoryFile zip = await new ZipBuilder()
     .Build();
 ```
 
-### `ZipUtility` — extension methods
+### `ZipUtility` — zip/unzip helpers
+
+`Zip` is an extension method; `Unzip` is static.
 
 ```csharp
 IMemoryFile archive        = files.Zip();
 IMemoryFile archive        = paths.Zip(baseFolder: "/var/exports");
-BinaryFileCollection items = existingZip.Unzip();
-string[] extracted         = existingZip.Unzip(targetDirectory: "/tmp/out");
+BinaryFileCollection items = ZipUtility.Unzip(existingZip);
+string[] extracted         = ZipUtility.Unzip(existingZip, targetDirectory: "/tmp/out");
 ```
+
+Entries are named after each file's `Identifier` (else `FileName`) with `/` separators, as the ZIP format
+requires — an archive made on Windows unzips into the same folders on Linux. `Unzip` also reads `\` as a separator.
 
 ---
 
@@ -411,7 +420,7 @@ FileNameUtility.GetAbsoluteUri("folder/file.txt", root)
 FileNameUtility.GetRelativeUri(absolutePath, root)
 FileNameUtility.GetCleanFileName("folder/sub/file.txt")  // → "file.txt"
 FileNameUtility.Combine("folder", "sub", "file.txt")
-FileNameUtility.SanitizeFilename("con.txt")              // avoids Windows reserved names
+FileNameUtility.SanitizeFilename(@"CON\report:v2.txt")   // → "_XXX_/report_v2.txt" ('\' on Windows): Windows-invalid characters and reserved segment names are replaced on every platform
 FileNameUtility.GetUncShareRoot(@"\\server\share\sub")   // → @"\\server\share" (null for non-UNC)
 ```
 

@@ -44,8 +44,8 @@ public class ZipFileService(ZipFileCommunicator communicator) : IFileService, ID
         {
             if (!string.IsNullOrWhiteSpace(so.FolderUri))
             {
-                var folderUri = so.FolderUri!.TrimStart('/');
-                identifiers = identifiers.Where(x => x.TrimStart('/').StartsWith(folderUri, StringComparison.InvariantCultureIgnoreCase));
+                var folderUri = ZipUtility.NormalizePath(so.FolderUri!);
+                identifiers = identifiers.Where(x => ZipUtility.NormalizePath(x).StartsWith(folderUri, StringComparison.InvariantCultureIgnoreCase));
             }
             if (so.Extensions?.Any() == true)
             {
@@ -64,8 +64,8 @@ public class ZipFileService(ZipFileCommunicator communicator) : IFileService, ID
         {
             if (!string.IsNullOrWhiteSpace(so.FolderUri))
             {
-                var folderUri = so.FolderUri!.TrimStart('/');
-                identifiers = identifiers.Where(x => x.TrimStart('/').StartsWith(folderUri, StringComparison.InvariantCultureIgnoreCase));
+                var folderUri = ZipUtility.NormalizePath(so.FolderUri!);
+                identifiers = identifiers.Where(x => ZipUtility.NormalizePath(x).StartsWith(folderUri, StringComparison.InvariantCultureIgnoreCase));
             }
             if (so.Extensions?.Any() == true)
             {

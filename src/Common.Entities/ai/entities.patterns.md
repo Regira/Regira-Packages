@@ -204,7 +204,7 @@ return await this.Details<CreditRequest, CreditRequestDto>(id) ?? NotFound();   
 - **Gate the transition set, not only the fields.** A generic transition endpoint that reaches a state a
   role-gated action also reaches voids that action's role check; decide who may reach which state in the one
   service every path calls.
-- **An append-only history** is its own entity with the workflow service as only writer: a prepper refusing
+- **An append-only history** is its own entity with the workflow service as only writer: a validator refusing
   any create or update without the trusted-writer flag, no collection on the parent's input DTO, no `DELETE`.
 
 **See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "Domain actions on an entity resource")`
@@ -1128,10 +1128,10 @@ What each write is checked against:
 | Owned children (`Related()`) | each child's own token, when it declares one; one stale child fails the whole save. A CLR type EF maps more than once — a shared-type entity, an owned type with several owners — has no single model to read its token from, so only a write racing it is caught |
 | A data-column token | the stored row — only a write racing the save is caught |
 
-- A required stamp left out answers the flat `InputErrors` 400, keyed by the token's C# property name:
+- A required stamp left out answers the field-level 400, keyed by the token's C# property name:
   `{ "ConcurrencyToken": ["Required on an update: send the value read with the record."] }`. The camelCase naming
   policy does not reach dictionary keys, so a client that sends `concurrencyToken` reads the error under
-  `ConcurrencyToken`, as it does every `InputErrors` key (`entities.instructions` → Response Types).
+  `ConcurrencyToken`, as it does every input error key (`entities.instructions` → Response Types).
 - A token whose default is a legitimate value — an `int` version starting at `0` — cannot be told apart from an
   absent one. Start it at `1`, or use a `Guid`. A primer that increments an application-owned token counts from
   `entry.Property(...).OriginalValue`, the stored value, so a client that omits the token cannot reset it.

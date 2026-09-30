@@ -426,13 +426,25 @@ public class WordService : IWordService
 
     /// <summary>
     /// Keeps the branch of each <c>{{#if Key}}</c> … <c>{{else}}</c> … <c>{{/if}}</c> block that holds and removes the
-    /// rest, marker paragraphs included — in the body, table cells, headers and footers.
+    /// rest, marker paragraphs included — in the body, table cells, text boxes, headers and footers. A document with
+    /// no paragraph opening a block uses no blocks and is left as it is.
     /// </summary>
     protected internal void ResolveConditions(Document doc, WordTemplateInput input)
     {
-        var containers = doc.FindAllParagraphs()
-            .Where(paragraph => ConditionalBlocks.ContainsMarker(GetVisibleText(paragraph)))
-            .Select(paragraph => paragraph.ParentNode)
+        var paragraphs = doc.FindAllParagraphs()
+            // a footnote, endnote or comment is not part of a template's blocks, as on the other backends
+            .Where(paragraph => paragraph.GetAncestor(NodeType.Footnote) == null
+                && paragraph.GetAncestor(NodeType.Comment) == null)
+            .Select(paragraph => (Paragraph: paragraph, Text: GetVisibleText(paragraph)))
+            .ToArray();
+        if (!paragraphs.Any(paragraph => ConditionalBlocks.OpensBlock(paragraph.Text)))
+        {
+            return;
+        }
+
+        var containers = paragraphs
+            .Where(paragraph => ConditionalBlocks.ContainsMarker(paragraph.Text))
+            .Select(paragraph => paragraph.Paragraph.ParentNode)
             .OfType<CompositeNode>()
             .Distinct()
             .ToArray();
@@ -449,9 +461,9 @@ public class WordService : IWordService
                 children[index].Remove();
             }
 
-            if (container is Story or Cell && container.LastChild is null or Table)
+            if (container.LastChild is null or Table)
             {
-                // a cell, header or footer has to end with a paragraph
+                // whatever holds paragraphs ends with one: a body, cell, header, footer, text box or content control
                 container.AppendChild(new AsposeParagraph(doc));
             }
         }

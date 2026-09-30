@@ -228,6 +228,25 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         Assert.That(handler.Requests.Single().Uploads.Single().Bytes, Is.EqualTo(template.GetBytes()));
     }
 
+    /// <summary>
+    /// Only a paragraph that opens a block makes a document use blocks, as the creators decide it: a finished document
+    /// that writes about templates converts as it is — marker text among other text, another template language's
+    /// tags on lines of their own, a stray <c>{{/if}}</c>.
+    /// </summary>
+    [TestCase("Intro", "Wrap optional text in {{#if Key}} and {{/if}}.")]
+    [TestCase("A Handlebars sample:", "{{#each items}}", "{{name}}", "{{else}}", "No items.", "{{/each}}")]
+    [TestCase("A block closes with", "{{/if}}")]
+    public async Task A_Document_That_Opens_No_Block_Needs_No_Creator(params string[] paragraphs)
+    {
+        var handler = new StubHandler(_ => Pdf());
+        var service = new WordService(handler.CreateClient());
+        var template = Docx.Document(paragraphs);
+
+        using var _ = await service.Convert(new WordTemplateInput { Template = template }, FileFormat.Pdf);
+
+        Assert.That(handler.Requests.Single().Uploads.Single().Bytes, Is.EqualTo(template.GetBytes()));
+    }
+
     [Test]
     public async Task A_Finished_Document_Skips_The_Creator()
     {

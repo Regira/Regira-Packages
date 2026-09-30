@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Regira.Office.Word.Models;
 using Regira.Office.Word.Templating;
 
@@ -52,12 +53,31 @@ public class ConditionalBlocksTests
     [TestCase("3", true)]
     [TestCase("[]", false)]
     [TestCase("[1]", true)]
-    [TestCase("{}", true)]
+    [TestCase("{}", false)]
+    [TestCase("{\"a\": 1}", true)]
     public void A_Json_Value_Is_Read_By_Its_Kind(string json, bool expected)
     {
         var parameters = JsonSerializer.Deserialize<Dictionary<string, object>>($"{{\"Key\": {json}}}")!;
+        var node = JsonNode.Parse(json);
 
-        Assert.That(ConditionalBlocks.IsTrue(parameters["Key"]), Is.EqualTo(expected));
+        Assert.Multiple(() =>
+        {
+            Assert.That(ConditionalBlocks.IsTrue(parameters["Key"]), Is.EqualTo(expected), "JsonElement");
+            Assert.That(ConditionalBlocks.IsTrue(node), Is.EqualTo(expected), "JsonNode");
+        });
+    }
+
+    [Test]
+    public void A_Json_Value_Built_In_Code_Is_Read_By_Its_Value()
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(ConditionalBlocks.IsTrue(JsonValue.Create(false)), Is.False);
+            Assert.That(ConditionalBlocks.IsTrue(JsonValue.Create(0)), Is.False);
+            Assert.That(ConditionalBlocks.IsTrue(JsonValue.Create(" ")), Is.False);
+            Assert.That(ConditionalBlocks.IsTrue(JsonValue.Create(true)), Is.True);
+            Assert.That(ConditionalBlocks.IsTrue(JsonValue.Create(3)), Is.True);
+        });
     }
 
     [Test]
@@ -123,8 +143,33 @@ public class ConditionalBlocksTests
             Assert.That(ConditionalBlocks.ContainsMarker("{{ IsPaid }}"), Is.False, "a parameter");
             Assert.That(ConditionalBlocks.ContainsMarker("<{ Appendix }>"), Is.False, "a nested document");
             Assert.That(ConditionalBlocks.ContainsMarker("{{ifPaid}}"), Is.False, "a parameter that starts with 'if'");
+            Assert.That(ConditionalBlocks.ContainsMarker("{{Elsewhere}}"), Is.False, "a parameter that starts with 'else'");
             Assert.That(ConditionalBlocks.ContainsMarker("{{#if IsPaid}}"), Is.True);
             Assert.That(ConditionalBlocks.ContainsMarker("{{ ELSE }}"), Is.True);
+            Assert.That(ConditionalBlocks.ContainsMarker("{{else if IsDue}}"), Is.True, "a marker this syntax does not know");
+        });
+    }
+
+    /// <summary>
+    /// A document uses blocks when a paragraph opens one. A closing or alternative marker alone does not count, and
+    /// neither does another template language: Handlebars and Go templates write a bare <c>{{else}}</c> too.
+    /// </summary>
+    [Test]
+    public void Only_A_Paragraph_That_Opens_A_Block_Makes_A_Document_Use_Blocks()
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(ConditionalBlocks.OpensBlock("{{#if IsPaid}}"), Is.True);
+            Assert.That(ConditionalBlocks.OpensBlock(" {{ #if !IsPaid }}\r\a"), Is.True);
+            Assert.That(ConditionalBlocks.OpensBlock("{{/if}}"), Is.False);
+            Assert.That(ConditionalBlocks.OpensBlock("{{else}}"), Is.False);
+            Assert.That(ConditionalBlocks.OpensBlock("{{#unless IsPaid}}"), Is.False);
+            Assert.That(ConditionalBlocks.OpensBlock("{{#each items}}"), Is.False);
+            Assert.That(ConditionalBlocks.OpensBlock("{{#if}}"), Is.False, "no key");
+            Assert.That(ConditionalBlocks.OpensBlock("Wrap it in {{#if Key}} and {{/if}}."), Is.False);
+            Assert.That(ConditionalBlocks.OpensBlock("{{#if IsPaid}}Paid{{/if}}"), Is.False);
+            Assert.That(ConditionalBlocks.OpensBlock("{{ IsPaid }}"), Is.False);
+            Assert.That(ConditionalBlocks.OpensBlock(null), Is.False);
         });
     }
 
@@ -134,5 +179,16 @@ public class ConditionalBlocksTests
         var ex = Assert.Throws<FormatException>(() => ConditionalBlocks.Resolve(["{{#if}}", "{{/if}}"], _ => true));
 
         Assert.That(ex!.Message, Does.Contain("{{#if Key}}"));
+    }
+
+    [TestCase("{{#unless IsPaid}}")]
+    [TestCase("{{else if IsDue}}")]
+    [TestCase("{{/unless}}")]
+    [TestCase("{{#each Lines}}")]
+    public void A_Marker_This_Syntax_Does_Not_Know_Fails(string marker)
+    {
+        var ex = Assert.Throws<FormatException>(() => ConditionalBlocks.Resolve(["{{#if IsPaid}}", marker, "{{/if}}"], _ => true));
+
+        Assert.That(ex!.Message, Does.Contain(marker).And.Contain("not a conditional marker"));
     }
 }

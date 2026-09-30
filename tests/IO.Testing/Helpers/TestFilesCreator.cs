@@ -22,8 +22,9 @@ public class TestFilesCreator
     {
         foreach (var file in TestFiles)
         {
-            var path = Path.Combine(root, file);
-            var filename = Path.GetFileName(file);
+            // the identifiers keep '\', which every file service accepts; the files on disk use the platform's separator
+            var path = Path.Combine(root, file.Replace('\\', Path.DirectorySeparatorChar));
+            var filename = Path.GetFileName(path);
             var dir = Path.GetDirectoryName(path);
             Directory.CreateDirectory(dir ?? throw new InvalidOperationException());
             File.WriteAllText(path, filename);

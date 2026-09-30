@@ -231,6 +231,7 @@ Regira.Entities.Web                       ← Web API entry point — EntityCont
       └─ Regira.Entities                  abstractions / interfaces
 
 Regira.Entities.Mapping.Mapster           ← add separately — DTO mapping (NOT pulled transitively)
+Regira.Entities.Validation.FluentValidation ← optional — AbstractValidator rules as entity validators
 ```
 
 | Host | Install |

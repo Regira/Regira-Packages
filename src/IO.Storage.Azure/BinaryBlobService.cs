@@ -187,7 +187,7 @@ public class BinaryBlobService(AzureCommunicator communicator) : IFileService
     {
         await communicator.Open();
         var blob = GetBlobReference(identifier);
-        var headers = new BlobHttpHeaders { ContentType = contentType ?? ContentTypeUtility.GetContentType(identifier) };
+        var headers = new BlobHttpHeaders { ContentType = GetContentType(identifier, contentType) };
         await blob.UploadAsync(new BinaryData(bytes), new BlobUploadOptions { HttpHeaders = headers });
         return FileNameUtility.GetRelativeUri(identifier, Root);
     }
@@ -195,7 +195,7 @@ public class BinaryBlobService(AzureCommunicator communicator) : IFileService
     {
         await communicator.Open();
         var blob = GetBlobReference(identifier);
-        var headers = new BlobHttpHeaders { ContentType = contentType ?? ContentTypeUtility.GetContentType(identifier) };
+        var headers = new BlobHttpHeaders { ContentType = GetContentType(identifier, contentType) };
         stream.Position = 0;
         await blob.UploadAsync(stream, new BlobUploadOptions { HttpHeaders = headers });
         return FileNameUtility.GetRelativeUri(identifier, Root);
@@ -237,5 +237,9 @@ public class BinaryBlobService(AzureCommunicator communicator) : IFileService
     [Obsolete("A BlobClient carries no content type: Save sets it on upload. Use GetBlobReference(identifier).")]
     protected internal BlobClient GetBlobReference(string identifier, string? contentType = null)
         => GetBlobReference(identifier);
+
+    /// <summary>The content type the caller gives, or else the one the identifier's extension implies.</summary>
+    private static string GetContentType(string identifier, string? contentType)
+        => string.IsNullOrWhiteSpace(contentType) ? ContentTypeUtility.GetContentType(identifier) : contentType;
 
 }

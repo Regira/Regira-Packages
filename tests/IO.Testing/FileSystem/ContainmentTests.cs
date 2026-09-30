@@ -66,13 +66,14 @@ public class ContainmentTests
         Assert.DoesNotThrow(() => ZipUtility.ExtractFiles(_root, readArchive.Entries));
     }
 
-    [Test]
-    public void ZipUtility_Traversal_Entry_Throws()
+    [TestCase("../../evil.txt")]
+    [TestCase(@"..\..\evil.txt")]
+    public void ZipUtility_Traversal_Entry_Throws(string entryName)
     {
         var ms = new MemoryStream();
         using (var archive = new ZipArchive(ms, ZipArchiveMode.Create, leaveOpen: true))
         {
-            using var writer = new StreamWriter(archive.CreateEntry("../../evil.txt").Open());
+            using var writer = new StreamWriter(archive.CreateEntry(entryName).Open());
             writer.Write("evil");
         }
         ms.Position = 0;

@@ -3,6 +3,7 @@ using Regira.IO.Extensions;
 using Regira.IO.Models;
 using Regira.IO.Storage.FileSystem;
 using Regira.IO.Storage.Helpers;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Compression;
 
 namespace Regira.IO.Storage.Compression;
@@ -78,7 +79,10 @@ public static class ZipUtility
             var filename = file.Identifier
                 ?? file.FileName
                 ?? throw new Exception($"{nameof(file.Identifier)} and {nameof(file.FileName)} of file should not be empty");
-            var entry = archive.Find(filename) ?? archive.CreateEntry(filename);
+            // the ZIP format separates folders with '/' only: an entry named "dir\file.txt" unzips on
+            // Linux and macOS as one file with a backslash in its name
+            var entryName = NormalizePath(filename);
+            var entry = archive.Find(entryName) ?? archive.CreateEntry(entryName);
             using var entryStream = entry.Open();
             fileStream.Seek(0, SeekOrigin.Begin);
             fileStream.CopyTo(entryStream);
@@ -121,7 +125,10 @@ public static class ZipUtility
         foreach (var entry in entries)
         {
             using var zipStream = entry.Open();
-            var fullPath = FileNameUtility.EnsureContained(Path.Combine(targetDirectory, entry.FullName.TrimEnd('/')), targetDirectory);
+            // read '\' as a separator too, so an entry some Windows tool wrote with backslashes still
+            // extracts into its folders, and a "..\" in it is caught by the containment check
+            var entryPath = FileNameUtility.ConvertForwardSlashes(entry.FullName).TrimEnd(Path.DirectorySeparatorChar);
+            var fullPath = FileNameUtility.EnsureContained(Path.Combine(targetDirectory, entryPath), targetDirectory);
             if (IsDirectory(entry))
             {
                 Directory.CreateDirectory(fullPath);
@@ -147,10 +154,11 @@ public static class ZipUtility
         using var entryStream = entry.Open();
         entryStream.CopyTo(ms);
         ms.Position = 0;
+        var identifier = NormalizePath(entry.FullName);
         var item = new BinaryFileItem
         {
-            Identifier = entry.FullName,
-            FileName = entry.Name,
+            Identifier = identifier,
+            FileName = Path.GetFileName(identifier),
             Length = entry.Length,
             Stream = ms
         };
@@ -178,9 +186,11 @@ public static class ZipUtility
 
     public static bool IsDirectory(this ZipArchiveEntry entry)
     {
-        return entry.FullName.EndsWith("/");
+        return entry.FullName.EndsWith("/") || entry.FullName.EndsWith("\\");
     }
 
-    private static string? NormalizePath(string? path)
+    /// <summary>An entry name as the ZIP format writes it: '/' separators and no leading '/'.</summary>
+    [return: NotNullIfNotNull(nameof(path))]
+    internal static string? NormalizePath(string? path)
         => path?.Replace('\\', '/').TrimStart('/');
 }

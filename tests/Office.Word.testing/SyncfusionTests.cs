@@ -135,6 +135,18 @@ public class SyncfusionTests() : WordTestsBase(CreateService(), "Syncfusion")
     [Test]
     public override Task A_Marker_Edited_Under_Track_Changes_Reads_As_Edited() => base.A_Marker_Edited_Under_Track_Changes_Reads_As_Edited();
 
+    [Test]
+    public override Task Marker_Text_In_A_Document_Without_Blocks_Stays_As_It_Is() => base.Marker_Text_In_A_Document_Without_Blocks_Stays_As_It_Is();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Text_Box_Or_Content_Control_Leaves_A_Paragraph() => base.A_Conditional_Block_In_A_Text_Box_Or_Content_Control_Leaves_A_Paragraph();
+
+    [Test]
+    public override Task A_Marker_Paragraph_Ending_A_Section_Leaves_Only_The_Break() => base.A_Marker_Paragraph_Ending_A_Section_Leaves_Only_The_Break();
+
+    [Test]
+    public override Task A_Block_In_A_Footnote_Stays_As_Text() => base.A_Block_In_A_Footnote_Stays_As_Text();
+
     [TestCase(true)]
     [TestCase(false)]
     public override Task A_Dropped_Branch_Inserts_No_Nested_Document(bool hasAppendix) => base.A_Dropped_Branch_Inserts_No_Nested_Document(hasAppendix);

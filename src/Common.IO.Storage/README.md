@@ -230,6 +230,10 @@ var service = new BinaryBlobService(communicator);
 | `ContainerName` | `string?` | `null` | Blob container name |
 | `CreateContainerIfNotExists` | `bool` | `true` | Create the container when missing — set `false` to fail fast on misconfigured names |
 
+`Save` stores its `contentType` as the blob's `Content-Type`, which decides whether a browser following a SAS or CDN
+link shows the file or downloads it. Without one — `null`, empty or blank — the type comes from the identifier's
+extension.
+
 ---
 
 ### SSH / SFTP (`SftpService`)
@@ -339,6 +343,10 @@ BinaryFileCollection items  = ZipUtility.Unzip(existingZip);           // zip �
 string[] extracted          = ZipUtility.Unzip(existingZip, targetDirectory: "/tmp/out");
 ```
 
+An entry is named after the file's `Identifier` (its `FileName` when there is none) with `/` between folders,
+as the ZIP format requires, so an archive made on Windows unzips into the same folders on Linux and macOS.
+`Unzip` reads a `\` in an entry name as a separator too.
+
 ## Helpers
 
 ### FileProcessor — recursive processing
@@ -382,7 +390,7 @@ FileNameUtility.GetAbsoluteUri("folder/file.txt", root)
 FileNameUtility.GetRelativeUri(absolutePath, root)
 FileNameUtility.GetCleanFileName("folder/sub/file.txt")  // → "file.txt"
 FileNameUtility.Combine("folder", "sub", "file.txt")
-FileNameUtility.SanitizeFilename(@"CON\report.txt")      // → @"_XXX_\report.txt" — replaces path segments that exactly match a Windows reserved name ("con.txt" is left as-is)
+FileNameUtility.SanitizeFilename(@"CON\report:v2.txt")   // → "_XXX_/report_v2.txt" ('\' on Windows) — replaces the characters Windows rejects and any path segment that exactly matches a Windows reserved name ("con.txt" is left as-is), on every platform
 FileNameUtility.GetUncShareRoot(@"\\server\share\sub")   // → @"\\server\share" (null for non-UNC)
 ```
 

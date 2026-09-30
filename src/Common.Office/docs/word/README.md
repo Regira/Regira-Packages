@@ -182,10 +182,11 @@ IMemoryFile doc = await word.Create(new WordTemplateInput
 ```
 
 - `{{#if Key}}` holds when `GlobalParameters[Key]` is set to anything but `null`, `false`, an empty or blank
-  string, zero or an empty collection. An enum value always holds, its zero member included: compare it in code
-  (`["IsDraft"] = status == Status.Draft`). A `CollectionParameters` key holds when its collection has rows, so
-  `{{#if Items}}` drops a heading together with its empty table. A key found in neither is false, and keys
-  match regardless of case.
+  string, zero or an empty collection. The texts `"false"` and `"0"` hold: convert a form or query-string value to
+  `bool` before passing it. A JSON value is read by its kind, so a JSON `false`, `0`, `[]` or `{}` is false. An enum
+  value always holds, its zero member included: compare it in code (`["IsDraft"] = status == Status.Draft`). A
+  `CollectionParameters` key holds when its collection has rows, so `{{#if Items}}` drops a heading together with
+  its empty table. A key found in neither is false, and keys match regardless of case.
 - `{{#if !Key}}` negates. `{{else}}` is optional, and blocks nest.
 - Markers are read from the text Word shows: one in a field code or a tracked deletion is not a marker, and a
   marker edited under track changes reads as edited.
@@ -194,9 +195,15 @@ IMemoryFile doc = await word.Create(new WordTemplateInput
   images and nested documents are never processed.
 - There is no comparison syntax: compute the flag in code (`["IsOverdue"] = dueDate < DateTime.Today`).
 - A block inside a collection table's template row is decided once, for every row.
-- A block opens and closes in the same body, table cell, header or footer, and within one section. A block that
-  does not — or a `{{/if}}` or `{{else}}` without its `{{#if}}`, a second `{{else}}`, or a marker sharing its
-  paragraph with other text — throws `FormatException`.
+- A block opens and closes in the same body, table cell, text box, header or footer, and within one section.
+  Footnotes, endnotes and comments are not read for markers.
+- A document uses blocks when one of its paragraphs is `{{#if Key}}` or `{{#if !Key}}` and nothing else, and only
+  then are its blocks resolved. Everything else in a document that uses none stays as it is — marker text among
+  other text, a stray `{{else}}` or `{{/if}}`, another template language's `{{#each}}` — so a finished document
+  that writes about templates converts and reads unchanged.
+- In a document that uses blocks, these throw `FormatException`: a block that does not open and close in one
+  container and section, a `{{/if}}` or `{{else}}` without its `{{#if}}`, a second `{{else}}`, a marker sharing its
+  paragraph with other text, and a marker this syntax does not know, such as `{{#unless X}}` or `{{else if X}}`.
 
 ## Implementation notes
 

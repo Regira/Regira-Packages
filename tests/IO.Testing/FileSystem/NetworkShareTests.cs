@@ -82,6 +82,7 @@ public class NetworkShareTests
     }
 
     [Test]
+    [Platform("Win", Reason = "a UNC path is a Windows path; elsewhere '\\' is not a separator")]
     public void FileService_Uri_Helpers_Do_Not_Connect()
     {
         using var communicator = new NetworkShareCommunicator(new NetworkFileSystemOptions

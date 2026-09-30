@@ -427,14 +427,24 @@ public class WordService : IWordService
     }
     /// <summary>
     /// Keeps the branch of each <c>{{#if Key}}</c> … <c>{{else}}</c> … <c>{{/if}}</c> block that holds and removes the
-    /// rest, marker paragraphs included — in the body, table cells, headers and footers.
+    /// rest, marker paragraphs included — in the body, table cells, text boxes, headers and footers. A document with
+    /// no paragraph opening a block uses no blocks and is left as it is.
     /// </summary>
     protected internal void ResolveConditions(Document doc, WordTemplateInput input)
     {
-        var containers = doc.ToTreeList()
+        var paragraphs = doc.ToTreeList()
             .FindAllParagraphs()
-            .Where(paragraph => ConditionalBlocks.ContainsMarker(GetVisibleText(paragraph)))
-            .Select(paragraph => paragraph.Owner)
+            .Where(paragraph => !IsInNoteOrComment(paragraph))
+            .Select(paragraph => (Paragraph: paragraph, Text: GetVisibleText(paragraph)))
+            .ToArray();
+        if (!paragraphs.Any(paragraph => ConditionalBlocks.OpensBlock(paragraph.Text)))
+        {
+            return;
+        }
+
+        var containers = paragraphs
+            .Where(paragraph => ConditionalBlocks.ContainsMarker(paragraph.Text))
+            .Select(paragraph => paragraph.Paragraph.Owner)
             .Distinct()
             .ToArray();
 
@@ -450,12 +460,26 @@ public class WordService : IWordService
                 children.RemoveAt(index);
             }
 
-            // a cell, body, header or footer has to end with a paragraph
+            // whatever holds paragraphs ends with one: a body, cell, header, footer, text box or content control
             if (container is Body body && (children.Count == 0 || children[children.Count - 1] is Table))
             {
                 body.AddParagraph();
             }
         }
+    }
+    /// <summary>
+    /// Whether the paragraph belongs to a footnote, endnote or comment, which are not part of a template's blocks.
+    /// </summary>
+    private static bool IsInNoteOrComment(SpireParagraph paragraph)
+    {
+        for (var owner = paragraph.Owner; owner != null; owner = owner.Owner)
+        {
+            if (owner is Footnote or Comment)
+            {
+                return true;
+            }
+        }
+        return false;
     }
     /// <summary>
     /// The paragraph's text without its deleted revisions, and with an inline content control's — what

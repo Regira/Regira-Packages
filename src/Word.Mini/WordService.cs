@@ -263,43 +263,54 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
 
     /// <summary>
     /// Keeps the branch of each <c>{{#if Key}}</c> … <c>{{else}}</c> … <c>{{/if}}</c> block that holds and removes the
-    /// rest, marker paragraphs included — in the body, table cells, headers and footers — before MiniWord sees the
-    /// template, so conditions read the same as on the other backends. MiniWord's own <c>@if</c> is left alone.
+    /// rest, marker paragraphs included — in the body, table cells, text boxes, headers and footers — before MiniWord
+    /// sees the template, so conditions read the same as on the other backends. MiniWord's own <c>@if</c> is left
+    /// alone. A template with no paragraph opening a block uses no blocks and is returned as it is.
     /// </summary>
     internal static byte[] ResolveConditions(byte[] template, WordTemplateInput input)
     {
+        // read-only first: an editable package is written again when it closes, changed or not
+        if (!UsesBlocks(template))
+        {
+            return template;
+        }
+
         using var stream = new MemoryStream();
         stream.Write(template, 0, template.Length);
-        var changed = false;
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
-            foreach (var (_, root) in ContentRoots(doc.MainDocumentPart))
-            {
-                var containers = root.Descendants<W.Paragraph>()
-                    .Where(paragraph => ConditionalBlocks.ContainsMarker(GetOwnText(paragraph)))
-                    .Select(paragraph => paragraph.Parent)
-                    .OfType<OpenXmlElement>()
-                    .Distinct()
-                    .ToArray();
+            var containers = ContentRoots(doc.MainDocumentPart)
+                .SelectMany(content => content.Root.Descendants<W.Paragraph>())
+                .Where(paragraph => ConditionalBlocks.ContainsMarker(GetOwnText(paragraph)))
+                .Select(paragraph => paragraph.Parent)
+                .OfType<OpenXmlElement>()
+                .Distinct()
+                .ToArray();
 
-                foreach (var container in containers)
+            foreach (var container in containers)
+            {
+                foreach (var segment in Segments(container))
                 {
-                    foreach (var segment in Segments(container))
+                    var texts = segment.Select(child => child is W.Paragraph paragraph ? GetOwnText(paragraph) : null).ToArray();
+                    foreach (var index in ConditionalBlocks.Resolve(texts, input))
                     {
-                        var texts = segment.Select(child => child is W.Paragraph paragraph ? GetOwnText(paragraph) : null).ToArray();
-                        foreach (var index in ConditionalBlocks.Resolve(texts, input))
-                        {
-                            Remove(segment[index]);
-                        }
+                        Remove(segment[index]);
                     }
-                    EndWithParagraph(container);
-                    changed = true;
                 }
+                EndWithParagraph(container);
             }
         }
 
         // disposing an editable document writes it back to the stream
-        return changed ? stream.ToArray() : template;
+        return stream.ToArray();
+    }
+
+    private static bool UsesBlocks(byte[] template)
+    {
+        using var doc = WordprocessingDocument.Open(new MemoryStream(template, false), false);
+        return ContentRoots(doc.MainDocumentPart)
+            .SelectMany(content => content.Root.Descendants<W.Paragraph>())
+            .Any(paragraph => ConditionalBlocks.OpensBlock(GetOwnText(paragraph)));
     }
 
     /// <summary>
@@ -328,15 +339,21 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
     }
 
     /// <summary>
-    /// Removes a block's child. A paragraph carrying section properties is emptied instead, so the section break stays.
+    /// Removes a block's child. A paragraph carrying section properties keeps them and nothing else, so the section
+    /// break stays and none of the paragraph's own formatting — numbering, a page break before it — is left behind
+    /// on an empty line.
     /// </summary>
     private static void Remove(OpenXmlElement child)
     {
-        if (child is W.Paragraph { ParagraphProperties.SectionProperties: not null } sectionEnd)
+        if (child is W.Paragraph { ParagraphProperties: { SectionProperties: not null } properties } sectionEnd)
         {
-            foreach (var content in sectionEnd.ChildElements.Where(c => c is not W.ParagraphProperties).ToArray())
+            foreach (var content in sectionEnd.ChildElements.Where(c => c != properties).ToArray())
             {
                 content.Remove();
+            }
+            foreach (var property in properties.ChildElements.Where(c => c is not W.SectionProperties).ToArray())
+            {
+                property.Remove();
             }
             return;
         }
@@ -344,15 +361,11 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
     }
 
     /// <summary>
-    /// A cell, header, footer or body ends with a paragraph — Word refuses a cell without one — so one is added
-    /// when a dropped branch took the last.
+    /// Whatever holds paragraphs ends with one — a body, cell, header, footer, text box or content control; Word
+    /// refuses a cell or text box without one — so one is added when a dropped branch took the last.
     /// </summary>
     private static void EndWithParagraph(OpenXmlElement container)
     {
-        if (container is not (W.TableCell or W.Body or W.Header or W.Footer))
-        {
-            return;
-        }
         var last = container.ChildElements.LastOrDefault(child => child is W.Paragraph or W.Table or W.SdtBlock);
         if (last is W.Paragraph)
         {

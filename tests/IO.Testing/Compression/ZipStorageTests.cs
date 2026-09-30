@@ -1,5 +1,6 @@
 ﻿using IO.Testing.Helpers;
 using Regira.IO.Abstractions;
+using Regira.IO.Storage;
 using Regira.IO.Storage.Compression;
 
 namespace IO.Testing.Compression;
@@ -69,6 +70,16 @@ public class ZipStorageTests
         Assert.That(await StorageTestContext.FileService.Exists(identifier), Is.True);
         await using var stream = await StorageTestContext.FileService.GetStream(identifier);
         Assert.That(stream, Is.Not.Null);
+    }
+
+    [TestCase("dir2/dir2.1")]
+    [TestCase(@"dir2\dir2.1")]
+    public async Task List_Nested_Folder(string folderUri)
+    {
+        var files = await StorageTestContext.FileService.List(new FileSearchObject { FolderUri = folderUri });
+
+        var expected = StorageTestContext.SourceFiles.Count(x => x.Identifier!.StartsWith(@"dir2\dir2.1\"));
+        Assert.That(files.Count(), Is.EqualTo(expected));
     }
 
     [Test]

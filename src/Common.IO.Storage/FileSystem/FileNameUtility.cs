@@ -106,17 +106,17 @@ public static class FileNameUtility
         "COM0", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
         "LPT0", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"
     ];
+    // The characters Windows rejects in a file name. Like the reserved words, they are replaced on every
+    // platform, so a sanitized name stays valid wherever the file ends up.
+    private static readonly Regex InvalidFileNameChars = new(@"[\x00-\x1F""<>|:*?]+");
     //http://stackoverflow.com/questions/309485/c-sharp-sanitize-file-name#answer-12924582
     public static string SanitizeFilename(string filename, string replacement = "_XXX_")
     {
-        var invalidChars = Regex.Escape(new string(Path.GetInvalidFileNameChars()));
-        var invalidReStr = $@"[{invalidChars}]+"; // "<>\|
-
         var segments = ConvertForwardSlashes(filename)
-            .Split('\\')
-            .Select(s => Regex.Replace(s, invalidReStr, "_"))
+            .Split(Path.DirectorySeparatorChar)
+            .Select(s => InvalidFileNameChars.Replace(s, "_"))
             .Select(s => ReservedWords.Contains(s, StringComparer.InvariantCultureIgnoreCase) ? replacement : s);
 
-        return string.Join("\\", segments);
+        return string.Join(Path.DirectorySeparatorChar, segments);
     }
 }

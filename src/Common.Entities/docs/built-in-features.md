@@ -100,8 +100,8 @@ public class EntityConstraintException(string message, Exception? innerException
   `DbUpdateException`; `DbContext.SaveChanges()` throws EF's `DbUpdateException` for both. `Message` is the same
   generic text (safe to render anywhere); the provider message is on `InnerException` and in the write service's
   warning log.
-- The response is deliberately generic — throw `EntityInputException` from a prepper when the client
-  should receive a field-level 400 instead.
+- The response is deliberately generic — check the rule in a [validator](services.md#entity-validators) when the
+  client should receive a field-level 400 instead; a validator also runs on the delete a `Restrict` FK refuses.
 
 
 ### Concurrency Exceptions
@@ -382,56 +382,10 @@ public class Order : IEntity<int>
 
 ### Validators
 
-A validator refuses a write. It runs after every prepper on `Add` / `Modify` / `Save`, and on `Remove`, where no
-prepper runs; the errors of every validator in scope reach the client as one 400, `DELETE` included.
-
-```csharp
-.For<Order>(e => e
-    .Validate(ctx =>
-    {
-        if (ctx.Operation == EntityWriteOperation.Remove && ctx.Item.Status == OrderStatus.Shipped)
-            ctx.AddError(nameof(Order.Status), "A shipped order cannot be deleted.");
-    })
-    .Validate(async (ctx, db, token) =>
-    {
-        if (ctx.Operation != EntityWriteOperation.Remove && !await db.Customers.AnyAsync(c => c.Id == ctx.Item.CustomerId, token))
-            ctx.AddError(nameof(Order.CustomerId), $"Customer {ctx.Item.CustomerId} does not exist.");
-    }));
-
-// global: one validator for every entity implementing the interface
-services.UseEntities<AppDbContext>(o => o.AddValidator<TenantValidator>());
-
-public class TenantValidator : EntityValidatorBase<IHasTenantId>
-{
-    public override Task Validate(IEntityValidatorContext<IHasTenantId> ctx, CancellationToken token = default)
-    {
-        if (string.IsNullOrEmpty(ctx.Item.TenantId))
-            ctx.AddError(nameof(IHasTenantId.TenantId), "A tenant is required.");
-        return Task.CompletedTask;
-    }
-}
-```
-
-| Scope | Runs for |
-|-------|----------|
-| `EntityValidatorBase<Order>` | `Order` only |
-| `EntityValidatorBase<Party>` | `Person` and `Organization`, whichever service saves them |
-| `EntityValidatorBase<IHasTenantId>` | every entity implementing `IHasTenantId` |
-
-- **The runtime type decides.** A `Person` saved through the `Party` service gets its `Person` validators too; the
-  exception is still the service's own `EntityInputException<Party>`.
-- **The place of registration never narrows the scope.** A validator on an interface added inside one `For<>()`
-  checks every entity implementing it. Register such a validator once, globally; a class registered twice runs once.
-- **Children are validated through their parent.** A validator checks the entity a write service saves, not the rows
-  a `Related()` sync writes — check `Lines` from the `Order` validator, with keys like `Lines[0].Quantity`.
-- **Validators read, preppers write.** `ctx.Item` is the instance that gets saved, so a value a validator sets is
-  still written; change the entity in a prepper.
-- **A custom write path** passes `IEnumerable<IEntityValidator>` to the `EntityWriteService` base constructor (the
-  constructor without it runs no validators), or — over another store — calls
-  `validators.ValidateItem(item, original, operation)` before it writes.
-
-**FluentValidation** — the `Regira.Entities.Validation.FluentValidation` package runs `AbstractValidator<T>` rules in
-this stage, under the same scope rule:
+A validator refuses a write; [Entity Validators](services.md#entity-validators) explains the stage — where it runs,
+which validators apply to an entity, and what a refusal leaves behind. The `Regira.Entities.Validation.FluentValidation`
+package runs `AbstractValidator<T>` rules in that stage, under the same scope rule: an `AbstractValidator<Party>`
+checks a `Person` saved through any service.
 
 ```csharp
 services.UseEntities<AppDbContext>(o =>
