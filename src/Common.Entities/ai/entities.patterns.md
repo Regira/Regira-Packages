@@ -17,7 +17,7 @@ foreach (var product in products)
 await service.SaveChanges();      // one round-trip flushes the whole batch
 ```
 
-> ⚠️ **Writes batch; preppers and validators do not.** `Add()` issues no round-trip while nothing is registered against the entity — a prepper or validator that queries the `DbContext` (an existence check, a price lookup, a per-row `FindAsync`) runs **inside the loop**, once per item. A 500-row seed wave against an entity with a two-query prepper issues ~1,000 round-trips before the single flush, and nothing in the code shape shows it. Hoist the lookup into a dictionary built once before the loop. Each `Add()` / `Modify()` of an entity a validator runs for also has EF compare every row the context tracks, so a refused write can tell the caller's edits from its preppers': that pass grows with everything tracked since the last flush, so across one flush its total grows with the square of the row count. A very large run saves in waves (*The change tracker is cleared after every `SaveChanges()`*, below) rather than in one flush at the end, or sets `ChangeTracker.AutoDetectChangesEnabled = false` for the run, which skips the pass: detection is then the job's, and a refusal cannot take back a prepper's edit EF never detected.
+> ⚠️ **Writes batch; preppers and validators do not.** `Add()` issues no round-trip while nothing is registered against the entity — a prepper or validator that queries the `DbContext` (an existence check, a price lookup, a per-row `FindAsync`) runs **inside the loop**, once per item. A 500-row seed wave against an entity with a two-query prepper issues ~1,000 round-trips before the single flush, and nothing in the code shape shows it. Hoist the lookup into a dictionary built once before the loop.
 
 Two timing facts drive how you order a bulk run:
 
@@ -86,7 +86,7 @@ await links.SaveChanges();   // one flush; pipeline writes files, fills Path/Len
 ```
 
 - The bytes→file step runs only inside this pipeline, **not** during an owner-graph cascade. Set the nested `Attachment` on the link, don't nest under `owner.Attachments` and save the owner.
-- The `New*` fields (`NewBytes`/`NewFileName`/`NewContentType`) **replace** an existing attachment's content — they don't create one. Setting them without a nested `Attachment` leaves `AttachmentId` at `0` and fails the FK.
+- The `New*` fields (`NewBytes`/`NewFileName`) **replace** an existing attachment's content — they don't create one. Setting them without a nested `Attachment` leaves `AttachmentId` at `0` and fails the FK. The content type follows the file name: `NewContentType` is obsolete and ignored.
 
 ## In-code recipes (how_to)
 
@@ -117,9 +117,9 @@ await links.SaveChanges(); // pipeline writes the file, fills Path/Length, assig
 ```
 
 - The bytes→file step runs only inside this pipeline, **not** during an owner-graph cascade.
-- `New*` fields (`NewBytes`/`NewFileName`/`NewContentType`) **replace** an existing
+- `New*` fields (`NewBytes`/`NewFileName`) **replace** an existing
   attachment's content — they don't create one. Without a nested `Attachment`, `AttachmentId`
-  stays `0` and the FK fails.
+  stays `0` and the FK fails. The content type follows the file name (`NewContentType` is ignored).
 
 **See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "Bulk insert / update")`
 and `get_package(id: "Regira.Entities", section: "examples", heading: "Attachments")`.

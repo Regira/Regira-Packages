@@ -319,6 +319,38 @@ public class ConcurrencyTokenMarkerTests
     }
 
     [Test]
+    public async Task A_Required_Stamp_The_Client_Leaves_Out_Is_Refused_Before_A_Prepper_Marks_A_Row()
+    {
+        var services = new ServiceCollection();
+        services.AddDbContext<ShopContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<ShopContext>(o => o.UseDefaults())
+            .For<Draft>()
+            // marks a row of its own, as a Related() sync marks the children
+            .For<Reservation>(e => e.Prepare((_, db) =>
+            {
+                db.Drafts.Add(new Draft { Title = "Marked by the write" });
+                return Task.CompletedTask;
+            }));
+        await using var sp = services.BuildServiceProvider();
+        int id;
+        await using (var raw = Raw())
+        {
+            await raw.Database.EnsureCreatedAsync();
+            var seeded = new Reservation { Room = "A1", ConcurrencyToken = Guid.NewGuid() };
+            raw.Reservations.Add(seeded);
+            await raw.SaveChangesAsync();
+            id = seeded.Id;
+        }
+
+        using var scope = sp.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Reservation, int>>();
+        await Assert.ThrowsAsync<EntityInputException<Reservation>>(() => service.Modify(new Reservation { Id = id, Room = "B2" }));
+
+        Assert.That(scope.ServiceProvider.GetRequiredService<ShopContext>().ChangeTracker.Entries<Draft>(), Is.Empty,
+            "a later SaveChanges in the scope writes nothing of the refused update");
+    }
+
+    [Test]
     public async Task A_Required_Stamp_Is_Checked_Like_Any_Other()
     {
         using var sp = await Defaults();

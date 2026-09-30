@@ -43,11 +43,8 @@ Task<int> SaveChanges(CancellationToken token = default)
 
 **EntityInputException**: returned as BadRequest (400), with its errors as the ModelState payload — a flat map
 of each key to its messages. `Errors` holds every message, several per key, and is what the body is built from; with
-no errors, the exception's message goes out under the empty key. `InputErrors` is a view over `Errors` with one
-message per key, a key's messages joined by a space: setting a key replaces that key's messages in `Errors`, so a
-handler that adds one to a caught rejection before rethrowing it reaches the body. Assigning a whole dictionary
-copies its entries, so a change made to that dictionary afterwards does not reach the exception. The keys go out as thrown: System.Text.Json applies no dictionary-key policy, so
-`nameof(Order.Status)` reaches a camelCase client as `Status`. A host that sets `DictionaryKeyPolicy`, or serializes
+no errors, the exception's message goes out under the empty key. The keys go out as thrown: System.Text.Json applies
+no dictionary-key policy, so `nameof(Order.Status)` reaches a camelCase client as `Status`. A host that sets `DictionaryKeyPolicy`, or serializes
 with Newtonsoft's camelCase resolver, camelCases them.
 
 ```csharp
@@ -55,7 +52,9 @@ public abstract class EntityInputException(string message, Exception? innerExcep
     : Exception(message, innerException)
 {
     public IList<EntityInputError> Errors { get; set; }          // pre-initialized
-    public IDictionary<string, string> InputErrors { get; set; } // a view over Errors
+    // a view over Errors, one message per key (joined by a space): setting a key replaces its messages, so a key
+    // added to a caught rejection reaches the 400; assigning a dictionary copies its entries
+    public IDictionary<string, string> InputErrors { get; set; }
 }
 
 public record EntityInputError(string Key, string Message);

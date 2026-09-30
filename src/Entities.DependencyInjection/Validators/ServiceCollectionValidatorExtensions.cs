@@ -88,13 +88,10 @@ public static class ServiceCollectionValidatorExtensions
     /// <summary>
     /// Registers <paramref name="validate"/> as a validator for <typeparamref name="TScope"/>, receiving the request's
     /// <typeparamref name="TContext"/> — e.g. to check that a referenced row exists. Each call adds a validator of its own.
+    /// The context is unfiltered — global filters (tenant, owner) do not apply to it — so check a row-secured reference
+    /// through <c>IEntityReadService&lt;,&gt;</c> in a validator class instead. <paramref name="validate"/> receives the
+    /// write's cancellation token, to pass to its queries.
     /// </summary>
-    public static IServiceCollection AddValidator<TContext, TScope>(this IServiceCollection services, Func<IEntityValidatorContext<TScope>, TContext, Task> validate)
-        where TContext : DbContext
-        where TScope : class
-        => services.AddTransient<IEntityValidator>(p => new EntityValidator<TContext, TScope>(p.GetRequiredService<TContext>(), validate));
-    /// <inheritdoc cref="AddValidator{TContext,TScope}(IServiceCollection,Func{IEntityValidatorContext{TScope},TContext,Task})"/>
-    /// <remarks><paramref name="validate"/> receives the write's cancellation token, to pass to its queries.</remarks>
     public static IServiceCollection AddValidator<TContext, TScope>(this IServiceCollection services, Func<IEntityValidatorContext<TScope>, TContext, CancellationToken, Task> validate)
         where TContext : DbContext
         where TScope : class
@@ -128,17 +125,9 @@ public static class ServiceCollectionValidatorExtensions
     }
     /// <summary>
     /// Registers <paramref name="validate"/> globally, for every entity in <typeparamref name="TScope"/>, receiving the
-    /// request's <typeparamref name="TContext"/>.
+    /// request's <typeparamref name="TContext"/> and the write's cancellation token. The context is unfiltered, as it is for
+    /// <see cref="AddValidator{TContext,TScope}(IServiceCollection,Func{IEntityValidatorContext{TScope},TContext,CancellationToken,Task})"/>.
     /// </summary>
-    public static EntityServiceCollectionOptions AddValidator<TContext, TScope>(this EntityServiceCollectionOptions options, Func<IEntityValidatorContext<TScope>, TContext, Task> validate)
-        where TContext : DbContext
-        where TScope : class
-    {
-        options.Services.AddValidator(validate);
-        return options;
-    }
-    /// <inheritdoc cref="AddValidator{TContext,TScope}(EntityServiceCollectionOptions,Func{IEntityValidatorContext{TScope},TContext,Task})"/>
-    /// <remarks><paramref name="validate"/> receives the write's cancellation token, to pass to its queries.</remarks>
     public static EntityServiceCollectionOptions AddValidator<TContext, TScope>(this EntityServiceCollectionOptions options, Func<IEntityValidatorContext<TScope>, TContext, CancellationToken, Task> validate)
         where TContext : DbContext
         where TScope : class

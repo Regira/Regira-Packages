@@ -150,7 +150,7 @@ public class SeveredRequiredRelationshipTests
     [Test]
     public async Task A_Relationship_Severed_Before_A_Validated_Write_Is_Reported_By_SaveChanges()
     {
-        // a write a validator runs for detects the pending changes first — on a severed link, where EF throws
+        // a write a validator runs for leaves a link the job severed to SaveChanges, as a write no validator runs for does
         IServiceCollection services = new ServiceCollection();
         services.AddDbContext<FolderContext>(db => db.UseSqlite(_connection));
         services.UseEntities<FolderContext>().For<Folder>(e => e.Validate(_ => { }));
@@ -192,7 +192,8 @@ public class SeveredRequiredRelationshipTests
         await db.SaveChangesAsync();
         var service = scope.ServiceProvider.GetRequiredService<IEntityService<Folder, int>>();
 
-        // the item the job writes is the one whose required link it severed: detecting its changes throws in EF
+        // the item the job writes is the one whose required link it severed: detecting its changes, as the undo would when it
+        // looks up the item, throws in EF
         root.Children!.Clear();
 
         await Assert.ThrowsAsync<EntityInputException<Folder>>(() => service.Modify(root));

@@ -261,12 +261,6 @@ public class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchOb
         base.Validate(validate);
         return this;
     }
-    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Validate(Func{IEntityValidatorContext{TEntity},TContext,Task})" />
-    public new EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject> Validate(Func<IEntityValidatorContext<TEntity>, TContext, Task> validate)
-    {
-        base.Validate(validate);
-        return this;
-    }
     /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Validate(Func{IEntityValidatorContext{TEntity},TContext,CancellationToken,Task})" />
     public new EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject> Validate(Func<IEntityValidatorContext<TEntity>, TContext, CancellationToken, Task> validate)
     {

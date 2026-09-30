@@ -48,7 +48,6 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
                     entity.Attachment = new TAttachment();
                     entity.Attachment.Bytes = entity.NewBytes;
                     entity.Attachment.FileName = entity.NewFileName.ToVirtualPath();
-                    entity.Attachment.ContentType = entity.NewContentType;
                 }
                 // Only add when attachment has content
                 if (entity.Attachment?.HasContent() == true)
@@ -63,7 +62,7 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
             {
                 var originalEntity = originalItems.Single(p => p.Id!.Equals(entity.Id));
 
-                if (!string.IsNullOrWhiteSpace(entity.NewFileName) || !string.IsNullOrWhiteSpace(entity.NewContentType) || entity.NewBytes?.Any() == true)
+                if (!string.IsNullOrWhiteSpace(entity.NewFileName) || entity.NewBytes?.Any() == true)
                 {
                     entity.Attachment ??= originalEntity.Attachment;
                 }

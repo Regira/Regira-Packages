@@ -40,6 +40,13 @@ public static class ControllerExtensions
         var contentType = !string.IsNullOrWhiteSpace(file.ContentType)
             ? file.ContentType
             : ContentTypeUtility.GetContentType(file.FileName);
+        // a file that renders as a page runs its scripts on this origin — an upload named .html or .svg, or a type a client
+        // declared before uploads were typed by name. The sandbox lets any file render and run nothing; only a PDF goes
+        // without, since a sandbox keeps the browser's PDF viewer from loading.
+        if (!contentType.Split(';')[0].Trim().Equals("application/pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            ctrl.Response.Headers["Content-Security-Policy"] = "sandbox";
+        }
         return ctrl.File(stream, contentType, inline ? null : file.FileName);
     }
 }

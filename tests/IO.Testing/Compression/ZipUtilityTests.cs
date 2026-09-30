@@ -223,4 +223,27 @@ public class ZipUtilityTests
             Assert.That(inFolder, Is.EqualTo(new[] { "dir1/file1.1.txt" }));
         });
     }
+
+    [Test]
+    public async Task ZipFileService_Lists_A_Folder_Without_Its_Siblings_That_Share_Its_Name()
+    {
+        // expandable: ZipFileService opens its archive for update
+        var zipStream = new MemoryStream();
+        using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create, true))
+        {
+            archive.CreateEntry("dir2/dir2.1/a.txt");
+            archive.CreateEntry("dir2/dir2.10/b.txt");
+        }
+        zipStream.Position = 0;
+        using var zipService = new ZipFileService(new ZipFileCommunicator { SourceFile = zipStream.ToMemoryFile() });
+
+        var saved = await zipService.Save(@"dir2\dir2.1\c.txt", "c"u8.ToArray());
+        var inFolder = await zipService.List(new FileSearchObject { FolderUri = "dir2/dir2.1" });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(inFolder, Is.EquivalentTo(new[] { "dir2/dir2.1/a.txt", "dir2/dir2.1/c.txt" }));
+            Assert.That(saved, Is.EqualTo("dir2/dir2.1/c.txt"), "Save answers the identifier List gives");
+        });
+    }
 }

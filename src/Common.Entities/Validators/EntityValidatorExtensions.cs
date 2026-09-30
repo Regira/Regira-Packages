@@ -49,7 +49,7 @@ public static class EntityValidatorExtensions
     /// <summary>
     /// Whether any of <paramref name="validators"/> runs for an item of <paramref name="itemType"/> — the rule
     /// <see cref="ValidateItem{TEntity}"/> applies. When none does, the write cannot be refused, so a service can skip work
-    /// it does only to support a refusal: <c>EntityWriteService</c> skips its change detection and undo log.
+    /// it does only to support a refusal: <c>EntityWriteService</c> keeps no undo log.
     /// </summary>
     public static bool AnyApplyTo(this IEnumerable<IEntityValidator> validators, Type itemType)
         => validators.Any(validator => EntityValidatorScope.RunsFor(validator, itemType));

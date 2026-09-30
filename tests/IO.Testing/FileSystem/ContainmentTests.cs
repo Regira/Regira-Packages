@@ -70,6 +70,16 @@ public class ContainmentTests
         }
     }
 
+    [Test]
+    public void EnsureContained_Refuses_A_Sibling_Whose_Name_Starts_With_The_Root()
+    {
+        // "Uploads-archive" starts with "Uploads" but is not inside it
+        var root = Path.Combine(_root, "Uploads");
+        var path = Path.Combine(_root, "Uploads-archive", "report.txt");
+
+        Assert.Throws<UnauthorizedAccessException>(() => FileNameUtility.EnsureContained(path, root));
+    }
+
     // --- ZipUtility (Zip Slip) ---
 
     [TestCase("subfolder/file.txt")]
@@ -105,5 +115,18 @@ public class ContainmentTests
         ms.Position = 0;
         using var readArchive = new ZipArchive(ms, ZipArchiveMode.Read, leaveOpen: true);
         Assert.Throws<UnauthorizedAccessException>(() => ZipUtility.ExtractFiles(_root, readArchive.Entries));
+    }
+
+    // a drive letter roots an entry on Windows only; elsewhere "C:" is a folder name like any other
+    [TestCase("C:/evil.txt")]
+    [TestCase(@"C:\evil.txt")]
+    [TestCase("C:evil.txt")]
+    public void ZipUtility_Drive_Letter_Entry_Throws_On_Windows(string entryName)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Ignore("A drive letter roots a path on Windows only.");
+        }
+        ZipUtility_Traversal_Entry_Throws(entryName);
     }
 }

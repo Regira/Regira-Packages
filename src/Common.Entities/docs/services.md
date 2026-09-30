@@ -249,18 +249,12 @@ e.Related<TRelated, TRelatedKey>(x => x.Collection,
   `EntityInputException<TEntity>` of the entity it saves, before the entity is tracked, so the client gets every
   error in one 400, `DELETE` included
 - Inline shortcut is available: `e.Validate(ctx => …)` or `e.Validate(async ctx => …)`, and
-  `e.Validate(async (ctx, db) => …)` with the `DbContext` — or `e.Validate(async (ctx, db, token) => …)` to pass the
-  write's cancellation token to its queries. The write awaits an async delegate, so an error added after an `await`
-  still refuses it
+  `e.Validate(async (ctx, db, token) => …)` with the `DbContext` and the write's cancellation token for its queries. The
+  write awaits an async delegate, so an error added after an `await` still refuses it
 - A `Modify` whose stored row is not found runs no validator: it answers `null` (not found)
 - A refused `Add` or `Modify` takes back what its preppers marked — the rows a `Related()` sync added, changed or
-  deleted, and a prepper's edit to a row the scope loaded earlier — and leaves the item itself untracked, even when
-  the caller tracked it, so a later `SaveChanges()` in the same scope persists none of the write. What the caller
-  changed on other rows before the write stays: when a validator runs for the item, `Add` and `Modify` first let EF
-  detect pending edits (a pass over every tracked row, skipped for a write no validator runs for). Two prepper edits a
-  refusal cannot take back: one to a row already added or changed before the write — the tracker keeps no record of
-  its values in between — and, with `AutoDetectChangesEnabled` off, one EF never detected, since detection is then the
-  caller's
+  deleted — and leaves the item itself untracked, even when the caller tracked it. A prepper's plain edit to another
+  row the scope already tracked stays, since EF notices it only at `SaveChanges()`
 - Scoped like preppers and global filters — to the entity, a base class or an interface (table below) — but matched
   against the item's **runtime** type: a validator on `Person` also runs when a `Person` is saved through the
   `Party` service, and the exception is still the service's own `EntityInputException<Party>`

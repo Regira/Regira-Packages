@@ -62,7 +62,7 @@ public interface IEntityAttachment<TKey, TObjectKey, TAttachmentKey, TAttachment
 
     // properties used to update existing attachment values
     string? NewFileName { get; set; }
-    string? NewContentType { get; set; }
+    [Obsolete] string? NewContentType { get; set; }   // ignored: the content type follows the file name
     byte[]? NewBytes { get; set; }
 
     TAttachmentKey AttachmentId { get; set; }

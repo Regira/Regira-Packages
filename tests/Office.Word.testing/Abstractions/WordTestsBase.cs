@@ -382,6 +382,30 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         });
     }
 
+    /// <summary>
+    /// Blocks are resolved before any parameter is written, so a value holding marker text is written as text: it opens
+    /// no block, and fails none.
+    /// </summary>
+    public virtual async Task A_Parameter_Value_Holding_A_Marker_Is_Written_As_Text()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document("{{#if IsPaid}}", "PAIDBRANCH", "{{/if}}", "{{Note}}", "Outro"),
+            GlobalParameters = new Dictionary<string, object> { ["IsPaid"] = false, ["Note"] = "{{#if IsPaid}}" }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        // read as it was written: GetText would resolve the output as a template, and meet the marker the value wrote
+        var text = Docx.BodyText(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Does.Contain("{{#if IsPaid}}"), "the value, as written");
+            Assert.That(text, Does.Contain("Outro"));
+            Assert.That(text, Does.Not.Contain("PAIDBRANCH"), "the block itself is resolved");
+        });
+    }
+
     public virtual async Task A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value()
     {
         var input = new WordTemplateInput

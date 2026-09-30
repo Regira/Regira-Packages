@@ -528,15 +528,11 @@ public class EntityServiceBuilder<TContext, TEntity, TKey>(EntityServiceCollecti
     }
     /// <summary>
     /// Checks every write of this entity against the request's <typeparamref name="TContext"/> — e.g. that a referenced row
-    /// exists. <paramref name="validate"/> rejects the write with <c>ctx.AddError(key, message)</c>.
+    /// exists. <paramref name="validate"/> rejects the write with <c>ctx.AddError(key, message)</c>. The context is
+    /// unfiltered — global filters (tenant, owner) do not apply to it — so check a row-secured reference through
+    /// <c>IEntityReadService&lt;TEntity, TKey&gt;</c> in a validator class instead. <paramref name="validate"/> receives the
+    /// write's cancellation token, to pass to its queries.
     /// </summary>
-    public EntityServiceBuilder<TContext, TEntity, TKey> Validate(Func<IEntityValidatorContext<TEntity>, TContext, Task> validate)
-    {
-        Services.AddValidator(validate);
-        return this;
-    }
-    /// <inheritdoc cref="Validate(Func{IEntityValidatorContext{TEntity},TContext,Task})"/>
-    /// <remarks><paramref name="validate"/> receives the write's cancellation token, to pass to its queries.</remarks>
     public EntityServiceBuilder<TContext, TEntity, TKey> Validate(Func<IEntityValidatorContext<TEntity>, TContext, CancellationToken, Task> validate)
     {
         Services.AddValidator(validate);

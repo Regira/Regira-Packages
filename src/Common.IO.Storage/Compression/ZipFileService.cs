@@ -42,10 +42,11 @@ public class ZipFileService(ZipFileCommunicator communicator) : IFileService, ID
 
         if (so != null)
         {
-            if (!string.IsNullOrWhiteSpace(so.FolderUri))
+            // the folder itself, whole: dir2/dir2.1 does not reach into dir2/dir2.10
+            var folder = string.IsNullOrWhiteSpace(so.FolderUri) ? "" : ZipUtility.NormalizePath(so.FolderUri)!.TrimEnd('/');
+            if (folder.Length > 0)
             {
-                var folderUri = ZipUtility.NormalizePath(so.FolderUri!);
-                identifiers = identifiers.Where(x => x.StartsWith(folderUri, StringComparison.InvariantCultureIgnoreCase));
+                identifiers = identifiers.Where(x => x.StartsWith(folder + '/', StringComparison.InvariantCultureIgnoreCase));
             }
             if (so.Extensions?.Any() == true)
             {
@@ -62,10 +63,11 @@ public class ZipFileService(ZipFileCommunicator communicator) : IFileService, ID
 
         if (so != null)
         {
-            if (!string.IsNullOrWhiteSpace(so.FolderUri))
+            // the folder itself, whole: dir2/dir2.1 does not reach into dir2/dir2.10
+            var folder = string.IsNullOrWhiteSpace(so.FolderUri) ? "" : ZipUtility.NormalizePath(so.FolderUri)!.TrimEnd('/');
+            if (folder.Length > 0)
             {
-                var folderUri = ZipUtility.NormalizePath(so.FolderUri!);
-                identifiers = identifiers.Where(x => x.StartsWith(folderUri, StringComparison.InvariantCultureIgnoreCase));
+                identifiers = identifiers.Where(x => x.StartsWith(folder + '/', StringComparison.InvariantCultureIgnoreCase));
             }
             if (so.Extensions?.Any() == true)
             {
@@ -83,14 +85,14 @@ public class ZipFileService(ZipFileCommunicator communicator) : IFileService, ID
         var file = bytes.ToBinaryFile(contentType);
         file.Identifier = identifier;
         ZipArchive.AddFile(file);
-        return Task.FromResult(identifier);
+        return Task.FromResult(ZipUtility.NormalizePath(identifier)!);
     }
     public Task<string> Save(string identifier, Stream stream, string? contentType = null)
     {
         var file = stream.ToBinaryFile(contentType);
         file.Identifier = identifier;
         ZipArchive.AddFile(file);
-        return Task.FromResult(identifier);
+        return Task.FromResult(ZipUtility.NormalizePath(identifier)!);
     }
     public Task Delete(string identifier)
     {

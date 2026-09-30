@@ -84,6 +84,11 @@ public static class ZipUtility
             var entryName = NormalizePath(filename);
             var entry = archive.Find(entryName) ?? archive.CreateEntry(entryName);
             using var entryStream = entry.Open();
+            // an existing entry opens holding its old content: shorter new content would keep the old tail
+            if (entryStream.CanSeek)
+            {
+                entryStream.SetLength(0);
+            }
             fileStream.Seek(0, SeekOrigin.Begin);
             fileStream.CopyTo(entryStream);
         }

@@ -252,6 +252,11 @@ IMemoryFile doc = await word.Create(new WordTemplateInput
   then are its blocks resolved. Everything else in a document that uses none stays as it is — marker text among
   other text, a stray `{{else}}` or `{{/if}}` — so a finished document that writes about templates converts and
   reads unchanged.
+- The document `Create` fills is read as a template by any later call. A parameter value that fills a paragraph
+  with nothing but a marker — `{{#if X}}` typed into a form — makes that output use blocks: a later `GetText`,
+  `Convert` or `ToImages` of it throws, or drops everything between two such values. Keep user-entered values out
+  of paragraphs of their own, or produce the final format in the call that fills the template, rather than
+  converting the stored output later.
 - In a document that uses blocks, these throw `FormatException`: a block that does not open and close in one
   container and section, a `{{/if}}` or `{{else}}` without its `{{#if}}`, a second `{{else}}`, a marker sharing its
   paragraph with other text, and a marker this syntax does not know, such as `{{#unless X}}` or `{{else if X}}`.
@@ -289,7 +294,7 @@ The key also resolves from the `SYNCFUSION_LICENSE_KEY` environment variable, an
 
 > **Format limits:** ODT templates cannot be loaded (saving to ODT works) and EPUB export is unavailable on .NET Core. Both throw `NotSupportedException`, as do `Png`/`Jpeg` output (use `ToImages`).
 
-> **Rendering:** PDF conversion and `ToImages` need `Syncfusion.DocIORenderer`, which renders through SkiaSharp 3.119.1 and HarfBuzzSharp 8.3.1.2. On Linux, add `SkiaSharp.NativeAssets.Linux` and `HarfBuzzSharp.NativeAssets.Linux` at the versions of `SkiaSharp` and `HarfBuzzSharp` the application resolves — those two, unless another package raises them.
+> **Rendering:** PDF conversion and `ToImages` need `Syncfusion.DocIORenderer`, which renders through SkiaSharp 4.150.1 and HarfBuzzSharp 14.2.1.1. On Linux, add `SkiaSharp.NativeAssets.Linux` and `HarfBuzzSharp.NativeAssets.Linux` at the versions of `SkiaSharp` and `HarfBuzzSharp` the application resolves — those two, unless another package raises them.
 
 ### Word.Aspose
 
@@ -335,7 +340,7 @@ When none of the four resolves — a configuration key that is missing, say — 
 `WordService` implements `IWordConverter` and `IWordToImagesService`, through the LibreOffice route of a [Gotenberg](https://gotenberg.dev) server (MIT, a Docker image bundling LibreOffice and Chromium). It is the route to PDF output and page images without a vendor licence.
 
 - **PDF only.** `Convert` produces PDF; every other `FileFormat` throws `NotSupportedException`. Sources can be Word (`.doc`, `.dot`, `.docx`, `.dotx`, `.docm`, `.dotm`), OpenDocument (`.odt`, `.ott`), `.rtf`, `.txt`, `.html`/`.htm` or `.epub` — the format is read from the file name when the template is a named file, otherwise from its content.
-- **Templates.** Gotenberg converts finished documents. An input carrying `GlobalParameters`, `CollectionParameters`, `Images`, `DocumentParameters`, `Headers`, `Footers` or non-default `InputOptions` is rendered first by the `IWordCreator` the service was given, and throws `NotSupportedException` without one. So is an OOXML template holding a [conditional block](#conditional-blocks), even without parameters, since a key the input does not give is false; the scan for one reads no part beyond 32 Mi characters, and such a document is uploaded as it is. Word.Mini renders the first three, in its own template syntax; headers, footers, nested documents and input options need a creator with a document model — Word.Spire, Word.Syncfusion or Word.Aspose — since Word.Mini refuses them.
+- **Templates.** Gotenberg converts finished documents. An input carrying `GlobalParameters`, `CollectionParameters`, `Images`, `DocumentParameters`, `Headers`, `Footers` or non-default `InputOptions` is rendered first by the `IWordCreator` the service was given, and throws `NotSupportedException` without one. So is an OOXML template holding a [conditional block](#conditional-blocks), even without parameters, since a key the input does not give is false. Word.Mini renders the first three, in its own template syntax; headers, footers, nested documents and input options need a creator with a document model — Word.Spire, Word.Syncfusion or Word.Aspose — since Word.Mini refuses them.
 - **Page settings.** The LibreOffice route has no page-size or margin fields, so `ConversionOptions.Settings` is written into the document's section properties before upload, together with the table and picture scaling. That needs an OOXML source (`.docx`, `.dotx`, `.docm`, `.dotm`), and honours every `PageSize`.
 - **Page images.** Gotenberg has no route that rasterises a PDF. `ToImages` converts to PDF and hands the result to the `IPdfToImageService` the service was given — `Regira.Office.PDF.DocNET`, for example — which returns one image per page.
 - **Layout.** LibreOffice lays a document out differently from Word. A font missing from the Gotenberg image is substituted, which moves line and page breaks, so page images and page counts can differ from what Word shows. Install the fonts your documents use in the image.

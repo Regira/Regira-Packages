@@ -813,12 +813,7 @@ public static EntityServiceCollectionOptions AddValidator<TScope>(
     Func<IEntityValidatorContext<TScope>, Task> validate)
     where TScope : class;
 
-public static EntityServiceCollectionOptions AddValidator<TContext, TScope>(
-    this EntityServiceCollectionOptions options,
-    Func<IEntityValidatorContext<TScope>, TContext, Task> validate)
-    where TContext : DbContext
-    where TScope : class;
-// the same, receiving the write's cancellation token for its queries
+// receives the request's DbContext (unfiltered) and the write's cancellation token for its queries
 public static EntityServiceCollectionOptions AddValidator<TContext, TScope>(
     this EntityServiceCollectionOptions options,
     Func<IEntityValidatorContext<TScope>, TContext, CancellationToken, Task> validate)
@@ -832,8 +827,6 @@ public static IServiceCollection AddValidator<TScope>(this IServiceCollection se
     Action<IEntityValidatorContext<TScope>> validate) where TScope : class;
 public static IServiceCollection AddValidator<TScope>(this IServiceCollection services,
     Func<IEntityValidatorContext<TScope>, Task> validate) where TScope : class;
-public static IServiceCollection AddValidator<TContext, TScope>(this IServiceCollection services,
-    Func<IEntityValidatorContext<TScope>, TContext, Task> validate) where TContext : DbContext where TScope : class;
 public static IServiceCollection AddValidator<TContext, TScope>(this IServiceCollection services,
     Func<IEntityValidatorContext<TScope>, TContext, CancellationToken, Task> validate) where TContext : DbContext where TScope : class;
 ```
@@ -1124,10 +1117,8 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
     // e.Validate(async ctx => …)
     EntityServiceBuilder<TContext, TEntity, TKey> Validate(Func<IEntityValidatorContext<TEntity>, Task> validate);
 
-    // e.Validate(async (ctx, db) => …) with the request's DbContext
-    EntityServiceBuilder<TContext, TEntity, TKey> Validate(
-        Func<IEntityValidatorContext<TEntity>, TContext, Task> validate);
-    // the same, receiving the write's cancellation token: e.Validate(async (ctx, db, token) => …)
+    // e.Validate(async (ctx, db, token) => …) with the request's DbContext — unfiltered: check a row-secured reference
+    // through IEntityReadService<,> in a class validator — and the write's cancellation token
     EntityServiceBuilder<TContext, TEntity, TKey> Validate(
         Func<IEntityValidatorContext<TEntity>, TContext, CancellationToken, Task> validate);
 
@@ -1294,7 +1285,6 @@ public partial class EntityIntServiceBuilder<TContext, TEntity>
     // Re-declared to keep the builder type through a chain
     EntityIntServiceBuilder<TContext, TEntity> Validate(Action<IEntityValidatorContext<TEntity>> validate);
     EntityIntServiceBuilder<TContext, TEntity> Validate(Func<IEntityValidatorContext<TEntity>, Task> validate);
-    EntityIntServiceBuilder<TContext, TEntity> Validate(Func<IEntityValidatorContext<TEntity>, TContext, Task> validate);
     EntityIntServiceBuilder<TContext, TEntity> Validate(Func<IEntityValidatorContext<TEntity>, TContext, CancellationToken, Task> validate);
     EntityIntServiceBuilder<TContext, TEntity> AddValidator<TValidator>()
         where TValidator : class, IEntityValidator<TEntity>;
@@ -1654,10 +1644,7 @@ public class EntityValidator<TScope>(Func<IEntityValidatorContext<TScope>, Task>
     public EntityValidator(Action<IEntityValidatorContext<TScope>> validate);
 }
 public class EntityValidator<TContext, TScope>(TContext dbContext, Func<IEntityValidatorContext<TScope>, TContext, CancellationToken, Task> validate)
-    : EntityValidatorBase<TScope> where TContext : DbContext where TScope : class
-{
-    public EntityValidator(TContext dbContext, Func<IEntityValidatorContext<TScope>, TContext, Task> validate);
-}
+    : EntityValidatorBase<TScope> where TContext : DbContext where TScope : class;
 ```
 
 FluentValidation adapter — package `Regira.Entities.Validation.FluentValidation`:
@@ -1865,7 +1852,7 @@ public interface IEntityAttachment
     string? ObjectType { get; }
 
     string? NewFileName { get; set; }
-    string? NewContentType { get; set; }
+    [Obsolete] string? NewContentType { get; set; }   // ignored: the content type follows the file name
     byte[]? NewBytes { get; set; }
     IAttachment? Attachment { get; set; }
 }
@@ -1926,7 +1913,8 @@ public abstract class EntityInputException(string message, Exception? innerExcep
     // several messages per key: the 400 body is built from it (with none, Message goes out under the key "")
     public IList<EntityInputError> Errors { get; set; }          // pre-initialized
     // a view over Errors, one message per key (a key's messages joined by a space); setting a key replaces its
-    // messages in Errors — not a second store
+    // messages in Errors, so a key added to a caught rejection before it is rethrown reaches the 400; assigning a
+    // dictionary copies its entries, and a later change to that dictionary does not reach the exception
     public IDictionary<string, string> InputErrors { get; set; }
 }
 

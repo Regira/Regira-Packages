@@ -35,12 +35,6 @@ public class EntityValidator<TContext, TScope>(TContext dbContext, Func<IEntityV
     where TContext : DbContext
     where TScope : class
 {
-    /// <summary>A delegate without the token — what the builder's <c>Validate(async (ctx, db) =&gt; …)</c> registers.</summary>
-    public EntityValidator(TContext dbContext, Func<IEntityValidatorContext<TScope>, TContext, Task> validate)
-        : this(dbContext, (context, db, _) => validate(context, db))
-    {
-    }
-
     public override Task Validate(IEntityValidatorContext<TScope> context, CancellationToken token = default)
         => validate(context, dbContext, token);
 }

@@ -26,11 +26,6 @@ public class EntityAttachmentPrimer(IFileIdentifierGenerator fileIdentifierGener
                     entity.Attachment.FileName = entity.NewFileName.ToVirtualPath();
                 }
 
-                if (!string.IsNullOrWhiteSpace(entity.NewContentType))
-                {
-                    entity.Attachment.ContentType = entity.NewContentType;
-                }
-
                 if (entity.NewBytes?.Any() == true)
                 {
                     entity.Attachment.Bytes = entity.NewBytes;

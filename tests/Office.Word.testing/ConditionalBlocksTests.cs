@@ -136,6 +136,25 @@ public class ConditionalBlocksTests
     }
 
     [Test]
+    public void A_Key_Is_Read_Without_The_Spaces_Around_It()
+    {
+        string?[] children = ["{{#if IsPaid }}", "Paid", "{{/if}}", "{{#if  ! IsDue}}", "Due", "{{/if}}"];
+        var asked = new List<string>();
+
+        var removed = ConditionalBlocks.Resolve(children, key =>
+        {
+            asked.Add(key);
+            return true;
+        });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(asked, Is.EqualTo(new[] { "IsPaid", "IsDue" }));
+            Assert.That(removed.Order(), Is.EqualTo(new[] { 0, 2, 3, 4, 5 }), "IsPaid holds, !IsDue does not");
+        });
+    }
+
+    [Test]
     public void A_Negated_Condition_Holds_When_The_Key_Does_Not()
     {
         string?[] children = ["{{#if !IsPaid}}", "Due", "{{/if}}"];
@@ -226,6 +245,7 @@ public class ConditionalBlocksTests
         {
             Assert.That(opens, Is.False, "no key");
             Assert.That(ex!.Message, Does.Contain("not a conditional marker"));
+            Assert.That(ex.Message, Has.Length.LessThan(300), "the marker is quoted cut short");
             Assert.That(watch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(2)));
         });
     }

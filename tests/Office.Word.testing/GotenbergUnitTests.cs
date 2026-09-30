@@ -206,6 +206,25 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         });
     }
 
+    /// <summary>
+    /// The scan streams each part rather than loading it, and reads a paragraph as the creators do: a block opens in a
+    /// header, in a text box — whose paragraphs are read apart from the one anchoring it — and after an empty paragraph.
+    /// </summary>
+    [Test]
+    public void The_Scan_Finds_A_Block_In_A_Header_A_Text_Box_And_After_An_Empty_Paragraph()
+    {
+        var inHeader = Docx.Document([Docx.Paragraph("Body")], header: Docx.Paragraphs("{{#if IsDraft}}", "DRAFT", "{{/if}}"));
+        var inTextBox = Docx.Document([Docx.TextBox("{{#if IsDraft}}", "DRAFT", "{{/if}}")]);
+        var afterEmpty = Docx.Document([new W.Paragraph(), .. Docx.Paragraphs("{{#if IsDraft}}", "DRAFT", "{{/if}}")]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ConditionalMarkers.Any(inHeader.GetBytes()!), Is.True, "in a header");
+            Assert.That(ConditionalMarkers.Any(inTextBox.GetBytes()!), Is.True, "in a text box");
+            Assert.That(ConditionalMarkers.Any(afterEmpty.GetBytes()!), Is.True, "after an empty paragraph");
+        });
+    }
+
     [Test]
     public async Task A_Template_With_Conditional_Blocks_Is_Rendered_By_The_Creator_First()
     {

@@ -99,9 +99,9 @@ public class EntityValidatorWebTests
     }
 
     /// <summary>The link entity's rule: an upload, or a file replaced, on a locked order is refused.</summary>
-    private static async Task ValidateAttachment(IEntityValidatorContext<ValidatedOrderAttachment> ctx, ValidatedOrderContext db)
+    private static async Task ValidateAttachment(IEntityValidatorContext<ValidatedOrderAttachment> ctx, ValidatedOrderContext db, CancellationToken token)
     {
-        if (ctx.Operation != EntityWriteOperation.Remove && await db.Orders.AnyAsync(x => x.Id == ctx.Item.ObjectId && x.IsLocked))
+        if (ctx.Operation != EntityWriteOperation.Remove && await db.Orders.AnyAsync(x => x.Id == ctx.Item.ObjectId && x.IsLocked, token))
         {
             ctx.AddError(string.Empty, "A locked order takes no files.");
         }

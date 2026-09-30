@@ -64,12 +64,7 @@ public class EntityWriteService<TContext, TEntity, TKey>(
 
     public virtual async Task Add(TEntity item, CancellationToken token = default)
     {
-        var refusable = CanBeRefused(item);
-        if (refusable)
-        {
-            DetectCallerChanges();
-        }
-        using (var marked = refusable ? new ChangeTrackerLog(DbContext) : null)
+        using (var marked = CanBeRefused(item) ? new ChangeTrackerLog(DbContext) : null)
         {
             await PrepareItem(item, null, token);
             await ValidateMarked(marked, item, null, EntityWriteOperation.Add, token);
@@ -81,12 +76,6 @@ public class EntityWriteService<TContext, TEntity, TKey>(
     }
     public virtual async Task<TEntity?> Modify(TEntity item, CancellationToken token = default)
     {
-        var refusable = CanBeRefused(item);
-        if (refusable)
-        {
-            DetectCallerChanges();
-        }
-
         // The write path resolves its row archived-inclusive, decoupled from the public read contract:
         // GET /{id} keeps 404-ing on archived rows while a restore (or any write on an archived row)
         // still finds its original. This stays a FILTERED lookup, never a raw DbSet fetch: it is the
@@ -109,9 +98,14 @@ public class EntityWriteService<TContext, TEntity, TKey>(
         // The concurrency tokens the client sent, read before any prepper runs: a prepper may overwrite them
         // ([ServerOwned] restores from the stored row), and the check has to compare the client's value.
         var clientTokens = DbContext.CaptureClientTokens(item);
+        // a required stamp the client left out refuses the update before a prepper marks anything
+        if (original != null)
+        {
+            ConcurrencyTokenExtensions.RequireSuppliedStamps(item, clientTokens);
+        }
 
         // no stored row, no validation (below): nothing refuses the write, so there is no log to keep
-        using (var marked = refusable && original != null ? new ChangeTrackerLog(DbContext) : null)
+        using (var marked = original != null && CanBeRefused(item) ? new ChangeTrackerLog(DbContext) : null)
         {
             await PrepareItem(item, original, token);
             // no stored row, no update to check: Modify answers null (not found)
@@ -131,74 +125,27 @@ public class EntityWriteService<TContext, TEntity, TKey>(
 
     /// <summary>
     /// Runs <see cref="ValidateItem"/> after the preppers, before the entity is tracked. A <c>Related()</c> sync has already
-    /// marked child rows by then, so a refused write takes back everything <paramref name="marked"/> saw marked, and stops
-    /// tracking <paramref name="item"/> itself should the caller have tracked it: nothing of the write reaches a later
-    /// <see cref="SaveChanges"/> in the same scope. No log (<c>null</c>): nothing can refuse the write.
+    /// marked child rows by then, so a refused write takes back every row <paramref name="marked"/> saw tracked or change
+    /// state, and stops tracking <paramref name="item"/> itself should the caller have tracked it. No log (<c>null</c>):
+    /// nothing can refuse the write.
     /// </summary>
     private async Task ValidateMarked(ChangeTrackerLog? marked, TEntity item, TEntity? original, EntityWriteOperation operation, CancellationToken token)
     {
-        if (marked == null)
-        {
-            await ValidateItem(item, original, operation, token);
-            return;
-        }
         try
         {
             await ValidateItem(item, original, operation, token);
         }
-        catch
+        catch when (marked != null)
         {
-            // a prepper's edit to a row tracked before this write becomes a state change the log can undo; the refusal is
-            // still what the caller gets — a detection failure must neither replace it nor keep the undo from running
-            try
-            {
-                DetectPendingChanges();
-            }
-            catch (Exception detectionFailure)
-            {
-                Logger?.LogWarning(detectionFailure, "Detecting the changes a refused {EntityType} write made failed; edits to rows tracked before the write may stay",
-                    typeof(TEntity).FullName);
-            }
             marked.Undo(item);
             throw;
         }
     }
     /// <summary>
     /// Whether a validator runs for <paramref name="item"/>, so that the write can be refused. Only then do <see cref="Add"/>
-    /// and <see cref="Modify"/> let EF detect pending edits and record what the write marks, for a refusal to take back —
-    /// a pass over every tracked row that a write nothing can refuse does not pay.
+    /// and <see cref="Modify"/> record what the write marks, for a refusal to take back.
     /// </summary>
     private bool CanBeRefused(TEntity item) => validators.AnyApplyTo(item.GetType());
-    /// <summary>
-    /// Lets EF notice the edits made to tracked rows, whose values it otherwise compares only when it saves. Before a write,
-    /// so what the caller changed beforehand is recorded as the caller's and a refusal leaves it alone; on a refusal, so
-    /// what the preppers changed becomes a state change the refusal takes back. A context that does not detect changes on
-    /// its own (<c>AutoDetectChangesEnabled = false</c>, as bulk jobs set it) leaves detection to its caller here too.
-    /// </summary>
-    private void DetectPendingChanges()
-    {
-        if (DbContext.ChangeTracker.AutoDetectChangesEnabled)
-        {
-            DbContext.ChangeTracker.DetectChanges();
-        }
-    }
-    /// <summary>
-    /// <see cref="DetectPendingChanges"/> before a write that can be refused. A required relationship the caller severed on a
-    /// row tracked earlier makes EF throw here; that failure is the caller's, not this write's, so it is logged and left to
-    /// <see cref="SaveChanges"/>, which reports it as it would for a write no validator runs for.
-    /// </summary>
-    private void DetectCallerChanges()
-    {
-        try
-        {
-            DetectPendingChanges();
-        }
-        catch (InvalidOperationException ex) when (ex.IsSeveredRequiredRelationship())
-        {
-            Logger?.LogWarning(ex, "Detecting the pending changes before a {EntityType} write failed; SaveChanges reports it",
-                typeof(TEntity).FullName);
-        }
-    }
     public virtual Task Save(TEntity item, CancellationToken token = default)
         => item.IsNew() ? Add(item, token) : Modify(item, token);
     public virtual async Task Remove(TEntity item, CancellationToken token = default)

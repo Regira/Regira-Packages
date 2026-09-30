@@ -676,37 +676,6 @@ public class ValidatorTests
     }
 
     [Test]
-    public async Task A_Rejected_Add_Takes_Back_A_Prepper_Edit_To_A_Row_Tracked_Before_It()
-    {
-        Build(s => s
-            .For<Order>(e => e
-                .Prepare(async (_, db) => (await db.Customers.SingleAsync()).Name = "Changed by a refused write")
-                .Validate(ctx => ctx.AddError(string.Empty, "Rejected.")))
-            .For<Customer>());
-        using (var seed = _sp.CreateScope())
-        {
-            var seedDb = seed.ServiceProvider.GetRequiredService<ShopContext>();
-            seedDb.Customers.Add(new Customer { Name = "Ada" });
-            await seedDb.SaveChangesAsync();
-        }
-
-        using (var scope = _sp.CreateScope())
-        {
-            // tracked before the write, as a job's earlier step would leave it; the prepper only sets a value, which EF has
-            // not detected when the validators refuse
-            await scope.ServiceProvider.GetRequiredService<ShopContext>().Customers.SingleAsync();
-            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
-
-            await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(NewOrder()));
-            await service.SaveChanges();
-        }
-
-        using var check = _sp.CreateScope();
-        var stored = await check.ServiceProvider.GetRequiredService<ShopContext>().Customers.SingleAsync();
-        Assert.That(stored.Name, Is.EqualTo("Ada"));
-    }
-
-    [Test]
     public async Task A_Rejected_Add_Keeps_An_Edit_The_Caller_Made_Before_It()
     {
         Build(s => s
@@ -736,62 +705,23 @@ public class ValidatorTests
     }
 
     [Test]
-    public async Task Only_A_Write_A_Validator_Runs_For_Scans_The_Tracker()
+    public async Task A_Validated_Write_Pays_No_Pass_Over_The_Tracker()
     {
-        Build(s => s
-            .For<Order>(e => e.Validate(_ => { }))
-            .For<Customer>());
+        Build(s => s.For<Order>(e => e.Validate(_ => { })));
 
         using var scope = _sp.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
         var scans = 0;
         db.ChangeTracker.DetectingAllChanges += (_, _) => scans++;
+        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
 
-        await scope.ServiceProvider.GetRequiredService<IEntityService<Customer>>().Add(new Customer { Name = "Ada" });
-        var customerScans = scans;
-        await scope.ServiceProvider.GetRequiredService<IEntityService<Order>>().Add(NewOrder());
-
-        Assert.Multiple(() =>
+        // a batch that saves only at the end: each write would otherwise scan every row the ones before it left tracked
+        for (var i = 0; i < 3; i++)
         {
-            // nothing can refuse a Customer write, so it pays no pass over the tracker; the Order write does
-            Assert.That(customerScans, Is.Zero);
-            Assert.That(scans, Is.GreaterThan(customerScans));
-        });
-    }
-
-    [Test]
-    public async Task A_Write_Leaves_Detection_To_A_Caller_That_Turned_It_Off()
-    {
-        // a validator runs for the Order write, which would otherwise detect pending changes before it
-        Build(s => s.For<Order>(e => e.Validate(_ => { })).For<Customer>());
-        using (var seed = _sp.CreateScope())
-        {
-            var seedDb = seed.ServiceProvider.GetRequiredService<ShopContext>();
-            seedDb.Customers.Add(new Customer { Name = "Ada" });
-            await seedDb.SaveChangesAsync();
+            await service.Add(NewOrder($"ORD-{i}"));
         }
 
-        using (var scope = _sp.CreateScope())
-        {
-            // a bulk job that turned detection off for speed: the write service does not detect on its behalf, so an edit
-            // the job never detects is not saved — EF's own contract with detection off
-            var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
-            db.ChangeTracker.AutoDetectChangesEnabled = false;
-            var customer = await db.Customers.SingleAsync();
-            customer.Name = "Renamed by the job";
-            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
-
-            await service.Add(NewOrder());
-            await service.SaveChanges();
-        }
-
-        using var check = _sp.CreateScope();
-        var checkDb = check.ServiceProvider.GetRequiredService<ShopContext>();
-        Assert.Multiple(async () =>
-        {
-            Assert.That(await checkDb.Orders.CountAsync(), Is.EqualTo(1));
-            Assert.That((await checkDb.Customers.SingleAsync()).Name, Is.EqualTo("Ada"));
-        });
+        Assert.That(scans, Is.Zero);
     }
 
     [Test]
@@ -909,9 +839,9 @@ public class ValidatorTests
                     await Task.Yield();
                     ctx.AddError(nameof(Order.Code), "Code is taken.");
                 })
-                .Validate(async (ctx, db) =>
+                .Validate(async (ctx, db, token) =>
                 {
-                    if (!await db.Customers.AnyAsync(c => c.Id == ctx.Item.CustomerId))
+                    if (!await db.Customers.AnyAsync(c => c.Id == ctx.Item.CustomerId, token))
                     {
                         ctx.AddError(nameof(Order.CustomerId), "The customer does not exist.");
                     }

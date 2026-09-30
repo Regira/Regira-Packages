@@ -538,8 +538,7 @@ written — changing the entity is a prepper's job.
 
 <!-- no-compile -->
 ```csharp
-// inline — the second form receives the request's DbContext and the write's cancellation token
-// (async (ctx, db) => … is the same without the token; async ctx => … takes no DbContext)
+// inline — the second form receives the request's DbContext and the write's cancellation token; async ctx => … takes neither
 // the write awaits an async delegate, so an error added after an await still refuses it
 e.Validate(ctx =>
 {
@@ -606,17 +605,10 @@ options.AddValidator<TenantValidator>();   // global — an EntityValidatorBase<
   dependency and no entity service in the app resolves.
 
 **What a refusal leaves behind.** A refused `Add` or `Modify` takes back what its preppers marked — the rows a
-`Related()` sync added, changed or deleted, and a prepper's edit to a row the scope loaded earlier — and leaves the
-item itself untracked, even one the job loaded with tracking and edited, so a job that catches the exception and saves
-other entities in the same scope persists none of the refused write. What the job itself changed on other rows before
-the write stays: when a validator runs for the item, `Add` and `Modify` first let EF detect pending edits, so the
-refusal can tell them from the preppers'. That pass covers every row the context tracks, so its cost grows through
-a batch that saves only at the end (§Bulk insert in [`entities.patterns.md`](./entities.patterns.md)); a write no
-validator runs for — nothing in scope, or only an `ISelectiveEntityValidator` that does not cover it — skips it, and so
-does the write service's constructor without validators. Two edits a refusal cannot take back: one to a row
-already added or changed before the write — the tracker keeps no record of its values in between — and, on a context
-with `AutoDetectChangesEnabled = false`, a prepper's edit EF never detected, since detection is then the caller's. A
-refused `Remove` is checked before anything is marked.
+`Related()` sync added, changed or deleted — and leaves the item itself untracked, even one the job loaded with tracking
+and edited. A prepper's plain edit to another row the scope already tracked stays, since EF notices it only at
+`SaveChanges()`: keep a prepper to the item and its own children. A refused `Remove` is checked before anything is
+marked.
 
 **Where they run.** `EntityWriteService` runs them; a subclass must take `IEnumerable<IEntityValidator>` and pass it
 to the base constructor — the constructor without it runs none. A custom `IEntityRepository` over another store
@@ -1372,12 +1364,9 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 ### EntityInputException (returns HTTP 400)
 
 A validator's errors (§Step 8 → Validators), or an `EntityInputException<TEntity>` thrown from a prepper or an
-action, become the field-level body of a **400**: `{ "Code": ["…", "…"] }`. `Errors` carries every message,
-several per field, and the body lists each. `InputErrors` is a view over it with one message per field (a field's
-messages joined by a space): setting a field there replaces that field's messages in `Errors`, so an error added to a
-caught rejection before it is rethrown reaches the body. Assigning a whole dictionary copies its entries — a change to
-that dictionary afterwards does not reach the exception — so add through the view instead. With no errors, the exception's message goes out under the
-empty key. The generated `DELETE` answers a refused delete
+action, become the field-level body of a **400**: `{ "Code": ["…", "…"] }`, built from `Errors`, which carries every
+message, several per field (`InputErrors` is a view over it: [`entities.signatures.md`](./entities.signatures.md)).
+With no errors, the exception's message goes out under the empty key. The generated `DELETE` answers a refused delete
 the same way. `ConfigureDefaultJsonOptions()` registers the exception filter that maps it application-wide,
 so a hand-written domain action (`POST {id}/approve`) answers exactly like the generated `PUT` — one of the two
 reasons that call is not optional.

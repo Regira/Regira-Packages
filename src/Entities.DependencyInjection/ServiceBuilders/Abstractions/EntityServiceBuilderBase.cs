@@ -5,7 +5,6 @@ using Regira.Entities.DependencyInjection.Processors;
 using Regira.Entities.DependencyInjection.QueryBuilders;
 using Regira.Entities.DependencyInjection.ServiceCollections.Abstractions;
 using Regira.Entities.DependencyInjection.ServiceCollections.Models;
-using Regira.Entities.DependencyInjection.Validators;
 using Regira.Entities.Normalizing.Abstractions;
 using Regira.Entities.Preppers.Abstractions;
 using Regira.Entities.EFcore.Processing;
@@ -15,7 +14,6 @@ using Regira.Entities.QueryBuilders.Abstractions;
 using Regira.Entities.Models;
 using Regira.Entities.Models.Abstractions;
 using Regira.Entities.Services.Abstractions;
-using Regira.Entities.Validators.Abstractions;
 
 namespace Regira.Entities.DependencyInjection.ServiceBuilders.Abstractions;
 
@@ -219,27 +217,6 @@ public class EntityServiceBuilderBase<TEntity, TKey>(EntityServiceCollectionOpti
     public EntityServiceBuilderBase<TEntity, TKey> Prepare(Action<TEntity> prepareFunc)
     {
         Services.AddPrepper(prepareFunc);
-        return this;
-    }
-
-    // Validators
-    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.AddValidator{TValidator}"/>
-    public EntityServiceBuilderBase<TEntity, TKey> AddValidator<TValidator>()
-        where TValidator : class, IEntityValidator<TEntity>
-    {
-        Services.AddValidator<TValidator>();
-        return this;
-    }
-    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Validate(Action{IEntityValidatorContext{TEntity}})"/>
-    public EntityServiceBuilderBase<TEntity, TKey> Validate(Action<IEntityValidatorContext<TEntity>> validate)
-    {
-        Services.AddValidator(validate);
-        return this;
-    }
-    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Validate(Func{IEntityValidatorContext{TEntity},Task})"/>
-    public EntityServiceBuilderBase<TEntity, TKey> Validate(Func<IEntityValidatorContext<TEntity>, Task> validate)
-    {
-        Services.AddValidator<TEntity>(validate);
         return this;
     }
 

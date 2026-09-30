@@ -70,6 +70,8 @@ public class SpireTests() : WordTestsBase(new WordService(), "Spire")
     public override Task A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value() => base.A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value();
 
     [Test]
+    public override Task A_Parameter_Value_Holding_A_Marker_Is_Written_As_Text() => base.A_Parameter_Value_Holding_A_Marker_Is_Written_As_Text();
+    [Test]
     public override Task Conditional_Blocks_Nest() => base.Conditional_Blocks_Nest();
 
     [Test]

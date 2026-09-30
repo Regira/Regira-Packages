@@ -9,5 +9,6 @@ public interface IEntityAttachmentInput<TKey, TObjectId, TAttachmentId>
     TAttachmentId AttachmentId { get; set; }
 
     string? NewFileName { get; set; }
+    [Obsolete("Ignored: an attachment's content type follows its file name, so a client cannot choose the type its file is served as.")]
     string? NewContentType { get; set; }
 }

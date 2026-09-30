@@ -8,6 +8,7 @@ using Regira.Entities.Models;
 using Regira.Entities.Web.Models;
 using Regira.IO.Utilities;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Testing.Library.Contoso;
 using Testing.Library.Data;
@@ -408,6 +409,79 @@ public class CourseAttachmentsControllerTests : IClassFixture<ContosoApiFactory>
         // ...and none of the client's folders reached storage
         var entityFolder = Path.Combine(_factory.AttachmentsDirectory, "Course", "Attachments", courseId.ToString());
         Assert.False(Directory.Exists(Path.Combine(entityFolder, "archive")), "the virtual folder must stay virtual");
+    }
+
+    // A store or a link serves a file with the type it holds, so the upload is typed by its file name — the thing an app
+    // checks — and a .png declared text/html is not served as a page.
+    [Fact]
+    public async Task An_Upload_Is_Typed_By_Its_File_Name_Not_By_The_Type_The_Client_Declared()
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 3;
+        var file = new ByteArrayContent("<script>alert(1)</script>"u8.ToArray());
+        file.Headers.ContentType = new MediaTypeHeaderValue("text/html");
+        var content = new MultipartFormDataContent { { file, "file", "declared-html.png" } };
+        (await client.PostAsync($"/courses/{courseId}/files", content)).EnsureSuccessStatusCode();
+
+        var download = await client.GetAsync($"/courses/{courseId}/files/declared-html.png");
+
+        Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+        Assert.Equal("image/png", download.Content.Headers.ContentType?.MediaType);
+    }
+
+    // NewContentType is ignored: a client that sends one still gets the type the file name gives
+    [Fact]
+    public async Task A_Content_Type_Sent_With_New_Bytes_Is_Ignored()
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 5;
+        var details = await (await client.GetAsync($"/courses/{courseId}")).Content.ReadFromJsonAsync<DetailsResult<CourseDto>>();
+#pragma warning disable CS0618 // the obsolete member is the point of the test
+        var attachment = new CourseAttachmentInputDto
+        {
+            ObjectId = courseId,
+            NewFileName = "declared-in-json.png",
+            NewBytes = "<script>alert(1)</script>"u8.ToArray(),
+            NewContentType = "text/html"
+        };
+#pragma warning restore CS0618
+        var courseInput = new CourseInputDto
+        {
+            Id = details!.Item.Id,
+            Title = details.Item.Title,
+            DepartmentId = details.Item.DepartmentId,
+            Credits = details.Item.Credits,
+            Attachments = [attachment]
+        };
+        (await client.PutAsJsonAsync($"/courses/{courseId}", courseInput)).EnsureSuccessStatusCode();
+
+        var download = await client.GetAsync($"/courses/{courseId}/files/declared-in-json.png");
+
+        Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+        Assert.Equal("image/png", download.Content.Headers.ContentType?.MediaType);
+    }
+
+    // an upload an app accepts by name may still render as a page, so every file but a PDF is served in a sandbox that
+    // runs no script; a PDF goes without, for the browser's viewer
+    [Theory]
+    [InlineData("page.html", true)]
+    [InlineData("drawing.svg", true)]
+    [InlineData("photo.png", true)]
+    [InlineData("report.pdf", false)]
+    public async Task Every_File_But_A_Pdf_Is_Served_In_A_Sandbox(string fileName, bool sandboxed)
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 6;
+        var content = new MultipartFormDataContent { { new ByteArrayContent("<script>alert(1)</script>"u8.ToArray()), "file", fileName } };
+        (await client.PostAsync($"/courses/{courseId}/files", content)).EnsureSuccessStatusCode();
+
+        var download = await client.GetAsync($"/courses/{courseId}/files/{fileName}");
+
+        Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+        Assert.Equal(sandboxed, download.Headers.TryGetValues("Content-Security-Policy", out var csp) && csp.Contains("sandbox"));
     }
 
     [Fact]

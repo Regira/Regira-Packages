@@ -107,12 +107,12 @@ internal static class ConditionalBlocks
             {
                 if (open.Count == 0)
                 {
-                    throw new FormatException($"The template's {text} has no {{{{#if}}}} before it in the same {Containers}.");
+                    throw new FormatException($"The template's {Excerpt(text!)} has no {{{{#if}}}} before it in the same {Containers}.");
                 }
                 var block = Pop();
                 if (block.InElse)
                 {
-                    throw new FormatException($"The template's {block.Marker} has more than one {{{{else}}}}.");
+                    throw new FormatException($"The template's {Excerpt(block.Marker)} has more than one {{{{else}}}}.");
                 }
                 Push(block with { InElse = true });
             }
@@ -120,14 +120,14 @@ internal static class ConditionalBlocks
             {
                 if (open.Count == 0)
                 {
-                    throw new FormatException($"The template's {text} has no {{{{#if}}}} before it in the same {Containers}.");
+                    throw new FormatException($"The template's {Excerpt(text!)} has no {{{{#if}}}} before it in the same {Containers}.");
                 }
                 Pop();
             }
             else if (IsWholeMarker(text!))
             {
                 throw new FormatException(
-                    $"The template's {text} is not a conditional marker. Write {{{{#if Key}}}}, {{{{#if !Key}}}}, {{{{else}}}} or {{{{/if}}}}.");
+                    $"The template's {Excerpt(text!)} is not a conditional marker. Write {{{{#if Key}}}}, {{{{#if !Key}}}}, {{{{else}}}} or {{{{/if}}}}.");
             }
             else
             {
@@ -139,13 +139,13 @@ internal static class ConditionalBlocks
 
         if (open.Count > 0)
         {
-            throw new FormatException($"The template's {open.Peek().Marker} has no {{{{/if}}}} after it in the same {Containers}.");
+            throw new FormatException($"The template's {Excerpt(open.Peek().Marker)} has no {{{{/if}}}} after it in the same {Containers}.");
         }
 
         return removed;
     }
 
-    // enough of a paragraph to find it, without a whole page of document text in the message
+    // enough of a paragraph or marker to find it, without a whole page of document text in the message
     private static string Excerpt(string text)
         => text.Length <= 80 ? text : text[..80] + "…";
 

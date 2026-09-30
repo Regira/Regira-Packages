@@ -12,6 +12,8 @@ using Regira.Entities.Models.Abstractions;
 using Regira.Entities.Preppers.Abstractions;
 using Regira.Entities.Services.Abstractions;
 using Regira.Entities.Validation.FluentValidation;
+using Regira.Entities.Validators;
+using Regira.Entities.Validators.Abstractions;
 
 namespace Entities.Testing;
 
@@ -313,23 +315,18 @@ public class FluentEntityValidatorTests
     }
 
     [Test]
-    public async Task A_Write_Of_An_Entity_Without_Rules_Does_Not_Scan_The_Tracker()
+    public void An_Entity_Without_Rules_Is_One_No_Validator_Applies_To()
     {
         Build();
         using var scope = _sp.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
-        var scans = 0;
-        db.ChangeTracker.DetectingAllChanges += (_, _) => scans++;
-
-        await scope.ServiceProvider.GetRequiredService<IEntityService<Customer>>().Add(new Customer { Name = "Grace" });
-        var customerScans = scans;
-        await scope.ServiceProvider.GetRequiredService<IEntityService<Order>>().Add(NewOrder());
+        var validators = scope.ServiceProvider.GetServices<IEntityValidator>().ToArray();
 
         Assert.Multiple(() =>
         {
-            // FluentEntityValidator is scoped to every entity, but covers only those an AbstractValidator applies to
-            Assert.That(customerScans, Is.Zero);
-            Assert.That(scans, Is.GreaterThan(customerScans));
+            // FluentEntityValidator is scoped to every entity, but covers only those an AbstractValidator applies to, so a
+            // write of any other keeps no record for a refusal to take back
+            Assert.That(validators.AnyApplyTo(typeof(Customer)), Is.False);
+            Assert.That(validators.AnyApplyTo(typeof(Order)), Is.True);
         });
     }
 

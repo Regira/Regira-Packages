@@ -274,12 +274,6 @@ public class ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject,
         base.Validate(validate);
         return this;
     }
-    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Validate(Func{IEntityValidatorContext{TEntity},TContext,Task})" />
-    public new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> Validate(Func<IEntityValidatorContext<TEntity>, TContext, Task> validate)
-    {
-        base.Validate(validate);
-        return this;
-    }
     /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Validate(Func{IEntityValidatorContext{TEntity},TContext,CancellationToken,Task})" />
     public new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> Validate(Func<IEntityValidatorContext<TEntity>, TContext, CancellationToken, Task> validate)
     {
