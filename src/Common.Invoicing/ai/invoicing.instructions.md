@@ -58,7 +58,7 @@ services.AddBillit(sp => new BillitConfig
 ```csharp
 Task<ICreateInvoiceResult> Create(IInvoice item);
 Task<ISendInvoiceResult>   Send(params string[] ids);   // send by IDs
-Task<ISendInvoiceResult>   Send(IInvoice input);         // send by invoice object
+Task<ISendInvoiceResult>   Send(IInvoice input);         // creates the invoice, then sends it
 ```
 
 ---
@@ -80,29 +80,29 @@ IInvoice invoice = new Invoice { /* lines, parties, tax, etc. */ };
 var converter = new UblConverter();
 XDocument ubl = converter.Convert(new UblDocumentInput
 {
-    Invoice = invoice   // required
+    Invoice  = invoice,            // required
+    Supplier = invoice.Supplier    // the seller: read from here only, never from Invoice
 });
 ```
 
-### Supporting Constants
+`UblDocumentInput` has three properties:
 
-- **`UblConstants`** — Customization ID and Profile ID for Peppol BIS Billing 3.0
+| Property | Type | Description |
+|---|---|---|
+| `Invoice` | `IInvoice` | Required. Code, dates, customer, lines, remittance info and attachments |
+| `Supplier` | `IInvoiceParty?` | The seller, written as `AccountingSupplierParty`. The converter does not read `Invoice.Supplier`, so a document converted without it has no seller, which Peppol validation refuses (EN 16931 rule BR-06) |
+| `PaymentConditions` | `string?` | Written as the payment terms note |
 
-- **`InvoiceTypeCode`**
-  - `380` — commercial invoice (`Commercial`)
-  - `383` — debit note (`DebitNote`)
-  - credit notes have no type code — they are distinguished by the UBL root element name
+### What the converter writes
 
-- **`PaymentMeansCode`**
-  - `1` — not defined (`NotDefined`)
-  - `42` — payment to bank account (`BankAccount`)
-  - `ZZZ` — mutually defined (`MutuallyDefined`)
+Some fields are fixed rather than taken from the invoice:
 
-- **`TaxCategoryCode`**
-  - `S` — standard rate
-  - `Z` — zero-rated
-  - `E` — exempt
-  - `AE` — reverse charge
+- Customization ID and Profile ID from `UblConstants`: Peppol BIS Billing 3.0
+- Invoice type code `380`, a commercial invoice, for every document. `IInvoice.InvoiceType` is not read, so the
+  converter writes no credit notes
+- Currency `EUR`
+- Payment means `1` (not defined), with `RemittanceInfo` as the payment ID
+- Tax category `S` (standard rate) on every line
 
 ---
 
@@ -116,7 +116,8 @@ XDocument ubl = converter.Convert(new UblDocumentInput
 | `SenderID` | `string` | Your Peppol participant ID |
 | `SenderName` | `string` | Display name |
 | `Token` | `string` | API token |
-| `SecretKey` | `string` | HMAC secret for request signing |
+| `SecretKey` | `string` | Secret key included in the request seal |
+| `IsProduction` | `bool` | Target the production gateway (default `false`) |
 
 ### `PeppolService`
 
@@ -130,7 +131,8 @@ if (result.Success)
     Console.WriteLine($"Sent. Reference: {result.Reference}");
 ```
 
-Requests are HMAC-signed internally via `SealUtility.Generate()`.
+Requests are sealed with `SealUtility.Generate()`: an MD5 digest over the token, sender ID, reference ID, date and
+the secret key, a plain hash with the secret appended, not an HMAC.
 
 ---
 
@@ -142,13 +144,13 @@ Requests are HMAC-signed internally via `SealUtility.Generate()`.
 IInvoice invoice = BuildInvoice(order);
 
 // 2. Convert to UBL XML
-XDocument ubl = new UblConverter().Convert(new UblDocumentInput { /* … */ });
+XDocument ubl = new UblConverter().Convert(new UblDocumentInput { Invoice = invoice, Supplier = invoice.Supplier });
 
 // 3. Transmit via Peppol
 var result = await peppolService.Send(ubl);
 
-// 4. (Optional) also create in Billit for accounting
-await invoiceManager.Create(invoice);
-await invoiceManager.Send(invoice);
+// 4. (Optional) also create in Billit for accounting, then send the invoice it created
+var created = await invoiceManager.Create(invoice);
+await invoiceManager.Send(created.InvoiceId);
 ```
 

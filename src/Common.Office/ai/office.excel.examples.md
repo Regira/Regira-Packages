@@ -64,6 +64,6 @@ public async Task<IActionResult> DownloadOrderReport()
 {
     var orders = _orderService.List();
     var file   = await _reportService.ExportOrders(orders);
-    return this.File(file.ToBinaryFile("orders.xlsx"));   // File() takes an INamedFile: the name types the download
+    return this.File(file.ToBinaryFile("orders.xlsx"));   // File() takes an INamedFile: the name is the download's file name
 }
 ```

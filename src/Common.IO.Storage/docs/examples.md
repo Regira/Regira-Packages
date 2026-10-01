@@ -15,9 +15,10 @@ IFileService storage = config["Storage:Backend"] switch
                })),
     "sftp"  => new SftpService(new SftpCommunicator(new SftpConfig
                {
-                   Host     = config["Storage:SSH:Host"]!,
-                   UserName = config["Storage:SSH:Username"]!,
-                   Password = config["Storage:SSH:Password"]
+                   Host               = config["Storage:SSH:Host"]!,
+                   UserName           = config["Storage:SSH:Username"]!,
+                   Password           = config["Storage:SSH:Password"],
+                   HostKeyFingerprint = config["Storage:SSH:HostKeyFingerprint"]   // SHA256:…, or any host key is accepted
                })),
     "share" => new NetworkFileService(new NetworkShareCommunicator(new NetworkFileSystemOptions
                {

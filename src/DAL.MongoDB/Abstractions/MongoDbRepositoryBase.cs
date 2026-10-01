@@ -89,7 +89,9 @@ public abstract class MongoDbRepositoryBase<TEntity>(
 
     protected internal virtual TEntity Convert(BsonDocument bson)
     {
-        var content = bson.ToJson(new JsonWriterSettings { OutputMode = JsonOutputMode.CanonicalExtendedJson });
+        // Relaxed mode writes numbers as plain JSON numbers, the way the serializer stored them;
+        // canonical mode wraps each one in a type object ({"$numberDouble": "12.5"}) no serializer reads back
+        var content = bson.ToJson(new JsonWriterSettings { OutputMode = JsonOutputMode.RelaxedExtendedJson });
         var item = Serializer.Deserialize<TEntity>(content)!;
         setIdAction(item, bson["_id"].ToString()!);
         return item;

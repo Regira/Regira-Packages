@@ -18,7 +18,7 @@ Regira Office.PDF provides a **unified abstraction** for PDF operations — HTML
 ## Installation
 
 ```xml
-<!-- HTML→PDF (recommended — full options support) -->
+<!-- HTML→PDF (full options support; Windows, up to five pages) -->
 <PackageReference Include="Regira.Office.PDF.SelectPdf" Version="6.*" />
 
 <!-- HTML→PDF (headless Chromium) -->
@@ -166,9 +166,11 @@ Same base properties as `HtmlInput` plus:
 
 ## Implementation notes
 
-### SelectPdf — recommended for HTML→PDF
+### SelectPdf — HTML→PDF on Windows, up to five pages
 
 Full support for all `HtmlInput` properties: page size, orientation, margins, headers, footers. Does not require a browser installation.
+
+It runs on Windows only: it renders through `System.Drawing.Common`, which throws on other platforms. The free Community Edition of Select.HtmlToPdf converts only the first five pages' worth of a document, and leaves the rest out of the PDF without an error or a notice. For longer documents, use the vendor's paid edition or Puppeteer/Playwright.
 
 ### Puppeteer / Playwright — headless Chromium
 
@@ -186,6 +188,8 @@ var pdf = new Regira.Office.PDF.DocNET.PdfManager(imageService);
 ### Spire — PDF operations + printing
 
 Implements `IPdfMerger`, `IPdfSplitter`, `IPdfToImageService` and `IPdfTextExtractor` — not the full `IPdfService`: there is no `RemovePages`, `ImagesToPdf`, `GetTextPerPage` or `RemoveEmptyPages`, and image conversion is PDF→image only. Also ships `PdfPrinter` for Windows printing with page size override support.
+
+FreeSpire.PDF is the vendor's free edition. Loading or creating a PDF of more than ten pages throws, a merge whose result passes ten included, and `ToImages` renders only the first three pages, returning blank images for the rest.
 
 ## Overview
 

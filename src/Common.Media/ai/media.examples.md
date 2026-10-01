@@ -1,6 +1,6 @@
 # Media (Drawing) — Example: Product Image Processing
 
-> Context: An e-commerce API generates thumbnails from uploaded product photos, adds a watermark, and converts images to WebP for serving.
+> Context: An e-commerce API generates thumbnails from uploaded product photos, adds a watermark, converts images to WebP for serving, and takes a preview frame from each product video.
 
 ## DI Registration
 
@@ -62,5 +62,23 @@ public async Task<byte[]> AddWatermark(byte[] imageBytes)
         .Build();
 
     return result.GetBytes()!;
+}
+```
+
+## Preview frame from a product video
+
+`SnapshotService` (`Regira.Media.FFMpeg`) needs `ffmpeg` on `PATH`, and its default process helper is Windows only.
+
+```csharp
+using Regira.IO.Abstractions;
+using Regira.Media.Drawing.Dimensions;
+using Regira.Media.Drawing.Models.Abstractions;
+using Regira.Media.FFMpeg;
+
+public class ProductVideoPreviews(SnapshotService snapshots)
+{
+    // the frame two seconds in, sized for the product page's video tile
+    public Task<IImageFile?> CreatePreview(IBinaryFile video)
+        => snapshots.Snapshot(video, new ImageSize(320, 180), TimeSpan.FromSeconds(2));
 }
 ```

@@ -8,6 +8,8 @@ Barcode backend for [Regira Office](https://regira.github.io/Regira-Packages/src
 <PackageReference Include="Regira.Office.Barcodes.ZXing" Version="6.*" />
 ```
 
+It renders through SkiaSharp (`Regira.Drawing.SkiaSharp`), whose package brings the native library for Windows and macOS only. On Linux, add `SkiaSharp.NativeAssets.Linux` at the version of `SkiaSharp` the application resolves.
+
 ## Documentation
 
 - [Barcodes](https://regira.github.io/Regira-Packages/src/Common.Office/docs/barcodes/) — the shared barcode and QR contracts, the input models, how the backends compare, and why `format: null`, not `BarcodeFormat.Any`, scans every symbology

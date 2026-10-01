@@ -43,17 +43,18 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 | Package | Backend | HTML→PDF | PDF Ops | Print | Runtime footprint |
 |---|---|---|---|---|---|
-| `PDF.SelectPdf` | Select.HtmlToPdf | ✓ full | — | — | Pulls `System.Drawing.Common`, which throws on non-Windows from .NET 6 on — treat as **Windows** |
+| `PDF.SelectPdf` | Select.HtmlToPdf | ✓ full | — | — | Pulls `System.Drawing.Common`, which throws on non-Windows from .NET 6 on — treat as **Windows**. The free Community Edition converts only the first **five pages'** worth of a document and drops the rest without an error or a notice |
 | `PDF.Puppeteer` | PuppeteerSharp | ✓ A4 | — | — | **Downloads Chromium on first use** (`BrowserFetcher().DownloadAsync()`) — needs network + disk at runtime, or a pre-seeded cache |
 | `PDF.MsPlaywright` | Microsoft.Playwright | ✓ A4 | — | — | **Installs its browser on first use** — same constraint; the install is guarded by a process-wide lock, so the first request pays for it |
 | `PDF.DocNET` | Docnet.Core | — | merge, split, img↔pdf, text | — | Managed wrapper over a native library — the RID must be one `Docnet.Core` ships binaries for |
-| `PDF.Spire` | FreeSpire.PDF | — | merge, split, img, text | ✓ | The **free** edition — the vendor caps document size/pages; confirm the current terms before relying on it |
+| `PDF.Spire` | FreeSpire.PDF | — | merge, split, img, text | ✓ | The **free** edition: loading or creating a PDF of more than **ten pages** throws (a merge whose result passes ten included), and `ToImages` renders only the first **three** pages, returning blank images for the rest |
 | `PDF.PDFtoPrinter` | PDFtoPrinter | — | — | ✓ (Win) | Drives an external printing utility |
 | `PDF.PockyBum522` | SimpleFreePdfPrinter | — | — | ✓ (Win) | Targets `net*-windows` — **will not build** on a non-Windows TFM |
 
 **Recommendations:**
-- HTML → PDF: **SelectPdf** on Windows (full options, nothing to download); **Puppeteer**/**Playwright**
-  where the host is Linux or the CSS must be pixel-perfect and a first-run browser fetch is acceptable
+- HTML → PDF: **SelectPdf** on Windows for documents of up to five pages (full options, nothing to download);
+  **Puppeteer**/**Playwright** where the host is Linux, a document runs longer, or the CSS must be pixel-perfect,
+  and a first-run browser fetch is acceptable
 - PDF operations: **DocNET** (merge, split, images, text extraction) — the only cross-platform ops backend
 - Printing: **Spire** (operations + print) or **PDFtoPrinter** (print-only, Windows)
 

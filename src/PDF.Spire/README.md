@@ -8,7 +8,8 @@ PDF backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Com
 <PackageReference Include="Regira.Office.PDF.Spire" Version="6.*" />
 ```
 
-Windows only: the package renders through Regira.Drawing.GDI (GDI+), which is Windows-only on .NET 6 and later.
+- Windows only: the package renders through Regira.Drawing.GDI (GDI+), which is Windows-only on .NET 6 and later.
+- FreeSpire.PDF is the vendor's free edition. It throws on loading or creating a PDF of more than ten pages, a merge whose result passes ten included, and `ToImages` renders only the first three pages: the images after them are blank.
 
 ## Documentation
 

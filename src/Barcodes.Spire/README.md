@@ -1,6 +1,6 @@
 # Regira.Office.Barcodes.Spire
 
-Barcode backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/), built on [FreeSpire.Barcode](https://www.nuget.org/packages/FreeSpire.Barcode). `BarcodeService` implements `IBarcodeReader` and `IBarcodeWriter`, and `QRCodeService` implements `IQRCodeService`. Of the two backends that read and write all 13 formats it is the Windows-only one; a read can return several codes from one image but reports no format, and codes are always drawn on a white background.
+Barcode backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/), built on [FreeSpire.Barcode](https://www.nuget.org/packages/FreeSpire.Barcode). `BarcodeService` implements `IBarcodeService`, and `QRCodeService` implements `IQRCodeService`. Of the two backends that read and write all 13 formats it is the Windows-only one; a read can return several codes from one image but reports no format, and codes are always drawn on a white background.
 
 ## Installation
 

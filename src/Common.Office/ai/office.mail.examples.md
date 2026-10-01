@@ -5,7 +5,6 @@
 ## DI Registration
 
 ```csharp
-// Program.cs
 services.AddSendGrid(cfg => cfg.Key = configuration["Mail:SendGrid:Key"]!);
 ```
 

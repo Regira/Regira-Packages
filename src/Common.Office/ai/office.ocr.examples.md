@@ -20,7 +20,7 @@ if (result.Text != null)
     await ParseInvoiceText(result.Text);
 ```
 
-## Preprocess before OCR (crop + convert to grayscale)
+## Preprocess before OCR (crop + flatten transparency)
 
 <!-- no-compile -->
 ```csharp

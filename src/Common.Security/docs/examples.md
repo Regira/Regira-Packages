@@ -44,7 +44,6 @@ string plain  = enc.Decrypt(record.Value);
 ## Example 3: JWT authentication setup
 
 ```csharp
-// Program.cs
 services.AddJwtAuthentication(options => configuration.GetSection("Authentication:Jwt").Bind(options));
 
 app.UseAuthentication();

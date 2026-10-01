@@ -60,6 +60,6 @@ public async Task<IActionResult> Export()
 {
     var customers = await _customerService.List();
     var file      = await _exportService.ExportCustomers(customers);
-    return this.File(file.ToBinaryFile("customers.csv"));   // File() takes an INamedFile: the name types the download
+    return this.File(file.ToBinaryFile("customers.csv"));   // File() takes an INamedFile: the name is the download's file name
 }
 ```

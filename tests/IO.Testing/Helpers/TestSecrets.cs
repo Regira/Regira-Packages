@@ -33,7 +33,8 @@ public static class TestSecrets
         Port = int.Parse(Require("Storage:SSH:Port", "the port of that SFTP server")),
         UserName = Require("Storage:SSH:Username", "a user name on that SFTP server"),
         Password = Configuration["Storage:SSH:Password"],
-        ContainerName = Configuration["Storage:SSH:ContainerName"]
+        ContainerName = Configuration["Storage:SSH:ContainerName"],
+        HostKeyFingerprint = Configuration["Storage:SSH:HostKeyFingerprint"]
     };
 
     private static string Require(string key, string target)

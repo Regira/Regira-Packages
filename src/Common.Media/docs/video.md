@@ -14,7 +14,8 @@ Regira Media provides video processing â€” compression and snapshot extraction â
 <PackageReference Include="Regira.Media.FFMpeg" Version="6.*" />
 ```
 
-FFMpeg binaries must be available on `PATH` or configured via `FFMpegCore.GlobalFFOptions`.
+The FFMpeg binaries, `ffmpeg` and `ffprobe`, must be on `PATH`. `VideoManager` also finds them where
+`FFMpegCore.GlobalFFOptions` points, but `SnapshotService` runs `ffmpeg` by name.
 
 ## VideoManager
 
@@ -36,8 +37,9 @@ VideoSettings? info = await vm.GetInfo(videoFile);
 
 ### Compress
 
-Encodes to VP9/WebM. A setting left `null` is derived from the source: `Size` becomes half its width and height,
-`FrameRate` 90% of its frame rate.
+Encodes to VP9/WebM at a fixed quality (constant rate factor 31). `FrameRate` sets the output's frames per second
+and `Size` its dimensions. Left `null`, `FrameRate` keeps the source's frame rate and `Size` becomes half its width and
+height; the settings object itself is not changed.
 
 <!-- no-compile -->
 ```csharp
@@ -50,7 +52,9 @@ IMemoryFile? compressed = await vm.Compress(videoFile, new VideoSettings
 
 ## SnapshotService
 
-Extracts a single frame as an `IImageFile`.
+Extracts a single frame as an `IImageFile`. It runs `ffmpeg` through an `IProcessHelper`: the default
+`ProcessHelper` from `Regira.System` runs it from a batch file, which is Windows only, so on another platform pass an
+`IProcessHelper` of your own.
 
 <!-- no-compile -->
 ```csharp
@@ -64,14 +68,13 @@ IImageFile? thumb = await snapshots.Snapshot(videoFile,
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `input` | `IBinaryFile` | *(required)* | Source video |
-| `size` | `ImageSize?` | `null` | Output dimensions |
-| `time` | `TimeSpan?` | `null` | Frame position (defaults to first frame) |
+| `size` | `ImageSize?` | `null` | Output dimensions (`null`: the video's own, read with `ffprobe`) |
+| `time` | `TimeSpan?` | `null` | Frame position (`null`: the first frame) |
 
 ## Notes
 
 - `SnapshotService` requires an `IImageService` (inject `Regira.Drawing.SkiaSharp.Services.ImageService`).
 - Output codec is VP9 / WebM.
-- Requires FFMpeg binaries (`ffmpeg`, `ffprobe`) on the host.
 
 ## Overview
 

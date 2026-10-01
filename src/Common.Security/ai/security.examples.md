@@ -6,7 +6,6 @@
 ## DI Registration
 
 ```csharp
-// Program.cs
 using Regira.Security.Abstractions; // IHasher
 
 services.AddSingleton<IHasher, Regira.Security.Hashing.BCryptNet.Hasher>();

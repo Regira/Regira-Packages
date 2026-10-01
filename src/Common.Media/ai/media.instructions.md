@@ -1,6 +1,6 @@
 # Regira Media (Drawing) AI Agent Instructions
 
-> A cross-platform image processing library with a single `IImageService` interface backed by SkiaSharp (recommended) or GDI+ (Windows-only).
+> A cross-platform image processing library with a single `IImageService` interface backed by SkiaSharp (recommended) or GDI+ (Windows-only), and video compression and frame snapshots through FFMpeg.
 
 ## Projects
 
@@ -9,6 +9,7 @@
 | `Common.Media` | *(transitive)* | Shared abstractions, models, DTOs, and `ImageBuilder` |
 | `Drawing.SkiaSharp` | `Regira.Drawing.SkiaSharp` | **Preferred** — cross-platform (SkiaSharp) |
 | `Drawing.GDI` | `Regira.Drawing.GDI` | Windows-only alternative (GDI+) |
+| `Media.FFMpeg` | `Regira.Media.FFMpeg` | Video: info, compression to VP9/WebM, frame snapshots (FFMpeg) |
 
 ---
 
@@ -20,6 +21,9 @@
 
 <!-- Windows-only alternative (GDI+) -->
 <PackageReference Include="Regira.Drawing.GDI" Version="6.*" />
+
+<!-- Video (FFMpeg) — see Video below -->
+<PackageReference Include="Regira.Media.FFMpeg" Version="6.*" />
 ```
 
 ---
@@ -310,3 +314,45 @@ using var resized = await imageService.Resize(image!, new ImageSize(200, 200));
 using var webp    = await imageService.ChangeFormat(resized, ImageFormat.Webp);
 return webp.GetBytes()!;
 ```
+
+---
+
+## Video — `Regira.Media.FFMpeg`
+
+`VideoManager` implements `IVideoService` (`GetInfo`) and `ICompressService` (`Compress`); `SnapshotService` extracts
+one frame as an `IImageFile`. Both run the FFMpeg binaries, `ffmpeg` and `ffprobe`, which the package does not ship:
+put them on `PATH`. `VideoManager` also finds them where `FFMpegCore.GlobalFFOptions` points, but `SnapshotService`
+runs `ffmpeg` by name.
+
+```csharp
+using Regira.Dimensions;                           // Size2D
+using Regira.IO.Abstractions;                      // IBinaryFile, IMemoryFile
+using Regira.IO.Models;                            // BinaryFileItem
+using Regira.Media.Drawing.Dimensions;             // ImageSize
+using Regira.Media.Drawing.Models.Abstractions;    // IImageFile
+using Regira.Media.Drawing.Services.Abstractions;  // IImageService
+using Regira.Media.FFMpeg;                         // VideoManager, SnapshotService
+using Regira.Media.Video.Models;                   // VideoSettings
+
+IBinaryFile video = new BinaryFileItem { Path = "demo.mp4" };
+IImageService imageService = new Regira.Drawing.SkiaSharp.Services.ImageService();
+
+var videos = new VideoManager();
+VideoSettings? info = await videos.GetInfo(video);   // the source's FrameRate and Size
+
+IMemoryFile? webm = await videos.Compress(video, new VideoSettings
+{
+    FrameRate = 24,                     // output frames per second; null keeps the source's
+    Size      = new Size2D(1280, 720)   // null: half the source's width and height
+});
+
+var snapshots = new SnapshotService(imageService);
+IImageFile? frame = await snapshots.Snapshot(video, new ImageSize(640, 360), TimeSpan.FromSeconds(5));
+```
+
+- `Compress` encodes to VP9/WebM at a fixed quality (constant rate factor 31). It leaves the `VideoSettings` it is
+  given unchanged.
+- `Snapshot`: `size: null` takes the video's own size, read with `ffprobe`; `time: null` takes the first frame.
+- `SnapshotService` runs `ffmpeg` through an `IProcessHelper`. The default, `ProcessHelper` from `Regira.System`, runs
+  it from a batch file, which is Windows only; on another platform, pass an `IProcessHelper` of your own as the
+  second constructor argument.

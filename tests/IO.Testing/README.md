@@ -19,7 +19,7 @@ shows the shape but is not read. A fixture whose required secret is missing or b
 |---|---|---|
 | Azure | `Storage:Azure:ConnectionString` (`UseDevelopmentStorage=true` for Azurite) | |
 | GitHub | `Storage:GitHub:Uri`, `Storage:GitHub:Key` (a token that may write the repository's contents) | `Storage:GitHub:Branch` (default `main`) |
-| SSH | `Storage:SSH:Host`, `Storage:SSH:Port`, `Storage:SSH:Username` | `Storage:SSH:Password`, `Storage:SSH:ContainerName` |
+| SSH | `Storage:SSH:Host`, `Storage:SSH:Port`, `Storage:SSH:Username` | `Storage:SSH:Password`, `Storage:SSH:ContainerName`, `Storage:SSH:HostKeyFingerprint` |
 
 ```bash
 dotnet user-secrets set "Storage:Azure:ConnectionString" "UseDevelopmentStorage=true" --project tests/IO.Testing

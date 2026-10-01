@@ -178,7 +178,7 @@ Install `Regira.Setup` to also extract the shared setup guides `project.setup.md
 ## Samples & demos
 
 - **[Regira-Samples](https://github.com/Regira/Regira-Samples)** — three self-contained ASP.NET Core sample APIs built on Regira Entities, generated end-to-end with the MCP server.
-- **Runnable in this repo** — [`tests/Entities.TestApi`](tests/Entities.TestApi) is a complete Entities Web API (Sqlite, attachments, OpenAPI): `dotnet run --project tests/Entities.TestApi`, then open the Scalar UI it logs at startup.
+- **Runnable in this repo** — [`tests/Entities.TestApi`](tests/Entities.TestApi) is a complete Entities Web API (Sqlite, attachments, OpenAPI): `dotnet run --project tests/Entities.TestApi`, then browse `/scalar` for the Scalar UI.
 - **Live demos** — [Fleet Manager](https://fleet-demo.regira.com/) and [PIM Manager](https://pim.regira.com/manager/) run on these packages, demo logins included. Sources: [Regira/RegiraFleet-Backend](https://github.com/Regira/RegiraFleet-Backend), [Regira/Regira-PIM-Backend](https://github.com/Regira/Regira-PIM-Backend).
 
 ---

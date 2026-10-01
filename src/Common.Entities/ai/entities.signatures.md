@@ -313,9 +313,13 @@ public abstract class EntityWrappingServiceBase<TEntity, TKey, TSearchObject>(
 {
     protected readonly IEntityService<TEntity, TKey, TSearchObject> Service = service;
 
+    // All members are virtual:
     public virtual Task<TEntity?> Details(TKey id, CancellationToken token = default);
+    public virtual Task<TEntity?> Details(TKey id, ArchivedFilter? archived, CancellationToken token = default); // an archived-explicit read goes straight to the inner service: override both
     public virtual Task<IList<TEntity>> List(TSearchObject? so = null, PagingInfo? pagingInfo = null, CancellationToken token = default);
-    public virtual Task<long> Count(TSearchObject? so, CancellationToken token = default);
+    public virtual Task<IList<TEntity>> List(object? so, PagingInfo? pagingInfo, CancellationToken token = default);
+    public virtual Task<long> Count(TSearchObject? so = null, CancellationToken token = default);
+    public virtual Task<long> Count(object? so, CancellationToken token = default);
     public virtual Task Add(TEntity item, CancellationToken token = default);
     public virtual Task<TEntity?> Modify(TEntity item, CancellationToken token = default);
     public virtual Task Save(TEntity item, CancellationToken token = default);
@@ -341,11 +345,12 @@ public abstract class EntityWrappingServiceBase<TEntity, TKey, TSearchObject, TS
     where TSortBy : struct, Enum
     where TIncludes : struct, Enum
 {
-    // All IEntityService members are virtual — override as needed:
+    // Virtual — override as needed:
     public virtual Task<TEntity?> Details(TKey id, CancellationToken token = default);
-    public virtual Task<IList<TEntity>> List(TSearchObject? so = null, PagingInfo? pagingInfo = null, CancellationToken token = default);
+    public virtual Task<TEntity?> Details(TKey id, ArchivedFilter? archived, CancellationToken token = default); // an archived-explicit read goes straight to the inner service: override both
+    public virtual Task<IList<TEntity>> List(object? so = null, PagingInfo? pagingInfo = null, CancellationToken token = default);
     public virtual Task<IList<TEntity>> List(IList<TSearchObject?> so, IList<TSortBy> sortBy, TIncludes? includes = null, PagingInfo? pagingInfo = null, CancellationToken token = default);
-    public virtual Task<long> Count(TSearchObject? so, CancellationToken token = default);
+    public virtual Task<long> Count(object? so, CancellationToken token = default);
     public virtual Task<long> Count(IList<TSearchObject?> so, CancellationToken token = default);
     public virtual Task Add(TEntity item, CancellationToken token = default);
     public virtual Task<TEntity?> Modify(TEntity item, CancellationToken token = default);
@@ -353,6 +358,10 @@ public abstract class EntityWrappingServiceBase<TEntity, TKey, TSearchObject, TS
     public virtual Task Remove(TEntity item, CancellationToken token = default);
     public virtual Task<int> SaveChanges(CancellationToken token = default);
     public virtual TSearchObject? Convert(object? so);
+
+    // Not virtual — they call the inner service directly, and overriding them fails with CS0506:
+    public Task<IList<TEntity>> List(TSearchObject? so = null, PagingInfo? pagingInfo = null, CancellationToken token = default);
+    public Task<long> Count(TSearchObject? so = null, CancellationToken token = default);
 }
 ```
 

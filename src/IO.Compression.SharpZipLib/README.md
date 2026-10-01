@@ -1,6 +1,6 @@
 # Regira.IO.Compression.SharpZipLib
 
-Password-protected ZIP archives for Regira, built on [SharpZipLib](https://www.nuget.org/packages/SharpZipLib). `ZipManager` zips a set of `IBinaryFile` items into a stream and unzips a stream into a `BinaryFileCollection`, each with an optional password. Choose it when an archive needs a password; otherwise the ZIP support built into [Regira IO.Storage](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/) covers building and browsing archives.
+Password-protected ZIP archives for Regira, built on [SharpZipLib](https://www.nuget.org/packages/SharpZipLib). `ZipManager` zips a set of `IBinaryFile` items into a stream and unzips a stream into a `BinaryFileCollection`, each with an optional password. A password encrypts every entry with AES-256, which 7-Zip and WinZip open but the ZIP folders built into Windows Explorer do not. `Unzip` refuses an entry name that would leave the folder it is extracted into, and `MaxUnzippedSize` caps what an untrusted archive may unpack to. Choose it when an archive needs a password; otherwise the ZIP support built into [Regira IO.Storage](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/) covers building and browsing archives.
 
 ## Installation
 

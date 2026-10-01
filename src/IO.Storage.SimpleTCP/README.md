@@ -8,7 +8,7 @@ Sends files and text to a TCP server through the [Regira IO.Storage](https://reg
 <PackageReference Include="Regira.IO.Storage.SimpleTCP" Version="6.*" />
 ```
 
-Requires a TCP server listening on the configured host and port.
+Requires a TCP server listening on the configured host and port. The transport is plain TCP: nothing is encrypted or authenticated, so keep it to a trusted network.
 
 ## Documentation
 

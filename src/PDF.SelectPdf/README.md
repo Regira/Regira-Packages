@@ -1,6 +1,11 @@
 # Regira.Office.PDF.SelectPdf
 
-HTML→PDF backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/), built on [Select.HtmlToPdf.NetCore](https://www.nuget.org/packages/Select.HtmlToPdf.NetCore). `PdfManager` implements `IHtmlToPdfService`. It is the recommended HTML→PDF backend: unlike the headless-Chromium backends it applies every `HtmlInput` property — page size, orientation, margins, headers and footers — and needs no browser installation.
+HTML→PDF backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/), built on [Select.HtmlToPdf.NetCore](https://www.nuget.org/packages/Select.HtmlToPdf.NetCore). `PdfManager` implements `IHtmlToPdfService`. Unlike the headless-Chromium backends it applies every `HtmlInput` property — page size, orientation, margins, headers and footers — and needs no browser installation.
+
+Two limits decide whether it fits:
+
+- **Windows only.** It renders through `System.Drawing.Common`, which throws on other platforms.
+- **Five pages.** The free Community Edition of Select.HtmlToPdf converts only the first five pages' worth of a document. The rest is left out of the PDF, without an error or a notice. A longer document needs the vendor's paid edition or a headless-Chromium backend.
 
 ## Installation
 

@@ -5,8 +5,8 @@
 > names. Keep each entry a statement about the framework that stands on its own, and short: the
 > rule and the trap, not the story of finding it. The date is the origin of the lesson, kept so
 > staleness stays judgeable. Cited types, members and paths were re-checked against source on
-> 2026-09-30. Lessons about the MCP server and knowledge builder belong with that code
-> (Regira-Tools), and lessons about the front-end package with Regira-Modules.
+> 2026-09-30. Lessons about the MCP server and knowledge builder belong with that code, in the
+> MCP server's own repository, and lessons about the front-end package with Regira-Modules.
 
 ## Recurring shapes
 

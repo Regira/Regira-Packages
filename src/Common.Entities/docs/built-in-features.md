@@ -30,8 +30,10 @@ Possible overrides:
 Task<TEntity?> Details(TKey id, CancellationToken token = default)
 Task<TEntity?> Details(TKey id, ArchivedFilter? archived, CancellationToken token = default) // an archived-explicit read goes straight to the inner service: override both
 Task<IList<TEntity>> List(TSearchObject? so = null, PagingInfo? pagingInfo = null, CancellationToken token = default) // not virtual on the complex base
+Task<IList<TEntity>> List(object? so, PagingInfo? pagingInfo, CancellationToken token = default)
 Task<IList<TEntity>> List(IList<TSearchObject?> so, IList<TSortBy> sortBy, TIncludes? includes, PagingInfo? pagingInfo, CancellationToken token = default)
 Task<long> Count(TSearchObject? so, CancellationToken token = default) // not virtual on the complex base
+Task<long> Count(object? so, CancellationToken token = default)
 Task<long> Count(IList<TSearchObject?> so, CancellationToken token = default)
 
 // Write

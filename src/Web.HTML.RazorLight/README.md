@@ -1,6 +1,6 @@
 # Regira.Web.HTML.RazorLight
 
-Razor template engine for [Regira Web.HTML](https://regira.github.io/Regira-Packages/src/Common.Web/), built on [RazorLight](https://www.nuget.org/packages/RazorLight). `RazorTemplateParser` implements `IHtmlParser` and renders a Razor template string with a model to HTML. Compiled templates are cached in memory: `RazorTemplateParser.Options.TemplateKey` reuses a compiled template across calls on the same parser instance.
+Razor template engine for [Regira Web](https://regira.github.io/Regira-Packages/src/Common.Web/), built on [RazorLight](https://www.nuget.org/packages/RazorLight). `RazorTemplateParser` implements `IHtmlParser` and renders a Razor template string with a model to HTML. Compiled templates are cached in memory: `RazorTemplateParser.Options.TemplateKey` reuses a compiled template across calls on the same parser instance.
 
 ## Installation
 

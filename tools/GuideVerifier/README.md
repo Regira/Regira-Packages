@@ -14,7 +14,10 @@ new guide file to its group when you write it (see *Extending coverage*).
    (e.g. `Microsoft.AspNetCore.App`). Groups build independently, so doc families with unrelated —
    or conflicting — dependency sets stay isolated. Two more optional keys:
    - `packages` — NuGet packages as `{ "id": "version" }`, for what a *consumer* installs alongside the
-     Regira projects (an EF Core provider, say). Project references alone cannot cover those.
+     Regira projects (an EF Core provider, say). Project references alone cannot cover those. The
+     `security` group's `Microsoft.AspNetCore.OpenApi` looks redundant, since `Security.Authentication.Web`
+     already references it, but keep it: the package enables the interceptors its source generator emits
+     only for a project that references it directly, so without it the group fails with CS9137.
    - ⚠️ Keep `usings` to what the reader's SDK supplies **implicitly**. A namespace listed here is
      prepended to every snippet in the group, so listing one the doc also declares makes the doc's own
      `using` line dead weight — and a guide that later loses it still compiles green. The `quickstart`
@@ -78,16 +81,16 @@ verified); anything illustrative-only gets the marker.
 > went unnoticed — only the human-facing site was affected. Keep the marker on its own line and the fence a
 > bare ` ```csharp `.
 
-The old form now **fails loudly** rather than silently: the extractor no longer reads the info string, so
-` ```csharp no-compile ` is collected as an ordinary C# block and the fragment breaks the build.
+The old form now **fails loudly** rather than silently: the extractor reads the info string only to detect
+the language, so ` ```csharp no-compile ` is collected as an ordinary C# block and the fragment breaks the build.
 
 As the guides are cleaned up so that more blocks are self-contained, remove `no-compile` markers to bring
 those snippets back under verification.
 
 **Blind spot — blockquoted snippets.** A fence indented inside a blockquote (`> ```csharp `) is invisible to
-the extractor, marker or not, so those blocks are never verified. Four exist today, in
-`entities.instructions.md` and `entities.patterns.md`; they carry `> <!-- no-compile -->` for consistency,
-but the marker is inert. Don't rely on a blockquoted block being checked.
+the extractor, marker or not, so those blocks are never verified. Nine exist today, in
+`entities.instructions.md`, `entities.patterns.md` and `entities.setup.md`. Five of them carry
+`> <!-- no-compile -->`, but the marker is inert there, with or without it. Don't rely on a blockquoted block being checked.
 
 ## Scope and CI
 

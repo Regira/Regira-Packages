@@ -8,7 +8,7 @@ HTML→PDF backend for [Regira Office](https://regira.github.io/Regira-Packages/
 <PackageReference Include="Regira.Office.PDF.MsPlaywright" Version="6.*" />
 ```
 
-Chromium is installed automatically on first use.
+Chromium is installed on first use, so the first conversion needs network access and writable disk at run time, or a browser installed in advance.
 
 ## Documentation
 

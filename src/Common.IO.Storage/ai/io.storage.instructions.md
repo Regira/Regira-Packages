@@ -308,11 +308,12 @@ would be served as a web page. Leave the argument out, or derive it from the nam
 ```csharp
 var communicator = new SftpCommunicator(new SftpConfig
 {
-    Host          = "sftp.example.com",
-    Port          = 22,
-    UserName      = "deploy",
-    Password      = "s3cr3t",
-    ContainerName = "/home/deploy/files"
+    Host               = "sftp.example.com",
+    Port               = 22,
+    UserName           = "deploy",
+    Password           = configuration["Sftp:Password"],
+    ContainerName      = "/home/deploy/files",
+    HostKeyFingerprint = "SHA256:ohD8VZEXGWo6Ez8GSEJQ9WpafgLFsOfLOtGGQCQo6Og"   // ssh-keyscan sftp.example.com | ssh-keygen -lf -
 });
 
 var service = new SftpService(communicator);
@@ -324,6 +325,7 @@ var service = new SftpService(communicator);
 | `Port` | `int` | `22` | SSH port |
 | `UserName` | `string` | *(required)* | Login username |
 | `Password` | `string?` | `null` | Login password |
+| `HostKeyFingerprint` | `string?` | `null` | The server's SHA-256 host key fingerprint, as `ssh-keygen -lf` prints it. A server presenting another key is refused. Left empty, **any host key is accepted**, so an impersonating server goes unnoticed |
 | `ContainerName` | `string` | `"/"` | Remote base directory |
 | `Contained` | `bool` | `true` | Reject identifiers that escape `ContainerName` (path traversal) |
 
@@ -342,7 +344,7 @@ var service = new GitHubService(
     new GitHubCommunicator(new GitHubOptions
     {
         Uri       = "https://api.github.com/repos/owner/repo",
-        Key       = "ghp_xxxxxxxxxxxx",
+        Key       = configuration["GitHub:Token"],   // PAT — optional for public-repo reads; keep it out of source
         UserAgent = "MyApp/1.0"
     }),
     jsonSerializer
@@ -384,7 +386,7 @@ matches that folder as a whole: `dir2/dir2.1` does not include `dir2/dir2.10`.
 | `ZipFileCommunicator` | Type | Description |
 |---|---|---|
 | `SourceFile` | `IMemoryFile?` | Existing zip to open — omit to start empty |
-| `Password` | `string?` | Not read by `ZipFileService` — a password-protected zip needs `Regira.IO.Compression.SharpZipLib` |
+| `Password` | `string?` | Not read by `ZipFileService` — a password-protected zip needs `ZipManager` (below) |
 
 ### `ZipBuilder` — create archives
 
@@ -410,6 +412,30 @@ string[] extracted         = ZipUtility.Unzip(existingZip, targetDirectory: "/tm
 
 Entries are named after each file's `Identifier` (else `FileName`) with `/` separators, as the ZIP format
 requires — an archive made on Windows unzips into the same folders on Linux. `Unzip` also reads `\` as a separator.
+
+### `ZipManager` — password-protected archives
+
+**Package:** `Regira.IO.Compression.SharpZipLib`
+
+```csharp
+using Regira.IO.Compression.SharpZipLib;   // ZipManager
+
+IEnumerable<IBinaryFile> files = [new BinaryFileItem { FileName = "report.pdf", Bytes = [] }];
+var password = configuration["Exports:ZipPassword"];
+
+var zipManager = new ZipManager { MaxUnzippedSize = 100 * 1024 * 1024 };   // Unzip throws past 100 MB; null: no limit
+var archive = zipManager.Zip(files, password);                // a Stream, rewound, ready to save or send
+var items   = await zipManager.Unzip(archive, password);      // a BinaryFileCollection; a wrong password throws ZipException
+```
+
+- A password encrypts every entry with AES-256. 7-Zip and WinZip open the archive; the ZIP folders built into
+  Windows Explorer do not.
+- `Unzip` decrypts AES and ZipCrypto entries, and copies a stream that cannot seek into memory first. Entry names come
+  back with `/` separators; one that would leave the folder it is extracted into (a `..` segment, a leading separator
+  or a drive) throws `UnauthorizedAccessException` before anything of it is read. `Zip` drops a leading separator
+  or drive from a file name and refuses a `..` segment the same way, so it never writes an archive `Unzip` refuses.
+- `MaxUnzippedSize` caps the bytes `Unzip` extracts, all entries together, counted while reading:
+  `InvalidDataException` past it. Set it for an archive from an untrusted source, such as an upload.
 
 ---
 
@@ -465,12 +491,18 @@ FileNameUtility.GetUncShareRoot(@"\\server\share\sub")   // → @"\\server\share
 
 ## DI Registration
 
+Register one backend as `IFileService`; the two below are alternatives. A second `IFileService` registration
+replaces the first wherever `IFileService` is injected, so an app that uses both stores registers the second one
+by its own type, as the *DI Registration* in [`io.storage.examples.md`](./io.storage.examples.md) does.
+
 ```csharp
-// Local file system
+// Either: local file system
 services.AddSingleton<IFileService>(_ =>
     new BinaryFileService(new FileSystemOptions { RootFolder = "/var/app/uploads" }));
+```
 
-// Azure Blob — register options and communicator separately; the service calls Open() lazily
+```csharp
+// Or: Azure Blob — register options and communicator separately; the service calls Open() lazily
 services.AddSingleton(new AzureOptions
 {
     ConnectionString = configuration["Azure:Storage"],

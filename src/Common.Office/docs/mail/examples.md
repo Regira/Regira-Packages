@@ -139,7 +139,6 @@ A JSON body accepted by this endpoint:
 Plug `IMailService` into the Identity email confirmation flow using `IdentityMailer`.
 
 ```csharp
-// Program.cs
 services.AddSendGrid(cfg => cfg.Key = configuration["Mail:SendGrid:Key"]!);
 
 services.AddSingleton<IEmailSender>(provider =>

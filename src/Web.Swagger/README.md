@@ -1,6 +1,6 @@
 # Regira.Web.Swagger
 
-Swagger UI authentication inputs for APIs documented with [Swashbuckle.AspNetCore](https://www.nuget.org/packages/Swashbuckle.AspNetCore), part of [Regira Web.HTML](https://regira.github.io/Regira-Packages/src/Common.Web/). `AddJwtAuthentication()` and `AddApiKeyAuthentication()` extend `SwaggerGenOptions` with a JWT Bearer or API key security definition and a document-wide security requirement, so the Swagger UI prompts for a token or key. `DisplayEnumAsString()` on the MVC builder adds a `JsonStringEnumConverter` to the controllers' JSON options, so enums are serialized, and shown in Swagger, as strings.
+Swagger UI authentication inputs for APIs documented with [Swashbuckle.AspNetCore](https://www.nuget.org/packages/Swashbuckle.AspNetCore), part of [Regira Web](https://regira.github.io/Regira-Packages/src/Common.Web/). `AddJwtAuthentication()` and `AddApiKeyAuthentication()` extend `SwaggerGenOptions` with a JWT Bearer or API key security definition and a document-wide security requirement, so the Swagger UI prompts for a token or key. `DisplayEnumAsString()` on the MVC builder adds a `JsonStringEnumConverter` to the controllers' JSON options, so enums are serialized, and shown in Swagger, as strings.
 
 ## Installation
 
@@ -13,7 +13,7 @@ The package uses only [Microsoft.OpenApi](https://www.nuget.org/packages/Microso
 ## Documentation
 
 - [Web.Swagger](https://regira.github.io/Regira-Packages/src/Common.Web/#webswagger) — registering the JWT and API key inputs, and enums as strings
-- [OpenAPI document transformers](https://regira.github.io/Regira-Packages/src/Common.Security/docs/controllers.html#openapi-document-transformers-securityauthenticationweb) — security schemes and per-operation requirements for the built-in `AddOpenApi` document (.NET 9+), in `Regira.Security.Authentication.Web`
+- [OpenAPI document transformers](https://regira.github.io/Regira-Packages/src/Common.Security/docs/controllers.html#openapi-document-transformers-securityauthenticationweb) — security schemes and per-operation requirements for the built-in `AddOpenApi` document (.NET 10), in `Regira.Security.Authentication.Web`
 
 ## License
 

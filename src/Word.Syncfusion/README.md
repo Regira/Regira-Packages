@@ -9,7 +9,7 @@ Word backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Co
 ```
 
 - A Syncfusion licence key is required: pass it to the constructor in a `SyncfusionWordConfig`, or set the `SYNCFUSION_LICENSE_KEY` environment variable. Without a valid key DocIO adds trial text to every document it produces.
-- PDF conversion and page images render through SkiaSharp and HarfBuzzSharp; on Linux, add `SkiaSharp.NativeAssets.Linux` and `HarfBuzzSharp.NativeAssets.Linux`.
+- PDF conversion and page images render through SkiaSharp and HarfBuzzSharp; on Linux, add `SkiaSharp.NativeAssets.Linux` and `HarfBuzzSharp.NativeAssets.Linux` at the versions of `SkiaSharp` and `HarfBuzzSharp` the application resolves.
 
 ## Documentation
 

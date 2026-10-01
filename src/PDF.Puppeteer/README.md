@@ -8,7 +8,7 @@ HTML→PDF backend for [Regira Office](https://regira.github.io/Regira-Packages/
 <PackageReference Include="Regira.Office.PDF.Puppeteer" Version="6.*" />
 ```
 
-Chromium is downloaded automatically on first use.
+Chromium is downloaded on first use, so the first conversion needs network access and writable disk at run time, or a browser cache seeded in advance.
 
 ## Documentation
 

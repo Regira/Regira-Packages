@@ -5,7 +5,6 @@
 ## DI Registration
 
 ```csharp
-// Program.cs
 // Local disk for uploads
 services.AddSingleton<IFileService>(_ =>
     new BinaryFileService(new FileSystemOptions { RootFolder = "/var/app/uploads" }));

@@ -11,6 +11,9 @@ and OpenAPI security schemes. xUnit with Shouldly.
 dotnet test tests/Web.Security.Testing
 ```
 
-No external requirements. Each scenario hosts its own startup through `WebApplicationFactory` on a `TestServer`,
+The project builds in Debug only: it reads internals of `Security.Authentication`, whose `InternalsVisibleTo` is
+granted in Debug builds alone, so `-c Release` fails with CS0122.
+
+Nothing outside the process is needed. Each scenario hosts its own startup through `WebApplicationFactory` on a `TestServer`,
 with the EF Core InMemory provider behind Identity and a fake Entra authority, so nothing leaves the process. Test
 classes run in parallel under xUnit's default; the project has no `Properties/AssemblyInfo.cs`.

@@ -9,7 +9,7 @@ Word backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Co
 ```
 
 - An Aspose.Words licence is required: pass it to the constructor in an `AsposeWordConfig` (`LicensePath` or `LicenseBase64`), or set the `ASPOSE_WORDS_LICENSE` or `ASPOSE_WORDS_LICENSE_PATH` environment variable. When none resolves, constructing `WordService` throws unless `AllowEvaluation` is set; evaluation output is watermarked, and long documents are cut short.
-- PDF conversion and page images render through SkiaSharp; on Linux, add `SkiaSharp.NativeAssets.Linux` and install `libfontconfig1` and `libharfbuzz-icu0`.
+- PDF conversion and page images render through SkiaSharp; on Linux, add `SkiaSharp.NativeAssets.Linux` at the version of `SkiaSharp` the application resolves, and install `libfontconfig1` and `libharfbuzz-icu0`.
 
 ## Documentation
 

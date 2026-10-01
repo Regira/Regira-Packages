@@ -249,11 +249,12 @@ would be served as a web page. Leave the argument out, or derive it from the nam
 ```csharp
 var communicator = new SftpCommunicator(new SftpConfig
 {
-    Host          = "sftp.example.com",
-    Port          = 22,
-    UserName      = "deploy",
-    Password      = "s3cr3t",
-    ContainerName = "/home/deploy/files"
+    Host               = "sftp.example.com",
+    Port               = 22,
+    UserName           = "deploy",
+    Password           = configuration["Sftp:Password"],
+    ContainerName      = "/home/deploy/files",
+    HostKeyFingerprint = "SHA256:ohD8VZEXGWo6Ez8GSEJQ9WpafgLFsOfLOtGGQCQo6Og"   // ssh-keyscan sftp.example.com | ssh-keygen -lf -
 });
 
 var service = new SftpService(communicator);
@@ -265,6 +266,7 @@ var service = new SftpService(communicator);
 | `Port` | `int` | `22` | SSH port |
 | `UserName` | `string` | *(required)* | Login username |
 | `Password` | `string?` | `null` | Login password |
+| `HostKeyFingerprint` | `string?` | `null` | The server's SHA-256 host key fingerprint, as `ssh-keygen -lf` prints it. A server presenting another key is refused. Left empty, **any host key is accepted**, so an impersonating server goes unnoticed |
 | `ContainerName` | `string?` | `"/"` | Remote base directory |
 | `Contained` | `bool` | `true` | Reject identifiers that escape `ContainerName` |
 
@@ -283,7 +285,7 @@ var service = new GitHubService(
     new GitHubCommunicator(new GitHubOptions
     {
         Uri       = "https://api.github.com/repos/owner/repo",
-        Key       = "ghp_xxxxxxxxxxxx",   // PAT — optional for public-repo reads
+        Key       = configuration["GitHub:Token"],   // PAT — optional for public-repo reads; keep it out of source
         UserAgent = "MyApp/1.0"
     }),
     jsonSerializer

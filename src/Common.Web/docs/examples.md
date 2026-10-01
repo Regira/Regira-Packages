@@ -1,4 +1,4 @@
-# Regira Web.HTML — Examples
+# Regira Web — Examples
 <!-- {% raw %} -->
 
 ## Example 1: Render a Razor invoice template

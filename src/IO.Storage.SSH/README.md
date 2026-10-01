@@ -8,7 +8,7 @@ SFTP backend for [Regira IO.Storage](https://regira.github.io/Regira-Packages/sr
 <PackageReference Include="Regira.IO.Storage.SSH" Version="6.*" />
 ```
 
-Requires an SSH server with SFTP access; `SftpConfig` signs in with a username and password.
+Requires an SSH server with SFTP access; `SftpConfig` signs in with a username and password. Set its `HostKeyFingerprint` to the server's SHA-256 host key fingerprint (`ssh-keyscan <host> | ssh-keygen -lf -`) so a server presenting another key is refused: left empty, any host key is accepted.
 
 ## Documentation
 

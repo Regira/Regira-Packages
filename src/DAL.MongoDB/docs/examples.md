@@ -17,8 +17,9 @@ var products = await repo.List(new ProductSearchObject { Category = "electronics
 
 ## Example 2: Custom MongoDB repository
 
-`List(searchObject)` hands the overrides the search object as a dictionary keyed by its property names, and the
-collection holds `BsonDocument`s, so the filter and the sort address fields by name.
+`List(searchObject)` hands the overrides the search object as a dictionary keyed by its property names, read
+regardless of case. The collection holds `BsonDocument`s, so the filter and the sort address fields by the names they
+are stored under, and those are the names the `ISerializer` writes: camelCase with `Regira.Serializing.Newtonsoft`.
 
 ```csharp
 public class Product
@@ -48,17 +49,17 @@ public class ProductRepository(MongoCommunicator comm, ISerializer serializer)
         var filter = base.GetFilter(so);   // keeps the Id filter
 
         if (so?.TryGetValue(nameof(ProductSearchObject.Category), out var category) == true && category != null)
-            filter &= Builders<BsonDocument>.Filter.Eq(nameof(Product.Category), category.ToString());
+            filter &= Builders<BsonDocument>.Filter.Eq("category", category.ToString());
 
         if (so?.TryGetValue(nameof(ProductSearchObject.MinPrice), out var minPrice) == true && minPrice != null)
-            filter &= Builders<BsonDocument>.Filter.Gte(nameof(Product.Price), System.Convert.ToDecimal(minPrice));
+            filter &= Builders<BsonDocument>.Filter.Gte("price", System.Convert.ToDecimal(minPrice));
 
         return filter;
     }
 
     protected override IFindFluent<BsonDocument, BsonDocument> SortResult(
         IFindFluent<BsonDocument, BsonDocument> result, IDictionary<string, object?> so)
-        => result.Sort(Builders<BsonDocument>.Sort.Ascending(nameof(Product.Name)));
+        => result.Sort(Builders<BsonDocument>.Sort.Ascending("name"));
 }
 ```
 

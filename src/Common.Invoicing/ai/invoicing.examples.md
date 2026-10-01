@@ -24,7 +24,11 @@ public async Task SendPeppolInvoice(Order order)
     // 1. Build UBL XML from the invoice domain model
     IInvoice invoice = MapInvoice(order);   // your mapping: code, dates, supplier, customer, invoice lines
     var converter = new UblConverter();
-    XDocument ubl = converter.Convert(new UblDocumentInput { Invoice = invoice });
+    XDocument ubl = converter.Convert(new UblDocumentInput
+    {
+        Invoice  = invoice,
+        Supplier = invoice.Supplier   // the converter reads the seller from here only, not from Invoice
+    });
 
     // 2. Transmit via AdValVas
     var peppolService = new PeppolService(_gatewaySettings, _jsonSerializer);

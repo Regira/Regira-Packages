@@ -12,7 +12,7 @@ The package only builds the XML. Delivering it over Peppol goes through an acces
 
 ## Documentation
 
-- [UblSharp — UBL Conversion](https://regira.github.io/Regira-Packages/src/Common.Invoicing/#ublsharp--ubl-conversion) — `IUblConverter`, `UblDocumentInput` and the Peppol code lists (`InvoiceTypeCode`, `PaymentMeansCode`, `TaxCategoryCode`)
+- [UblSharp — UBL Conversion](https://regira.github.io/Regira-Packages/src/Common.Invoicing/#ublsharp--ubl-conversion) — `IUblConverter`, `UblDocumentInput` (the seller goes in its `Supplier`), and the fields the converter writes as fixed values: type code, currency, payment means and tax category
 - [Typical end-to-end flow](https://regira.github.io/Regira-Packages/src/Common.Invoicing/#typical-end-to-end-flow) — conversion followed by Peppol transmission
 
 ## License

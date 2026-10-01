@@ -8,6 +8,8 @@ Cross-platform image backend for [Regira Drawing](https://regira.github.io/Regir
 <PackageReference Include="Regira.Drawing.SkiaSharp" Version="6.*" />
 ```
 
+The `SkiaSharp` package brings the native library for Windows and macOS only. On Linux, add `SkiaSharp.NativeAssets.Linux` at the version of `SkiaSharp` the application resolves.
+
 ## Documentation
 
 - [Regira Drawing](https://regira.github.io/Regira-Packages/src/Common.Media/) — `IImageService`, the image models, and layer composition with `ImageBuilder`

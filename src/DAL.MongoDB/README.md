@@ -54,6 +54,8 @@ The underlying `IMongoDatabase` (`Database`) is `protected internal` — it is n
 
 Extend this to build a repository (`TEntity` must be a class with a parameterless constructor). The base constructor takes the communicator, an `ISerializer`, id accessor delegates, and an optional collection name. Override `GetFilter()`, `SortResult()`, and `PageResult()` for custom queries.
 
+The entity is stored as the JSON the `ISerializer` writes, so a filter or a sort names a field the way that serializer does: camelCase with `Regira.Serializing.Newtonsoft`. The search object reaches the overrides as a dictionary whose keys are read regardless of case.
+
 ```csharp
 public class Product
 {
@@ -74,7 +76,7 @@ public class ProductRepository(MongoCommunicator comm, ISerializer serializer)
         var filter = base.GetFilter(so);
         if (so?.TryGetValue("name", out var name) == true && name != null)
         {
-            filter &= Builders<BsonDocument>.Filter.Eq("Name", name.ToString());
+            filter &= Builders<BsonDocument>.Filter.Eq("name", name.ToString());
         }
         return filter;
     }

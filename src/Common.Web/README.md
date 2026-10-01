@@ -1,7 +1,7 @@
-# Regira Web.HTML
+# Regira Web
 <!-- {% raw %} -->
 
-Regira Web.HTML provides Razor-based HTML template rendering plus common web utilities, middleware, and Swagger configuration.
+Regira Web provides Razor-based HTML template rendering plus common web utilities, middleware, and Swagger configuration.
 
 ## Projects
 

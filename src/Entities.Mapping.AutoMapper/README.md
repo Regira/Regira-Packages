@@ -2,6 +2,8 @@
 
 [AutoMapper](https://www.nuget.org/packages/AutoMapper) as the entity ↔ DTO mapper for [Regira Entities](https://regira.github.io/Regira-Packages/src/Common.Entities/). `options.UseAutoMapper()` in the `UseEntities()` callback makes AutoMapper the `IEntityMapper`. Unlike the [Mapster adapter](https://regira.github.io/Regira-Packages/src/Entities.Mapping.Mapster/) it does not map by convention: every entity ↔ DTO pair is registered with the per-entity `UseMapping<>()` / `AddMapping<>()` statements, each of which creates the AutoMapper map. No profile assemblies are scanned; an optional callback receives the `IServiceProvider` and the `IMapperConfigurationExpression`.
 
+This adapter is deprecated: new applications use [Regira.Entities.Mapping.Mapster](https://regira.github.io/Regira-Packages/src/Entities.Mapping.Mapster/).
+
 ## Installation
 
 ```xml
