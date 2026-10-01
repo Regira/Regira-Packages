@@ -96,6 +96,10 @@ string? ext = ContentTypeUtility.GetExtension("image/webp");    // "webp" (no le
 ContentTypeUtility.Extend(new Dictionary<string, string[]> { { "abc", ["application/x-abc"] } });
 ```
 
+For an extension the map knows, `Extend` appends the types and `GetContentType` keeps answering the first one. `js`
+answers `text/javascript`. `GetExtension` answers one fixed extension per type: one whose first type it is, then the
+usual one (`jpg`, `html`, `txt`), then the first in alphabetical order (`xml`, `js`, `tif`).
+
 The map ignores case and knows the common web types (`webp`, `avif`, `heic`, `json`, `md`, `webm`, `woff2`, `mjs`,
 …); an extension it does not know answers `application/octet-stream`.
 
@@ -151,7 +155,7 @@ Path        →  /var/app/storage/invoices/2024/inv-001.pdf
 | `Identifier` | Relative key — `Prefix + FileName` — portable across backend swaps |
 | `Path` | `Root + Identifier` — full absolute address |
 
-> **Path containment.** The local and SFTP backends resolve every identifier against `Root` and throw `UnauthorizedAccessException` when it escapes the root (e.g. via `../`); zip extraction enforces the same containment. Folder names compare as the file system does: regardless of case on Windows and macOS, exactly elsewhere. This is on by default (`Contained = true` in `FileSystemOptions`/`SftpConfig`) — only disable it for trusted, non-user input.
+> **Path containment.** The local and SFTP backends resolve every identifier against `Root` and throw `UnauthorizedAccessException` when it escapes the root (e.g. via `../`); zip extraction to a folder (the `targetDirectory` overloads of `ZipUtility.Unzip`) enforces the same containment, while `ZipUtility.Unzip(IBinaryFile)` returns each entry name as stored, `../x` included — check one before using it as a path. Folder names compare as the file system does: regardless of case on Windows and macOS, exactly elsewhere. This is on by default (`Contained = true` in `FileSystemOptions`/`SftpConfig`) — only disable it for trusted, non-user input.
 
 ---
 
@@ -297,7 +301,8 @@ var service = new BinaryBlobService(communicator);
 link shows the file or downloads it. Without one — `null`, empty or blank — the type comes from the identifier's
 extension. Never pass an upload's `IFormFile.ContentType`: the client chose it, so an `avatar.png` declared `text/html`
 would be served as a web page. Leave the argument out, or derive it from the name with
-`ContentTypeUtility.GetContentType(fileName)`.
+`ContentTypeUtility.GetContentType(fileName)`. `Save` sets no `Content-Encoding`: through 6.4 it wrote a character-set
+guess there, which a blob saved before 6.5.0 keeps until it is saved again.
 
 ---
 
@@ -313,7 +318,7 @@ var communicator = new SftpCommunicator(new SftpConfig
     UserName           = "deploy",
     Password           = configuration["Sftp:Password"],
     ContainerName      = "/home/deploy/files",
-    HostKeyFingerprint = "SHA256:ohD8VZEXGWo6Ez8GSEJQ9WpafgLFsOfLOtGGQCQo6Og"   // ssh-keyscan sftp.example.com | ssh-keygen -lf -
+    HostKeyFingerprint = "SHA256:ohD8VZEXGWo6Ez8GSEJQ9WpafgLFsOfLOtGGQCQo6Og"   // the key type the server negotiates: ssh-keyscan sftp.example.com | ssh-keygen -lf - lists one per type
 });
 
 var service = new SftpService(communicator);

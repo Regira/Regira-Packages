@@ -159,6 +159,9 @@ Save(inputDto) -> SaveResult
 > - The merge base is the current entity serialized to JSON and then deserialized as `TInputDto`, so only properties declared on the input model can be modified — audit/computed fields on `TEntity` are automatically excluded.
 > - Related collections not included in the patch body are left intact (the entity is fetched without includes, so `null` collections are treated as absent, not as "remove all").
 > - Assumes `TInputDto` property names match the corresponding `TEntity` property names.
+> - The merged input is validated against `TInputDto`'s DataAnnotations before the save: a failure answers **400** with
+>   the `ValidationProblemDetails` model binding answers with, without `errorDetails`. The save then runs the
+>   validators as a `PUT` does.
 
 #### DELETE Endpoint
 

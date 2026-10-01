@@ -2,7 +2,8 @@ namespace Regira.Entities.Models;
 
 /// <summary>
 /// A write rejected because the client's input breaks a domain rule — <see cref="Errors"/> carries the field-level
-/// messages, which the web layers return as the ModelState payload of an HTTP 400.
+/// messages, which the web layers return as an HTTP 400 <c>ValidationProblemDetails</c>: its <c>errors</c> by key, and
+/// <c>errorDetails</c> listing each error with its args.
 /// <para>
 /// Throw the generic <see cref="EntityInputException{T}"/>; this base exists so a handler can catch every
 /// input rejection whatever entity it was parameterized with. A <c>catch</c> on one closed generic (what the

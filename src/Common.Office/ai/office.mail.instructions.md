@@ -92,6 +92,10 @@ MailAddress named = new() { Email = "alice@example.com", DisplayName = "Alice" }
 
 `ToString()` returns `"Alice <alice@example.com>"` when `DisplayName` is set.
 
+The implicit conversions from a string — this one and `MailRecipient`'s below — apply only where the concrete type is
+expected. `Send` takes `IMailAddress` and `IEnumerable<IMailRecipient>`, so a string passed to it fails with CS1503:
+construct the model, or convert into a typed variable first.
+
 ### `IMailRecipient` / `MailRecipient`
 
 Extends `IMailAddress` with a recipient type.

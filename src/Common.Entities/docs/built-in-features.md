@@ -421,7 +421,10 @@ which validators apply to an entity, and what a refusal leaves behind. The `Regi
 package runs `AbstractValidator<T>` rules in that stage, under the same scope rule: an `AbstractValidator<Party>`
 checks a `Person` saved through any service. Every validator in scope runs, so a `PersonValidator` that calls
 `Include(new PartyValidator())` in an assembly that also holds `PartyValidator` reports each `Party` message twice —
-the scope rule already runs it.
+the scope rule already runs it. An `AbstractValidator<T>` runs only when a write service saves a `T`: one for a
+`Related()` child (`AbstractValidator<OrderLine>`) or for an input DTO is registered by the assembly scan and never
+runs, and startup validation does not warn about it. Validate children from the parent, with
+`RuleForEach(x => x.Lines).ChildRules(...)` or `.SetValidator(new OrderLineValidator())`.
 
 <!-- no-compile -->
 ```csharp

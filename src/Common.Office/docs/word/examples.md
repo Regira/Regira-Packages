@@ -93,6 +93,10 @@ IMemoryFile pdf = await word.Convert(
     });
 ```
 
+> ⚠️ `word` is Word.Spire here, and the FreeSpire.Doc free edition writes only the first three pages of a PDF, with a
+> notice page in place of the rest, and no error. For a document that can run longer, convert with Word.Syncfusion,
+> Word.Aspose or Word.Gotenberg.
+
 ---
 
 ## Example 5: Merge multiple documents

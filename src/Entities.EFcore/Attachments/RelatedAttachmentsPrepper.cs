@@ -28,18 +28,32 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
 
     public override async Task Prepare(TEntity modified, TEntity? original, CancellationToken token = default)
     {
+        var selectorFunc = navigationExpression.Compile();
+        var modifiedItems = selectorFunc(modified);
+        if (modifiedItems == null)
+        {
+            return;
+        }
+
+        // A new link — an insert of the owner too — may point only at an attachment the owner already links. Without
+        // the owner's stored links, only a link without an id is known to be new.
+        var storedItems = original != null ? selectorFunc(original) : null;
+        var ownedAttachmentIds = storedItems?.Select(x => x.AttachmentId).ToArray() ?? [];
+        foreach (var link in modifiedItems.Where(m => IsNew(m) || (storedItems != null && storedItems.All(o => m.Id!.Equals(o.Id) != true))))
+        {
+            EntityAttachmentContent.KeepToOwner(link, ownedAttachmentIds);
+        }
+
         if (original != null)
         {
-            var selectorFunc = navigationExpression.Compile();
-            var originalItems = selectorFunc(original);
-            var modifiedItems = selectorFunc(modified);
+            var originalItems = storedItems;
 
-            if (modifiedItems == null || originalItems == null)
+            if (originalItems == null)
             {
                 return;
             }
 
-            var relatedItemsToAdd = modifiedItems.Where(m => m.Id == null || m.Id.Equals(default(TEntityAttachmentKey)) || originalItems.All(o => m.Id.Equals(o.Id) != true)).ToArray();
+            var relatedItemsToAdd = modifiedItems.Where(m => IsNew(m) || originalItems.All(o => m.Id!.Equals(o.Id) != true)).ToArray();
             var relatedItemsToDelete = originalItems.Where(o => modifiedItems.All(m => m.Id != null && m.Id.Equals(o.Id) != true)).ToArray();
             foreach (var entity in relatedItemsToAdd)
             {
@@ -115,6 +129,8 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
             }
         }
     }
+
+    private static bool IsNew(TEntityAttachment link) => link.Id == null || link.Id.Equals(default(TEntityAttachmentKey));
 
     /// <summary>
     /// The attachment to mark deleted when the entity being removed never loaded it.

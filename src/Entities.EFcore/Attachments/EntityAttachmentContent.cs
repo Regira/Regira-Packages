@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Regira.Entities.Attachments.Abstractions;
 using Regira.Entities.Attachments.Extensions;
+using Regira.Entities.Extensions;
 using Regira.IO.Utilities;
 
 namespace Regira.Entities.EFcore.Attachments;
@@ -68,6 +69,29 @@ internal static class EntityAttachmentContent
         if (item.Attachment != null && !EqualityComparer<TAttachmentKey>.Default.Equals(item.Attachment.Id, original.AttachmentId))
         {
             item.Attachment = original.Attachment;
+        }
+    }
+
+    /// <summary>
+    /// Keeps a new link to the attachments its owner already links: an <c>AttachmentId</c> the body sends, or a nested
+    /// attachment's id, naming any other — another owner's file among them — is cleared. A new attachment, or new bytes,
+    /// is how a link gets a file of its own; a link left with neither fails its foreign key at the save.
+    /// </summary>
+    public static void KeepToOwner<TKey, TObjectKey, TAttachmentKey, TAttachment>(
+        IEntityAttachment<TKey, TObjectKey, TAttachmentKey, TAttachment> link, ICollection<TAttachmentKey> ownedAttachmentIds)
+        where TAttachment : class, IAttachment<TAttachmentKey>, new()
+    {
+        if (link.Attachment?.IsNew() == true)
+        {
+            return;
+        }
+
+        var comparer = EqualityComparer<TAttachmentKey>.Default;
+        bool IsForeign(TAttachmentKey id) => !comparer.Equals(id, default!) && !ownedAttachmentIds.Contains(id, comparer);
+        if (IsForeign(link.AttachmentId) || (link.Attachment != null && IsForeign(link.Attachment.Id)))
+        {
+            link.AttachmentId = default!;
+            link.Attachment = null;
         }
     }
 

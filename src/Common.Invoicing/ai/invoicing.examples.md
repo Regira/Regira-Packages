@@ -30,12 +30,10 @@ public async Task SendPeppolInvoice(Order order)
         Supplier = invoice.Supplier   // the converter reads the seller from here only, not from Invoice
     });
 
-    // 2. Transmit via AdValVas
+    // 2. Transmit via AdValVas. Send returns once the gateway accepted the document; otherwise it throws
+    //    PeppolRequestException (a non-2xx answer) or PeppolResponseException (the document was not accepted)
     var peppolService = new PeppolService(_gatewaySettings, _jsonSerializer);
-    var result        = await peppolService.Send(ubl);
-
-    if (!result.Success)
-        throw new Exception($"Peppol transmission failed: {result.Reference}");
+    await peppolService.Send(ubl);
 }
 ```
 

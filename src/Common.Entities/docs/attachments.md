@@ -186,8 +186,11 @@ a download is served with `X-Content-Type-Options: nosniff` and, for every file 
 ([Input Exceptions](built-in-features.md#input-exceptions)).
 
 Validators scoped to the link entity run for these endpoints only. A `PUT` of the owner whose input carries
-`Attachments` syncs the links itself — it adds one for each new entry with `NewBytes` and deletes the ones the array
-leaves out — and runs only the owner's validators. Repeat a link rule, such as the allowed file types or a file that
+`Attachments` syncs the links itself — it adds one for each new entry with `NewBytes`, renames and replaces a kept
+link's file from its `NewFileName` and `NewBytes`, and deletes the ones the array leaves out — and runs only the
+owner's validators. A kept link keeps its attachment, whatever `AttachmentId` the entry sends, and a new one may point
+only at an attachment the owner already links: one naming another owner's is cleared, and the save answers 409. The
+upload route always creates a link, whatever `Id` its form sends. Repeat a link rule, such as the allowed file types or a file that
 must not be deleted, in the owner's validator, or keep `Attachments` off the owner's input DTO.
 
 ### Dependency Injection

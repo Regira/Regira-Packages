@@ -116,9 +116,11 @@ convention. Adding a scheme needs no transformer change.
 
 <!-- no-compile -->
 ```csharp
+using Regira.Security.Authentication.Web.OpenApi.Transformers;   // package Regira.Security.Authentication.Web
+
 builder.Services.AddOpenApi(options =>
 {
-    options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
+    options.AddDocumentTransformer<AuthenticationSchemeDocumentTransformer>();
     options.AddOperationTransformer<SecurityRequirementOperationTransformer>();
 });
 ```

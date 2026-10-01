@@ -1,6 +1,5 @@
 using System.IO.Compression;
 using System.Text;
-using System.Xml;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Wordprocessing;
@@ -21,6 +20,11 @@ internal static class ConditionalMarkers
     /// than any template — is not opened, and goes to Gotenberg as it is, its blocks unresolved.
     /// </summary>
     internal const long MaxBytes = 32 * 1024 * 1024;
+    /// <summary>
+    /// The most parts a document may hold. A Word document has a few dozen, and opening a package builds an object for
+    /// every one: a package of empty entries — hundreds of thousands fit an upload — is not opened either.
+    /// </summary>
+    internal const int MaxParts = 1000;
     /// <summary>The most text a paragraph can hold and still be read as a marker; the scan keeps no more of it.</summary>
     private const int MaxMarkerLength = 1024;
 
@@ -28,7 +32,8 @@ internal static class ConditionalMarkers
     /// Whether the body, a header or a footer holds a paragraph that opens a block — what makes a document use blocks,
     /// as the creators decide it. Nothing else does, marker text among other text included: that document converts as
     /// it is. A package that cannot be read holds none, and so does one whose parts exceed <see cref="MaxBytes"/>
-    /// together: it goes to Gotenberg as it is, which reports what is wrong with it.
+    /// together or number more than <see cref="MaxParts"/>: it goes to Gotenberg as it is, which reports what is wrong
+    /// with it.
     /// </summary>
     public static bool Any(byte[] source)
         => Any(source, MaxBytes);
@@ -39,21 +44,28 @@ internal static class ConditionalMarkers
         {
             return !Exceeds(source, maxBytes) && Find(source);
         }
-        catch (Exception ex) when (ex is OpenXmlPackageException or InvalidDataException or FileFormatException or XmlException)
+        catch (Exception)
         {
+            // the scan only answers whether to resolve blocks: a package it cannot read, whatever the SDK throws for it —
+            // a relationship to a missing part, say — holds none it can vouch for, and goes to Gotenberg as it is
             return false;
         }
     }
 
     /// <summary>
-    /// Whether the parts declare more than <paramref name="maxBytes"/> together, judged from the zip's directory before
-    /// anything is read: opening the package parses its relationships and content types whole, and a creator loads every
-    /// part. A size declared smaller than its part inflates to is no way around it: the zip reader stops each part at its
+    /// Whether the parts declare more than <paramref name="maxBytes"/> together, or number more than
+    /// <see cref="MaxParts"/>, judged from the zip's directory before anything is read: opening the package parses its
+    /// relationships and content types whole, and builds an object for every part, and a creator loads every part. A size declared smaller than its part inflates to is no way around it: the zip reader stops each part at its
     /// declared size. A stored part is read to its compressed size, so the larger of the two counts.
     /// </summary>
     private static bool Exceeds(byte[] source, long maxBytes)
     {
         using var zip = new ZipArchive(new MemoryStream(source, false), ZipArchiveMode.Read);
+        if (zip.Entries.Count > MaxParts)
+        {
+            return true;
+        }
+
         var total = 0L;
         foreach (var entry in zip.Entries)
         {

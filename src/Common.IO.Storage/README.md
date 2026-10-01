@@ -254,7 +254,7 @@ var communicator = new SftpCommunicator(new SftpConfig
     UserName           = "deploy",
     Password           = configuration["Sftp:Password"],
     ContainerName      = "/home/deploy/files",
-    HostKeyFingerprint = "SHA256:ohD8VZEXGWo6Ez8GSEJQ9WpafgLFsOfLOtGGQCQo6Og"   // ssh-keyscan sftp.example.com | ssh-keygen -lf -
+    HostKeyFingerprint = "SHA256:ohD8VZEXGWo6Ez8GSEJQ9WpafgLFsOfLOtGGQCQo6Og"   // the key type the server negotiates: ssh-keyscan sftp.example.com | ssh-keygen -lf - lists one per type
 });
 
 var service = new SftpService(communicator);
@@ -359,7 +359,7 @@ as the ZIP format requires, so an archive made on Windows unzips into the same f
 `Unzip` reads a `\` in an entry name as a separator too.
 
 Neither `ZipUtility.Unzip` nor `ZipFileService` caps what an archive unpacks to. For one from an untrusted source, such
-as an upload, use `ZipManager` with `MaxUnzippedSize` ([Compression](docs/compression.md)).
+as an upload, use `ZipManager` with `MaxUnzippedSize` ([Compression](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/docs/compression.html)).
 
 ## Helpers
 
@@ -417,7 +417,7 @@ or throws `UnauthorizedAccessException`.
 
 1. **[Index](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/)** — Overview, interface, and implementation reference
 1. [Examples](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/docs/examples.html) — Backend swap, transform & re-upload, GitHub→Azure mirror, ZIP export, safe upload
-1. [Compression](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/docs/compression.html) — Password-protected ZIP via SharpZipLib
+1. [Compression](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/docs/compression.html) — SharpZipLib's `ZipManager`: password-protected ZIP, and a size cap for an untrusted archive
 
 ## License
 

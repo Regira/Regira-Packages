@@ -34,8 +34,8 @@ public class ZipManager
             foreach (var file in files)
             {
                 var name = file.FileName ?? throw new ArgumentException("Every file needs a FileName to name its entry.", nameof(files));
-                // CleanName drops a leading separator or drive but keeps a '..', which Unzip refuses: refuse it here too
-                var entry = new ZipEntry(GetContainedName(ZipEntry.CleanName(name)));
+                // the root goes, on every platform; a '..' stays, which Unzip refuses: refuse it here too
+                var entry = new ZipEntry(GetContainedName(ZipEntry.CleanName(WithoutRoot(name))));
                 if (encrypt)
                 {
                     entry.AESKeySize = 256;
@@ -111,6 +111,17 @@ public class ZipManager
         }
 
         return new BinaryFileCollection(files);
+    }
+
+    /// <summary>
+    /// <paramref name="fileName"/> without its root — a drive (<c>C:</c>) and the separators leading it — the same on
+    /// every platform: <c>ZipEntry.CleanName</c> drops a drive only where the host's own paths have one, so a Windows
+    /// client's <c>C:\docs\note.txt</c> zipped on Linux was refused.
+    /// </summary>
+    private static string WithoutRoot(string fileName)
+    {
+        var start = fileName.Length > 1 && char.IsAsciiLetter(fileName[0]) && fileName[1] == ':' ? 2 : 0;
+        return fileName[start..].TrimStart('/', '\\');
     }
 
     /// <summary>

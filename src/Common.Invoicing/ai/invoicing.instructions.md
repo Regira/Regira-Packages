@@ -117,7 +117,7 @@ Some fields are fixed rather than taken from the invoice:
 | `SenderName` | `string` | Display name |
 | `Token` | `string` | API token |
 | `SecretKey` | `string` | Secret key included in the request seal |
-| `IsProduction` | `bool` | Target the production gateway (default `false`) |
+| `IsProduction` | `bool` | Not read: `PeppolService` posts to `Uri`, so point `Uri` at the test or the production gateway |
 
 ### `PeppolService`
 
@@ -125,11 +125,23 @@ Some fields are fixed rather than taken from the invoice:
 ```csharp
 var service = new PeppolService(gatewaySettings, jsonSerializer);
 
-UblDocumentResponse result = await service.Send(ublDocument);
-
-if (result.Success)
+try
+{
+    // returns only once the gateway accepted the document, so result.Success is always true here
+    UblDocumentResponse result = await service.Send(ublDocument);
     Console.WriteLine($"Sent. Reference: {result.Reference}");
+}
+catch (PeppolRequestException ex)    // the gateway answered with a non-2xx status
+{
+    Console.WriteLine($"Rejected ({ex.ServiceStatusCode}): {ex.ResponseContent}");
+}
+catch (PeppolResponseException ex)   // it answered, but did not accept the document
+{
+    Console.WriteLine($"Not sent: {ex.SerializedResponse}");
+}
 ```
+
+`PeppolRequestException` and `PeppolResponseException` are in `Regira.Invoicing.ViaAdValvas.Models`.
 
 Requests are sealed with `SealUtility.Generate()`: an MD5 digest over the token, sender ID, reference ID, date and
 the secret key, a plain hash with the secret appended, not an HMAC.

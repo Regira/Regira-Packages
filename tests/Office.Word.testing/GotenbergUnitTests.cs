@@ -288,6 +288,55 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         });
     }
 
+    /// <summary>
+    /// Opening a package builds an object for every part, so a package holding more parts than a document has is not
+    /// opened, however little it declares.
+    /// </summary>
+    [Test]
+    public void A_Package_With_More_Parts_Than_A_Document_Has_Is_Not_Opened()
+    {
+        var template = Docx.Document("{{#if IsDraft}}", "DRAFT", "{{/if}}").GetBytes()!;
+        byte[] crowded;
+        using (var stream = new MemoryStream())
+        {
+            stream.Write(template);
+            using (var zip = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Update, true))
+            {
+                // empty, unreferenced XML parts: the package would open with them, and its block be found
+                for (var i = 0; i < ConditionalMarkers.MaxParts; i++)
+                {
+                    zip.CreateEntry($"extra/part{i}.xml");
+                }
+            }
+            crowded = stream.ToArray();
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ConditionalMarkers.Any(template), Is.True, "the document");
+            Assert.That(ConditionalMarkers.Any(crowded), Is.False, "the document among a thousand empty parts");
+        });
+    }
+
+    /// <summary>
+    /// A package the SDK cannot read — here one relating an image the zip does not hold, as some editors leave behind —
+    /// holds no block the scan can vouch for, and is uploaded as it is, for Gotenberg to convert.
+    /// </summary>
+    [Test]
+    public async Task A_Package_The_Scan_Cannot_Read_Is_Uploaded_As_Is()
+    {
+        var handler = new StubHandler(_ => Pdf());
+        var service = new WordService(handler.CreateClient());
+        var document = Docx.Document(Docx.Paragraphs("Intro"), header: Docx.Paragraphs("Header")).GetBytes()!;
+        var dangling = RewriteEntry(document, "word/_rels/document.xml.rels", xml => xml.Replace("</Relationships>",
+            "<Relationship Id=\"rIdMissing\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\""
+            + " Target=\"media/image1.png\"/></Relationships>"));
+
+        using var _ = await service.Convert(new WordTemplateInput { Template = dangling.ToMemoryFile(ContentTypes.DOCX) }, FileFormat.Pdf);
+
+        Assert.That(handler.Requests.Single().Uploads.Single().Bytes, Is.EqualTo(dangling));
+    }
+
     private static byte[] RewriteEntry(byte[] package, string entryName, Func<string, string> rewrite)
     {
         using var stream = new MemoryStream();

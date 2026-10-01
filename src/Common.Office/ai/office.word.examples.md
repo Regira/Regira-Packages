@@ -73,6 +73,10 @@ IMemoryFile pdf = await word.Convert(
 await _fileService.Save($"contracts/{client.Id}/contract-{DateTime.Today:yyyyMMdd}.pdf", pdf.GetBytes()!);
 ```
 
+> ⚠️ `word` is Word.Spire here, and the FreeSpire.Doc free edition writes only the first three pages of a PDF, with a
+> notice page in place of the rest, and no error. For a contract that can run longer, convert with Word.Syncfusion,
+> Word.Aspose or Word.Gotenberg (*Without a vendor licence*, below).
+
 ### Without a vendor licence
 
 Word.Mini fills the template and a Gotenberg server produces the PDF. The example keeps to scalar

@@ -98,7 +98,7 @@ Defaults or recommendations from the dedicated module guides are labeled directl
 | Module | Use when | Main packages and defaults |
 |---|---|---|
 | Entities | CRUD APIs, entity services, DTO mapping, EF Core repositories, and generated endpoints | `Regira.Entities`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Mapping.Mapster` (default mapping), `Regira.Entities.Mapping.AutoMapper`, `Regira.Entities.Validation.FluentValidation` (FluentValidation rules as entity validators), `Regira.Entities.EFcore`, `Regira.Entities.Web` |
-| IO.Storage | File storage, uploads, Azure Blob, SFTP, ZIP, or SimpleTCP file transfer | `Regira.IO.Storage`, `Regira.IO.Storage.Azure`, `Regira.IO.Storage.SSH`, `Regira.IO.Storage.GitHub`, `Regira.IO.Storage.SimpleTCP` |
+| IO.Storage | File storage, uploads, Azure Blob, SFTP, ZIP, or SimpleTCP file transfer; password-protected ZIP files and unzipping an archive from an untrusted source (`ZipManager`, `MaxUnzippedSize` — the guide's § `ZipManager`) | `Regira.IO.Storage`, `Regira.IO.Storage.Azure`, `Regira.IO.Storage.SSH`, `Regira.IO.Storage.GitHub`, `Regira.IO.Storage.SimpleTCP`, `Regira.IO.Compression.SharpZipLib` |
 | Office | Family overview, or when the user still needs to choose between PDF, Excel, Word, Mail, OCR, and related submodules | `Regira.Office` |
 | Office.PDF | HTML to PDF, PDF operations, printing | `Regira.Office.PDF.SelectPdf` (preferred for HTML to PDF), `Regira.Office.PDF.DocNET` (preferred for PDF operations), `Regira.Office.PDF.Spire` (preferred when print and PDF ops are both needed); also `Regira.Office.PDF.Puppeteer`, `Regira.Office.PDF.MsPlaywright`, `Regira.Office.PDF.PDFtoPrinter`, `Regira.Office.PDF.PockyBum522` |
 | Office.Excel | Excel read and write | `Regira.Office.Excel.MiniExcel` (preferred), `Regira.Office.Excel.ClosedXML`, `Regira.Office.Excel.EPPlus`, `Regira.Office.Excel.NpoiMapper` |
@@ -133,7 +133,6 @@ Rely on this file plus local project conventions for these; there is no `*.instr
 | DAL.SqlServer | SQL Server backup and restore (native `.bak`) | `Regira.DAL.SqlServer` |
 | Globalization | Phone number parsing and formatting | `Regira.Globalization.LibPhoneNumber` |
 | Serializing | Newtonsoft.Json-based serialization | `Regira.Serializing.Newtonsoft` |
-| IO.Compression | ZIP archive creation and extraction, especially password-protected ZIP files | `Regira.IO.Compression.SharpZipLib` |
 | Office.Clients | HTTP client extensions for consuming Regira Office services remotely | `Regira.Office.Clients` |
 | Printing | GDI-based document printing utilities on Windows | `Regira.Printing.GDI` |
 

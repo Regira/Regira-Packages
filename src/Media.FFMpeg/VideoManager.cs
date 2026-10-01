@@ -70,7 +70,7 @@ public class VideoManager : ICompressService, IVideoService
         }
     }
 
-    protected internal virtual FFMpegArgumentProcessor CreateCompressArguments(string inputPath, IPipeSink output, Size2D size, int? frameRate)
+    protected internal FFMpegArgumentProcessor CreateCompressArguments(string inputPath, IPipeSink output, Size2D size, int? frameRate)
         => FFMpegArguments
             .FromFileInput(inputPath)
             .OutputToPipe(output, o =>

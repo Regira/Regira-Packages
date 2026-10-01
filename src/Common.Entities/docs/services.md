@@ -353,8 +353,21 @@ public abstract class EntityValidatorBase<TScope> : IEntityValidator<TScope>
 
 <!-- no-compile -->
 ```csharp
+using Regira.Entities.DependencyInjection.Validators;   // AddValidator on the options and on IServiceCollection
+
 // global: one validator for every entity implementing the interface
-services.UseEntities<AppDbContext>(o => o.AddValidator<CodeValidator>());
+services.UseEntities<AppDbContext>(o =>
+{
+    o.AddValidator<CodeValidator>();
+    // or a delegate: ctx => …, async ctx => …, or async (ctx, db, token) => … with AddValidator<AppDbContext, IHasCode>
+    o.AddValidator<IHasCode>(ctx =>
+    {
+        if (ctx.Operation != EntityWriteOperation.Remove && ctx.Item.Code?.Contains(' ') == true)
+            ctx.AddError(nameof(IHasCode.Code), "A code has no spaces.");
+    });
+});
+// the same overloads extend IServiceCollection, for a registration outside UseEntities()
+services.AddValidator<CodeValidator>();
 
 public class CodeValidator : EntityValidatorBase<IHasCode>
 {

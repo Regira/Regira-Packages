@@ -614,7 +614,7 @@ read as the rule (`ValueTooLarge`, `order.notOpen`). The 400 body is in §Respon
   `Validate(...)` delegate is a validator of its own.
 - **Children are validated through their parent.** Validators check the entity a write service saves, not the rows a
   `Related()` sync writes — validate `Lines` from the `Order` validator (key `Lines[0].Quantity`). A validator scoped
-  to a child without a `For<>()` never runs; startup validation warns.
+  to a child without a `For<>()` never runs; startup validation warns — except for FluentValidation (below).
 - ⚠️ **A lookup through the `DbContext` skips row security.** Global filters (tenant, owner) scope the entity
   services' reads, not `db`: `db.Customers.AnyAsync(…)` sees every tenant's rows, so it accepts another tenant's
   `CustomerId`, and its 400 tells the client that id exists. Where reads are scoped, check the reference through the
@@ -643,6 +643,10 @@ warns about a write path that cannot run the validators in scope.
 
 **FluentValidation** — package `Regira.Entities.Validation.FluentValidation` runs `AbstractValidator`s in this stage,
 under the same scope rule: [`entities.patterns.md`](./entities.patterns.md) → Input validation with FluentValidation.
+⚠️ An `AbstractValidator<T>` runs only when a write service saves a `T`. One for a `Related()` child
+(`AbstractValidator<OrderLine>`) or for an input DTO is registered by the assembly scan and **never runs, with no
+startup warning** — validate children from the parent: `RuleForEach(x => x.Lines).ChildRules(...)` or
+`.SetValidator(new OrderLineValidator())`.
 
 ### Relationship Patterns — Decision Table
 
@@ -1315,10 +1319,12 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 
 > ⚠️ **A link rule belongs in the owner's validator too.** Validators scoped to the link entity run for the
 > attachment endpoints — upload, replace, update and delete. A `PUT` of the owner whose input carries `Attachments`
-> (step 3) syncs the links itself: it adds one for each new entry with `NewBytes` and deletes the ones the array
-> leaves out, and only the owner's validators run. Repeat a link rule — allowed file types, a file that must not be
-> deleted — in the owner's validator (keys like `Attachments[0].NewFileName`), or keep `Attachments` off the owner's
-> input DTO.
+> (step 3) syncs the links itself: it adds one for each new entry with `NewBytes`, renames and replaces a kept link's
+> file from its `NewFileName` and `NewBytes`, and deletes the ones the array leaves out, and only the owner's
+> validators run. A kept link keeps its attachment, whatever `attachmentId` the entry sends, and a new one may point
+> only at an attachment the owner already links: one naming another owner's is cleared, and the save answers 409.
+> Repeat a link rule — allowed file types, a file that must not be deleted — in the owner's validator (keys like
+> `Attachments[0].NewFileName`), or keep `Attachments` off the owner's input DTO.
 
 > ⚠️ **Marking one attachment as the primary one? Mark the link entity, don't point the owner at it.** An
 > owner FK to one of its own attachments makes the two tables reference each other: SQL Server refuses the

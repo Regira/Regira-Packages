@@ -64,7 +64,8 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
             }
             if (original.ObjectId != objectId)
             {
-                return BadRequest($"Bad {nameof(original.ObjectId)}");
+                ModelState.AddModelError(nameof(objectId), "Not a link of this owner.");
+                return ValidationProblem(ModelState);
             }
 
             await service.Save(item);
@@ -138,6 +139,8 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
         var mapper = HttpContext.RequestServices.GetRequiredService<IEntityMapper>();
 
         var item = mapper.Map<TEntity>(model);
+        // the route creates a link: an Id in the form cannot turn the upload into a write to another one
+        item.Id = default;
         item.ObjectId = objectId;
         item.Attachment = file.ToNamedFile().ToAttachment();
 
@@ -172,7 +175,8 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
         }
         if (item.ObjectId != objectId)
         {
-            return BadRequest($"Bad {nameof(item.ObjectId)}");
+            ModelState.AddModelError(nameof(objectId), "Not a link of this owner.");
+            return ValidationProblem(ModelState);
         }
 
         item.ObjectId = objectId;

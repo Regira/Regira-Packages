@@ -3,6 +3,7 @@ using Entities.TestApi.Infrastructure;
 using Entities.TestApi.Infrastructure.Courses;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -340,6 +341,8 @@ public class CourseAttachmentsControllerTests : IClassFixture<ContosoApiFactory>
         };
         var wrongParentResponse = await client.PutAsJsonAsync($"/courses/4/attachments/{insertedItem.Id}", itemToUpdate);
         Assert.Equal(HttpStatusCode.BadRequest, wrongParentResponse.StatusCode);
+        var problem = await wrongParentResponse.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+        Assert.Equal(["Not a link of this owner."], problem!.Errors["objectId"]);
 
         // body pointing at a different row/parent is ignored — the route's row is the one updated
         var retargetingBody = new CourseAttachmentInputDto
@@ -645,6 +648,82 @@ public class CourseAttachmentsControllerTests : IClassFixture<ContosoApiFactory>
         var link = await client.GetFromJsonAsync<DetailsResult<CourseAttachmentDto>>($"/courses/attachments/{mine.Id}");
         Assert.Equal(mine.AttachmentId, link!.Item.AttachmentId);
         Assert.Equal("my file", await client.GetStringAsync($"/courses/{courseId}/files/{mineName}"));
+    }
+
+    // A new link in the owner's save may point at an attachment the owner already links, and at no other: one naming
+    // another owner's attachment links nothing, so that owner's file is neither served here nor deleted with the link.
+    [Fact]
+    public async Task The_Owner_Cannot_Link_Another_Owners_Attachment()
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 8;
+        var theirsName = $"theirs-{Guid.NewGuid():N}.txt";
+        var theirs = await Upload(client, 9, theirsName, "their file");
+
+        var details = await client.GetFromJsonAsync<DetailsResult<CourseDto>>($"/courses/{courseId}");
+        var courseInput = new CourseInputDto
+        {
+            Id = details!.Item.Id,
+            Title = details.Item.Title,
+            DepartmentId = details.Item.DepartmentId,
+            Credits = details.Item.Credits,
+            Attachments = [new CourseAttachmentInputDto { ObjectId = courseId, AttachmentId = theirs.AttachmentId }]
+        };
+        // a link left without an attachment fails its foreign key, as one sent without a file does
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync($"/courses/{courseId}", courseInput)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/courses/{courseId}/files/{theirsName}")).StatusCode);
+
+        // saved again without it: a link made above would be removed now, and its attachment with it
+        courseInput.Attachments = [];
+        (await client.PutAsJsonAsync($"/courses/{courseId}", courseInput)).EnsureSuccessStatusCode();
+        Assert.Equal("their file", await client.GetStringAsync($"/courses/9/files/{theirsName}"));
+    }
+
+    [Fact]
+    public async Task A_New_Owner_Cannot_Link_Another_Owners_Attachment()
+    {
+        using var client = _factory.CreateClient();
+
+        var theirsName = $"theirs-{Guid.NewGuid():N}.txt";
+        var theirs = await Upload(client, 9, theirsName, "their file");
+
+        var department = (await client.GetFromJsonAsync<DetailsResult<CourseDto>>("/courses/8"))!.Item.DepartmentId;
+        var courseInput = new CourseInputDto
+        {
+            Title = $"New course {Guid.NewGuid():N}",
+            DepartmentId = department,
+            Credits = 1,
+            Attachments = [new CourseAttachmentInputDto { AttachmentId = theirs.AttachmentId }]
+        };
+        var response = await client.PostAsJsonAsync("/courses", courseInput);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("their file", await client.GetStringAsync($"/courses/9/files/{theirsName}"));
+    }
+
+    // The upload route creates a link: an Id in its form cannot turn the upload into a write to another link.
+    [Fact]
+    public async Task An_Upload_Creates_A_Link_Whatever_Id_Its_Form_Sends()
+    {
+        using var client = _factory.CreateClient();
+
+        var theirsName = $"theirs-{Guid.NewGuid():N}.txt";
+        var theirs = await Upload(client, 9, theirsName, "their file");
+        var content = new MultipartFormDataContent
+        {
+            { new StreamContent(FileUtility.GetStreamFromString("my file")), "file", $"mine-{Guid.NewGuid():N}.txt" },
+            { new StringContent(theirs.Id.ToString()), nameof(CourseAttachmentInputDto.Id) }
+        };
+        var response = await client.PostAsync("/courses/8/files", content);
+        response.EnsureSuccessStatusCode();
+        var mine = (await response.Content.ReadFromJsonAsync<SaveResult<CourseAttachmentDto>>())!.Item;
+
+        Assert.NotEqual(theirs.Id, mine.Id);
+        var link = await client.GetFromJsonAsync<DetailsResult<CourseAttachmentDto>>($"/courses/attachments/{theirs.Id}");
+        Assert.Equal(9, link!.Item.ObjectId);
+        Assert.Equal(theirs.AttachmentId, link.Item.AttachmentId);
+        Assert.Equal("their file", await client.GetStringAsync($"/courses/9/files/{theirsName}"));
     }
 
     // A rename retypes the attachment before the validators run, so a rule on the type judges the type the file is stored
