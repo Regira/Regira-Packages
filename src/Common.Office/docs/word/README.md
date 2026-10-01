@@ -147,7 +147,7 @@ Docx  Doc  Dotx  Dot  Docm  Dotm  Pdf  Html  Rtf  Odt  EPub  Jpeg  Png
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `Template` | `IMemoryFile` | Template fragment for the header/footer |
+| `Template` | `WordTemplateInput` | The header/footer's own template input: its parameters fill it, and its blocks read them, not the main input's |
 | `Type` | `HeaderFooterType` | `Default`, `FirstPage`, `Even`, `Odd` — `FirstPage` and `Even` give those pages stories of their own, headers and footers alike: the `Default` story then serves the other pages, and a story given no `FirstPage`/`Even` version repeats its default on those pages |
 
 ## Collection tables
@@ -246,6 +246,7 @@ IMemoryFile doc = await word.Create(new WordTemplateInput
   nested documents are never processed.
 - There is no comparison syntax: compute the flag in code (`["IsOverdue"] = dueDate < DateTime.Today`).
 - A block inside a collection table's template row is decided once, for every row.
+- A block in a `WordHeaderFooterInput`'s template reads that `Template`'s parameters, not the main input's.
 - A block opens and closes in the same body, table cell, text box, content control, header or footer, and within
   one section — a content control around whole paragraphs is a container of its own, so a block cannot open outside
   one and close inside it. Footnotes, endnotes and comments are not read for markers.
@@ -341,7 +342,7 @@ When none of the four resolves — a configuration key that is missing, say — 
 `WordService` implements `IWordConverter` and `IWordToImagesService`, through the LibreOffice route of a [Gotenberg](https://gotenberg.dev) server (MIT, a Docker image bundling LibreOffice and Chromium). It is the route to PDF output and page images without a vendor licence.
 
 - **PDF only.** `Convert` produces PDF; every other `FileFormat` throws `NotSupportedException`. Sources can be Word (`.doc`, `.dot`, `.docx`, `.dotx`, `.docm`, `.dotm`), OpenDocument (`.odt`, `.ott`), `.rtf`, `.txt`, `.html`/`.htm` or `.epub` — the format is read from the file name when the template is a named file, otherwise from its content.
-- **Templates.** Gotenberg converts finished documents. An input carrying `GlobalParameters`, `CollectionParameters`, `Images`, `DocumentParameters`, `Headers`, `Footers` or non-default `InputOptions` is rendered first by the `IWordCreator` the service was given, and throws `NotSupportedException` without one. So is an OOXML template holding a [conditional block](#conditional-blocks), even without parameters, since a key the input does not give is false. Word.Mini renders the first three, in its own template syntax; headers, footers, nested documents and input options need a creator with a document model — Word.Spire, Word.Syncfusion or Word.Aspose — since Word.Mini refuses them.
+- **Templates.** Gotenberg converts finished documents. An input carrying `GlobalParameters`, `CollectionParameters`, `Images`, `DocumentParameters`, `Headers`, `Footers` or non-default `InputOptions` is rendered first by the `IWordCreator` the service was given, and throws `NotSupportedException` without one. So is an OOXML template holding a [conditional block](#conditional-blocks), even without parameters, since a key the input does not give is false. Word.Mini renders the first three, in its own template syntax; headers, footers, nested documents and input options need a creator with a document model — Word.Spire, Word.Syncfusion or Word.Aspose — since Word.Mini refuses them. Every OOXML source is scanned for such a block in-process, and one whose parts hold more than 32 MiB together, uncompressed and images included, is not opened: it is uploaded as it is, its blocks unresolved.
 - **Page settings.** The LibreOffice route has no page-size or margin fields, so `ConversionOptions.Settings` is written into the document's section properties before upload, together with the table and picture scaling. That needs an OOXML source (`.docx`, `.dotx`, `.docm`, `.dotm`), and honours every `PageSize`.
 - **Page images.** Gotenberg has no route that rasterises a PDF. `ToImages` converts to PDF and hands the result to the `IPdfToImageService` the service was given — `Regira.Office.PDF.DocNET`, for example — which returns one image per page.
 - **Layout.** LibreOffice lays a document out differently from Word. A font missing from the Gotenberg image is substituted, which moves line and page breaks, so page images and page counts can differ from what Word shows. Install the fonts your documents use in the image.

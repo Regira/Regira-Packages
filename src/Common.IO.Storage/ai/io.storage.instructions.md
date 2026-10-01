@@ -413,6 +413,9 @@ string[] extracted         = ZipUtility.Unzip(existingZip, targetDirectory: "/tm
 Entries are named after each file's `Identifier` (else `FileName`) with `/` separators, as the ZIP format
 requires — an archive made on Windows unzips into the same folders on Linux. `Unzip` also reads `\` as a separator.
 
+Neither `ZipUtility.Unzip` nor `ZipFileService` caps what an archive unpacks to: for one from an untrusted source,
+such as an upload, use `ZipManager` with `MaxUnzippedSize` (below).
+
 ### `ZipManager` — password-protected archives
 
 **Package:** `Regira.IO.Compression.SharpZipLib`

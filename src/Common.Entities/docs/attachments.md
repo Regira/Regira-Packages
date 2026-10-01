@@ -172,7 +172,7 @@ Endpoints exposed (with `[Route("products")]`):
 | `PUT` | `{objectId}/files/{id}` | Replace an existing file |
 | `GET` | `{objectId}/attachments` | List attachments for an owner |
 | `GET` | `attachments/{id}` | Attachment metadata |
-| `PUT` | `{objectId}/attachments/{id}` | Update attachment metadata |
+| `PUT` | `{objectId}/attachments/{id}` | Update attachment metadata: `NewFileName` renames the file and retypes it, `NewBytes` replaces its content; the link keeps its attachment, whatever `AttachmentId` the body sends |
 | `DELETE` | `attachments/{id}` | Delete (also removes the file) |
 | `GET` | `files/{id}` · `{objectId}/files/{fileName}` | Download the file |
 
@@ -182,7 +182,8 @@ owner's id.
 An attachment's content type follows its file name — whatever the client declared, and whoever writes the row — and
 a download is served with `X-Content-Type-Options: nosniff` and, for every file but a PDF,
 `Content-Security-Policy: sandbox`, so a file renders but runs no script on the API's origin. A write a
-[validator](services.md#entity-validators) refuses answers **400** with the error map.
+[validator](services.md#entity-validators) refuses answers **400** with a `ValidationProblemDetails`
+([Input Exceptions](built-in-features.md#input-exceptions)).
 
 Validators scoped to the link entity run for these endpoints only. A `PUT` of the owner whose input carries
 `Attachments` syncs the links itself — it adds one for each new entry with `NewBytes` and deletes the ones the array

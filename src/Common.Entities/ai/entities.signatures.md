@@ -892,6 +892,11 @@ public static EntityServiceCollectionOptions AddGlobalFilterQueryBuilder<TImplem
 //   + FilterHasCreatedQueryBuilder + FilterHasLastModifiedQueryBuilder
 public static EntityServiceCollectionOptions AddDefaultGlobalQueryFilters(
     this EntityServiceCollectionOptions options);
+
+// Removes every global filter registered before it, UseDefaults()' among them — the archived filter too.
+// On IServiceCollection, so it chains off the UseEntities<TContext>() builder; not on the options.
+public static TServiceCollection RemoveGlobalQueryFilters<TServiceCollection>(this TServiceCollection services)
+    where TServiceCollection : IServiceCollection;
 ```
 
 #### Normalizers (global)
@@ -1909,7 +1914,7 @@ Every `{id}` is the **link** id (`EntityAttachmentDto.Id`), never `attachmentId`
 | `GET attachments` · `GET attachments/{id}` | links across owners (`EntityAttachmentSearchObject`) · one link |
 | `POST {objectId}/files` | upload — multipart `file` + the input DTO's fields as form values |
 | `PUT {objectId}/files/{id}` | replace the file's bytes (multipart `file`) |
-| `PUT {objectId}/attachments/{id}` | update the link's own fields (JSON input DTO) |
+| `PUT {objectId}/attachments/{id}` | update the link's own fields (JSON input DTO); `newFileName` renames the file and retypes it, `newBytes` replaces its content. The link keeps its attachment, whatever `attachmentId` the body sends |
 | `DELETE attachments/{id}` | remove the link and its file |
 | `GET files/{id}` · `GET {objectId}/files/{*fileName}` | download by link id · by the client `FileName` (`?inline=false` → attachment) |
 

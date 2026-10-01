@@ -116,7 +116,7 @@
 | `Regira.Entities.DependencyInjection.ServiceBuilders` | `EntityServiceBuilder<>`, `EntityIntServiceBuilder<>`, `EntitySearchObjectServiceBuilder<>`, `ComplexEntityServiceBuilder<>`, `ComplexEntityIntServiceBuilder<>` |
 | `Regira.Entities.DependencyInjection.ServiceCollections.Models` | `EntityServiceCollectionOptions` |
 | `Regira.Entities.DependencyInjection.ServiceCollections.Abstractions` | `IEntityServiceCollection<>` |
-| `Regira.Entities.DependencyInjection.QueryBuilders` | `ServiceCollectionQueryFilterExtensions` *(`AddFilter<>()`, `AddGlobalFilterQueryBuilder<>()`, `RemoveGlobalQueryFilters()`, `AddDefaultGlobalQueryFilters()` — on `IServiceCollection` and `EntityServiceCollectionOptions`)* |
+| `Regira.Entities.DependencyInjection.QueryBuilders` | `ServiceCollectionQueryFilterExtensions` *(`AddFilter<>()` and `RemoveGlobalQueryFilters()` — on `IServiceCollection`, the `UseEntities<TContext>()` builder included; `AddGlobalFilterQueryBuilder<>()` — on `IServiceCollection` and `EntityServiceCollectionOptions`; `AddDefaultGlobalQueryFilters()` — on `EntityServiceCollectionOptions`)* |
 | `Regira.Entities.DependencyInjection.Preppers` | `ServiceCollectionPrepperExtensions` *(`AddPrepper<>()` — on `IServiceCollection` and `EntityServiceCollectionOptions`)* |
 | `Regira.Entities.DependencyInjection.Processors` | `ServiceCollectionProcessorExtensions` *(`AddProcessor<>()` — on `IServiceCollection`; the per-entity `e.AddProcessor<>()` verb rides the `For<>()` builder)* |
 | `Regira.Entities.DependencyInjection.Mapping` | `ServiceCollectionMappingExtensions` *(`AddMapping<>()`, `AddAfterMapper<>()`, `AfterMap<>()` — on `EntityServiceCollectionOptions`)*, `MappedEntityServiceBuilder<>` |

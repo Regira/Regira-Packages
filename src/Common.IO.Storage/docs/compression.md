@@ -74,5 +74,6 @@ var zip = new ZipManager { MaxUnzippedSize = 100 * 1024 * 1024 };   // 100 MB
 | Password protection | `IO.Compression.SharpZipLib` |
 | Browse / modify archive entries via `IFileService` | `ZipFileService` from `IO.Storage` |
 | Build archive from a list of files | Either — both work |
+| Unzip an archive from an untrusted source, such as an upload | `IO.Compression.SharpZipLib`, with `MaxUnzippedSize` — `ZipFileService` and `ZipUtility` set no limit |
 
 See [IO.Storage ZIP section](../README.md#zip--compression) for `ZipBuilder`, `ZipFileService`, and `ZipUtility`.

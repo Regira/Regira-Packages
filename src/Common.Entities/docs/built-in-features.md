@@ -158,7 +158,7 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
   the primer still mints a new one. `PATCH` carries the stored value unless its body sets the token; `DELETE`
   carries none. `[VersionStamp(Required = true)]` refuses such an update instead: `EntityInputException` → 400
   keyed by the token's C# property name,
-  `{ "ConcurrencyToken": ["Required on an update: send the value read with the record."] }`, thrown before anything
+  `"errors": { "ConcurrencyToken": ["Required on an update: send the value read with the record."] }`, thrown before anything
   is attached. It serves on the marker's implementing `ConcurrencyToken` property too. An insert is never refused,
   and `PATCH` still passes on the merge base.
 - **The token must move on every write.** `IHasConcurrencyToken` takes care of it: `UseDefaults()` declares its

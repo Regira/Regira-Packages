@@ -1,4 +1,5 @@
 # My AI Memories
+<!-- {% raw %} -->
 ---
 
 > Curation rules: entries record **durable Regira behavior**, never consumer or test project
@@ -196,3 +197,5 @@ Raised repeatedly by evaluations, still unbuilt as of 2026-09-30:
 
 - A first-class `IEntitySeeder` / `SeedEntities()` helper. Seeding is documented only as a hand-rolled pattern.
 - A Roslyn analyzer for `For<>()` ↔ controller ↔ `IEntityService` generic alignment. Only prose enforces it today.
+
+<!-- {% endraw %} -->

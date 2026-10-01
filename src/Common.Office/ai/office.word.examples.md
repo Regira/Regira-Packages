@@ -1,4 +1,5 @@
 # Office.Word — Example: Contract Generation
+<!-- {% raw %} -->
 
 > Context: A legal SaaS generates client contracts from a Word template, fills in client details and a line-item table, then converts to PDF for signing.
 
@@ -103,3 +104,5 @@ IMemoryFile merged = await word.Merge(
     new WordTemplateInput { Template = addendum!.ToMemoryFile() }
 ]);
 ```
+
+<!-- {% endraw %} -->

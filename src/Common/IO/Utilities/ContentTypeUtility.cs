@@ -268,6 +268,19 @@ public static class ContentTypeUtility
         { "yml", ["application/yaml"] },
         { "zip", ["application/zip", "application/x-zip-compressed"] }
     }, StringComparer.OrdinalIgnoreCase);
+    // the extension GetExtension answers for a type several extensions share, where the first in alphabetical order is
+    // not the usual one
+    private static readonly Dictionary<string, string> UsualExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        { "application/postscript", "ps" },
+        { "application/xhtml+xml", "xhtml" },
+        { "audio/midi", "mid" },
+        { "audio/mpeg", "mp3" },
+        { "image/jpeg", "jpg" },
+        { "text/html", "html" },
+        { "text/plain", "txt" },
+        { "video/mpeg", "mpg" },
+    };
 
     /// <summary>File signatures by extension, for <see cref="GetContentType(byte[], string?)"/>. <see cref="Extend(IEnumerable{KeyValuePair{string, byte[]}})"/> adds to it.</summary>
     public static IDictionary<string, byte[]> MimeTypeByteSequences => ByteSequences;
@@ -380,14 +393,20 @@ public static class ContentTypeUtility
         return MimeTypes.TryGetValue(matches.First().Key, out var matched) ? matched.First() : GetContentType(filename);
     }
     /// <summary>
-    /// 
+    /// The extension (without the dot) a file of <paramref name="mimetype"/> takes, or else the type's subtype
+    /// (<c>image/x-foo</c> gives <c>x-foo</c>). Where several extensions share the type, the answer is fixed: one whose
+    /// first type it is goes before one that only lists it, then the usual one (<c>jpg</c> for <c>image/jpeg</c>,
+    /// <c>html</c> for <c>text/html</c>), then the first in alphabetical order (<c>xml</c> before <c>xsl</c>, <c>js</c> before
+    /// <c>mjs</c>). It reads the map as it is, <see cref="Extend(IEnumerable{KeyValuePair{string, string[]}})"/> included.
     /// </summary>
-    /// <param name="mimetype">Content type</param>
-    /// <returns></returns>
+    /// <param name="mimetype">Content type, in any case</param>
     public static string? GetExtension(string mimetype)
     {
-        var extension = MimeTypesDictionary
-            .Where(x => x.Value.Contains(mimetype))
+        var extension = MimeTypes
+            .Where(x => x.Value.Contains(mimetype, StringComparer.OrdinalIgnoreCase))
+            .OrderBy(x => string.Equals(x.Value.FirstOrDefault(), mimetype, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(x => UsualExtensions.TryGetValue(mimetype, out var usual) && string.Equals(usual, x.Key, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ThenBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
             .Select(x => x.Key)
             .FirstOrDefault();
         return extension ?? mimetype.Split('/').LastOrDefault();

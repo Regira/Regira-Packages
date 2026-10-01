@@ -1,5 +1,6 @@
 using Office.Word.testing.Abstractions;
 using Regira.IO.Extensions;
+using Regira.Office.Models;
 using Regira.Office.Word.Models;
 using Regira.Office.Word.Spire;
 using Regira.Utilities;
@@ -60,5 +61,19 @@ public class DocumentBuilderTests() : WordAssetsTestsBase("Spire")
 
         var content = await manager.GetText(new WordTemplateInput { Template = docFile });
         Assert.That(content.Contains(headingParagraph.Text), Is.True);
+    }
+
+    // the build is typed by the format it was converted to, as WordService.Convert types it
+    [TestCase(FileFormat.Pdf, "application/pdf")]
+    [TestCase(FileFormat.Doc, "application/msword")]
+    [TestCase(FileFormat.Docx, "application/vnd.openxmlformats-officedocument.wordprocessingml.document")]
+    public async Task A_Build_Is_Typed_By_Its_Output_Format(FileFormat format, string contentType)
+    {
+        using var file = await new DocumentBuilder(new WordService())
+            .WithParagraphs([new Paragraph { Text = "Lorem Ipsum" }])
+            .WithConversion(new ConversionOptions { OutputFormat = format })
+            .Build();
+
+        Assert.That(file.ContentType, Is.EqualTo(contentType));
     }
 }

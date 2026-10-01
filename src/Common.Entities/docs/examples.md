@@ -170,8 +170,8 @@ services.UseEntities<ShopDbContext>(options =>
 });
 ```
 
-An unknown category answers **400** with `{ "CategoryId": ["Category 99 does not exist."] }` instead of the
-database's 409. More on validators: [Services → Entity Validators](services.md#entity-validators).
+An unknown category answers **400**, a `ValidationProblemDetails` whose `errors` hold
+`{ "CategoryId": ["Category 99 does not exist."] }`, instead of the database's 409. More on validators: [Services → Entity Validators](services.md#entity-validators).
 
 ## Example 2: Category with Inline Configuration
 

@@ -207,28 +207,27 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     }
 
     /// <summary>
-    /// A document that opens a block is created in-process, which loads every header and footer whole, so the scan reads
-    /// them all under one budget, past the block it found first: a header too large for it sends the document to Gotenberg.
+    /// A document that opens a block is created in-process, which loads every header and footer whole, so the limit counts
+    /// them, past the block found first: a header too large for it sends the document to Gotenberg.
     /// </summary>
     [Test]
-    public void The_Scan_Budget_Covers_The_Parts_After_The_First_Block()
+    public void The_Limit_Counts_The_Headers()
     {
         var template = Docx.Document(Docx.Paragraphs("{{#if IsDraft}}", "DRAFT", "{{/if}}"), header: Docx.Paragraphs(new string('x', 20_000))).GetBytes()!;
         var bodyOnly = Docx.Document("{{#if IsDraft}}", "DRAFT", "{{/if}}").GetBytes()!;
 
         Assert.Multiple(() =>
         {
-            Assert.That(ConditionalMarkers.Any(bodyOnly, maxBytes: 10_000), Is.True, "the body fits the budget");
+            Assert.That(ConditionalMarkers.Any(bodyOnly, maxBytes: 10_000), Is.True, "the body fits the limit");
             Assert.That(ConditionalMarkers.Any(template, maxBytes: 10_000), Is.False, "the body and its header do not");
         });
     }
 
     /// <summary>
-    /// A creator other than Word.Mini loads every XML part, so the budget counts the footnotes of a document that opens a
-    /// block too, though no marker there counts.
+    /// A creator other than Word.Mini loads every part, so the limit counts the footnotes too, though no marker there counts.
     /// </summary>
     [Test]
-    public void The_Scan_Budget_Covers_Every_Xml_Part_Of_A_Document_That_Opens_A_Block()
+    public void The_Limit_Counts_Every_Part()
     {
         var body = Docx.Paragraphs("{{#if IsDraft}}", "DRAFT", "{{/if}}").ToArray();
         var smallFootnote = Docx.Document(body.Select(x => (W.Paragraph)x.CloneNode(true)), footnote: Docx.Paragraphs("Note")).GetBytes()!;
@@ -236,9 +235,100 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
 
         Assert.Multiple(() =>
         {
-            Assert.That(ConditionalMarkers.Any(smallFootnote, maxBytes: 10_000), Is.True, "the document fits the budget");
+            Assert.That(ConditionalMarkers.Any(smallFootnote, maxBytes: 10_000), Is.True, "the document fits the limit");
             Assert.That(ConditionalMarkers.Any(largeFootnote, maxBytes: 10_000), Is.False, "its footnotes do not");
         });
+    }
+
+    /// <summary>
+    /// Opening a package parses its relationships and content types whole, before any part is scanned, so the limit is
+    /// judged first, on the sizes the zip declares: a relationship target inflating far beyond it is never read.
+    /// </summary>
+    [Test]
+    public void A_Package_Declaring_More_Than_The_Limit_Is_Not_Opened()
+    {
+        var template = Docx.Document("{{#if IsDraft}}", "DRAFT", "{{/if}}").GetBytes()!;
+        // an external hyperlink whose target inflates to 16 MB, from a few KB in the zip
+        var bomb = RewriteEntry(template, "_rels/.rels", xml => xml.Replace("</Relationships>",
+            "<Relationship Id=\"rIdBomb\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\""
+            + $" Target=\"https://example.com/{new string('a', 16 * 1024 * 1024)}\" TargetMode=\"External\"/></Relationships>"));
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        var opensBlock = ConditionalMarkers.Any(bomb, maxBytes: 1024 * 1024);
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(bomb, Has.Length.LessThan(100_000), "the bomb is small");
+            Assert.That(opensBlock, Is.False);
+            Assert.That(allocated, Is.LessThan(1024 * 1024), "its relationships were not read");
+        });
+    }
+
+    /// <summary>
+    /// A size declared smaller than the part inflates to is no way around the limit: the zip reader stops each part at its
+    /// declared size, so the part is read cut short, and the document, unreadable, holds no block.
+    /// </summary>
+    [Test]
+    public void A_Part_Declared_Smaller_Than_It_Inflates_Is_Read_Cut_Short()
+    {
+        // the marker after 4 MB of text, which the zip compresses to a few KB
+        var template = Docx.Document(new string('x', 4 * 1024 * 1024), "{{#if IsDraft}}", "DRAFT", "{{/if}}").GetBytes()!;
+        var forged = DeclareSize(template, "word/document.xml", 10_000);
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        var opensBlock = ConditionalMarkers.Any(forged, maxBytes: 1024 * 1024);
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ConditionalMarkers.Any(template, maxBytes: 1024 * 1024), Is.False, "declared as it is, it exceeds the limit");
+            Assert.That(opensBlock, Is.False);
+            Assert.That(allocated, Is.LessThan(1024 * 1024), "no more than the declared size was read");
+        });
+    }
+
+    private static byte[] RewriteEntry(byte[] package, string entryName, Func<string, string> rewrite)
+    {
+        using var stream = new MemoryStream();
+        stream.Write(package);
+        using (var zip = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Update, true))
+        {
+            var entry = zip.GetEntry(entryName)!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open()))
+            {
+                xml = reader.ReadToEnd();
+            }
+            entry.Delete();
+            using var writer = new StreamWriter(zip.CreateEntry(entryName).Open());
+            writer.Write(rewrite(xml));
+        }
+        return stream.ToArray();
+    }
+
+    // overwrites the uncompressed size an entry declares, in its local header and in the central directory
+    private static byte[] DeclareSize(byte[] package, string entryName, uint size)
+    {
+        var bytes = (byte[])package.Clone();
+        var name = Encoding.UTF8.GetBytes(entryName);
+        for (var i = 0; i + 4 <= bytes.Length; i++)
+        {
+            var (sizeOffset, nameLengthOffset, nameOffset) = BitConverter.ToUInt32(bytes, i) switch
+            {
+                0x04034b50 => (22, 26, 30), // local file header
+                0x02014b50 => (24, 28, 46), // central directory file header
+                _ => (-1, 0, 0)
+            };
+            if (sizeOffset < 0 || i + nameOffset + name.Length > bytes.Length
+                || BitConverter.ToUInt16(bytes, i + nameLengthOffset) != name.Length
+                || !bytes.AsSpan(i + nameOffset, name.Length).SequenceEqual(name))
+            {
+                continue;
+            }
+            BitConverter.TryWriteBytes(bytes.AsSpan(i + sizeOffset, 4), size);
+        }
+        return bytes;
     }
 
     /// <summary>

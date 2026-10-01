@@ -52,6 +52,8 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
                 // Only add when attachment has content
                 if (entity.Attachment?.HasContent() == true)
                 {
+                    // typed now as the save types it, so the validators judge its type
+                    EntityAttachmentContent.TypeByName(entity.Attachment);
                     dbContext.Entry(entity.Attachment).State = EntityState.Added;
                     dbContext.Entry(entity).State = EntityState.Added;
                 }
@@ -62,6 +64,11 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
             {
                 var originalEntity = originalItems.Single(p => p.Id!.Equals(entity.Id));
 
+                if (entity.Attachment?.IsNew() != true)
+                {
+                    // a kept link keeps its attachment, as on the link's own route
+                    EntityAttachmentContent.KeepAttachment(entity, originalEntity);
+                }
                 if (!string.IsNullOrWhiteSpace(entity.NewFileName) || entity.NewBytes?.Any() == true)
                 {
                     entity.Attachment ??= originalEntity.Attachment;
@@ -71,6 +78,7 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
                 {
                     if (entity.Attachment.IsNew())
                     {
+                        EntityAttachmentContent.TypeByName(entity.Attachment);
                         dbContext.Entry(entity.Attachment).State = EntityState.Added;
                         if (_options.IsStrictRelation && entity.AttachmentId?.Equals(originalEntity.AttachmentId) != true)
                         {

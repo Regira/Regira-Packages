@@ -1,4 +1,5 @@
 # Regira Web AI Agent Instructions
+<!-- {% raw %} -->
 
 > Razor-based HTML template rendering plus common web utilities, middleware, and Swagger configuration.
 
@@ -203,3 +204,5 @@ builder.Services.AddControllers().DisplayEnumAsString();
 locally, before wiring any of them.
 
 ---
+
+<!-- {% endraw %} -->

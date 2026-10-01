@@ -358,6 +358,9 @@ An entry is named after the file's `Identifier` (its `FileName` when there is no
 as the ZIP format requires, so an archive made on Windows unzips into the same folders on Linux and macOS.
 `Unzip` reads a `\` in an entry name as a separator too.
 
+Neither `ZipUtility.Unzip` nor `ZipFileService` caps what an archive unpacks to. For one from an untrusted source, such
+as an upload, use `ZipManager` with `MaxUnzippedSize` ([Compression](docs/compression.md)).
+
 ## Helpers
 
 ### FileProcessor — recursive processing

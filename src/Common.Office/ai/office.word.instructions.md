@@ -1,4 +1,5 @@
 # Regira Office.Word AI Agent Instructions
+<!-- {% raw %} -->
 
 ---
 
@@ -57,7 +58,7 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 > **Word.Aspose limits:** ODT templates load and EPUB is written; `Convert` writes every document format and throws `NotSupportedException` only for `Png`/`Jpeg` (use `ToImages`). Without a licence Aspose.Words runs in evaluation mode: every document gets *"Created with an evaluation copy of Aspose.Words…"* at the top and *"Evaluation Only. Created with Aspose.Words…"* in place of its own headers and footers, and documents beyond a few hundred paragraphs are cut short. So constructing `WordService` throws when no licence is configured anywhere — a configuration key that resolves to nothing fails the first time the service is built — unless `AsposeWordConfig.AllowEvaluation` accepts evaluation output, or the process already holds a licence. Both banners are ordinary text, so a containment check on your own content still passes — assert they are **absent**, and check the last paragraph of a long document survives, if you need to know the licence works. Aspose sells developer, site and metered licences, which differ in the number of developers and locations and in whether public-facing web apps and SaaS are covered ([purchase.aspose.com/pricing/words/net](https://purchase.aspose.com/pricing/words/net/)); a free 30-day temporary licence is available on request. On Linux, add `SkiaSharp.NativeAssets.Linux` at the version of `SkiaSharp` the application resolves (3.119 or later) and install `libfontconfig1` and `libharfbuzz-icu0`.
 
-> **Word.Gotenberg limits:** Implements `IWordConverter` and `IWordToImagesService` only — Gotenberg has no document model. `Convert` produces PDF only; every other `FileFormat` throws `NotSupportedException`. It reads Word (`.doc`, `.dot`, `.docx`, `.dotx`, `.docm`, `.dotm`), OpenDocument (`.odt`, `.ott`), `.rtf`, `.txt`, `.html`/`.htm` and `.epub` sources. `ConversionOptions.Settings` needs an OOXML source (`.docx`, `.dotx`, `.docm`, `.dotm`), because the page size, orientation and margins are written into the document before upload; any `PageSize` is honoured. An input carrying template substitutions needs an `IWordCreator` that renders it first, and throws `NotSupportedException` without one — and so does an OOXML template holding a conditional block, even without parameters, because a key the input does not give is false: `Word.Mini.WordService` covers `GlobalParameters`, `CollectionParameters` and `Images` (in its own template syntax), while `Headers`, `Footers`, `DocumentParameters` and non-default `InputOptions` need a creator with a document model — Word.Spire, Word.Syncfusion or Word.Aspose — because Word.Mini refuses them. `ToImages` needs an `IPdfToImageService` such as `Regira.Office.PDF.DocNET`, which rasterises the PDF. **LibreOffice lays documents out differently from Word:** a font missing from the Gotenberg image is substituted, which moves line and page breaks, so page images and page counts can differ from Word's — install the fonts your documents use in the image. The server enforces its own time limit (`--api-timeout`, 30 seconds by default) and answers 503 when a conversion exceeds it.
+> **Word.Gotenberg limits:** Implements `IWordConverter` and `IWordToImagesService` only — Gotenberg has no document model. `Convert` produces PDF only; every other `FileFormat` throws `NotSupportedException`. It reads Word (`.doc`, `.dot`, `.docx`, `.dotx`, `.docm`, `.dotm`), OpenDocument (`.odt`, `.ott`), `.rtf`, `.txt`, `.html`/`.htm` and `.epub` sources. `ConversionOptions.Settings` needs an OOXML source (`.docx`, `.dotx`, `.docm`, `.dotm`), because the page size, orientation and margins are written into the document before upload; any `PageSize` is honoured. An input carrying template substitutions needs an `IWordCreator` that renders it first, and throws `NotSupportedException` without one — and so does an OOXML template holding a conditional block, even without parameters, because a key the input does not give is false: `Word.Mini.WordService` covers `GlobalParameters`, `CollectionParameters` and `Images` (in its own template syntax), while `Headers`, `Footers`, `DocumentParameters` and non-default `InputOptions` need a creator with a document model — Word.Spire, Word.Syncfusion or Word.Aspose — because Word.Mini refuses them. Every OOXML source is scanned for such a block in-process; one whose parts hold more than 32 MiB together, uncompressed and images included, is not opened, and is uploaded as it is, its blocks unresolved. `ToImages` needs an `IPdfToImageService` such as `Regira.Office.PDF.DocNET`, which rasterises the PDF. **LibreOffice lays documents out differently from Word:** a font missing from the Gotenberg image is substituted, which moves line and page breaks, so page images and page counts can differ from Word's — install the fonts your documents use in the image. The server enforces its own time limit (`--api-timeout`, 30 seconds by default) and answers 503 when a conversion exceeds it.
 
 ---
 
@@ -161,7 +162,7 @@ Docx  Doc  Dotx  Dot  Docm  Dotm  Pdf  Html  Rtf  Odt  EPub  Jpeg  Png
 
 | Property | Type | Description |
 |---|---|---|
-| `Template` | `IMemoryFile` | Template fragment for the header/footer |
+| `Template` | `WordTemplateInput` | The header/footer's own template input: its parameters fill it, and its blocks read them, not the main input's |
 | `Type` | `HeaderFooterType` | `Default`, `FirstPage`, `Even`, `Odd` — `FirstPage` and `Even` give those pages stories of their own, headers and footers alike: the `Default` story then serves the other pages, and a story given no `FirstPage`/`Even` version repeats its default on those pages |
 
 ---
@@ -269,8 +270,9 @@ Please pay {{Amount}} before {{DueDate}}.
   marker paragraph stays. Blocks are resolved before anything is filled, so a dropped branch's parameters, images
   and nested documents are never processed.
 - There is no comparison syntax: compute the flag in code, as `["IsOverdue"] = invoice.DueDate < DateTime.Today`.
-- Blocks read `GlobalParameters` and `CollectionParameters` only. A block inside a collection table's template row
-  is decided once, for every row.
+- Blocks read `GlobalParameters` and `CollectionParameters` only, of the input whose template holds them: a block in a
+  `WordHeaderFooterInput`'s template reads that `Template`'s parameters, not the main input's. A block inside a
+  collection table's template row is decided once, for every row.
 - A block opens and closes in the same body, table cell, text box, content control, header or footer, and within
   one section — a content control around whole paragraphs is a container of its own, so a block cannot open outside
   one and close inside it. Footnotes, endnotes and comments are not read for markers.
@@ -341,3 +343,5 @@ the one resolved — call `AddGotenbergWord` after `AddOfficeClients` to convert
 Office API serves the rest, its `IPdfToImageService` included. For template input that needs headers, footers
 or nested documents, register a backend with a document model as the `IWordCreator` —
 `builder.Services.AddTransient<IWordCreator, Regira.Office.Word.Aspose.WordService>()` beside its config.
+
+<!-- {% endraw %} -->

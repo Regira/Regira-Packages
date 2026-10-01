@@ -124,6 +124,12 @@ variant per filter family**, preferring the one whose key type matches the searc
 a non-int key, register the matching variants with `AddDefaultGlobalQueryFilters<TKey>()` so its typed fields
 (Id/Ids) are honoured too. Key-agnostic defaults apply even when only the int variant is registered.
 
+`RemoveGlobalQueryFilters()` removes every global filter registered before it, the ones `UseDefaults()` adds among
+them, so an application can start over with its own; register those after it with `AddGlobalFilterQueryBuilder<>()`.
+The archived filter goes too, so archived rows are listed until one is registered again. It extends
+`IServiceCollection` — the `UseEntities<TContext>()` builder is one, so it chains there — not
+`EntityServiceCollectionOptions`.
+
 #### Sort Query Builder
 
 - Uses the configured `TSortyBy`

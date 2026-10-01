@@ -132,7 +132,7 @@ Task                Print(PdfPrinterInput input, CancellationToken cancellationT
 
 ### `IPdfService`
 
-Composite: `IPdfEditor + IPdfImageService + IPdfTextService`. Implemented by `PDF.DocNET.PdfManager` and `PDF.Spire.PdfManager`.
+Composite: `IPdfEditor + IPdfImageService + IPdfTextService`. Implemented by `PDF.DocNET.PdfManager`. `PDF.Spire.PdfManager` implements `IPdfMerger`, `IPdfSplitter`, `IPdfToImageService` and `IPdfTextExtractor` only — resolve those, not `IPdfService`.
 
 ---
 

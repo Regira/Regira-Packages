@@ -44,6 +44,33 @@ public class ContentTypeUtilityTests
         Assert.That(ContentTypeUtility.GetContentType($"file.{extension.ToUpperInvariant()}"), Is.EqualTo("application/x-test"));
     }
 
+    // several extensions share these types: the answer is fixed, not the order the map happens to hold them in
+    [TestCase("application/xml", "xml")]
+    [TestCase("text/javascript", "js")]
+    [TestCase("image/jpeg", "jpg")]
+    [TestCase("text/html", "html")]
+    [TestCase("image/tiff", "tif")]
+    [TestCase("audio/mpeg", "mp3")]
+    [TestCase("text/plain", "txt")]
+    [TestCase("application/yaml", "yaml")]
+    [TestCase("IMAGE/WEBP", "webp")]
+    [TestCase("application/x-javascript", "js")]
+    [TestCase("image/x-unknown", "x-unknown")]
+    public void GetExtension_Answers_One_Extension_Per_Type(string mimeType, string expected)
+        => Assert.That(ContentTypeUtility.GetExtension(mimeType), Is.EqualTo(expected));
+
+    [Test]
+    public void GetExtension_Prefers_An_Extension_Whose_First_Type_It_Is()
+    {
+        // listed second by an extension that sorts first, and first by one that sorts later
+        var listing = $"a{Guid.NewGuid():N}";
+        var owner = $"z{Guid.NewGuid():N}";
+        var type = $"application/x-{Guid.NewGuid():N}";
+        ContentTypeUtility.Extend(new Dictionary<string, string[]> { { listing, ["application/x-other", type] }, { owner, [type] } });
+
+        Assert.That(ContentTypeUtility.GetExtension(type), Is.EqualTo(owner));
+    }
+
     [Test]
     public void Every_Signature_Has_A_Type()
     {

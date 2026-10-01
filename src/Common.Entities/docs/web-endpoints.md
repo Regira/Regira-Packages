@@ -169,11 +169,17 @@ Delete(id) -> DeleteResult
 ```
 
 > **Refused writes:** a [validator](services.md#entity-validators) that rejects a write makes every write endpoint,
-> `DELETE` included, answer **400** with all the errors in one body, each message of a field its own entry — `""` for
-> an error on the entity as a whole:
+> `DELETE` included, answer **400** with a `ValidationProblemDetails` holding all the errors. In `errors` each message of
+> a field is its own entry — `""` for an error on the entity as a whole — and `errorDetails` lists every error in order,
+> with its args ([Input Exceptions](built-in-features.md#input-exceptions)):
 >
 > ```json
-> { "Code": ["Code is taken.", "Code must start with ORD-."], "": ["The order is incomplete."] }
+> { "title": "One or more validation errors occurred.", "status": 400,
+>   "errors": { "Code": ["Code is taken.", "Code must start with ORD-."], "": ["The order is incomplete."] },
+>   "errorDetails": [
+>     { "key": "Code", "message": "Code is taken." },
+>     { "key": "Code", "message": "Code must start with ORD-." },
+>     { "key": "", "message": "The order is incomplete." } ] }
 > ```
 
 ### Notes

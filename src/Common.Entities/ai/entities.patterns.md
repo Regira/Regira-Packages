@@ -955,7 +955,7 @@ e.Prepare(async (order, dbContext) =>
 });
 ```
 
-- Throw `EntityInputException<Order>` on a rule breach — parameterized by the **serviced** entity (`Order`, the one with the `.For<>()`/controller), **not** the related `Product`. Both still return 400 (the registered filter matches the non-generic base), but the generated action's own `catch` is on its closed `EntityInputException<TEntity>`, so only the matching type argument reaches its `ModelState` — and any `catch` you write should be on the base for the same reason.
+- Throw `EntityInputException<Order>` on a rule breach — parameterized by the **serviced** entity (`Order`, the one with the `.For<>()`/controller), **not** the related `Product`. Both still return 400 (the registered filter matches the non-generic base), but the generated action's own `catch` is on its closed `EntityInputException<TEntity>`, so only the matching type argument gets the action's own 400 — another reaches the filter, and a host without it answers 500 — and any `catch` you write should be on the base for the same reason.
 - On **update** the decrement would compound — diff against the original quantities (prepper-with-original, or a primer branching on `EntityState.Modified`) and apply only the delta.
 
 ## Server-owned / immutable fields on update
@@ -1139,7 +1139,7 @@ What each write is checked against:
 | A data-column token | the stored row — only a write racing the save is caught |
 
 - A required stamp left out answers the field-level 400, keyed by the token's C# property name:
-  `{ "ConcurrencyToken": ["Required on an update: send the value read with the record."] }`. The camelCase naming
+  `"errors": { "ConcurrencyToken": ["Required on an update: send the value read with the record."] }`. The camelCase naming
   policy does not reach dictionary keys, so a client that sends `concurrencyToken` reads the error under
   `ConcurrencyToken`, as it does every input error key (`entities.instructions` → Response Types).
 - A token whose default is a legitimate value — an `int` version starting at `0` — cannot be told apart from an
