@@ -24,12 +24,13 @@ public class DomainActionExceptionTests(ContosoApiFactory factory) : IClassFixtu
         var response = await client.PostAsync("/domain-actions/input", null);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        // The flat SerializableError map BadRequest(ModelState) produces — the same body
-        // ControllerExtensions.Save returns, with no ProblemDetails "errors" wrapper around it. The key reads
-        // `title` only because this host serializes with Newtonsoft's camel-case resolver; System.Text.Json
-        // leaves dictionary keys as thrown (`Title`).
-        var errors = await response.Content.ReadFromJsonAsync<Dictionary<string, string[]>>();
-        Assert.Equal(["Only a draft course can be renamed."], errors!["title"]);
+        // The ValidationProblemDetails ControllerExtensions.Save returns too. The key reads `title` only because
+        // this host serializes with Newtonsoft's camel-case resolver; System.Text.Json leaves dictionary keys as
+        // thrown (`Title`).
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+        Assert.Equal(["Only a draft course can be renamed."], problem!.Errors["title"]);
+        // the extension member's name is not a dictionary key, so the resolver leaves it as written
+        Assert.True(problem.Extensions.ContainsKey("errorDetails"));
     }
 
     [Fact]
@@ -40,8 +41,8 @@ public class DomainActionExceptionTests(ContosoApiFactory factory) : IClassFixtu
         var response = await client.PostAsync("/domain-actions/input-related", null);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        var errors = await response.Content.ReadFromJsonAsync<Dictionary<string, string[]>>();
-        Assert.Equal(["Unknown department."], errors!["departmentId"]);
+        var errors = (await response.Content.ReadFromJsonAsync<ValidationProblemDetails>())!.Errors;
+        Assert.Equal(["Unknown department."], errors["departmentId"]);
     }
 
     [Fact]
@@ -52,8 +53,8 @@ public class DomainActionExceptionTests(ContosoApiFactory factory) : IClassFixtu
         var response = await client.PostAsync("/domain-actions/input-without-field-errors", null);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        var errors = await response.Content.ReadFromJsonAsync<Dictionary<string, string[]>>();
-        Assert.Equal(["Credits must be positive."], errors![""]);
+        var errors = (await response.Content.ReadFromJsonAsync<ValidationProblemDetails>())!.Errors;
+        Assert.Equal(["Credits must be positive."], errors[""]);
     }
 
     [Fact]

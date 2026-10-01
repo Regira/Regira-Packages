@@ -19,6 +19,10 @@ public class EntityAttachmentPrepper<TContext, TEntityAttachment, TEntityAttachm
         {
             dbContext.Entry(original.Attachment).State = EntityState.Deleted;
         }
+        else if (item.Attachment?.IsNew() == false)
+        {
+            EntityAttachmentContent.ApplyBeforeSave(dbContext, item, original?.Attachment);
+        }
 
         return Task.CompletedTask;
     }

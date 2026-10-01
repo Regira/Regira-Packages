@@ -1034,6 +1034,12 @@ services.UseEntities<WebshopDbContext>(options =>
 
 <!-- no-compile -->
 ```csharp
+// for the DI section below
+using Regira.Entities.DependencyInjection.Attachments;       // HasAttachments
+using Regira.Entities.DependencyInjection.Extensions;        // UseEntities, UseDefaults
+using Regira.Entities.Web.Attachments.DependencyInjection;   // UseAttachmentUris
+using Regira.IO.Storage.FileSystem;                          // BinaryFileService, FileSystemOptions
+
 // Attachment entity — inherit the `EntityAttachment` base (maps to int, int, int, Attachment) and set
 // ObjectType in the constructor.
 public class ProductAttachment : EntityAttachment

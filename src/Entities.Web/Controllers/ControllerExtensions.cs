@@ -208,7 +208,7 @@ public static class ControllerExtensions
         }
         catch (EntityInputException<TEntity> ex)
         {
-            return ctrl.BadRequest(ctrl.ModelState.AddEntityInputErrors(ex));
+            return ex.ToBadRequest(ctrl.HttpContext);
         }
         catch (EntityConstraintException)
         {
@@ -281,8 +281,9 @@ public static class ControllerExtensions
         var mergedJson = ApplyJsonMergePatch(baseJson, patch, serializerOptions);
         var mergedInput = JsonSerializer.Deserialize<TInputDto>(mergedJson, serializerOptions)!;
 
+        // the ValidationProblemDetails [ApiController]'s automatic 400 answers a PUT's input with
         if (!ctrl.TryValidateModel(mergedInput))
-            return ctrl.BadRequest(ctrl.ModelState);
+            return ctrl.ValidationProblem(ctrl.ModelState);
 
         return await ctrl.Save<TEntity, TKey, TDto, TInputDto>(mergedInput, id);
     }
@@ -348,7 +349,7 @@ public static class ControllerExtensions
         catch (EntityInputException<TEntity> ex)
         {
             // a validator rejected the delete — a 400 like a save's, whether or not the exception filter is registered
-            return ctrl.BadRequest(ctrl.ModelState.AddEntityInputErrors(ex));
+            return ex.ToBadRequest(ctrl.HttpContext);
         }
         catch (EntityConstraintException)
         {

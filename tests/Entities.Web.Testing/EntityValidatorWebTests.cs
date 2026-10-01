@@ -64,8 +64,8 @@ public class ValidatedOrderAttachmentsController : EntityAttachmentControllerBas
 
 /// <summary>
 /// Over HTTP, on a host that registers no exception filter (<c>MapEntityExceptions()</c> or
-/// <c>ConfigureDefaultJsonOptions()</c>): every generated write answers a validator's rejection with 400 and the flat
-/// error map, a field with several messages carrying each of them.
+/// <c>ConfigureDefaultJsonOptions()</c>): every generated write answers a validator's rejection with 400 and a
+/// ValidationProblemDetails, a field with several messages carrying each of them.
 /// </summary>
 public class EntityValidatorWebTests
 {
@@ -93,7 +93,7 @@ public class EntityValidatorWebTests
         }
         else if (order.Code.Length > 5)
         {
-            ctx.AddError(nameof(ValidatedOrder.Code), "At most 5 characters.");
+            ctx.AddError(nameof(ValidatedOrder.Code), "TooLong", new { max = 5 });
             ctx.AddError(nameof(ValidatedOrder.Code), "Upper case only.");
         }
     }
@@ -182,10 +182,28 @@ public class EntityValidatorWebTests
     private static MultipartFormDataContent FileContent(string fileName)
         => new() { { new ByteArrayContent("Terms and conditions"u8.ToArray()), "file", fileName } };
 
-    private static async Task<Dictionary<string, string[]>> ErrorsOf(HttpResponseMessage response)
+    private static async Task<IDictionary<string, string[]>> ErrorsOf(HttpResponseMessage response)
     {
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        return (await response.Content.ReadFromJsonAsync<Dictionary<string, string[]>>())!;
+        return (await response.Content.ReadFromJsonAsync<ValidationProblemDetails>())!.Errors;
+    }
+
+    [Fact]
+    public async Task The_400_Is_A_Problem_Listing_Every_Error_With_Its_Args()
+    {
+        await using var host = await Host.CreateAsync();
+
+        var response = await host.Client.PutAsJsonAsync($"/validated-orders/{host.OrderId}",
+            new ValidatedOrder { Id = host.OrderId, Code = "toolong" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        // the app's ProblemDetailsFactory built it, as it builds model binding's 400
+        Assert.True(body.RootElement.TryGetProperty("traceId", out _));
+        Assert.Equal(
+            """[{"key":"Code","message":"TooLong","args":{"max":5}},{"key":"Code","message":"Upper case only."}]""",
+            body.RootElement.GetProperty("errorDetails").GetRawText());
     }
 
     [Fact]
@@ -206,7 +224,7 @@ public class EntityValidatorWebTests
         var response = await host.Client.PutAsJsonAsync($"/validated-orders/{host.OrderId}",
             new ValidatedOrder { Id = host.OrderId, Code = "toolong" });
 
-        Assert.Equal(["At most 5 characters.", "Upper case only."], (await ErrorsOf(response))["Code"]);
+        Assert.Equal(["TooLong", "Upper case only."], (await ErrorsOf(response))["Code"]);
     }
 
     [Fact]

@@ -47,11 +47,29 @@ Task<int> SaveChanges(CancellationToken token = default)
 
 ### Input Exceptions
 
-**EntityInputException**: returned as BadRequest (400), with its errors as the ModelState payload — a flat map
-of each key to its messages. `Errors` holds every message, several per key, and is what the body is built from; with
-no errors, the exception's message goes out under the empty key. The keys go out as thrown: System.Text.Json applies
-no dictionary-key policy, so `nameof(Order.Status)` reaches a camelCase client as `Status`. A host that sets `DictionaryKeyPolicy`, or serializes
-with Newtonsoft's camelCase resolver, camelCases them.
+**EntityInputException**: returned as BadRequest (400), a `ValidationProblemDetails` — the body model binding answers
+with too. Its `errors` map each key to its messages, and its `errorDetails` list every error in order with its args:
+
+```json
+{
+  "title": "One or more validation errors occurred.",
+  "status": 400,
+  "errors": { "Code": ["A code is required."], "Total": ["ValueTooLarge"] },
+  "errorDetails": [
+    { "key": "Code", "message": "A code is required." },
+    { "key": "Total", "message": "ValueTooLarge", "args": { "max": 10000 } }
+  ]
+}
+```
+
+`Errors` holds every error, several per key, and is what the body is built from; with no errors, the exception's
+message goes out under the empty key. A message is a text the client shows, or a translation key it pairs with its
+own messages — the Regira front-end shows the translation when it has one, and the message as is when it has not. An
+error's `Args` are the values a translation fills in (`{max}`); only scalar ones reach the client, and `args` is left
+out of an error that has none.
+The keys go out as thrown: System.Text.Json applies no dictionary-key policy, so `nameof(Order.Status)` reaches a
+camelCase client as `Status`. A host that sets `DictionaryKeyPolicy`, or serializes with Newtonsoft's camelCase
+resolver, camelCases them, and the args' names too.
 
 ```csharp
 public abstract class EntityInputException(string message, Exception? innerException = null)
@@ -63,7 +81,7 @@ public abstract class EntityInputException(string message, Exception? innerExcep
     public IDictionary<string, string> InputErrors { get; set; }
 }
 
-public record EntityInputError(string Key, string Message);
+public record EntityInputError(string Key, string Message, IReadOnlyDictionary<string, object?>? Args = null);
 
 public class EntityInputException<T>(string message, Exception? innerException = null)
     : EntityInputException(message, innerException)
@@ -438,6 +456,10 @@ public class OrderValidator : AbstractValidator<Order>
 `Add` and `Modify` run the rules outside any rule set plus `EntityRuleSets.Add` / `EntityRuleSets.Modify`; `Remove`
 runs `EntityRuleSets.Remove` alone, against the row as stored. `ctx.GetOriginal()` and `ctx.GetOperation()` read the write from any rule, and
 only `Severity.Error` failures refuse it.
+
+A failure's message is the error's [message](#input-exceptions), so `WithMessage("ValueTooLarge")` pairs a rule with a
+translation key. The values the message was formatted with — `{ComparisonValue}`, `{MaxLength}` — go out as its args,
+all but the attempted `{PropertyValue}`.
 
 ### Primers
 

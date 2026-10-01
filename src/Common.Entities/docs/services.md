@@ -282,6 +282,10 @@ e.Related<TRelated, TRelatedKey>(x => x.Collection,
   `Related()` sync writes — check `Lines` from the `Order` validator, with keys like `Lines[0].Quantity`
 - The context carries `Item`, `Original` (the stored row on `Modify`), `Operation` (`Add` / `Modify` / `Remove`;
   a soft delete of an `IArchivable` is a `Remove`) and the `Errors` added so far; `AddError(key, message)` takes the property path, `""` for the whole entity
+- The message is yours to choose: a text the client shows, or a translation key it pairs with its own messages
+  (`ValueTooLarge`) — the Regira front-end shows the translation when it has one and the message as is otherwise.
+  `AddError(key, message, args)` adds the values a translation fills in — an anonymous object, `new { max = 20 }`, or
+  a dictionary; they go out in the 400's [`errorDetails`](built-in-features.md#input-exceptions), scalar values only
 - On `Remove`, `Item` is the row as stored — the caller's instance when none is found — so a delete by key,
   `Remove(new Order { Id = id })`, is judged by the row's state
 - Validators read and never write — `ctx.Item` is the instance that gets saved, so a value a validator sets is still
@@ -350,8 +354,12 @@ public class CodeValidator : EntityValidatorBase<IHasCode>
 {
     public override Task Validate(IEntityValidatorContext<IHasCode> ctx, CancellationToken token = default)
     {
-        if (ctx.Operation != EntityWriteOperation.Remove && string.IsNullOrWhiteSpace(ctx.Item.Code))
+        if (ctx.Operation == EntityWriteOperation.Remove)
+            return Task.CompletedTask;
+        if (string.IsNullOrWhiteSpace(ctx.Item.Code))
             ctx.AddError(nameof(IHasCode.Code), "A code is required.");
+        else if (ctx.Item.Code.Length > 20)
+            ctx.AddError(nameof(IHasCode.Code), "TooLong", new { max = 20 });
         return Task.CompletedTask;
     }
 }

@@ -84,6 +84,8 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
                     }
                     else
                     {
+                        // the new name and bytes before the save, as the link's own route applies them
+                        EntityAttachmentContent.ApplyBeforeSave(dbContext, entity, originalEntity.Attachment);
                         dbContext.Entry(entity.Attachment).State = EntityState.Modified;
                     }
                 }

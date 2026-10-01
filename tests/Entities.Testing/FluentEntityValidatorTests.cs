@@ -180,6 +180,28 @@ public class FluentEntityValidatorTests
         => new() { Code = "ORD-1", TenantId = "acme", CustomerId = 1, Status = status };
 
     private static IEnumerable<string> Keys(EntityInputException ex) => ex.Errors.Select(e => e.Key);
+    private static IEnumerable<(string, string)> Messages(EntityInputException ex) => ex.Errors.Select(e => (e.Key, e.Message));
+
+    [Test]
+    public async Task A_Failure_Carries_Its_Placeholder_Values_As_Args()
+    {
+        Build();
+        using var scope = _sp.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
+        var order = NewOrder();
+        order.Code = "ORD-0000000000000000001";
+
+        var ex = (await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(order)))!;
+
+        var error = ex.Errors.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(error.Args!["MaxLength"], Is.EqualTo(20));
+            Assert.That(error.Args!["TotalLength"], Is.EqualTo(23));
+            // the attempted value stays out: the client sent it, and it can be a password
+            Assert.That(error.Args!.ContainsKey("PropertyValue"), Is.False);
+        });
+    }
 
     [Test]
     public async Task An_Async_Rule_Queries_The_DbContext()
@@ -193,7 +215,7 @@ public class FluentEntityValidatorTests
         await service.Add(NewOrder());
         var ex = (await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(unknown)))!;
 
-        Assert.That(ex.Errors, Is.EqualTo(new[] { new EntityInputError("CustomerId", "Customer 42 does not exist") }));
+        Assert.That(Messages(ex), Is.EqualTo(new[] { ("CustomerId", "Customer 42 does not exist") }));
     }
 
     [Test]
@@ -208,7 +230,7 @@ public class FluentEntityValidatorTests
 
         var ex = (await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Modify(back)))!;
 
-        Assert.That(ex.Errors, Is.EqualTo(new[] { new EntityInputError("Status", "Status change not allowed") }));
+        Assert.That(Messages(ex), Is.EqualTo(new[] { ("Status", "Status change not allowed") }));
     }
 
     [Test]
@@ -231,8 +253,8 @@ public class FluentEntityValidatorTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(onAdd.Errors, Is.EqualTo(new[] { new EntityInputError("Status", "A new order is pending") }));
-            Assert.That(onModify.Errors, Is.EqualTo(new[] { new EntityInputError("Code", "The code cannot change") }));
+            Assert.That(Messages(onAdd), Is.EqualTo(new[] { ("Status", "A new order is pending") }));
+            Assert.That(Messages(onModify), Is.EqualTo(new[] { ("Code", "The code cannot change") }));
         });
     }
 
@@ -249,7 +271,7 @@ public class FluentEntityValidatorTests
         await service.Remove((await service.Details(pending))!);
         var ex = (await Assert.ThrowsAsync<EntityInputException<Order>>(async () => await service.Remove((await service.Details(shipped))!)))!;
 
-        Assert.That(ex.Errors, Is.EqualTo(new[] { new EntityInputError("Status", "A shipped order cannot be deleted") }));
+        Assert.That(Messages(ex), Is.EqualTo(new[] { ("Status", "A shipped order cannot be deleted") }));
     }
 
     [Test]

@@ -12,7 +12,7 @@ public static class EntityServiceCollectionExceptionExtensions
     /// the same statuses the generated ones do: <c>EntityInputException</c> → 400 with its field errors,
     /// <c>EntityConstraintException</c> → 409 "Conflict", and <c>EntityConcurrencyException</c> → 409
     /// "Concurrency conflict". Order-independent of <c>AddControllers()</c>, and idempotent
-    /// however the filter reached <c>MvcOptions</c> — a second copy would add every model error twice.
+    /// however the filter reached <c>MvcOptions</c>.
     /// <para>
     /// Called by <see cref="EntityServiceCollectionJsonExtensions.ConfigureDefaultJsonOptions(IServiceCollection, Action{JsonOptions}, Action{Microsoft.AspNetCore.Http.Json.JsonOptions})"/>,
     /// so an app following the setup guide needs no explicit call. Call it directly only in a host that

@@ -23,7 +23,8 @@ public class EntityValidatorContext<TEntity>(EntityWriteOperation operation, TEn
     public EntityWriteOperation Operation => operation;
     public IReadOnlyList<EntityInputError> Errors => _errors;
 
-    public void AddError(string key, string message) => _errors.Add(new EntityInputError(key ?? string.Empty, message));
+    public void AddError(string key, string message, object? args = null)
+        => _errors.Add(new EntityInputError(key ?? string.Empty, message, EntityInputErrorArgs.From(args)));
 
     object IEntityValidatorContext.Item => Item;
     object? IEntityValidatorContext.Original => Original;

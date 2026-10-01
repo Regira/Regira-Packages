@@ -38,7 +38,16 @@ public interface IEntityValidatorContext
     /// Rejects the write. <paramref name="key"/> is the property path (<c>CustomerId</c>, <c>Lines[0].Quantity</c>), or
     /// <see cref="string.Empty"/> for an error about the entity as a whole. A key can carry several messages.
     /// </summary>
-    void AddError(string key, string message);
+    /// <param name="key">The property path, or <see cref="string.Empty"/>.</param>
+    /// <param name="message">
+    /// What the client shows — a text, or a translation key a client pairs with its own messages. See
+    /// <see cref="EntityInputError.Message"/>.
+    /// </param>
+    /// <param name="args">
+    /// The values a translation fills in: an anonymous object (<c>new { max = 50 }</c>) or a dictionary keyed by
+    /// placeholder name. See <see cref="EntityInputError.Args"/>.
+    /// </param>
+    void AddError(string key, string message, object? args = null);
 }
 
 /// <inheritdoc cref="IEntityValidatorContext"/>

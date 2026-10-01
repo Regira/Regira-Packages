@@ -32,22 +32,18 @@ public class EntityExceptionFilterTests
         new EntityExceptionFilter().OnException(context);
 
         Assert.True(context.ExceptionHandled);
-        // BadRequest(ModelState) serializes as a SerializableError — the same body ControllerExtensions.Save
-        // returns, so a hand-written action and the generated one are indistinguishable to a client.
-        var errors = Errors(context);
-        Assert.Equal(["Only a submitted request can be approved."], Assert.IsType<string[]>(errors["Status"]));
+        // the same ValidationProblemDetails ControllerExtensions.Save returns, so a hand-written action and the
+        // generated one are indistinguishable to a client
+        var problem = Problem(context);
+        Assert.Equal(StatusCodes.Status400BadRequest, problem.Status);
+        Assert.Equal(["Only a submitted request can be approved."], problem.Errors["Status"]);
     }
 
-    // The body is a dictionary, so the camelCase naming policy of ConfigureDefaultJsonOptions() does not reach its keys:
-    // each goes out as it was thrown. The concurrency recipe documents the key a required version stamp left out gets.
+    // The error keys are dictionary keys, so the camelCase naming policy of ConfigureDefaultJsonOptions() does not reach
+    // them: each goes out as it was thrown. The concurrency recipe documents the key a required version stamp left out gets.
     [Fact]
     public void InputException_Keys_Go_Out_As_Thrown()
     {
-        var services = new ServiceCollection();
-        services.AddOptions();
-        services.ConfigureDefaultJsonOptions();
-        using var sp = services.BuildServiceProvider();
-        var json = sp.GetRequiredService<IOptions<JsonOptions>>().Value.JsonSerializerOptions;
         var context = ContextFor(new EntityInputException<object>("rejected")
         {
             InputErrors = { ["ConcurrencyToken"] = "Required on an update: send the value read with the record." }
@@ -55,12 +51,69 @@ public class EntityExceptionFilterTests
 
         new EntityExceptionFilter().OnException(context);
 
-        Assert.Equal("""{"ConcurrencyToken":["Required on an update: send the value read with the record."]}""",
-            JsonSerializer.Serialize(Errors(context), json));
+        var json = Serialize(Problem(context));
+        Assert.Contains("""
+                        "errors":{"ConcurrencyToken":["Required on an update: send the value read with the record."]}
+                        """, json);
+        Assert.Contains("""
+                        "errorDetails":[{"key":"ConcurrencyToken","message":"Required on an update: send the value read with the record."}]
+                        """, json);
     }
 
-    private static SerializableError Errors(ExceptionContext context) =>
-        Assert.IsType<SerializableError>(Assert.IsType<BadRequestObjectResult>(context.Result).Value);
+    // errorDetails lists the errors in order with the args a translation fills in; errors keeps every message
+    [Fact]
+    public void InputException_Lists_Every_Error_With_Its_Args()
+    {
+        var context = ContextFor(new EntityInputException<object>("rejected")
+        {
+            Errors =
+            {
+                new EntityInputError("Code", "TooLong", new Dictionary<string, object?> { ["max"] = 5 }),
+                new EntityInputError(string.Empty, "A locked order cannot be changed.")
+            }
+        });
+
+        new EntityExceptionFilter().OnException(context);
+
+        Assert.Equal(["TooLong"], Problem(context).Errors["Code"]);
+        Assert.Contains("""
+                        "errorDetails":[{"key":"Code","message":"TooLong","args":{"max":5}},{"key":"","message":"A locked order cannot be changed."}]
+                        """, Serialize(Problem(context)));
+    }
+
+    // a value a translation cannot fill in — an entity, a collection — stays on the server
+    [Fact]
+    public void InputException_Args_Keep_Only_Scalar_Values()
+    {
+        var args = new Dictionary<string, object?>
+        {
+            ["max"] = 5,
+            ["due"] = new DateOnly(2026, 10, 1),
+            ["status"] = DayOfWeek.Monday,
+            ["allowed"] = new[] { "A", "B" },
+            ["order"] = new { Id = 7 }
+        };
+        var context = ContextFor(new EntityInputException<object>("rejected") { Errors = { new EntityInputError("Code", "Invalid", args) } });
+
+        new EntityExceptionFilter().OnException(context);
+
+        Assert.Contains("""
+                        "args":{"max":5,"due":"2026-10-01","status":"Monday"}
+                        """, Serialize(Problem(context)));
+    }
+
+    private static ValidationProblemDetails Problem(ExceptionContext context) =>
+        Assert.IsType<ValidationProblemDetails>(Assert.IsType<BadRequestObjectResult>(context.Result).Value);
+
+    // as ConfigureDefaultJsonOptions() has the host serialize it
+    private static string Serialize(ProblemDetails problem)
+    {
+        var services = new ServiceCollection();
+        services.AddOptions();
+        services.ConfigureDefaultJsonOptions();
+        using var sp = services.BuildServiceProvider();
+        return JsonSerializer.Serialize(problem, problem.GetType(), sp.GetRequiredService<IOptions<JsonOptions>>().Value.JsonSerializerOptions);
+    }
 
     // A prepper guarding a related entity throws EntityInputException<Product> while the action's own TEntity
     // is Order. The generated actions catch one closed generic and miss that; the filter matches the base.
@@ -87,7 +140,7 @@ public class EntityExceptionFilterTests
 
         new EntityExceptionFilter().OnException(context);
 
-        Assert.Equal(["At most 5 characters.", "Upper case only."], Assert.IsType<string[]>(Errors(context)["Code"]));
+        Assert.Equal(["At most 5 characters.", "Upper case only."], Problem(context).Errors["Code"]);
         Assert.Equal("At most 5 characters. Upper case only.", ex.InputErrors["Code"]);
     }
 
@@ -102,8 +155,8 @@ public class EntityExceptionFilterTests
 
         new EntityExceptionFilter().OnException(context);
 
-        Assert.Equal(["A name is required."], Assert.IsType<string[]>(Errors(context)["Name"]));
-        Assert.Equal(["Code is taken."], Assert.IsType<string[]>(Errors(context)["Code"]));
+        Assert.Equal(["A name is required."], Problem(context).Errors["Name"]);
+        Assert.Equal(["Code is taken."], Problem(context).Errors["Code"]);
     }
 
     [Fact]
@@ -113,7 +166,7 @@ public class EntityExceptionFilterTests
 
         new EntityExceptionFilter().OnException(context);
 
-        Assert.Equal(["Quantity must be positive."], Assert.IsType<string[]>(Errors(context)[string.Empty]));
+        Assert.Equal(["Quantity must be positive."], Problem(context).Errors[string.Empty]);
     }
 
     [Fact]
@@ -172,8 +225,7 @@ public class EntityExceptionFilterTests
     {
         var services = new ServiceCollection();
         services.AddOptions();
-        // Repeated setup calls are common (UseEntities + a second options instance); a duplicate filter would
-        // add the same model errors twice.
+        // Repeated setup calls are common (UseEntities + a second options instance); they still leave one filter.
         services.ConfigureDefaultJsonOptions();
         services.MapEntityExceptions();
 

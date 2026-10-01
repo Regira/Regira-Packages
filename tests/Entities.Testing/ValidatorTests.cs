@@ -324,6 +324,30 @@ public class ValidatorTests
     }
 
     [Test]
+    public async Task An_Error_Carries_The_Args_Of_An_Anonymous_Object_Or_A_Dictionary()
+    {
+        Build(s => s.For<Order>(e => e.Validate(ctx =>
+        {
+            ctx.AddError(nameof(Order.Code), "TooLong", new { max = 5 });
+            ctx.AddError(nameof(Order.Lines), "TooMany", new Dictionary<string, int> { ["max"] = 3 });
+            ctx.AddError(string.Empty, "The order is incomplete.");
+        })));
+
+        using var scope = _sp.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
+
+        var ex = (await Assert.ThrowsAsync<EntityInputException<Order>>(() => service.Add(NewOrder())))!;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex.Errors.Select(x => x.Message), Is.EqualTo(new[] { "TooLong", "TooMany", "The order is incomplete." }));
+            Assert.That(ex.Errors[0].Args, Is.EqualTo(new Dictionary<string, object?> { ["max"] = 5 }));
+            Assert.That(ex.Errors[1].Args, Is.EqualTo(new Dictionary<string, object?> { ["max"] = 3 }));
+            Assert.That(ex.Errors[2].Args, Is.Null);
+        });
+    }
+
+    [Test]
     public async Task Every_Validator_Runs_And_Sees_The_Errors_Before_It()
     {
         IReadOnlyList<EntityInputError>? seenByLater = null;

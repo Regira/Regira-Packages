@@ -619,7 +619,7 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
         if (item.Status != RequestStatus.Submitted)
         {
             ModelState.AddModelError(nameof(item.Status), "Only a submitted request can be approved.");
-            return BadRequest(ModelState);
+            return ValidationProblem(ModelState);
         }
 
         item.Status = RequestStatus.Approved;                                // …decide, stamp
@@ -631,10 +631,12 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
 }
 ```
 
-- **Either shape returns a 400 here.** `ModelState` + `BadRequest` as above, or
+- **Either form returns the same 400 here.** `ModelState` + `ValidationProblem` as above, or
   `throw new EntityInputException<CreditRequest>(…) { InputErrors = { [nameof(item.Status)] = "…" } }` — the
   filter `ConfigureDefaultJsonOptions()` registers maps the exception on **any** action, so this controller
-  and the generated one answer alike. That covers the write pipeline too: validators and preppers run inside
+  and the generated one answer alike. Either message can be a translation key; only the exception carries args
+  for the translation to fill in: `Errors = { new EntityInputError(nameof(item.Status), "…", new Dictionary<string, object?> { … }) }`.
+  (`BadRequest(ModelState)` is a different body — a bare map, no `errors` wrapper.) That covers the write pipeline too: validators and preppers run inside
   the `service.Modify(item)` above, so a validator's errors — and a prepper that throws — land on the same
   filter rather than escaping as a 500. Catch it explicitly only to add context — and then
   catch the non-generic base `EntityInputException`, since a prepper guarding a *related* entity throws
@@ -826,6 +828,10 @@ public static class OrderServiceConfiguration
   once per item, like a prepper (§Bulk insert / update).
 - **Only errors refuse** — `Severity.Warning` and `Severity.Info` failures neither block the save nor reach the
   response. Keys are FluentValidation's property names; a rule on the whole object (`RuleFor(x => x)`) uses `""`.
+- **The message is the error's message** — a text, or a translation key a client pairs with its own messages
+  (entities.instructions §Step 8 → Validators): `.LessThanOrEqualTo(10_000).WithMessage("ValueTooLarge")`. The
+  values the message was formatted with go out as the args (`{ComparisonValue}`, `{MaxLength}`) — all but the
+  attempted `{PropertyValue}`, which can be a password.
 - **Entities, not input DTOs** — this stage checks the entity the pipeline writes. DataAnnotations on `TInputDto`
   keep producing ASP.NET's own 400 before the pipeline runs.
 

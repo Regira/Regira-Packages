@@ -187,7 +187,7 @@ Delete(id) -> DeleteResult
 - The controller's generic types must match the service's generic types (DTOs excluded)
 - It's **not necessary to inject** the service in the constructor — the base controller resolves it via `HttpContext.RequestServices`
 - Responsible for mapping to/from DTO models using `IEntityMapper`
-- **Error status codes:** `EntityInputException` → **400** with the field errors as `ModelState`; a database
+- **Error status codes:** `EntityInputException` → **400** with the field errors as a `ValidationProblemDetails`; a database
   constraint violation (`EntityConstraintException`) → **409 Conflict** with a generic `ProblemDetails`
   detail (the provider message is logged server-side); a write built on a stale read
   (`EntityConcurrencyException`) → **409 Conflict** with a `ProblemDetails` titled "Concurrency conflict"; a

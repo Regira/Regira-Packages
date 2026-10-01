@@ -457,7 +457,7 @@ The verb attribute is **inherited** by the override, so the route survives witho
 > alongside basic list via `GET /?q=…`. For response envelope shapes
 > (`item` / `items,count`) see `entities.instructions.md` §Step 13.
 
-A write a validator refuses — save, create, modify, patch or delete — answers 400 with the error map.
+A write a validator refuses — save, create, modify, patch or delete — answers 400 with a `ValidationProblemDetails`.
 
 ---
 
@@ -921,6 +921,7 @@ public static EntityServiceCollectionOptions AddDefaultEntityNormalizer(
 <!-- no-compile -->
 ```csharp
 using Regira.Entities.DependencyInjection.ServiceCollections;
+using Regira.Entities.DependencyInjection.Attachments;   // HasAttachments, the extension below
 
 public class EntityServiceCollection<TContext>
     where TContext : DbContext
@@ -1593,7 +1594,9 @@ public interface IEntityValidatorContext
     object? Original { get; }                     // the stored row on Modify; null on Add and Remove
     EntityWriteOperation Operation { get; }
     IReadOnlyList<EntityInputError> Errors { get; }   // what every validator of this write added so far
-    void AddError(string key, string message);    // key: property path ("CustomerId", "Lines[0].Quantity"), "" = whole entity
+    // key: property path ("CustomerId", "Lines[0].Quantity"), "" = whole entity; message: a text, or a translation key
+    // a client pairs with its messages; args: the values a translation fills in — new { max = 20 } or a dictionary
+    void AddError(string key, string message, object? args = null);
 }
 public interface IEntityValidatorContext<out TEntity> : IEntityValidatorContext
 {
@@ -1910,7 +1913,7 @@ Every `{id}` is the **link** id (`EntityAttachmentDto.Id`), never `attachmentId`
 | `DELETE attachments/{id}` | remove the link and its file |
 | `GET files/{id}` · `GET {objectId}/files/{*fileName}` | download by link id · by the client `FileName` (`?inline=false` → attachment) |
 
-A write a validator refuses answers 400 with the error map. Validators scoped to the link entity run for these routes
+A write a validator refuses answers 400 with a `ValidationProblemDetails`. Validators scoped to the link entity run for these routes
 only: a `PUT` of the owner that syncs its `Attachments` runs the owner's validators alone.
 
 ---
@@ -1932,7 +1935,9 @@ public abstract class EntityInputException(string message, Exception? innerExcep
     public IDictionary<string, string> InputErrors { get; set; }
 }
 
-public record EntityInputError(string Key, string Message);   // Key "" = the entity as a whole
+// Key "" = the entity as a whole. Message: a text, or a translation key a client pairs with its messages. Args: the
+// values a translation fills in; scalar values only reach the client (text, numbers, booleans, dates, times, Guids, enums)
+public record EntityInputError(string Key, string Message, IReadOnlyDictionary<string, object?>? Args = null);
 
 public class EntityInputException<T>(string message, Exception? innerException = null)
     : EntityInputException(message, innerException)
@@ -1956,15 +1961,17 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
 }
 ```
 
-`ConfigureDefaultJsonOptions()` registers the filter that maps them — 400 with `Errors` as the body,
-409 for `EntityConstraintException` and `EntityConcurrencyException` — so a **hand-written** action returns
+`ConfigureDefaultJsonOptions()` registers the filter that maps them — 400 with `Errors` as a
+`ValidationProblemDetails` (`errors`, and `errorDetails` with each error's args), 409 for
+`EntityConstraintException` and `EntityConcurrencyException` — so a **hand-written** action returns
 what the generated ones do.
 Catch the non-generic base if you handle it yourself: the generated write actions catch their own closed
 generic, which misses the one a prepper threw for a related entity (`EntityInputException<Product>` inside
 an `Order` write).
 
 `InputErrors` is initialized, so both forms work — a nested initializer for a fixed set, indexer assignment for a map you build.
-`ctx.AddError(key, message)` in a validator is the other way in; both land in `Errors`:
+An error with args goes into `Errors` itself. `ctx.AddError(key, message, args?)` in a validator is the other way in;
+all of them land in `Errors`:
 
 <!-- no-compile -->
 ```csharp
@@ -1977,6 +1984,11 @@ var ex = new EntityInputException<Order>("Saving order failed");
 foreach (var line in invalidLines)
     ex.InputErrors[$"OrderLines[{line.Index}].Quantity"] = "Must be greater than zero.";  // dynamic map
 throw ex;
+
+throw new EntityInputException<Order>("Saving order failed")
+{
+    Errors = { new EntityInputError(nameof(Order.Total), "ValueTooLarge", new Dictionary<string, object?> { ["max"] = 10_000 }) }
+};
 ```
 
 ---

@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Reflection;
 using FluentValidation;
+using FluentValidation.Results;
 using Microsoft.Extensions.DependencyInjection;
 using Regira.Entities.Models.Abstractions;
 using Regira.Entities.Validators;
@@ -18,6 +19,11 @@ namespace Regira.Entities.Validation.FluentValidation;
 /// and a delete runs <see cref="EntityRuleSets.Remove"/> alone. Rules are run with <c>ValidateAsync</c>, so <c>MustAsync</c>
 /// rules can query the database, and read the write through <see cref="ValidationContextExtensions.GetOriginal{T}"/> and
 /// <see cref="ValidationContextExtensions.GetOperation{T}"/>. Only failures of <see cref="Severity.Error"/> reject the write.
+/// </para>
+/// <para>
+/// A failure's message is the error's message, so a rule pairs with a client's translation key through
+/// <c>WithMessage("ValueTooLarge")</c>; the values the message was formatted with (<c>{ComparisonValue}</c>) are its args,
+/// all but the attempted <c>{PropertyValue}</c>.
 /// </para>
 /// </summary>
 public class FluentEntityValidator(IServiceProvider services) : EntityValidatorBase<IEntity>, ISelectiveEntityValidator
@@ -72,10 +78,19 @@ public class FluentEntityValidator(IServiceProvider services) : EntityValidatorB
             // warnings and info have no place in the 400 body, and must not block the save
             foreach (var failure in result.Errors.Where(f => f.Severity == Severity.Error))
             {
-                context.AddError(failure.PropertyName ?? string.Empty, failure.ErrorMessage);
+                context.AddError(failure.PropertyName ?? string.Empty, failure.ErrorMessage, ArgsOf(failure));
             }
         }
     }
+
+    // the placeholder values the message was formatted with ({MaxLength}, {ComparisonValue}), but not the value the
+    // client sent: it already has it, and it can be a password or a whole collection
+    private static Dictionary<string, object?>? ArgsOf(ValidationFailure failure)
+        => failure.FormattedMessagePlaceholderValues?
+            .Where(x => x.Key != PropertyValuePlaceholder)
+            .ToDictionary(x => x.Key, x => (object?)x.Value);
+
+    private const string PropertyValuePlaceholder = "PropertyValue";
 }
 
 /// <summary>

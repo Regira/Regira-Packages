@@ -200,6 +200,11 @@ Attachments need **two** registrations:
 
 <!-- no-compile -->
 ```csharp
+using Regira.Entities.DependencyInjection.Attachments;       // HasAttachments
+using Regira.Entities.DependencyInjection.Extensions;        // UseEntities, UseDefaults
+using Regira.Entities.Web.Attachments.DependencyInjection;   // UseAttachmentUris
+using Regira.IO.Storage.FileSystem;                          // BinaryFileService, FileSystemOptions
+
 builder.Services
     .AddHttpContextAccessor()                       // required for attachment Uri resolution
     .UseEntities<MyDbContext>(o =>

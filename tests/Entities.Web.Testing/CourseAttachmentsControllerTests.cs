@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
+using Regira.Entities.DependencyInjection.Validators;
 using Regira.Entities.Mapping.Models;
 using Regira.Entities.Models;
 using Regira.Entities.Web.Models;
@@ -465,6 +466,132 @@ public class CourseAttachmentsControllerTests : IClassFixture<ContosoApiFactory>
 
         Assert.Equal(HttpStatusCode.OK, download.StatusCode);
         Assert.Equal("image/png", download.Content.Headers.ContentType?.MediaType);
+    }
+
+    // The attachment's own metadata route changes the file the way the owner's save does: a new name retypes it,
+    // new bytes replace what is stored.
+    [Fact]
+    public async Task Renaming_Through_The_Metadata_Route_Retypes_The_File()
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 3;
+        var name = $"renamed-{Guid.NewGuid():N}";
+        var content = new MultipartFormDataContent { { new ByteArrayContent([137, 80, 78, 71]), "file", $"{name}.png" } };
+        var uploaded = await (await client.PostAsync($"/courses/{courseId}/files", content)).Content.ReadFromJsonAsync<SaveResult<CourseAttachmentDto>>();
+
+        var rename = new CourseAttachmentInputDto
+        {
+            Id = uploaded!.Item.Id,
+            ObjectId = courseId,
+            AttachmentId = uploaded.Item.AttachmentId,
+            NewFileName = $"{name}.pdf"
+        };
+        (await client.PutAsJsonAsync($"/courses/{courseId}/attachments/{uploaded.Item.Id}", rename)).EnsureSuccessStatusCode();
+
+        var download = await client.GetAsync($"/courses/{courseId}/files/{name}.pdf");
+        Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+        Assert.Equal("application/pdf", download.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/courses/{courseId}/files/{name}.png")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Renaming_Through_The_Owner_Retypes_The_File()
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 4;
+        var name = $"renamed-by-owner-{Guid.NewGuid():N}";
+        var content = new MultipartFormDataContent { { new ByteArrayContent([137, 80, 78, 71]), "file", $"{name}.png" } };
+        var uploaded = await (await client.PostAsync($"/courses/{courseId}/files", content)).Content.ReadFromJsonAsync<SaveResult<CourseAttachmentDto>>();
+
+        var details = await (await client.GetAsync($"/courses/{courseId}")).Content.ReadFromJsonAsync<DetailsResult<CourseDto>>();
+        var courseInput = new CourseInputDto
+        {
+            Id = details!.Item.Id,
+            Title = details.Item.Title,
+            DepartmentId = details.Item.DepartmentId,
+            Credits = details.Item.Credits,
+            Attachments = details.Item.Attachments!.Select(a => new CourseAttachmentInputDto
+            {
+                Id = a.Id,
+                ObjectId = a.ObjectId,
+                AttachmentId = a.AttachmentId,
+                NewFileName = a.Id == uploaded!.Item.Id ? $"{name}.pdf" : null
+            }).ToList()
+        };
+        (await client.PutAsJsonAsync($"/courses/{courseId}", courseInput)).EnsureSuccessStatusCode();
+
+        var download = await client.GetAsync($"/courses/{courseId}/files/{name}.pdf");
+        Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+        Assert.Equal("application/pdf", download.Content.Headers.ContentType?.MediaType);
+    }
+
+    // A validator judges a rename: the item carries the new name and the original the stored one, and a refusal leaves
+    // the stored file as it was. The rule compares the types the names give, not their extensions, so a rename between
+    // spellings of one type (.JPEG to .jpg) passes.
+    [Fact]
+    public async Task A_Validator_Judges_A_Rename_Through_The_Metadata_Route()
+    {
+        using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddValidator<CourseAttachment>(ctx =>
+            {
+                var stored = ctx.Original?.Attachment?.FileName;
+                var renamed = ctx.Item.Attachment?.FileName;
+                if (stored != null && renamed != null
+                    && ContentTypeUtility.GetContentType(stored) != ContentTypeUtility.GetContentType(renamed))
+                {
+                    ctx.AddError(nameof(CourseAttachmentInputDto.NewFileName), "A rename keeps the file's type.");
+                }
+            })));
+        using var client = app.CreateClient();
+
+        var courseId = 6;
+        var name = $"validated-{Guid.NewGuid():N}";
+        var content = new MultipartFormDataContent { { new ByteArrayContent([255, 216, 255]), "file", $"{name}.JPEG" } };
+        var uploaded = await (await client.PostAsync($"/courses/{courseId}/files", content)).Content.ReadFromJsonAsync<SaveResult<CourseAttachmentDto>>();
+        CourseAttachmentInputDto Rename(string fileName) => new()
+        {
+            Id = uploaded!.Item.Id,
+            ObjectId = courseId,
+            AttachmentId = uploaded.Item.AttachmentId,
+            NewFileName = fileName
+        };
+
+        var refused = await client.PutAsJsonAsync($"/courses/{courseId}/attachments/{uploaded!.Item.Id}", Rename($"{name}.pdf"));
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        var unchanged = await client.GetAsync($"/courses/{courseId}/files/{name}.JPEG");
+        Assert.Equal(HttpStatusCode.OK, unchanged.StatusCode);
+        Assert.Equal("image/jpeg", unchanged.Content.Headers.ContentType?.MediaType);
+
+        (await client.PutAsJsonAsync($"/courses/{courseId}/attachments/{uploaded.Item.Id}", Rename($"{name}.jpg"))).EnsureSuccessStatusCode();
+        var renamed = await client.GetAsync($"/courses/{courseId}/files/{name}.jpg");
+        Assert.Equal(HttpStatusCode.OK, renamed.StatusCode);
+        Assert.Equal("image/jpeg", renamed.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
+    public async Task New_Bytes_Through_The_Metadata_Route_Replace_The_File()
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 3;
+        var name = $"replaced-{Guid.NewGuid():N}.txt";
+        var content = new MultipartFormDataContent { { new StreamContent(FileUtility.GetStreamFromString("first version")), "file", name } };
+        var uploaded = await (await client.PostAsync($"/courses/{courseId}/files", content)).Content.ReadFromJsonAsync<SaveResult<CourseAttachmentDto>>();
+
+        var replace = new CourseAttachmentInputDto
+        {
+            Id = uploaded!.Item.Id,
+            ObjectId = courseId,
+            AttachmentId = uploaded.Item.AttachmentId,
+            NewBytes = FileUtility.GetBytesFromString("second version")
+        };
+        (await client.PutAsJsonAsync($"/courses/{courseId}/attachments/{uploaded.Item.Id}", replace)).EnsureSuccessStatusCode();
+
+        var download = await client.GetAsync($"/courses/{courseId}/files/{name}");
+        Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+        Assert.Equal("second version", await download.Content.ReadAsStringAsync());
     }
 
     // an upload an app accepts by name may still render as a page, so every file but a PDF is served in a sandbox that

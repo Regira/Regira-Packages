@@ -79,7 +79,7 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
         }
         catch (EntityInputException<TEntity> ex)
         {
-            return BadRequest(ModelState.AddEntityInputErrors(ex));
+            return ex.ToBadRequest(HttpContext);
         }
     }
 
@@ -153,7 +153,7 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
         }
         catch (EntityInputException<TEntity> ex)
         {
-            return BadRequest(ModelState.AddEntityInputErrors(ex));
+            return ex.ToBadRequest(HttpContext);
         }
     }
     [HttpPut("{objectId}/files/{id}")]
@@ -190,7 +190,7 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
         }
         catch (EntityInputException<TEntity> ex)
         {
-            return BadRequest(ModelState.AddEntityInputErrors(ex));
+            return ex.ToBadRequest(HttpContext);
         }
     }
 

@@ -337,6 +337,11 @@ per-owner services, the link prepper and DTO mapping (**one simple-tier slot** â
 
 <!-- no-compile -->
 ```csharp
+using Regira.Entities.DependencyInjection.Attachments;       // HasAttachments
+using Regira.Entities.DependencyInjection.Extensions;        // UseEntities, UseDefaults
+using Regira.Entities.Web.Attachments.DependencyInjection;   // UseAttachmentUris
+using Regira.IO.Storage.FileSystem;                          // BinaryFileService, FileSystemOptions
+
 // only the provider â€” UseEntities(options => options.UseDefaults()) below auto-wires the
 // interceptors and the UTC date convention
 services.AddDbContext<ShopDbContext>(db =>

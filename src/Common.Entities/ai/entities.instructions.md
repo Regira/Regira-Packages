@@ -573,9 +573,27 @@ options.AddValidator<TenantValidator>();   // global — an EntityValidatorBase<
 - `Original` — the row as stored, on `Modify`; `null` on `Add` and `Remove`. A `Modify` whose row is not found
   runs no validator and answers `null` (not found), so `Original` is never `null` on a `Modify`.
 - `Operation` — `EntityWriteOperation.Add`, `Modify` or `Remove`. A soft delete of an `IArchivable` is a `Remove`.
-- `AddError(key, message)` — `key` is the property path (`CustomerId`, `Lines[0].Quantity`), `""` for the entity
-  as a whole; a key may carry several messages. `Errors` holds what every validator of this write added so far,
-  so a later one can skip an expensive check: no point querying for the customer when `CustomerId` already failed.
+- `AddError(key, message, args?)` — `key` is the property path (`CustomerId`, `Lines[0].Quantity`), `""` for the
+  entity as a whole; a key may carry several messages. `Errors` holds what every validator of this write added so
+  far, so a later one can skip an expensive check: no point querying for the customer when `CustomerId` already
+  failed.
+
+**The message can be a translation key.** What a validator adds is up to it: a text the client shows as is
+(`"A code is required."`), or a key the client translates (`"ValueTooLarge"`). A Regira front-end looks every
+message up in its translation messages: when it finds one, it shows that translation, each `{name}` placeholder filled
+from `args`; when it does not, it shows the message as is. `args` is an anonymous object or a dictionary; only scalar
+values — text, numbers, booleans, dates, times, `Guid`s and enums — reach the client.
+
+<!-- no-compile -->
+```csharp
+ctx.AddError(nameof(Order.Total), "ValueTooLarge", new { max = 10_000 });
+// → 400: "errors": { "Total": ["ValueTooLarge"] },
+//        "errorDetails": [{ "key": "Total", "message": "ValueTooLarge", "args": { "max": 10000 } }]
+// front-end messages: "ValueTooLarge": { "en": "At most {max}", "nl": "Maximaal {max}" }
+```
+
+A key is only as readable as its name to a client without the translation — another API, a log — so choose it to
+read as the rule (`ValueTooLarge`, `order.notOpen`). The 400 body is in §Response Types.
 
 **Which validators run — the scope rule.** A validator applies to an entity when the `TScope` of its
 `IEntityValidator<TScope>` is that entity, a base class of it or an interface it implements:
@@ -1377,8 +1395,9 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 ### EntityInputException (returns HTTP 400)
 
 A validator's errors (§Step 8 → Validators), or an `EntityInputException<TEntity>` thrown from a prepper or an
-action, become the field-level body of a **400**: `{ "Code": ["…", "…"] }`, built from `Errors`, which carries every
-message, several per field (`InputErrors` is a view over it: [`entities.signatures.md`](./entities.signatures.md)).
+action, become a **400** `ValidationProblemDetails` — `"errors": { "Code": ["…", "…"] }`, plus `errorDetails` with
+each error's args (§Response Types) — built from `Errors`, which carries every message, several per field
+(`InputErrors` is a view over it: [`entities.signatures.md`](./entities.signatures.md)).
 With no errors, the exception's message goes out under the empty key. The generated `DELETE` answers a refused delete
 the same way. `ConfigureDefaultJsonOptions()` registers the exception filter that maps it application-wide,
 so a hand-written domain action (`POST {id}/approve`) answers exactly like the generated `PUT` — one of the two
@@ -1497,15 +1516,21 @@ verbatim; everything around them is the wrapper:
 // POST /api/products/save  → 200
 { "item": { "id": 13, "code": "LMP-002", "title": "Floor lamp" }, "isNew": true, "affected": 1, "duration": 7 }
 
-// EntityInputException → 400. ⚠️ A FLAT map, with no ProblemDetails "errors" wrapper around it — this is
-// BadRequest(ModelState), not ValidationProblem(). Keys are the error keys verbatim — System.Text.Json
-// applies no dictionary-key policy — so nameof(Product.CategoryId) reaches the client as "CategoryId". A host that
-// sets DictionaryKeyPolicy, or serializes with Newtonsoft's camelCase resolver, camelCases these keys too.
-{ "CategoryId": ["Category 99 does not exist"], "Code": ["Code is required"] }
+// EntityInputException → 400, a ValidationProblemDetails: "errors" maps each key to its messages — a text or a
+// translation key (§Step 8 → Validators) — and "errorDetails" lists every error in order with its args, "args" left out
+// when the error has none. Keys are the error keys verbatim — System.Text.Json applies no dictionary-key policy — so
+// nameof(Product.CategoryId) reaches the client as "CategoryId". A host that sets DictionaryKeyPolicy, or serializes
+// with Newtonsoft's camelCase resolver, camelCases them, and the args' names too.
+{ "type": "https://tools.ietf.org/html/rfc9110#section-15.5.1", "title": "One or more validation errors occurred.",
+  "status": 400, "traceId": "00-6f2d…-01",
+  "errors": { "CategoryId": ["Category 99 does not exist."], "Price": ["ValueTooLarge"] },
+  "errorDetails": [
+    { "key": "CategoryId", "message": "Category 99 does not exist." },
+    { "key": "Price", "message": "ValueTooLarge", "args": { "max": 10000 } } ] }
 
-// Model binding / DataAnnotations failing first is a DIFFERENT shape — [ApiController]'s automatic 400,
-// which does wrap. A client reading errors must handle both, or read the flat map when `errors` is absent.
-// A DataAnnotations failure is keyed by the C# property name; a JSON conversion failure by its path ("$.credits").
+// Model binding / DataAnnotations failing first is the same ValidationProblemDetails without "errorDetails" —
+// [ApiController]'s automatic 400. A DataAnnotations failure is keyed by the C# property name; a JSON conversion
+// failure by its path ("$.credits").
 { "title": "One or more validation errors occurred.", "status": 400,
   "errors": { "Credits": ["The field Credits must be between 0 and 5."] } }
 
