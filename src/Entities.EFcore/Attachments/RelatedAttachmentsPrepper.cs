@@ -35,11 +35,12 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
             return;
         }
 
-        // A new link — an insert of the owner too — may point only at an attachment the owner already links. Without
-        // the owner's stored links, only a link without an id is known to be new.
+        // A new link may point only at an attachment the owner already links. On an insert of the owner every link is
+        // new, whatever id it carries; on an update, one without an id or one the stored links do not hold — and
+        // without the stored links, only one without an id is known to be new.
         var storedItems = original != null ? selectorFunc(original) : null;
         var ownedAttachmentIds = storedItems?.Select(x => x.AttachmentId).ToArray() ?? [];
-        foreach (var link in modifiedItems.Where(m => IsNew(m) || (storedItems != null && storedItems.All(o => m.Id!.Equals(o.Id) != true))))
+        foreach (var link in modifiedItems.Where(m => original == null || IsNew(m) || (storedItems != null && storedItems.All(o => m.Id!.Equals(o.Id) != true))))
         {
             EntityAttachmentContent.KeepToOwner(link, ownedAttachmentIds);
         }

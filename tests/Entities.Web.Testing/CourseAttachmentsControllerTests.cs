@@ -680,8 +680,11 @@ public class CourseAttachmentsControllerTests : IClassFixture<ContosoApiFactory>
         Assert.Equal("their file", await client.GetStringAsync($"/courses/9/files/{theirsName}"));
     }
 
-    [Fact]
-    public async Task A_New_Owner_Cannot_Link_Another_Owners_Attachment()
+    // on an insert every link is new, whatever id it carries
+    [Theory]
+    [InlineData(0)]
+    [InlineData(965233)]
+    public async Task A_New_Owner_Cannot_Link_Another_Owners_Attachment(int linkId)
     {
         using var client = _factory.CreateClient();
 
@@ -694,7 +697,7 @@ public class CourseAttachmentsControllerTests : IClassFixture<ContosoApiFactory>
             Title = $"New course {Guid.NewGuid():N}",
             DepartmentId = department,
             Credits = 1,
-            Attachments = [new CourseAttachmentInputDto { AttachmentId = theirs.AttachmentId }]
+            Attachments = [new CourseAttachmentInputDto { Id = linkId, AttachmentId = theirs.AttachmentId }]
         };
         var response = await client.PostAsJsonAsync("/courses", courseInput);
 

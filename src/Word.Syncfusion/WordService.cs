@@ -35,6 +35,7 @@ namespace Regira.Office.Word.Syncfusion;
 public class WordService : IWordService
 {
     private static readonly Regex ParamRegex = new("{{ *[a-zA-Z0-9._]+ *}}");
+    private static readonly Regex MarkerStartRegex = new(@"\{\{");
 
     public WordService(SyncfusionWordConfig? config = null)
     {
@@ -485,6 +486,7 @@ public class WordService : IWordService
             });
         var paragraphs = stories
             .SelectMany(BlockParagraphs)
+            .Concat(MarkerParagraphs(doc))
             .Distinct()
             .Select(paragraph => (Paragraph: paragraph, Text: GetVisibleText(paragraph)))
             .ToArray();
@@ -550,6 +552,29 @@ public class WordService : IWordService
                 yield return offspring;
             }
         }
+    }
+
+    /// <summary>
+    /// The paragraphs holding <c>{{</c>, wherever they are, found by search: a group of text boxes (<c>wpg:wgp</c>) loads
+    /// as a <c>GroupShape</c>, whose shapes the public object model does not expose, so <see cref="BlockParagraphs"/>
+    /// cannot walk into it. A footnote, endnote or comment is left out, as there.
+    /// </summary>
+    private static IEnumerable<WParagraph> MarkerParagraphs(WordDocument doc)
+        => (doc.FindAll(MarkerStartRegex) ?? [])
+            .Select(selection => selection.GetAsOneRange()?.OwnerParagraph)
+            .OfType<WParagraph>()
+            .Where(paragraph => !InNoteOrComment(paragraph));
+
+    private static bool InNoteOrComment(IEntity entity)
+    {
+        for (var owner = entity.Owner; owner != null; owner = owner.Owner)
+        {
+            if (owner is WFootnote or WComment)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>

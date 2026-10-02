@@ -177,7 +177,8 @@ Endpoints exposed (with `[Route("products")]`):
 | `GET` | `files/{id}` · `{objectId}/files/{fileName}` | Download the file |
 
 Every `{id}` is the id of the link row (`EntityAttachmentDto.Id`), not its `AttachmentId`; `{objectId}` is the
-owner's id.
+owner's id. The two `PUT` routes answer **400** for a link of another owner, a `ValidationProblemDetails` keyed
+`objectId`.
 
 An attachment's content type follows its file name — whatever the client declared, and whoever writes the row — and
 a download is served with `X-Content-Type-Options: nosniff` and, for every file but a PDF,
@@ -190,7 +191,15 @@ Validators scoped to the link entity run for these endpoints only. A `PUT` of th
 link's file from its `NewFileName` and `NewBytes`, and deletes the ones the array leaves out — and runs only the
 owner's validators. A kept link keeps its attachment, whatever `AttachmentId` the entry sends, and a new one may point
 only at an attachment the owner already links: one naming another owner's is cleared, and the save answers 409. The
-upload route always creates a link, whatever `Id` its form sends. Repeat a link rule, such as the allowed file types or a file that
+upload route always creates a link, whatever `Id` its form sends.
+
+**Scope an upload yourself.** An upload is a create: it takes the owner's id from the route and runs no query, so a
+global filter (tenant, owner) never sees it, and any authenticated caller can attach a file to a row it cannot read.
+`PUT` and `DELETE` load the link through the service first, and are filtered. Add a validator on the link entity that
+re-runs the owner's scope on `Add` and refuses when it resolves nothing — a 400, where the read path answers 404 — or
+override the controller's `Add` to answer 404. Read scope is not write scope either: a read scope widened on purpose,
+a manager seeing their reports' rows, grants writes and deletes on those rows too, so put a narrower ownership check in
+a validator, which runs on a delete as well. Repeat a link rule, such as the allowed file types or a file that
 must not be deleted, in the owner's validator, or keep `Attachments` off the owner's input DTO.
 
 ### Dependency Injection

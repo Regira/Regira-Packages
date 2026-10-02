@@ -657,6 +657,32 @@ public abstract class WordTestsBase : WordAssetsTestsBase
     }
 
     /// <summary>
+    /// A block in one of a group's text boxes resolves as one in a lone text box does, and is found when it is the
+    /// template's only block; the group's other boxes stay.
+    /// </summary>
+    public virtual async Task A_Conditional_Block_In_A_Grouped_Text_Box_Is_Resolved()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Paragraph("KEPTTEXT"),
+                Docx.GroupedTextBoxes(["{{#if IsDraft}}", "DRAFTSTAMP", "{{/if}}"], ["OTHERBOX"]),
+                Docx.Paragraph("Outro")
+            ]),
+            GlobalParameters = new Dictionary<string, object> { ["IsDraft"] = false }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var text = Docx.BodyText(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Does.Contain("KEPTTEXT").And.Contain("OTHERBOX").And.Contain("Outro"));
+            Assert.That(text, Does.Not.Contain("DRAFTSTAMP").And.Not.Contain("{{"));
+        });
+    }
+
+    /// <summary>
     /// A footnote, endnote or comment is not part of a template's blocks: a block in a footnote stays as text beside
     /// one the body resolves.
     /// </summary>

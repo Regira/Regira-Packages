@@ -127,7 +127,7 @@ Rely on this file plus local project conventions for these; there is no `*.instr
 | Caching | Runtime caching on top of the common abstractions | `Regira.Caching.Runtime` |
 | Licensing | License key registration and offline validation — `UseRegira(configuration)` or `UseRegira(licenseKey)` before any module setup call (see the pre-flight checklist) | `Regira.Licensing` |
 | DAL.EFcore | EF Core extensions and repository utilities | `Regira.DAL.EFcore` |
-| DAL.MongoDB | MongoDB connectivity and backup or restore workflows | `Regira.DAL.MongoDB` |
+| DAL.MongoDB | MongoDB connectivity and backup or restore workflows. A filter or sort names a field as the serializer stores it: camelCase with `Regira.Serializing.Newtonsoft` | `Regira.DAL.MongoDB` |
 | DAL.MySQL | MySQL or MariaDB connectivity and backup workflows | `Regira.DAL.MySQL`, `Regira.DAL.MySQL.MySqlBackup` |
 | DAL.PostgreSQL | PostgreSQL connectivity | `Regira.DAL.PostgreSQL` |
 | DAL.SqlServer | SQL Server backup and restore (native `.bak`) | `Regira.DAL.SqlServer` |

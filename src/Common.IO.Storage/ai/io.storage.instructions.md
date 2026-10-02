@@ -301,8 +301,8 @@ var service = new BinaryBlobService(communicator);
 link shows the file or downloads it. Without one — `null`, empty or blank — the type comes from the identifier's
 extension. Never pass an upload's `IFormFile.ContentType`: the client chose it, so an `avatar.png` declared `text/html`
 would be served as a web page. Leave the argument out, or derive it from the name with
-`ContentTypeUtility.GetContentType(fileName)`. `Save` sets no `Content-Encoding`: through 6.4 it wrote a character-set
-guess there, which a blob saved before 6.5.0 keeps until it is saved again.
+`ContentTypeUtility.GetContentType(fileName)`. `Save` sets no `Content-Encoding`; a blob that already carries one keeps
+it until it is saved again.
 
 ---
 

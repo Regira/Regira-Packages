@@ -120,7 +120,9 @@ Path        →  /var/app/storage/invoices/2024/inv-001.pdf
 ```
 
 The local and SFTP backends resolve every identifier against the root and throw `UnauthorizedAccessException` when it
-escapes it (through `../`, say); zip extraction checks every entry the same way. Folder names compare as the file
+escapes it (through `../`, say); zip extraction to a folder (the `targetDirectory` overloads of `ZipUtility.Unzip`)
+checks every entry the same way, while `ZipUtility.Unzip(IBinaryFile)` returns each entry name as stored, `../x`
+included — check one before using it as a path. Folder names compare as the file
 system does: regardless of case on Windows and macOS, exactly elsewhere. The check is on by default (`Contained = true`
 on `FileSystemOptions` and `SftpConfig`); turn it off only for trusted input.
 
@@ -238,7 +240,8 @@ var service = new BinaryBlobService(communicator);
 link shows the file or downloads it. Without one — `null`, empty or blank — the type comes from the identifier's
 extension. Never pass an upload's `IFormFile.ContentType`: the client chose it, so an `avatar.png` declared `text/html`
 would be served as a web page. Leave the argument out, or derive it from the name with
-`ContentTypeUtility.GetContentType(fileName)`.
+`ContentTypeUtility.GetContentType(fileName)`. `Save` sets no `Content-Encoding`; a blob that already carries one keeps
+it until it is saved again.
 
 ---
 

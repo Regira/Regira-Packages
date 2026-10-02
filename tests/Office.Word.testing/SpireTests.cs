@@ -96,6 +96,9 @@ public class SpireTests() : WordTestsBase(new WordService(), "Spire")
     public override Task A_Conditional_Block_In_A_Text_Box_Or_Content_Control_Leaves_A_Paragraph() => base.A_Conditional_Block_In_A_Text_Box_Or_Content_Control_Leaves_A_Paragraph();
 
     [Test]
+    public override Task A_Conditional_Block_In_A_Grouped_Text_Box_Is_Resolved() => base.A_Conditional_Block_In_A_Grouped_Text_Box_Is_Resolved();
+
+    [Test]
     public override Task A_Marker_Paragraph_Ending_A_Section_Leaves_Only_The_Break() => base.A_Marker_Paragraph_Ending_A_Section_Leaves_Only_The_Break();
 
     [Test]

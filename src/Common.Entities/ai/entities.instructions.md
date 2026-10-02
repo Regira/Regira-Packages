@@ -910,7 +910,7 @@ IEntityService<Order, int, OrderSearchObject, OrderSortBy, OrderIncludes>       
 
 > **Response envelope.** Responses are wrapped, not bare DTOs: Details → `{ "item": {…} }`; List → `{ "items": [...] }`; Search → `{ "items": [...], "count": N }` (each also carries `duration` in ms). Unwrap `item`/`items` client-side.
 
-> **PATCH vs PUT:** Use `PUT` when the client has the full entity. Use `PATCH` when only a subset of fields should change. The PATCH implementation deserializes the incoming JSON Merge Patch into `TInputDto`, so only fields declared on the input model can be modified. `TInputDto` property names must match `TEntity` property names (camelCase in JSON, PascalCase in C#, which is the STJ default). Related collections absent from the body are left intact, and a scalar field **declared on `TInputDto`** but omitted from a PATCH body is preserved too — Merge Patch writes only the keys you send. The trap is the opposite case: a field the DTO **never declares** maps as `null`/default on every PATCH *and* PUT — see ⚠️ below.
+> **PATCH vs PUT:** Use `PUT` when the client has the full entity. Use `PATCH` when only a subset of fields should change. The PATCH implementation deserializes the incoming JSON Merge Patch into `TInputDto`, so only fields declared on the input model can be modified. `TInputDto` property names must match `TEntity` property names (camelCase in JSON, PascalCase in C#, which is the STJ default). Related collections absent from the body are left intact, and a scalar field **declared on `TInputDto`** but omitted from a PATCH body is preserved too — Merge Patch writes only the keys you send. The merged input is validated against `TInputDto`'s DataAnnotations first: a failure answers 400 with model binding's `ValidationProblemDetails`, without `errorDetails`. The trap is the opposite case: a field the DTO **never declares** maps as `null`/default on every PATCH *and* PUT — see ⚠️ below.
 
 > **⚠️ A field absent from `TInputDto` maps as `null`/default on PATCH *and* PUT.** Server-owned/immutable
 > values (`OwnerId` FKs, generated codes, computed totals) silently reset — a `[Required]` column 500s, a
@@ -1323,7 +1323,7 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 > file from its `NewFileName` and `NewBytes`, and deletes the ones the array leaves out, and only the owner's
 > validators run. A kept link keeps its attachment, whatever `attachmentId` the entry sends, and a new one may point
 > only at an attachment the owner already links: one naming another owner's is cleared, and the save answers 409.
-> Repeat a link rule — allowed file types, a file that must not be deleted — in the owner's validator (keys like
+> The upload route always creates a link, whatever `Id` its form sends. Repeat a link rule — allowed file types, a file that must not be deleted — in the owner's validator (keys like
 > `Attachments[0].NewFileName`), or keep `Attachments` off the owner's input DTO.
 
 > ⚠️ **Marking one attachment as the primary one? Mark the link entity, don't point the owner at it.** An

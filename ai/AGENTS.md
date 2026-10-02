@@ -211,7 +211,7 @@ When the consumer project already contains Regira packages, inspect the project'
 | `Regira.Common` | `Common` | No dedicated family guide | Shared abstractions, utilities, normalizing helpers, base contracts | `Regira.Common` |
 | `Regira.Caching.Runtime` | `Caching` | No dedicated family guide | Runtime caching on top of the common abstractions | `Regira.Caching.Runtime` |
 | `Regira.DAL.EFcore` | `DAL.EFcore` | No dedicated family guide | EF Core extensions and repository utilities | `Regira.DAL.EFcore` |
-| `Regira.DAL.MongoDB` | `DAL.MongoDB` | No dedicated family guide | MongoDB connectivity and backup or restore workflows | `Regira.DAL.MongoDB` |
+| `Regira.DAL.MongoDB` | `DAL.MongoDB` | No dedicated family guide | MongoDB connectivity and backup or restore workflows. A filter or sort names a field as the serializer stores it: camelCase with `Regira.Serializing.Newtonsoft` | `Regira.DAL.MongoDB` |
 | `Regira.DAL.MySQL*` | `DAL.MySQL` | No dedicated family guide | MySQL or MariaDB connectivity and backup workflows | `Regira.DAL.MySQL`, `Regira.DAL.MySQL.MySqlBackup` |
 | `Regira.DAL.PostgreSQL` | `DAL.PostgreSQL` | No dedicated family guide | PostgreSQL connectivity | `Regira.DAL.PostgreSQL` |
 | `Regira.DAL.SqlServer` | `DAL.SqlServer` | No dedicated family guide | SQL Server backup and restore (native `.bak`) | `Regira.DAL.SqlServer` |

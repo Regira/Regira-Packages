@@ -904,7 +904,8 @@ a filter that reached them would 403 ordinary users out of their own session.
 
 ⚠️ **Attachment controllers do not share the entity controller's entry.** `ProductAttachmentController` is
 its own controller with its own route value, so an entry for `Products` alone leaves file upload
-(`POST {objectId}/files`) and replace (`PUT {objectId}/attachments/{id}`) open to any signed-in user.
+(`POST {objectId}/files`), file replace (`PUT {objectId}/files/{id}`) and the link's update
+(`PUT {objectId}/attachments/{id}`) open to any signed-in user.
 
 ## Owned children that are both sortable and individually togglable
 

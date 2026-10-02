@@ -1912,14 +1912,15 @@ Every `{id}` is the **link** id (`EntityAttachmentDto.Id`), never `attachmentId`
 |---|---|
 | `GET {objectId}/attachments` | the owner's links (`ListResult`) |
 | `GET attachments` · `GET attachments/{id}` | links across owners (`EntityAttachmentSearchObject`) · one link |
-| `POST {objectId}/files` | upload — multipart `file` + the input DTO's fields as form values |
+| `POST {objectId}/files` | upload — multipart `file` + the input DTO's fields as form values; always creates a link, whatever `id` the form sends |
 | `PUT {objectId}/files/{id}` | replace the file's bytes (multipart `file`) |
 | `PUT {objectId}/attachments/{id}` | update the link's own fields (JSON input DTO); `newFileName` renames the file and retypes it, `newBytes` replaces its content. The link keeps its attachment, whatever `attachmentId` the body sends |
 | `DELETE attachments/{id}` | remove the link and its file |
 | `GET files/{id}` · `GET {objectId}/files/{*fileName}` | download by link id · by the client `FileName` (`?inline=false` → attachment) |
 
-A write a validator refuses answers 400 with a `ValidationProblemDetails`. Validators scoped to the link entity run for these routes
-only: a `PUT` of the owner that syncs its `Attachments` runs the owner's validators alone.
+A write a validator refuses answers 400 with a `ValidationProblemDetails`, and so do the two `PUT` routes for a link of
+another owner, keyed `objectId`. Validators scoped to the link entity run for these routes only: a `PUT` of the owner
+that syncs its `Attachments` runs the owner's validators alone.
 
 ---
 

@@ -14,10 +14,11 @@ namespace Regira.Office.Word.Gotenberg.Internal;
 internal static class ConditionalMarkers
 {
     /// <summary>
-    /// The most a document's parts may hold together, uncompressed, in bytes. Every OOXML conversion is scanned in-process,
-    /// and a document that opens a block is then created in-process, where its parts are loaded whole — the XML, and the
-    /// images too, which Word.Spire and Word.Aspose decode on load: a document declaring more — a zip bomb, or one far larger
-    /// than any template — is not opened, and goes to Gotenberg as it is, its blocks unresolved.
+    /// The most a document's parts may hold together, uncompressed, in bytes. An OOXML conversion without parameters is
+    /// scanned in-process, and a document that opens a block is then created in-process, where its parts are loaded
+    /// whole — the XML, and the images too, which Word.Spire and Word.Aspose decode on load: a document declaring more —
+    /// a zip bomb, or one far larger than any template — is not opened, and goes to Gotenberg as it is, its blocks
+    /// unresolved.
     /// </summary>
     internal const long MaxBytes = 32 * 1024 * 1024;
     /// <summary>
