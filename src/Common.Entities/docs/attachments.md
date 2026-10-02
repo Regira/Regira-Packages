@@ -171,6 +171,7 @@ Endpoints exposed (with `[Route("products")]`):
 | `POST` | `{objectId}/files` | Upload a file (multipart `IFormFile` + input model) |
 | `PUT` | `{objectId}/files/{id}` | Replace an existing file |
 | `GET` | `{objectId}/attachments` | List attachments for an owner |
+| `GET` | `attachments` | List links across owners (`EntityAttachmentSearchObject`) |
 | `GET` | `attachments/{id}` | Attachment metadata |
 | `PUT` | `{objectId}/attachments/{id}` | Update attachment metadata: `NewFileName` renames the file and retypes it, `NewBytes` replaces its content; the link keeps its attachment, whatever `AttachmentId` the body sends |
 | `DELETE` | `attachments/{id}` | Delete (also removes the file) |
@@ -190,7 +191,8 @@ Validators scoped to the link entity run for these endpoints only. A `PUT` of th
 `Attachments` syncs the links itself — it adds one for each new entry with `NewBytes`, renames and replaces a kept
 link's file from its `NewFileName` and `NewBytes`, and deletes the ones the array leaves out — and runs only the
 owner's validators. A kept link keeps its attachment, whatever `AttachmentId` the entry sends, and a new one may point
-only at an attachment the owner already links: one naming another owner's is cleared, and the save answers 409. The
+only at an attachment the owner already links: one naming another owner's is cleared, and without `NewBytes` of its
+own the save answers 409. The
 upload route always creates a link, whatever `Id` its form sends.
 
 **Scope an upload yourself.** An upload is a create: it takes the owner's id from the route and runs no query, so a
@@ -206,10 +208,17 @@ must not be deleted, in the owner's validator, or keep `Attachments` off the own
 
 Attachments need **two** registrations:
 
-1. **`WithAttachments(factory)`** registers the shared `Attachment` entity, the file store and the
-   bytes→file primer.
+1. **`WithAttachments(factory)`** registers the shared `Attachment` entity, the file store, the
+   bytes→file primer, and `AttachmentFileReactor`, which removes a file that new bytes replaced, and a deleted
+   attachment's file, once the save is committed — new bytes go under a key of their own, so a refused or rolled-back
+   save leaves the stored files as they were; only a transaction rolled back after a successful save keeps the new file
+   in storage. It runs through the reactor wiring `UseDefaults()` sets; without it, a replaced file is removed once
+   the save succeeds, and a deleted attachment's file during the save.
 2. **`HasAttachments<…>(x => x.Attachments)`** — chained on the owner's `For<>()` builder — registers the
    typed per-owner read/write services, the link prepper and DTO mapping.
+
+The bytes `Details` loads are the attachment's stored file, not new content: saving a rename or another metadata edit
+leaves the file where it is. Bytes or a stream set in their place replace it, stored under the file name's extension.
 
 <!-- no-compile -->
 ```csharp

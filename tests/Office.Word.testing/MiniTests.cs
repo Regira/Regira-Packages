@@ -71,6 +71,15 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
     public override Task A_Conditional_Block_In_A_Grouped_Text_Box_Is_Resolved() => base.A_Conditional_Block_In_A_Grouped_Text_Box_Is_Resolved();
 
     [Test]
+    public override Task A_Conditional_Block_In_A_Grouped_Text_Box_In_A_Header_Is_Resolved() => base.A_Conditional_Block_In_A_Grouped_Text_Box_In_A_Header_Is_Resolved();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Grouped_Text_Box_Reads_Its_Markers_In_Any_Case() => base.A_Conditional_Block_In_A_Grouped_Text_Box_Reads_Its_Markers_In_Any_Case();
+
+    [Test]
+    public override Task A_Deletion_Inside_The_Braces_Stays_Deleted() => base.A_Deletion_Inside_The_Braces_Stays_Deleted();
+
+    [Test]
     public override Task A_Marker_Paragraph_Ending_A_Section_Leaves_Only_The_Break() => base.A_Marker_Paragraph_Ending_A_Section_Leaves_Only_The_Break();
 
     [Test]

@@ -58,6 +58,15 @@ public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveCh
 
     private readonly Lazy<ReactionDispatcher> _dispatcher = new(() => new ReactionDispatcher(serviceProvider));
     private readonly Lazy<ReactorTargets> _unregisteredTargets = new(() => ReactorDiscovery.GetTargets(serviceProvider.GetServices<IEntityReactor>()));
+    private readonly Lazy<ReactorRegistration[]> _unregisteredReactors = new(() => ReactorDiscovery.Resolved(serviceProvider.GetServices<IEntityReactor>()));
+
+    /// <summary>Whether a registered reactor of <paramref name="reactorType"/>, or derived from it, reacts to <paramref name="entityType"/>.</summary>
+    internal bool HasReactor(Type reactorType, Type entityType)
+    {
+        var services = serviceProvider.GetService<IServiceCollection>();
+        var registrations = services != null ? ReactorDiscovery.GetCatalog(services).Registrations : _unregisteredReactors.Value;
+        return registrations.Any(r => r.IsOf(reactorType) && r.MayHandle(entityType));
+    }
 
     // Querying: mark what a tracking query loads
 
@@ -116,7 +125,7 @@ public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveCh
     {
         if (eventData.Context is { } context)
         {
-            SyncOverAsync.Wait(() => Capture(context, async: false, CancellationToken.None));
+            SyncOverAsync.Wait(() => CaptureOrFail(context, async: false, CancellationToken.None));
         }
         return base.SavingChanges(eventData, result);
     }
@@ -125,9 +134,23 @@ public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveCh
     {
         if (eventData.Context is { } context)
         {
-            await Capture(context, async: true, cancellationToken);
+            await CaptureOrFail(context, async: true, cancellationToken);
         }
         return await base.SavingChangesAsync(eventData, result, cancellationToken);
+    }
+
+    // a capture that throws ends the save before EF's own failure hooks: what the primers left for it is undone here
+    private async Task CaptureOrFail(DbContext context, bool async, CancellationToken token)
+    {
+        try
+        {
+            await Capture(context, async, token);
+        }
+        catch
+        {
+            await SaveOutcomes.Failed(context);
+            throw;
+        }
     }
 
     private async Task Capture(DbContext context, bool async, CancellationToken token)

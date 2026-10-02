@@ -50,7 +50,8 @@ public class AttachmentFileService<TAttachment, TKey>(IFileService fileService) 
         }
 
         await using var fileStream = item.GetStream()!;
-        if (item.IsNew())
+        // a new attachment, or a stored one given a key other than its own: never written over another file
+        if (item.IsNew() || string.IsNullOrWhiteSpace(item.Path) || fileService.GetIdentifier(item.Identifier) != fileService.GetIdentifier(item.Path))
         {
             var fileNameHelper = new FileNameHelper(fileService);
             // every filename should be unique!

@@ -1314,7 +1314,7 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
    modelBuilder.Entity<ProductAttachment>().HasOne(x => x.Attachment).WithMany().HasForeignKey(x => x.AttachmentId);
    modelBuilder.Entity<Product>().HasMany(x => x.Attachments).WithOne().HasForeignKey(x => x.ObjectId).HasPrincipalKey(x => x.Id);
    ```
-6. Register **two** things: `.WithAttachments(_ => new BinaryFileService(...))` for the shared `Attachment` entity + file store + bytes→file primer, **and** `.For<Product>(e => e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments))` for the typed per-owner services + link prepper + DTO mapping. `HasAttachments` is an extension on the **base** `EntityServiceBuilder`, so it chains on every `For<>()` tier — a complex owner registers it exactly like the simple one shown here.
+6. Register **two** things: `.WithAttachments(_ => new BinaryFileService(...))` for the shared `Attachment` entity + file store + bytes→file primer + `AttachmentFileReactor` (removes a replaced or deleted attachment's file once the save is committed, so a refused or rolled-back save keeps it — only a transaction rolled back after a successful save keeps the new file too; needs the reactor wiring `UseDefaults()` sets — without it, a replaced file goes once the save succeeds and a deleted one during the save), **and** `.For<Product>(e => e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments))` for the typed per-owner services + link prepper + DTO mapping. `HasAttachments` is an extension on the **base** `EntityServiceBuilder`, so it chains on every `For<>()` tier — a complex owner registers it exactly like the simple one shown here. The bytes `Details` loads are the stored file, not new content, so saving a rename or another metadata edit leaves the file where it is; bytes or a stream set in their place replace it, stored under the file name's extension.
 7. *(web apps)* Call `options.UseAttachmentUris()` (before registering entities, on the **same** `UseEntities` options instance) and register `AddHttpContextAccessor()` so attachment DTOs resolve a `Uri` linking to the attachment controller's `GetFile` action.
 
 > ⚠️ **A link rule belongs in the owner's validator too.** Validators scoped to the link entity run for the
@@ -1322,7 +1322,8 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 > (step 3) syncs the links itself: it adds one for each new entry with `NewBytes`, renames and replaces a kept link's
 > file from its `NewFileName` and `NewBytes`, and deletes the ones the array leaves out, and only the owner's
 > validators run. A kept link keeps its attachment, whatever `attachmentId` the entry sends, and a new one may point
-> only at an attachment the owner already links: one naming another owner's is cleared, and the save answers 409.
+> only at an attachment the owner already links: one naming another owner's is cleared, and without `NewBytes` of its
+> own the save answers 409.
 > The upload route always creates a link, whatever `Id` its form sends. Repeat a link rule — allowed file types, a file that must not be deleted — in the owner's validator (keys like
 > `Attachments[0].NewFileName`), or keep `Attachments` off the owner's input DTO.
 

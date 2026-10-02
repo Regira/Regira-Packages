@@ -155,7 +155,7 @@
 | `Regira.Entities.Attachments.Abstractions` | `IAttachment<>`, `IEntityAttachment<>`, `IHasAttachments<>`, `IAttachmentService<>`, `IAttachmentFileService<>`, `IAttachmentSearchObject<>`, `IEntityAttachmentSearchObject<>`, `IAttachmentUriResolver<>`, `IFileIdentifierGenerator` |
 | `Regira.Entities.Attachments.Models` | `Attachment<>`, `EntityAttachment<>`, `AttachmentSearchObject<>`, `EntityAttachmentSearchObject<>` |
 | `Regira.Entities.Attachments` | `EntityAttachmentUriAfterMapper<>`, `NullAttachmentUriResolver<>` |
-| `Regira.Entities.EFcore.Attachments` | `ITypedAttachmentService`, `TypedAttachmentService<>`, `AttachmentFilteredQueryBuilder<>`, `EntityAttachmentFilteredQueryBuilder<>`, `AttachmentProcessor<>`, `EntityAttachmentProcessor<>`, `AttachmentPrimer`, `EntityAttachmentPrimer`, `DefaultFileIdentifierGenerator<>` |
+| `Regira.Entities.EFcore.Attachments` | `ITypedAttachmentService`, `TypedAttachmentService<>`, `AttachmentFilteredQueryBuilder<>`, `EntityAttachmentFilteredQueryBuilder<>`, `AttachmentProcessor<>`, `EntityAttachmentProcessor<>`, `AttachmentPrimer`, `EntityAttachmentPrimer`, `AttachmentFileReactor<>`, `DefaultFileIdentifierGenerator<>` |
 | `Regira.Entities.DependencyInjection.Attachments` | `EntityAttachmentServiceBuilder<>`, `EntityServiceBuilderExtensions` *(`HasAttachments<>()` — on `EntityServiceBuilder<>`)*, `IEntityAttachmentServiceBuilder<>` |
 | `Regira.Entities.DependencyInjection.Attachments.Abstractions` | `IAttachmentUriResolverRegistrar` |
 | `Regira.Entities.Web.Attachments.Abstractions` | `EntityAttachmentControllerBase<>` |

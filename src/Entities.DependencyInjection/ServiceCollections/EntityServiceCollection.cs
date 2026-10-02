@@ -5,6 +5,7 @@ using Regira.Entities.Attachments.Models;
 using Regira.Entities.DependencyInjection.ServiceCollections.Abstractions;
 using Regira.Entities.DependencyInjection.Licensing;
 using Regira.Entities.DependencyInjection.Primers;
+using Regira.Entities.DependencyInjection.Reactors;
 using Regira.Entities.DependencyInjection.QueryBuilders;
 using Regira.Entities.DependencyInjection.ServiceBuilders;
 using Regira.Entities.DependencyInjection.ServiceCollections.Models;
@@ -279,7 +280,17 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         {
             e.AddFilter<AttachmentFilteredQueryBuilder<TAttachment, TAttachmentKey, TAttachmentSearchObject>>();
             e.AddProcessor<AttachmentProcessor<TAttachment, TAttachmentKey>>();
-            e.AddPrimer<AttachmentPrimer>();
+            if (typeof(TAttachment) == typeof(Attachment))
+            {
+                // the default attachment registers the non-generic types, which code finding or replacing them names
+                Services.AddPrimer<Attachment, AttachmentPrimer>();
+                Services.AddReactor<Attachment, AttachmentFileReactor>();
+            }
+            else
+            {
+                e.AddPrimer<AttachmentPrimer<TAttachment, TAttachmentKey>>();
+                e.AddReactor<AttachmentFileReactor<TAttachment, TAttachmentKey>>();
+            }
             e.AddTransient<IFileIdentifierGenerator, DefaultFileIdentifierGenerator<TAttachmentKey, TAttachment>>();
             e.AddTransient<IAttachmentFileService<TAttachment, TAttachmentKey>>(p => new AttachmentFileService<TAttachment, TAttachmentKey>(fileServiceFactory(p)));
             configure?.Invoke(e);

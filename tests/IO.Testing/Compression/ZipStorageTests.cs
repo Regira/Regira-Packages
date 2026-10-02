@@ -63,6 +63,32 @@ public class ZipStorageTests
     [Test]
     public async Task Remove_File() => await StorageTestContext.Test_Remove_File();
 
+    [Test]
+    public async Task Move_File()
+    {
+        var identifier = StorageTestContext.SourceFiles.First().Identifier!.Replace('\\', '/');
+        var expected = await StorageTestContext.FileService.GetBytes(identifier);
+        var target = $"moved/{Path.GetFileName(identifier)}";
+
+        await StorageTestContext.FileService.Move(identifier, target);
+
+        Assert.That(await StorageTestContext.FileService.Exists(identifier), Is.False);
+        Assert.That(await StorageTestContext.FileService.GetBytes(target), Is.EqualTo(expected));
+    }
+
+    // a target naming the same entry, whatever its separators, leaves it where it is
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Move_Onto_The_Same_Entry_Keeps_It(bool backslashes)
+    {
+        var identifier = StorageTestContext.SourceFiles.First(x => x.Identifier!.Contains('\\') || x.Identifier.Contains('/')).Identifier!.Replace('\\', '/');
+        var expected = await StorageTestContext.FileService.GetBytes(identifier);
+
+        await StorageTestContext.FileService.Move(backslashes ? identifier.Replace('/', '\\') : identifier, identifier);
+
+        Assert.That(await StorageTestContext.FileService.GetBytes(identifier), Is.EqualTo(expected));
+    }
+
 
     [Test]
     public async Task GetStream_With_Forward_Slashes()

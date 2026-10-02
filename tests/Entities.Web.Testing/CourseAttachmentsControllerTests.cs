@@ -8,9 +8,11 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
+using Regira.Entities.Attachments.Models;
 using Regira.Entities.DependencyInjection.Validators;
 using Regira.Entities.Mapping.Models;
 using Regira.Entities.Models;
+using Regira.Entities.Services.Abstractions;
 using Regira.Entities.Web.Models;
 using Regira.IO.Utilities;
 using System.Net;
@@ -573,28 +575,164 @@ public class CourseAttachmentsControllerTests : IClassFixture<ContosoApiFactory>
         Assert.Equal("image/jpeg", renamed.Content.Headers.ContentType?.MediaType);
     }
 
-    [Fact]
-    public async Task New_Bytes_Through_The_Metadata_Route_Replace_The_File()
+    // New bytes replace the stored file, leaving one file in storage: through the link's metadata route and the owner's
+    // save they go under a key of their own and the stored file goes once the save is committed, and the file route
+    // stores a new attachment and removes the old one.
+    [Theory]
+    [InlineData("metadata")]
+    [InlineData("owner")]
+    [InlineData("file")]
+    public async Task New_Bytes_Replace_The_File(string route)
     {
         using var client = _factory.CreateClient();
 
         var courseId = 3;
-        var name = $"replaced-{Guid.NewGuid():N}.txt";
-        var content = new MultipartFormDataContent { { new StreamContent(FileUtility.GetStreamFromString("first version")), "file", name } };
-        var uploaded = await (await client.PostAsync($"/courses/{courseId}/files", content)).Content.ReadFromJsonAsync<SaveResult<CourseAttachmentDto>>();
+        // letters only, so the storage key keeps it as written
+        var stem = "replaced-" + string.Concat(Guid.NewGuid().ToString("N").Select(c => (char)('a' + Convert.ToInt32(c.ToString(), 16))));
+        var name = $"{stem}.txt";
+        var uploaded = await Upload(client, courseId, name, "first version");
+        var storedPath = StoredPath(uploaded.AttachmentId);
+        var newBytes = FileUtility.GetBytesFromString("second version");
 
-        var replace = new CourseAttachmentInputDto
+        var response = route switch
         {
-            Id = uploaded!.Item.Id,
-            ObjectId = courseId,
-            AttachmentId = uploaded.Item.AttachmentId,
-            NewBytes = FileUtility.GetBytesFromString("second version")
+            "metadata" => await client.PutAsJsonAsync($"/courses/{courseId}/attachments/{uploaded.Id}",
+                new CourseAttachmentInputDto { Id = uploaded.Id, ObjectId = courseId, AttachmentId = uploaded.AttachmentId, NewBytes = newBytes }),
+            "owner" => await SaveOwnerWithNewBytes(client, courseId, uploaded.Id, newBytes),
+            _ => await client.PutAsync($"/courses/{courseId}/files/{uploaded.Id}", new MultipartFormDataContent { { new ByteArrayContent(newBytes), "file", name } })
         };
-        (await client.PutAsJsonAsync($"/courses/{courseId}/attachments/{uploaded.Item.Id}", replace)).EnsureSuccessStatusCode();
+        response.EnsureSuccessStatusCode();
 
-        var download = await client.GetAsync($"/courses/{courseId}/files/{name}");
-        Assert.Equal(HttpStatusCode.OK, download.StatusCode);
-        Assert.Equal("second version", await download.Content.ReadAsStringAsync());
+        Assert.Equal("second version", await client.GetStringAsync($"/courses/{courseId}/files/{name}"));
+        Assert.Single(Directory.GetFiles(_factory.AttachmentsDirectory, $"*{stem}*", SearchOption.AllDirectories));
+        if (route != "file")
+        {
+            Assert.NotEqual(storedPath, StoredPath(uploaded.AttachmentId));
+            Assert.Equal(newBytes.Length, _dbContext.Attachments.AsNoTracking().Single(x => x.Id == uploaded.AttachmentId).Length);
+        }
+    }
+
+    // A save the database refuses leaves the stored file as it was, as it leaves the row: the new bytes went under a key
+    // of their own, and the stored file is removed only once a save is committed.
+    [Fact]
+    public async Task A_Refused_Save_Leaves_The_Stored_File()
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 10;
+        var stem = "refused-" + string.Concat(Guid.NewGuid().ToString("N").Select(c => (char)('a' + Convert.ToInt32(c.ToString(), 16))));
+        var name = $"{stem}.txt";
+        var uploaded = await Upload(client, courseId, name, "first version");
+        var storedPath = StoredPath(uploaded.AttachmentId);
+        var theirs = await Upload(client, 9, $"theirs-{Guid.NewGuid():N}.txt", "their file");
+
+        var details = await client.GetFromJsonAsync<DetailsResult<CourseDto>>($"/courses/{courseId}");
+        var attachments = details!.Item.Attachments!.Select(a => new CourseAttachmentInputDto
+        {
+            Id = a.Id,
+            ObjectId = a.ObjectId,
+            AttachmentId = a.AttachmentId,
+            NewBytes = a.Id == uploaded.Id ? FileUtility.GetBytesFromString("second version") : null
+        }).ToList();
+        // a new link naming another owner's attachment fails its foreign key, so the whole save is refused
+        attachments.Add(new CourseAttachmentInputDto { ObjectId = courseId, AttachmentId = theirs.AttachmentId });
+        var courseInput = new CourseInputDto
+        {
+            Id = details.Item.Id,
+            Title = details.Item.Title,
+            DepartmentId = details.Item.DepartmentId,
+            Credits = details.Item.Credits,
+            Attachments = attachments
+        };
+
+        var response = await client.PutAsJsonAsync($"/courses/{courseId}", courseInput);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("first version", await client.GetStringAsync($"/courses/{courseId}/files/{name}"));
+        Assert.Equal(storedPath, StoredPath(uploaded.AttachmentId));
+        // nor the file it wrote for the new bytes
+        Assert.Single(Directory.GetFiles(_factory.AttachmentsDirectory, $"*{stem}*", SearchOption.AllDirectories));
+    }
+
+    // A save the database refuses keeps the file of a link it would have deleted: the file goes once a save is committed.
+    [Fact]
+    public async Task A_Refused_Save_Keeps_The_File_Of_A_Link_It_Would_Delete()
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 11;
+        var name = $"dropped-{Guid.NewGuid():N}.txt";
+        var dropped = await Upload(client, courseId, name, "kept content");
+        var theirs = await Upload(client, 9, $"theirs-{Guid.NewGuid():N}.txt", "their file");
+
+        var details = await client.GetFromJsonAsync<DetailsResult<CourseDto>>($"/courses/{courseId}");
+        var attachments = details!.Item.Attachments!
+            .Where(a => a.Id != dropped.Id)
+            .Select(a => new CourseAttachmentInputDto { Id = a.Id, ObjectId = a.ObjectId, AttachmentId = a.AttachmentId })
+            .ToList();
+        // the link left out is deleted with its attachment; the new one fails its foreign key, so the save is refused
+        attachments.Add(new CourseAttachmentInputDto { ObjectId = courseId, AttachmentId = theirs.AttachmentId });
+        var courseInput = new CourseInputDto
+        {
+            Id = details.Item.Id,
+            Title = details.Item.Title,
+            DepartmentId = details.Item.DepartmentId,
+            Credits = details.Item.Credits,
+            Attachments = attachments
+        };
+
+        var response = await client.PutAsJsonAsync($"/courses/{courseId}", courseInput);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("kept content", await client.GetStringAsync($"/courses/{courseId}/files/{name}"));
+    }
+
+    // New bytes saved through the attachment's own service, in a transaction rolled back, leave the stored file as it was.
+    [Fact]
+    public async Task A_Rolled_Back_Replace_Through_The_Attachment_Service_Leaves_The_Stored_File()
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 12;
+        var name = $"rolled-back-{Guid.NewGuid():N}.txt";
+        var uploaded = await Upload(client, courseId, name, "first version");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ContosoContext>();
+            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Attachment, int>>();
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            var attachment = await service.Details(uploaded.AttachmentId);
+            attachment!.Bytes = FileUtility.GetBytesFromString("second version");
+            await service.Save(attachment);
+            await service.SaveChanges();
+            await transaction.RollbackAsync();
+        }
+
+        Assert.Equal("first version", await client.GetStringAsync($"/courses/{courseId}/files/{name}"));
+    }
+
+    private string? StoredPath(int attachmentId)
+        => _dbContext.Attachments.AsNoTracking().Single(x => x.Id == attachmentId).Path;
+
+    private static async Task<HttpResponseMessage> SaveOwnerWithNewBytes(HttpClient client, int courseId, int linkId, byte[] newBytes)
+    {
+        var details = await client.GetFromJsonAsync<DetailsResult<CourseDto>>($"/courses/{courseId}");
+        var courseInput = new CourseInputDto
+        {
+            Id = details!.Item.Id,
+            Title = details.Item.Title,
+            DepartmentId = details.Item.DepartmentId,
+            Credits = details.Item.Credits,
+            Attachments = details.Item.Attachments!.Select(a => new CourseAttachmentInputDto
+            {
+                Id = a.Id,
+                ObjectId = a.ObjectId,
+                AttachmentId = a.AttachmentId,
+                NewBytes = a.Id == linkId ? newBytes : null
+            }).ToList()
+        };
+        return await client.PutAsJsonAsync($"/courses/{courseId}", courseInput);
     }
 
     // The body's AttachmentId cannot point a link at another attachment, another owner's file among them: the link keeps

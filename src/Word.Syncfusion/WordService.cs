@@ -35,7 +35,8 @@ namespace Regira.Office.Word.Syncfusion;
 public class WordService : IWordService
 {
     private static readonly Regex ParamRegex = new("{{ *[a-zA-Z0-9._]+ *}}");
-    private static readonly Regex MarkerStartRegex = new(@"\{\{");
+    // what a marker opens with — not a placeholder's {{ — read as the blocks read it: in any case, else a whole word
+    private static readonly Regex MarkerStartRegex = new(@"\{\{\s*(?:#|/|else\b)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     public WordService(SyncfusionWordConfig? config = null)
     {
@@ -555,12 +556,13 @@ public class WordService : IWordService
     }
 
     /// <summary>
-    /// The paragraphs holding <c>{{</c>, wherever they are, found by search: a group of text boxes (<c>wpg:wgp</c>) loads
-    /// as a <c>GroupShape</c>, whose shapes the public object model does not expose, so <see cref="BlockParagraphs"/>
-    /// cannot walk into it. A footnote, endnote or comment is left out, as there.
+    /// The paragraphs a marker opens in, found by search, in a document holding a group of text boxes (<c>wpg:wgp</c>):
+    /// a group loads as a <c>GroupShape</c>, whose shapes the public object model does not expose, so
+    /// <see cref="BlockParagraphs"/> cannot walk into it. Only then: reading a match splits and merges the runs around
+    /// it, which a document without a group is spared. A footnote, endnote or comment is left out, as there.
     /// </summary>
     private static IEnumerable<WParagraph> MarkerParagraphs(WordDocument doc)
-        => (doc.FindAll(MarkerStartRegex) ?? [])
+        => (doc.FindAllItemsByProperty(EntityType.GroupShape, null, null) is not { Count: > 0 } ? [] : doc.FindAll(MarkerStartRegex) ?? [])
             .Select(selection => selection.GetAsOneRange()?.OwnerParagraph)
             .OfType<WParagraph>()
             .Where(paragraph => !InNoteOrComment(paragraph));

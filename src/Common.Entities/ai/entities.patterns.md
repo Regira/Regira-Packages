@@ -631,11 +631,11 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
 }
 ```
 
-- **Either form returns the same 400 here.** `ModelState` + `ValidationProblem` as above, or
+- **Either form returns a 400 `ValidationProblemDetails` here.** `ModelState` + `ValidationProblem` as above, or
   `throw new EntityInputException<CreditRequest>(…) { InputErrors = { [nameof(item.Status)] = "…" } }` — the
   filter `ConfigureDefaultJsonOptions()` registers maps the exception on **any** action, so this controller
-  and the generated one answer alike. Either message can be a translation key; only the exception carries args
-  for the translation to fill in: `Errors = { new EntityInputError(nameof(item.Status), "…", new Dictionary<string, object?> { … }) }`.
+  and the generated one answer alike. Either message can be a translation key; only the exception adds `errorDetails`,
+  with the args a translation fills in: `Errors = { new EntityInputError(nameof(item.Status), "…", new Dictionary<string, object?> { … }) }`.
   (`BadRequest(ModelState)` is a different body — a bare map, no `errors` wrapper.) That covers the write pipeline too: validators and preppers run inside
   the `service.Modify(item)` above, so a validator's errors — and a prepper that throws — land on the same
   filter rather than escaping as a 500. Catch it explicitly only to add context — and then
@@ -904,8 +904,8 @@ a filter that reached them would 403 ordinary users out of their own session.
 
 ⚠️ **Attachment controllers do not share the entity controller's entry.** `ProductAttachmentController` is
 its own controller with its own route value, so an entry for `Products` alone leaves file upload
-(`POST {objectId}/files`), file replace (`PUT {objectId}/files/{id}`) and the link's update
-(`PUT {objectId}/attachments/{id}`) open to any signed-in user.
+(`POST {objectId}/files`), file replace (`PUT {objectId}/files/{id}`), the link's update
+(`PUT {objectId}/attachments/{id}`) and its delete (`DELETE attachments/{id}`) open to any signed-in user.
 
 ## Owned children that are both sortable and individually togglable
 

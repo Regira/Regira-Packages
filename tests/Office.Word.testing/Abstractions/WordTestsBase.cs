@@ -657,6 +657,30 @@ public abstract class WordTestsBase : WordAssetsTestsBase
     }
 
     /// <summary>
+    /// A tracked deletion inside the braces of a marker or a placeholder stays deleted: the visible text decides, a marker
+    /// made of it resolves, and a document without blocks keeps its text as it is.
+    /// </summary>
+    public virtual async Task A_Deletion_Inside_The_Braces_Stays_Deleted()
+    {
+        var creator = RequireCreator();
+        using var withBlock = await creator.Create(new WordTemplateInput
+        {
+            Template = Docx.Document([Docx.WithDeletion("{", "{", "{#if On}}"), Docx.Paragraph("KEEP"), Docx.Paragraph("{{/if}}"), Docx.Paragraph("after")]),
+            GlobalParameters = new Dictionary<string, object> { ["On"] = true }
+        });
+        using var withoutBlock = await creator.Create(new WordTemplateInput
+        {
+            Template = Docx.Document([Docx.WithDeletion("Hello {", "{", "{Name}} there")])
+        });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Docx.VisibleText(withBlock), Does.Contain("KEEP").And.Contain("after").And.Not.Contain("{{"));
+            Assert.That(Docx.VisibleText(withoutBlock), Does.Contain("Hello {{Name}} there").And.Not.Contain("{{{"));
+        });
+    }
+
+    /// <summary>
     /// A block in one of a group's text boxes resolves as one in a lone text box does, and is found when it is the
     /// template's only block; the group's other boxes stay.
     /// </summary>
@@ -679,6 +703,55 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         {
             Assert.That(text, Does.Contain("KEPTTEXT").And.Contain("OTHERBOX").And.Contain("Outro"));
             Assert.That(text, Does.Not.Contain("DRAFTSTAMP").And.Not.Contain("{{"));
+        });
+    }
+
+    /// <summary>
+    /// The markers in a group's text boxes are read in any case, as in the body: an else written in capitals splits the
+    /// block there.
+    /// </summary>
+    public virtual async Task A_Conditional_Block_In_A_Grouped_Text_Box_Reads_Its_Markers_In_Any_Case()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Paragraph("KEPTTEXT"),
+                Docx.GroupedTextBoxes(["{{#If IsDraft}}", "DRAFTSTAMP", "{{ELSE}}", "FINALSTAMP", "{{/IF}}"], ["OTHERBOX"])
+            ]),
+            GlobalParameters = new Dictionary<string, object> { ["IsDraft"] = true }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var text = Docx.BodyText(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Does.Contain("KEPTTEXT").And.Contain("OTHERBOX").And.Contain("DRAFTSTAMP"));
+            Assert.That(text, Does.Not.Contain("FINALSTAMP").And.Not.Contain("{{"));
+        });
+    }
+
+    /// <summary>
+    /// A group of text boxes in a header holds blocks as one in the body does, and its block is found when it is the
+    /// template's only one.
+    /// </summary>
+    public virtual async Task A_Conditional_Block_In_A_Grouped_Text_Box_In_A_Header_Is_Resolved()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document(
+                [Docx.Paragraph("BODYTEXT")],
+                header: [Docx.GroupedTextBoxes(["{{#if IsDraft}}", "DRAFTSTAMP", "{{/if}}"], ["OTHERBOX"])]),
+            GlobalParameters = new Dictionary<string, object> { ["IsDraft"] = false }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var header = Docx.HeaderText(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(header, Does.Contain("OTHERBOX"));
+            Assert.That(header, Does.Not.Contain("DRAFTSTAMP").And.Not.Contain("{{"));
         });
     }
 

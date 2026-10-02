@@ -151,6 +151,11 @@ internal sealed class ReactorRegistration
         => (_resolved?.GetType() ?? _registrations[0].ImplementationType ?? _registrations[0].ImplementationInstance?.GetType())?.FullName
            ?? _registrations[0].ServiceType.FullName!;
 
+    /// <summary>Whether it is known, before it exists, to be a <paramref name="reactorType"/> or derived from it.</summary>
+    public bool IsOf(Type reactorType)
+        => (_resolved?.GetType() ?? _registrations[0].ImplementationType ?? _registrations[0].ImplementationInstance?.GetType()) is { } type
+           && reactorType.IsAssignableFrom(type);
+
     /// <summary>Whether it may react to <paramref name="entityType"/> — decided without instantiating it when its targets are known.</summary>
     public bool MayHandle(Type entityType) => !_targetsKnown || ReactorDiscovery.Covers(_targets, entityType);
 

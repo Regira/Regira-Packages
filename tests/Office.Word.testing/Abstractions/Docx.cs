@@ -33,6 +33,16 @@ internal static class Docx
             new W.InsertedRun(new W.Run(new W.Text(inserted))) { Id = "3", Author = "Reviewer" },
             new W.Run(new W.Text(after) { Space = SpaceProcessingModeValues.Preserve }));
 
+    /// <summary>
+    /// A paragraph whose visible text is <paramref name="before"/> and <paramref name="after"/>, with
+    /// <paramref name="deleted"/> between them deleted under track changes.
+    /// </summary>
+    public static W.Paragraph WithDeletion(string before, string deleted, string after)
+        => new(
+            new W.Run(new W.Text(before) { Space = SpaceProcessingModeValues.Preserve }),
+            new W.DeletedRun(new W.Run(new W.DeletedText(deleted))) { Id = "4", Author = "Reviewer" },
+            new W.Run(new W.Text(after) { Space = SpaceProcessingModeValues.Preserve }));
+
     /// <summary>A paragraph holding one complex field, with the given code and result.</summary>
     public static W.Paragraph FieldParagraph(string code, string result)
         => new(
@@ -222,6 +232,14 @@ internal static class Docx
         return doc.MainDocumentPart!.Document!.Body!
             .Descendants<TContainer>()
             .All(container => container.ChildElements.LastOrDefault(child => child is W.Paragraph or W.Table or W.SdtBlock) is W.Paragraph);
+    }
+
+    /// <summary>The body's visible text, a paragraph a line: deleted text is left out.</summary>
+    public static string VisibleText(IMemoryFile file)
+    {
+        using var doc = WordprocessingDocument.Open(new MemoryStream(file.GetBytes()!), false);
+        return string.Join("\n", doc.MainDocumentPart!.Document!.Body!.Descendants<W.Paragraph>()
+            .Select(paragraph => string.Concat(paragraph.Descendants<W.Text>().Select(text => text.Text))));
     }
 
     /// <summary>The text of the body, text boxes included.</summary>

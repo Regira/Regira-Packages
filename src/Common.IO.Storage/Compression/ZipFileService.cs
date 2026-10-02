@@ -104,7 +104,8 @@ public class ZipFileService(ZipFileCommunicator communicator) : IFileService, ID
     public Task Move(string sourceIdentifier, string targetIdentifier)
     {
         var entry = ZipArchive.Find(sourceIdentifier);
-        if (entry == null)
+        // a target naming the same entry, whatever its separators, leaves it where it is
+        if (entry == null || ZipUtility.NormalizePath(entry.FullName) == ZipUtility.NormalizePath(targetIdentifier))
         {
             return Task.CompletedTask;
         }

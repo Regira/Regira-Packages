@@ -165,7 +165,8 @@ public static class ZipUtility
         {
             Identifier = identifier,
             FileName = Path.GetFileName(identifier),
-            Length = entry.Length,
+            // the copy's: an entry of an archive open for update has no Length once opened
+            Length = ms.Length,
             Stream = ms
         };
         return item;
