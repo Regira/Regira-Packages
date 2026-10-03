@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Regira.Entities.EFcore.Primers;
 using Regira.Entities.EFcore.Primers.Abstractions;
 using Regira.Entities.Models.Abstractions;
+using System.Collections;
 using System.Linq.Expressions;
 
 namespace Regira.Entities.EFcore.Extensions;
@@ -86,6 +87,10 @@ public static class DbContextExtensions
         foreach (var entity in relatedItemsToModify)
         {
             var originalEntity = originalItems.Single(p => p.Id!.Equals(entity.Id));
+            // Attaching the row tracks every row below it, a new one with its temp key still on: the nested sync could
+            // then not clear that key, since EF refuses to change the key of a tracked entity. Cleared first, a new row
+            // is attached as Added, like one the client sent with a zero id.
+            dbContext.ResetTempKeysBelow(entity);
             // read the child's concurrency tokens now: RelatedCollectionPrepper runs the nested preppers
             // ([ServerOwned] among them) only after this sync
             dbContext.TrackAsUpdateOf(entity, originalEntity, dbContext.CaptureClientTokens(entity));
@@ -100,11 +105,52 @@ public static class DbContextExtensions
     private static void ResetTempKey<TRelated, TRelatedKey>(TRelated entity)
         where TRelated : class, IEntity<TRelatedKey>
     {
-        // Compare the unwrapped value, not TRelatedKey against default(TRelatedKey): for a nullable key
-        // default is null, and Comparer<int?> sorts null FIRST — so Compare(-1, null) is positive and the
-        // guard would never fire on the one key shape that most needs it. Boxing a Nullable<int> that has a
-        // value yields a boxed int, so the patterns below match it.
-        var isTempKey = entity.Id switch
+        if (IsTempKey(entity.Id))
+        {
+            entity.Id = default!;
+        }
+    }
+
+    /// <summary>
+    /// Zeroes the temp key of every untracked row in <paramref name="entity"/>'s collection navigations, at any depth,
+    /// before <paramref name="entity"/> is attached. A tracked row is left alone: its key is the one EF already knows.
+    /// </summary>
+    private static void ResetTempKeysBelow(this DbContext dbContext, object entity, HashSet<object>? visited = null)
+    {
+        visited ??= new HashSet<object>(ReferenceEqualityComparer.Instance);
+        if (!visited.Add(entity) || dbContext.Model.FindEntityType(entity.GetType()) is not { } entityType)
+        {
+            return;
+        }
+
+        foreach (var navigation in entityType.GetNavigations().Where(n => n.IsCollection))
+        {
+            if (navigation.PropertyInfo?.GetValue(entity) is not IEnumerable items)
+            {
+                continue;
+            }
+            foreach (var item in items.Cast<object>().ToArray())
+            {
+                if (dbContext.Entry(item).State == EntityState.Detached
+                    && dbContext.Model.FindEntityType(item.GetType())?.FindPrimaryKey()?.Properties is [{ PropertyInfo: { } keyProperty } key]
+                    && IsTempKey(keyProperty.GetValue(item)))
+                {
+                    keyProperty.SetValue(item, key.ClrType.IsValueType && Nullable.GetUnderlyingType(key.ClrType) == null
+                        ? Activator.CreateInstance(key.ClrType)
+                        : null);
+                }
+                dbContext.ResetTempKeysBelow(item, visited);
+            }
+        }
+    }
+
+    /// <summary>A negative signed numeric key: the placeholder a client gives a row the store has not seen.</summary>
+    private static bool IsTempKey(object? id)
+        // Compare the unwrapped value, not the key against its type's default: for a nullable key the default is null,
+        // and Comparer<int?> sorts null FIRST — so Compare(-1, null) is positive and the guard would never fire on the
+        // one key shape that most needs it. Boxing a Nullable<int> that has a value yields a boxed int, so the patterns
+        // below match it.
+        => id switch
         {
             sbyte v => v < 0,
             short v => v < 0,
@@ -115,10 +161,5 @@ public static class DbContextExtensions
             double v => v < 0,
             _ => false,
         };
-        if (isTempKey)
-        {
-            entity.Id = default!;
-        }
-    }
     #endregion
 }

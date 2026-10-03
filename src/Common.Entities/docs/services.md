@@ -18,6 +18,7 @@ IEntityService<TEntity, TKey, TSearchObject, TSortBy, TIncludes>
 - The default implementation is `EntityRepository`, which uses EF Core `DbContext` for data access
 - The `EntityRepository` is enriched by multiple helper services (QueryBuilders, Processors, Preppers, Validators, Primers, Reactors)
 - Replace the default EntityService using `UseEntityService` with a custom implementation (e.g., `CachedEntityService` that adds caching on top of the repository)
+- Replace the default `EntityRepository` for every entity at once with `UseRepository` — see [Replacing the repository app-wide](#replacing-the-repository-app-wide)
 
 ## Standard EntityRepository Methods
 
@@ -621,6 +622,63 @@ services
 
 1. **Global services** execute first (registered on `EntityServiceCollectionOptions`)
 2. **Entity-specific services** execute next (registered on entity builder)
+
+### Replacing the repository app-wide
+
+`options.UseRepository(...)` swaps the default `EntityRepository` for your own generic repository in every
+`For<>()` that does not name one itself (`e.HasRepository<T>()` and `e.UseEntityService<T>()` still win).
+Pass the classes unbound; each is matched to a `For<>()` by its number of type parameters, the same as the
+`EntityRepository` it derives from — `AppRepository<TEntity>` serves `For<TEntity>()`, `AppRepository<TEntity, TKey>`
+serves `For<TEntity, TKey>()`, and so on up to the five-parameter complex shape.
+
+```csharp
+using Regira.Entities.EFcore.Services;
+
+public class AppRepository<TEntity, TKey>(
+    IEntityReadService<TEntity, TKey, SearchObject<TKey>> readService,
+    IEntityWriteService<TEntity, TKey> writeService)
+    : EntityRepository<TEntity, TKey>(readService, writeService)
+    where TEntity : class, IEntity<TKey>
+{
+    public override Task Save(TEntity item, CancellationToken token = default)
+    {
+        // behaviour shared by every entity
+        return base.Save(item, token);
+    }
+}
+
+// For<TEntity>() with an int key
+public class AppRepository<TEntity>(
+    IEntityReadService<TEntity, int, SearchObject<int>> readService,
+    IEntityWriteService<TEntity, int> writeService)
+    : AppRepository<TEntity, int>(readService, writeService), IEntityRepository<TEntity>
+    where TEntity : class, IEntity<int>;
+```
+
+<!-- no-compile -->
+```csharp
+services
+    .UseEntities<MyDbContext>(options =>
+    {
+        options.UseDefaults();
+        options.UseRepository(typeof(AppRepository<>), typeof(AppRepository<,>));
+    })
+    .For<Product>()                 // AppRepository<Product>
+    .For<Category, Guid>();         // AppRepository<Category, Guid>
+```
+
+To see every read and write — logging, timing, auditing — override every member the repository has: `Add`,
+`Modify`, `Save`, `Remove` and `SaveChanges`; both `Details` overloads; `List` and `Count` with the search object
+and with an `object`, which the generated controllers use to look a row up before a save or a delete; and, on the
+complex shapes, `List` and `Count` with a list of search objects. Each member hands its call straight to the read or
+write service, so one call reaches one member. The exception is `Details(id, archived)`: it returns `Details(id)`
+when the filter changes nothing — none given, or an entity that is not `IArchivable` — so log there only when it does
+not hand over. `Save` never passes through `Add` or `Modify`. Keep the shared logic in one class that each shape's
+repository calls.
+
+A `For<>()` whose shape has no matching class keeps the default `EntityRepository`, and the startup validation
+logs a warning naming those entities. A class that cannot serve an entity — a type constraint the entity does
+not meet, or a missing interface of the `EntityRepository` it replaces — throws at that `For<>()`.
 
 **Tip**:
 

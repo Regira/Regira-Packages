@@ -281,7 +281,8 @@ public interface IEntityService<TEntity, TSearchObject, TSortBy, TIncludes>
 
 ### IEntityRepository / IEntityManager
 
-Custom services with `HasRepository<>()` or `HasManager<>()`.
+Custom services with `HasRepository<>()` or `HasManager<>()` per entity, or app-wide with
+`UseEntities(o => o.UseRepository(...))` (see `entities.instructions.md` → Replacing the repository app-wide).
 
 <!-- no-compile -->
 ```csharp
@@ -2042,6 +2043,11 @@ public class EntityServiceCollectionOptions(IServiceCollection services)
     public EntityServiceCollectionOptions WireDbContext(DbContextWiring wiring = DbContextWiring.All);
     // Shorthand for WireDbContext(DbContextWiring.All) — the full default plumbing; called by UseDefaults()
     public EntityServiceCollectionOptions AddDefaultInterceptors();
+
+    // Replaces the default EntityRepository for every For<>() that names no repository of its own.
+    // Open generic types, matched to a For<>() shape by their number of type parameters (1–5).
+    // e.g. UseRepository(typeof(AppRepository<>), typeof(AppRepository<,>))
+    public EntityServiceCollectionOptions UseRepository(params Type[] repositoryTypes);
 
     // Startup validation (arity mismatches, unwired interceptors, ignored ?q=, competing write authorities,
     // null attachment Uri, out-of-scope global filters, missing archived query filter, archivable reference

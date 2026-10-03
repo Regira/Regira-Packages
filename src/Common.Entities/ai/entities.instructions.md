@@ -1013,6 +1013,206 @@ Examples:
 > **→ See:** [`entities.signatures.md`](./entities.signatures.md) — EntityWrappingServiceBase
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — Order + OrderLine entities (OrderManager)
 
+### Replacing the repository app-wide
+
+To give **every** entity the same repository behaviour (auditing, caching, a logging hook), derive generic
+classes from `EntityRepository` and register them once with `UseRepository()`. Every `For<>()` that names no
+repository of its own then uses them, as `IEntityRepository<…>` and as `IEntityService<…>`; `e.HasRepository<T>()`
+and `e.UseEntityService<T>()` still win per entity.
+
+A type is matched to a `For<>()` by its **number of type parameters**, mirroring the `EntityRepository` it
+derives from — so write one class per shape the app registers:
+
+| `For<>()` shape | Derive from |
+|---|---|
+| `For<TEntity>()` (int key) | `EntityRepository<TEntity>`, or the 2-parameter class closed over `int` plus `IEntityRepository<TEntity>` (below) |
+| `For<TEntity, TKey>()` | `EntityRepository<TEntity, TKey>` |
+| `For<TEntity, TKey, TSearchObject>()`, `WithAttachments()` | `EntityRepository<TEntity, TKey, TSearchObject>` |
+| `For<TEntity, TSearchObject, TSortBy, TIncludes>()` | `EntityRepository<TEntity, TSearchObject, TSortBy, TIncludes>` |
+| `For<TEntity, TKey, TSearchObject, TSortBy, TIncludes>()` | `EntityRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>` |
+
+```csharp
+using Microsoft.Extensions.Logging;
+using Regira.Entities.EFcore.Services;
+using Regira.Entities.Models;
+using Regira.Entities.Models.Abstractions;
+using Regira.Entities.Services.Abstractions;
+
+public class AppRepository<TEntity, TKey>(
+    IEntityReadService<TEntity, TKey, SearchObject<TKey>> readService,
+    IEntityWriteService<TEntity, TKey> writeService,
+    ILogger<AppRepository<TEntity, TKey>> logger)
+    : EntityRepository<TEntity, TKey>(readService, writeService)
+    where TEntity : class, IEntity<TKey>
+{
+    public override async Task Remove(TEntity item, CancellationToken token = default)
+    {
+        logger.LogInformation("Removing {Entity} {Id}", typeof(TEntity).Name, item.Id);
+        await base.Remove(item, token);
+    }
+}
+
+// The int-key shape most For<TEntity>() registrations use: the 2-parameter class closed over int
+public class AppRepository<TEntity>(
+    IEntityReadService<TEntity, int, SearchObject<int>> readService,
+    IEntityWriteService<TEntity, int> writeService,
+    ILogger<AppRepository<TEntity, int>> logger)
+    : AppRepository<TEntity, int>(readService, writeService, logger), IEntityRepository<TEntity>
+    where TEntity : class, IEntity<int>;
+```
+
+The complex shapes follow the same pattern. Their read service is the complex one, carrying the sort and
+includes enums, and the int-key shape is again the full class closed over `int`:
+
+```csharp
+using Microsoft.Extensions.Logging;
+using Regira.Entities.EFcore.Services;
+using Regira.Entities.Models.Abstractions;
+using Regira.Entities.Services.Abstractions;
+
+public class AppRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>(
+    IEntityReadService<TEntity, TKey, TSearchObject, TSortBy, TIncludes> readService,
+    IEntityWriteService<TEntity, TKey> writeService,
+    ILogger<AppRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>> logger)
+    : EntityRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>(readService, writeService)
+    where TEntity : class, IEntity<TKey>
+    where TSearchObject : class, ISearchObject<TKey>, new()
+    where TSortBy : struct, Enum
+    where TIncludes : struct, Enum
+{
+    public override async Task Remove(TEntity item, CancellationToken token = default)
+    {
+        logger.LogInformation("Removing {Entity} {Id}", typeof(TEntity).Name, item.Id);
+        await base.Remove(item, token);
+    }
+}
+
+// For<TEntity, TSearchObject, TSortBy, TIncludes>(): the 5-parameter class closed over int
+public class AppRepository<TEntity, TSearchObject, TSortBy, TIncludes>(
+    IEntityReadService<TEntity, int, TSearchObject, TSortBy, TIncludes> readService,
+    IEntityWriteService<TEntity, int> writeService,
+    ILogger<AppRepository<TEntity, int, TSearchObject, TSortBy, TIncludes>> logger)
+    : AppRepository<TEntity, int, TSearchObject, TSortBy, TIncludes>(readService, writeService, logger),
+        IEntityRepository<TEntity, TSearchObject, TSortBy, TIncludes>
+    where TEntity : class, IEntity<int>
+    where TSearchObject : class, ISearchObject<int>, new()
+    where TSortBy : struct, Enum
+    where TIncludes : struct, Enum;
+```
+
+A complex class serves only its own shape, not the simple ones, so an app with both kinds registers both.
+
+<!-- no-compile -->
+```csharp
+services.UseEntities<AppDbContext>(o =>
+{
+    o.UseDefaults();
+    o.UseRepository(typeof(AppRepository<>), typeof(AppRepository<,>),
+        typeof(AppRepository<,,,>), typeof(AppRepository<,,,,>));
+})
+    .For<Product>()                 // AppRepository<Product>
+    .For<Category, Guid>()          // AppRepository<Category, Guid>
+    .For<Invoice, InvoiceSearchObject, InvoiceSortBy, InvoiceIncludes>()   // AppRepository<Invoice, InvoiceSearchObject, …>
+    .For<Order>(e => e.HasRepository<OrderRepository>());   // its own repository wins
+```
+
+- Pass each type **unbound** (`typeof(AppRepository<,>)`); a closed type, an abstract one or one that implements
+  no `IEntityRepository` throws `ArgumentException` at the call.
+- The type must cover the entities it is closed over: a constraint an entity fails (`where TEntity : IArchivable`),
+  or a missing interface of the `EntityRepository` it replaces, throws `InvalidOperationException` at that
+  `For<>()`, naming the entity. Give such an entity its own repository with `e.HasRepository<T>()`.
+- A `For<>()` whose shape has no type keeps the default `EntityRepository`; startup validation warns, naming
+  the entities. Keep one on the default deliberately with `e.HasRepository<EntityRepository<…>>()`.
+- `UseRepository()` applies to the `For<>()` calls after it, across every `UseEntities()` call on the service collection.
+- A custom read override on an `IArchivable` entity follows the same rule as `HasRepository<>()`: override both
+  `Details` overloads ([`entities.patterns.md`](./entities.patterns.md) → Soft Delete).
+
+#### Seeing every read and write once
+
+A concern that has to see every call — logging, timing, auditing — overrides every member below. Each member hands
+its call straight to the read or write service, so one call reaches one member, with one exception:
+`Details(id, archived)` returns `Details(id)` when the filter changes nothing — no filter, or an entity that is not
+`IArchivable`. `Save` goes to the write service, which decides between insert and update itself, so it never passes
+through the repository's `Add` or `Modify`.
+
+| Members | Shapes | Called by |
+|---|---|---|
+| `Add`, `Modify`, `Save`, `Remove`, `SaveChanges` | every shape | writes; the generated controllers call `Save` and `Remove` |
+| `Details(id)`, `Details(id, archived)` | every shape | a details read; the controllers pass the archived filter |
+| `List(TSearchObject?, PagingInfo?)`, `Count(TSearchObject?)` | every shape | a typed search |
+| `List(object?, PagingInfo?)`, `Count(object?)` | every shape | a search by an anonymous object: the controllers' save check and delete, the attachment routes |
+| `List(IList<TSearchObject?>, IList<TSortBy>, TIncludes?, PagingInfo?)`, `Count(IList<TSearchObject?>)` | complex | the complex search endpoint |
+
+Keep the logic in one class and let each shape's repository call it, as below for the simple shapes; the
+complex classes override the two `IList` overloads as well.
+
+```csharp
+using System.Diagnostics;
+using Microsoft.Extensions.Logging;
+using Regira.DAL.Paging;
+using Regira.Entities.EFcore.Services;
+using Regira.Entities.Models;
+using Regira.Entities.Models.Abstractions;
+using Regira.Entities.Services.Abstractions;
+
+// the shared logic: one place for every repository shape
+public static class RepositoryLog
+{
+    public static async Task<T> Timed<T>(this ILogger logger, string operation, Type entityType, Func<Task<T>> call)
+    {
+        var watch = Stopwatch.StartNew();
+        try
+        {
+            return await call();
+        }
+        finally
+        {
+            logger.LogInformation("{Operation} {Entity} in {Elapsed} ms", operation, entityType.Name, watch.ElapsedMilliseconds);
+        }
+    }
+    public static Task Timed(this ILogger logger, string operation, Type entityType, Func<Task> call)
+        => logger.Timed(operation, entityType, async () => { await call(); return true; });
+}
+
+public class LoggingRepository<TEntity, TKey>(
+    IEntityReadService<TEntity, TKey, SearchObject<TKey>> readService,
+    IEntityWriteService<TEntity, TKey> writeService,
+    ILogger<LoggingRepository<TEntity, TKey>> logger)
+    : EntityRepository<TEntity, TKey>(readService, writeService)
+    where TEntity : class, IEntity<TKey>
+{
+    private static readonly Type Entity = typeof(TEntity);
+    // Details(id, archived) hands over to Details(id) unless the filter applies, so it logs only when it does not
+    private static readonly bool IsArchivable = typeof(IArchivable).IsAssignableFrom(typeof(TEntity));
+
+    public override Task<TEntity?> Details(TKey id, CancellationToken token = default)
+        => logger.Timed("Details", Entity, () => base.Details(id, token));
+    public override Task<TEntity?> Details(TKey id, ArchivedFilter? archived, CancellationToken token = default)
+        => archived.HasValue && IsArchivable
+            ? logger.Timed("Details", Entity, () => base.Details(id, archived, token))
+            : base.Details(id, archived, token);
+    public override Task<IList<TEntity>> List(SearchObject<TKey>? so = null, PagingInfo? pagingInfo = null, CancellationToken token = default)
+        => logger.Timed("List", Entity, () => base.List(so, pagingInfo, token));
+    public override Task<long> Count(SearchObject<TKey>? so, CancellationToken token = default)
+        => logger.Timed("Count", Entity, () => base.Count(so, token));
+    public override Task<IList<TEntity>> List(object? so, PagingInfo? pagingInfo, CancellationToken token = default)
+        => logger.Timed("List", Entity, () => base.List(so, pagingInfo, token));
+    public override Task<long> Count(object? so, CancellationToken token = default)
+        => logger.Timed("Count", Entity, () => base.Count(so, token));
+
+    public override Task Add(TEntity item, CancellationToken token = default)
+        => logger.Timed("Add", Entity, () => base.Add(item, token));
+    public override Task<TEntity?> Modify(TEntity item, CancellationToken token = default)
+        => logger.Timed("Modify", Entity, () => base.Modify(item, token));
+    public override Task Save(TEntity item, CancellationToken token = default)
+        => logger.Timed("Save", Entity, () => base.Save(item, token));
+    public override Task Remove(TEntity item, CancellationToken token = default)
+        => logger.Timed("Remove", Entity, () => base.Remove(item, token));
+    public override Task<int> SaveChanges(CancellationToken token = default)
+        => logger.Timed("SaveChanges", Entity, () => base.SaveChanges(token));
+}
+```
+
 ---
 
 ## Global Services
@@ -1028,6 +1228,7 @@ Examples:
 - Validators → §Step 8 → Validators (this file). One scoped to an interface or base class checks every entity in its scope wherever it is registered, so this is its place
 - Primers → Additional Patterns > Primers
 - Reactors → Additional Patterns > Reactors
+- Repository → §Custom Entity Services → Replacing the repository app-wide (this file)
 
 ### UseDefaults() — What It Registers
 
@@ -1092,6 +1293,9 @@ in the Development environment by default. It catches, with actionable messages:
   through a factory are skipped. A validator scoped wider than what it checks implements `ISelectiveEntityValidator`
   and counts, here and when a write runs, only for the entities it `Covers` — FluentValidation's, for those an
   `AbstractValidator` applies to.
+- **Repository shape without a type** (warning) — `UseRepository()` replaced the default repository, but no
+  type has the number of type parameters some `For<>()` registrations need, so those entities keep the default
+  `EntityRepository` (§Custom Entity Services → Replacing the repository app-wide).
 - **Missing archived query filter** (**error**) — an `IArchivable` entity whose model carries no archived
   filter, from either route: the options wiring (`DbContextWiring.ArchivedQueryFilter`, on by default) or an
   explicit `modelBuilder.SetArchivedQueryFilter()`. `DELETE` flags those rows and nothing hides them. Reached

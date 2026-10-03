@@ -53,16 +53,10 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         {
             builder.UseWriteService<EntityWriteService<TContext, TEntity>>();
         }
-        // Entity Repository
-        if (!builder.HasService<IEntityRepository<TEntity>>())
-        {
-            builder.HasRepositoryInner<EntityRepository<TEntity>>();
-        }
-        // Entity Service
-        if (!builder.HasService<IEntityService<TEntity>>())
-        {
-            builder.UseEntityService<EntityRepository<TEntity>>();
-        }
+        // Entity Repository + Entity Service
+        AddDefaultRepository(typeof(EntityRepository<TEntity>),
+            asRepository: !builder.HasService<IEntityRepository<TEntity>>(),
+            asEntityService: !builder.HasService<IEntityService<TEntity>>());
 
         return this;
     }
@@ -98,16 +92,10 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         {
             builder.UseWriteService<EntityWriteService<TContext, TEntity, TKey>>();
         }
-        // Entity Repository
-        if (!builder.HasService<IEntityRepository<TEntity, TKey>>())
-        {
-            builder.HasRepositoryInner<EntityRepository<TEntity, TKey>>();
-        }
-        // Entity Service
-        if (!builder.HasService<IEntityService<TEntity, TKey>>())
-        {
-            builder.UseEntityService<EntityRepository<TEntity, TKey>>();
-        }
+        // Entity Repository + Entity Service
+        AddDefaultRepository(typeof(EntityRepository<TEntity, TKey>),
+            asRepository: !builder.HasService<IEntityRepository<TEntity, TKey>>(),
+            asEntityService: !builder.HasService<IEntityService<TEntity, TKey>>());
 
         return this;
     }
@@ -137,16 +125,10 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         {
             builder.UseWriteService<EntityWriteService<TContext, TEntity, TKey>>();
         }
-        // Entity Repository
-        if (!builder.HasService<IEntityRepository<TEntity, TKey, TSearchObject>>())
-        {
-            builder.HasRepositoryInner<EntityRepository<TEntity, TKey, TSearchObject>>();
-        }
-        // Entity Service
-        if (!builder.HasService<IEntityService<TEntity, TKey, TSearchObject>>())
-        {
-            builder.UseEntityService<EntityRepository<TEntity, TKey, TSearchObject>>();
-        }
+        // Entity Repository + Entity Service
+        AddDefaultRepository(typeof(EntityRepository<TEntity, TKey, TSearchObject>),
+            asRepository: !builder.HasService<IEntityRepository<TEntity, TKey, TSearchObject>>(),
+            asEntityService: !builder.HasService<IEntityService<TEntity, TKey, TSearchObject>>());
 
         return this;
     }
@@ -180,22 +162,10 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
             builder.UseWriteService<EntityWriteService<TContext, TEntity>>();
         }
 
-        // Entity Repository
-        if (!builder.HasService<IEntityRepository<TEntity, TSearchObject, TSortBy, TIncludes>>())
-        {
-            builder.HasRepositoryInner<EntityRepository<TEntity, TSearchObject, TSortBy, TIncludes>>();
-        }
-
-        // Entity Service
-        if (!builder.HasEntityService())
-        {
-            builder.AddTransient<IEntityService<TEntity>, EntityRepository<TEntity, TSearchObject, TSortBy, TIncludes>>();
-            builder.AddTransient<IEntityService<TEntity, TSearchObject, TSortBy, TIncludes>, EntityRepository<TEntity, TSearchObject, TSortBy, TIncludes>>();
-
-            builder.AddTransient<IEntityService<TEntity, int>, EntityRepository<TEntity, TSearchObject, TSortBy, TIncludes>>();
-            builder.AddTransient<IEntityService<TEntity, int, TSearchObject>, EntityRepository<TEntity, TSearchObject, TSortBy, TIncludes>>();
-            builder.AddTransient<IEntityService<TEntity, int, TSearchObject, TSortBy, TIncludes>, EntityRepository<TEntity, TSearchObject, TSortBy, TIncludes>>();
-        }
+        // Entity Repository + Entity Service
+        AddDefaultRepository(typeof(EntityRepository<TEntity, TSearchObject, TSortBy, TIncludes>),
+            asRepository: !builder.HasService<IEntityRepository<TEntity, TSearchObject, TSortBy, TIncludes>>(),
+            asEntityService: !builder.HasEntityService());
 
         return this;
     }
@@ -241,19 +211,10 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
             builder.UseWriteService<EntityWriteService<TContext, TEntity, TKey>>();
         }
 
-        // Entity Repository
-        if (!builder.HasService<IEntityRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>>())
-        {
-            builder.HasRepositoryInner<EntityRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>>();
-        }
-
-        // Entity Service
-        if (!builder.HasEntityService())
-        {
-            builder.AddTransient<IEntityService<TEntity, TKey>, EntityRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>>();
-            builder.AddTransient<IEntityService<TEntity, TKey, TSearchObject>, EntityRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>>();
-            builder.AddTransient<IEntityService<TEntity, TKey, TSearchObject, TSortBy, TIncludes>, EntityRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>>();
-        }
+        // Entity Repository + Entity Service
+        AddDefaultRepository(typeof(EntityRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>),
+            asRepository: !builder.HasService<IEntityRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>>(),
+            asEntityService: !builder.HasEntityService());
 
         return this;
     }
@@ -335,6 +296,25 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
 
 
     // helpers
+
+    /// <summary>
+    /// Registers the repository of a registration that named none: <paramref name="defaultRepositoryType"/>, or the
+    /// app's own type of the same shape set with <see cref="EntityServiceCollectionOptions.UseRepository"/> — under the
+    /// repository and/or entity-service interfaces the default implements.
+    /// </summary>
+    private void AddDefaultRepository(Type defaultRepositoryType, bool asRepository, bool asEntityService)
+    {
+        if (!asRepository && !asEntityService)
+        {
+            return;
+        }
+
+        var repositoryType = EntityRepositoryRegistry.For(options.Services).Resolve(defaultRepositoryType);
+        foreach (var serviceType in EntityRepositoryRegistry.ServiceTypesOf(defaultRepositoryType, asRepository, asEntityService))
+        {
+            options.Services.AddTransient(serviceType, repositoryType);
+        }
+    }
 
     /// <summary>
     /// The default global filters are keyed to <see cref="int"/> and can only bind an int-keyed search

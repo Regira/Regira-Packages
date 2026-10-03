@@ -147,7 +147,7 @@ public static class ServiceCollectionExtensions
     /// attachments owners whose input DTO cannot carry the collection, unenforceable <c>[ServerOwned]</c>
     /// declarations, an entity referencing one of its own children, concurrency tokens a client cannot
     /// round-trip, entity validators no entity is in scope of, write paths that cannot run their entity's
-    /// validators) and the <see cref="EntityValidationOptions"/>.
+    /// validators, entities a <c>UseRepository()</c> type of their shape is missing for) and the <see cref="EntityValidationOptions"/>.
     /// Runs in Development by default; see <see cref="EntityServiceCollectionOptions.ConfigureValidation"/>.
     /// </summary>
     private static void RegisterStartupValidation(this IServiceCollection services, EntityServiceCollectionOptions options)
@@ -167,6 +167,7 @@ public static class ServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, ConcurrencyTokenValidator>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, EntityValidatorScopeValidator>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, EntityValidatorWiringValidator>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, RepositoryShapeValidator>());
 
         // The controller validator lives in Regira.Entities.Web (it needs MVC types), which this project
         // cannot reference — bind it late so validation is enabled by UseEntities() itself rather than by
