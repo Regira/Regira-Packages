@@ -397,6 +397,7 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 > | Protect on update; optionally mint on create from the entity itself | `[ServerOwned]` / `e.ServerOwned(…)` |
 > | Mint from an injected service, or re-derive the value on every save | a **prepper** (`EntityPrepperBase<T>`; `original` is `null` on create, the stored row on update) |
 > | Stamp the field even when a raw-`DbContext` writer creates the row (`Created`) | a **primer** — but it also *reverts* such a writer's updates (§Step 9) |
+> | Mint a sequential code that must not skip numbers | a **primer**: the mint and preppers run before the validators, so a create they refuse has already used its number ([`entities.patterns.md`](./entities.patterns.md) → Server-generated sequential codes) |
 > | Only a gated domain action may change it (`Status` on approve) | a **prepper** that restores it unless a scoped trusted-writer flag is set — [`entities.patterns.md`](./entities.patterns.md) → Role-gated transitions (server-owned state) |
 >
 > Owner-stamp from the claim, computed totals, and the primer form:
@@ -456,7 +457,13 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 > `ICollection<TKey>` on the SearchObject (`?categoryId=1&categoryId=7&…`), which keeps the API honest and
 > puts the walk where the graph is already loaded.
 
-### Step 7: Processors (Optional)
+### Step 7: Processors — `IEntityProcessor<TEntity, TIncludes>` (Optional)
+
+A processor fills values after a read — `[NotMapped]` fields, computed totals — by implementing
+`IEntityProcessor<TEntity, TIncludes>` (`Regira.Entities.Processing.Abstractions`), or by deriving from
+`EntityProcessor<TEntity, TIncludes>` (`Regira.Entities.EFcore.Processing`), which takes the work as a delegate or
+as an override of its virtual `Process`.
+There is no `EntityProcessorBase`.
 
 ⚠️ **A processor runs only in its OWN entity's read pipeline.** It is invoked on the materialized root result of that entity's `Details`/`List` — it never walks into navigation properties. So a `Session` row arriving nested inside `GET /events/1?includes=Sessions` is materialized by **Event**'s read service and never enters `IEntityProcessor<Session, …>`: its `[NotMapped]` values are `null` there, while the same row fetched from `/sessions` carries them. Don't render such a field as `0` on a nested row — check for `null` and show nothing, or fetch the child list separately.
 
@@ -1143,8 +1150,8 @@ through the repository's `Add` or `Modify`.
 | `List(object?, PagingInfo?)`, `Count(object?)` | every shape | a search by an anonymous object: the controllers' save check and delete, the attachment routes |
 | `List(IList<TSearchObject?>, IList<TSortBy>, TIncludes?, PagingInfo?)`, `Count(IList<TSearchObject?>)` | complex | the complex search endpoint |
 
-Keep the logic in one class and let each shape's repository call it, as below for the simple shapes; the
-complex classes override the two `IList` overloads as well.
+Keep the logic in one class and let each shape's repository call it, as below. The complex `EntityRepository` does
+not derive from the simple one, so its class overrides every member again, the two `IList` overloads included.
 
 ```csharp
 using System.Diagnostics;
@@ -1211,7 +1218,57 @@ public class LoggingRepository<TEntity, TKey>(
     public override Task<int> SaveChanges(CancellationToken token = default)
         => logger.Timed("SaveChanges", Entity, () => base.SaveChanges(token));
 }
+
+public class LoggingRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>(
+    IEntityReadService<TEntity, TKey, TSearchObject, TSortBy, TIncludes> readService,
+    IEntityWriteService<TEntity, TKey> writeService,
+    ILogger<LoggingRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>> logger)
+    : EntityRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>(readService, writeService)
+    where TEntity : class, IEntity<TKey>
+    where TSearchObject : class, ISearchObject<TKey>, new()
+    where TSortBy : struct, Enum
+    where TIncludes : struct, Enum
+{
+    private static readonly Type Entity = typeof(TEntity);
+    private static readonly bool IsArchivable = typeof(IArchivable).IsAssignableFrom(typeof(TEntity));
+
+    public override Task<TEntity?> Details(TKey id, CancellationToken token = default)
+        => logger.Timed("Details", Entity, () => base.Details(id, token));
+    public override Task<TEntity?> Details(TKey id, ArchivedFilter? archived, CancellationToken token = default)
+        => archived.HasValue && IsArchivable
+            ? logger.Timed("Details", Entity, () => base.Details(id, archived, token))
+            : base.Details(id, archived, token);
+    public override Task<IList<TEntity>> List(TSearchObject? so = null, PagingInfo? pagingInfo = null, CancellationToken token = default)
+        => logger.Timed("List", Entity, () => base.List(so, pagingInfo, token));
+    public override Task<long> Count(TSearchObject? so, CancellationToken token = default)
+        => logger.Timed("Count", Entity, () => base.Count(so, token));
+    public override Task<IList<TEntity>> List(object? so, PagingInfo? pagingInfo, CancellationToken token = default)
+        => logger.Timed("List", Entity, () => base.List(so, pagingInfo, token));
+    public override Task<long> Count(object? so, CancellationToken token = default)
+        => logger.Timed("Count", Entity, () => base.Count(so, token));
+    // the search endpoint's: several search objects, sorting and includes
+    public override Task<IList<TEntity>> List(IList<TSearchObject?> so, IList<TSortBy> sortBy, TIncludes? includes = null, PagingInfo? pagingInfo = null, CancellationToken token = default)
+        => logger.Timed("List", Entity, () => base.List(so, sortBy, includes, pagingInfo, token));
+    public override Task<long> Count(IList<TSearchObject?> so, CancellationToken token = default)
+        => logger.Timed("Count", Entity, () => base.Count(so, token));
+
+    public override Task Add(TEntity item, CancellationToken token = default)
+        => logger.Timed("Add", Entity, () => base.Add(item, token));
+    public override Task<TEntity?> Modify(TEntity item, CancellationToken token = default)
+        => logger.Timed("Modify", Entity, () => base.Modify(item, token));
+    public override Task Save(TEntity item, CancellationToken token = default)
+        => logger.Timed("Save", Entity, () => base.Save(item, token));
+    public override Task Remove(TEntity item, CancellationToken token = default)
+        => logger.Timed("Remove", Entity, () => base.Remove(item, token));
+    public override Task<int> SaveChanges(CancellationToken token = default)
+        => logger.Timed("SaveChanges", Entity, () => base.SaveChanges(token));
+}
 ```
+
+The other shapes are thin: the 1-parameter class is the 2-parameter one closed over `int`, and the 4-parameter
+class the 5-parameter one, as in the classes above. An app with a `For<TEntity, TKey, TSearchObject>()` writes the
+same overrides on `EntityRepository<TEntity, TKey, TSearchObject>` and can derive the 2-parameter class from that
+one, closed over `SearchObject<TKey>`.
 
 ---
 

@@ -155,7 +155,7 @@ registered scheme authenticates a given request. Claims differ per scheme — re
 | `Secret` | `string` | *(required)* | HMAC signing key — **length must fit the algorithm**: `HS256` ≥ 32 bytes, `HS384` ≥ 48, the `HS512` default ≥ 64. Enforced at registration |
 | `Algorithm` | `string?` | `null` | Signing algorithm as a JWA id; `HS512` when unset |
 | `ValidateSecretLength` | `bool` | `true` | Whether registration rejects a `Secret` too short for `Algorithm` |
-| `Authority` | `string?` | `null` | Token issuer |
+| `Authority` | `string?` | `null` | Token issuer: written into each token and checked on the way in. Optional — unset, no issuer is written or checked |
 | `Audience` | `string?` | `null` | Single audience |
 | `Audiences` | `ICollection<string>?` | `null` | Multiple audiences |
 | `LifeSpan` | `int` | `7200` | Token lifetime in seconds |
@@ -850,7 +850,7 @@ Users in the same DB, no roles — the happy path (details in the sections below
 
 1. `AppUser : IdentityUser`; make the app `DbContext : IdentityDbContext<AppUser>` (users in the same DB).
 2. `services.AddIdentityCore<AppUser>().AddEntityFrameworkStores<AppDbContext>().AddSignInManager().AddDefaultTokenProviders();`
-3. `services.AddJwtAuthentication(o => configuration.GetSection(AuthenticationSections.Jwt).Bind(o));` — set `Authentication:Jwt:Secret` (**≥ 64 bytes for the HS512 default**, or startup throws — counted as ASCII, so a non-ASCII character is one byte, not the two or three UTF-8 would give it), `Authentication:Jwt:Authority`, and **`Authentication:Jwt:Audience` = the SPA's `clientApp`**; leave `Algorithm` unset (or `"HS512"`). Add `.AddRefreshTokens()` if the SPA needs to survive access-token expiry, and `.AddSchemeSelector()` last if more than one scheme is registered.
+3. `services.AddJwtAuthentication(o => configuration.GetSection(AuthenticationSections.Jwt).Bind(o));` — set `Authentication:Jwt:Secret` (**≥ 64 bytes for the HS512 default**, or startup throws — counted as ASCII, so a non-ASCII character is one byte, not the two or three UTF-8 would give it) and **`Authentication:Jwt:Audience` = the SPA's `clientApp`**. `Authentication:Jwt:Authority` is optional for these self-issued tokens: it is written into each token as its issuer and checked on the way in, and left unset, tokens carry no issuer and none is checked. Leave `Algorithm` unset (or `"HS512"`). Add `.AddRefreshTokens()` if the SPA needs to survive access-token expiry, and `.AddSchemeSelector()` last if more than one scheme is registered.
 4. Register an `IEmailSender` — the interface is **`Microsoft.AspNetCore.Identity.UI.Services.IEmailSender`** (package `Microsoft.AspNetCore.Identity.UI`, not a Regira type). Use Regira's `IdentityMailer`, or a dev logger that prints the link. No `ISerializer` needed.
 5. Subclass the three base controllers with forwarding ctors (below).
 6. `app.UseAuthentication()` **before** `app.UseAuthorization()`; `MapControllers().RequireAuthorization()` — the bases carry no `[Authorize]`.

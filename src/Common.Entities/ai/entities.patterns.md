@@ -1248,6 +1248,10 @@ Two constraints come with the shape:
   keep the index and let a genuine collision surface as a 409.
 
 Stamp from a primer exactly as above: mint on `Added`, restore from `entry.OriginalValues` on `Modified`.
+The primer is also what keeps the sequence gapless: it runs inside `SaveChanges()`, after the validators, so a
+create they refuse uses no number. Minted in a prepper or with `e.ServerOwned(x => x.Code, mint)`, which run
+before the validators, the refused create has already taken its number, and the next one skips it. Only a save that
+then fails in the database still leaves a gap.
 
 ⚠️ **Primer vs prepper when a second writer exists.** A prepper runs only on the entity-service write path
 (`IEntityService.Add`/`Modify`/`Save` — so `original` is `null` on create, the stored row on update). A
