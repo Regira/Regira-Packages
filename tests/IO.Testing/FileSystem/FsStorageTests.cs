@@ -46,5 +46,7 @@ public class FsStorageTests
     [Test]
     public async Task Update_File() => await StorageTestContext.Test_Update_File();
     [Test]
+    public async Task Update_File_With_Shorter_Content() => await StorageTestContext.Test_Update_File_With_Shorter_Content();
+    [Test]
     public async Task Remove_File() => await StorageTestContext.Test_Remove_File();
 }

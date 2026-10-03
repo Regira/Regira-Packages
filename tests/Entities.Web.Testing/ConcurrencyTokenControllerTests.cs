@@ -166,10 +166,10 @@ public class ConcurrencyTokenControllerTests : IClassFixture<ContosoApiFactory>,
 
         Assert.NotEqual(Guid.Empty, stored.ConcurrencyToken);
         Assert.Equal(HttpStatusCode.BadRequest, withoutToken.StatusCode);
-        // the same flat map ControllerExtensions.Save returns for the action's own entity (keys camelCased by
+        // the same problem ControllerExtensions.Save returns for the action's own entity (keys camelCased by
         // this host's Newtonsoft resolver)
-        var errors = await withoutToken.Content.ReadFromJsonAsync<Dictionary<string, string[]>>();
-        Assert.Contains("concurrencyToken", errors!.Keys);
+        var problem = await withoutToken.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+        Assert.Contains("concurrencyToken", problem!.Errors.Keys);
         Assert.Equal(HttpStatusCode.OK, withToken.StatusCode);
         var room = (await _dbContext.Reservations.AsNoTracking().SingleAsync(x => x.Id == stored.Id)).Room;
         Assert.Equal("B2", room);

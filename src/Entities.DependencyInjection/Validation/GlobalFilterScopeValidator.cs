@@ -67,11 +67,14 @@ internal sealed class GlobalFilterScopeValidator : IEntityRegistrationValidator
         var inertDefaults = inert.Where(contributedByDefaults.Contains).ToArray();
         if (inertDefaults.Length > 0)
         {
+            // Name only the capabilities these filters scope: the app may well implement the others, and listing
+            // a capability it does use reads as a claim that its filter is inert too.
+            var filterNames = inertDefaults.Select(FriendlyName).Distinct();
+            var scopeNames = inertDefaults.SelectMany(ScopedTypes).Select(FriendlyName).Distinct();
             yield return new EntityValidationIssue(EntityValidationSeverity.Info,
-                $"Built-in global filters that never run: {string.Join(", ", inertDefaults.Select(FriendlyName))}. " +
-                "No registered entity implements the capability each one scopes (IArchivable, IHasCreated, " +
-                "IHasLastModified, IHasNormalizedContent). UseDefaults() registers the full set regardless, so this " +
-                "is expected and needs no action.");
+                $"Built-in global filters that never run: {string.Join(", ", filterNames)}. " +
+                $"No registered entity implements the capability each one scopes ({string.Join(", ", scopeNames)}). " +
+                "UseDefaults() registers the full set regardless, so this is expected and needs no action.");
         }
 
         foreach (var filterType in inert.Where(t => !contributedByDefaults.Contains(t)))
@@ -86,6 +89,12 @@ internal sealed class GlobalFilterScopeValidator : IEntityRegistrationValidator
                 "See entities.instructions → Security & Authorization.");
         }
     }
+
+    /// <summary>The types a filter scopes — the <c>TEntity</c> of each <see cref="IGlobalFilteredQueryBuilder{TEntity,TKey}"/> it implements.</summary>
+    private static IEnumerable<Type> ScopedTypes(Type filterType)
+        => filterType.GetInterfaces()
+            .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IGlobalFilteredQueryBuilder<,>))
+            .Select(i => i.GetGenericArguments()[0]);
 
     /// <summary>Type name without the CLR arity suffix, so <c>FilterIdsQueryBuilder`1</c> reads as written.</summary>
     private static string FriendlyName(Type type)

@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Payments.Mollie</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.4.0</Version>
+    <Version>6.5.0</Version>
     <Description>Mollie payment gateway integration for Regira.</Description>
     <PackageTags>regira;payments;mollie;gateway</PackageTags>
   </PropertyGroup>
@@ -21,7 +21,7 @@
     <None Remove="Abstractions\**" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Mollie.Api" Version="4.20.0" />
+    <PackageReference Include="Mollie.Api" Version="5.1.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.Invoicing\Common.Invoicing.csproj" />

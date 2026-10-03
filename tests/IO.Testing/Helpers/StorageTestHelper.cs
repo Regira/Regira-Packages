@@ -271,6 +271,15 @@ public static class StorageTestHelper
         Assert.That(savedBytes, Is.Not.EquivalentTo(sourceBytes!));
         Assert.That(savedBytes, Is.EquivalentTo(updatedBytes));
     }
+    public static async Task Test_Update_File_With_Shorter_Content(this IStorageTestContext ctx)
+    {
+        var identifier = ctx.SourceFiles.Skip(5).First().Identifier!;
+        await ctx.FileService.Save(identifier, Encoding.UTF8.GetBytes("long content, written first"));
+        var shorterBytes = Encoding.UTF8.GetBytes("short");
+        await ctx.FileService.Save(identifier, shorterBytes);
+        var savedBytes = await ctx.FileService.GetBytes(identifier);
+        Assert.That(savedBytes, Is.EqualTo(shorterBytes), "nothing of the longer content stays behind");
+    }
     public static async Task Test_Remove_File(this IStorageTestContext ctx)
     {
         var identifier = ctx.SourceFiles.Skip(5).First().Identifier!;

@@ -43,7 +43,7 @@ public static class AttachmentExtensions
             : fileName[(fileName.LastIndexOfAny(['/', '\\']) + 1)..];
 
     public static Attachment ToAttachment(this INamedFile file, Attachment? src = null)
-        => file.ToAttachment<Attachment, int>();
+        => file.ToAttachment<Attachment, int>(src);
     public static TAttachment ToAttachment<TAttachment, TKey>(this INamedFile file, TAttachment? src = null)
         where TAttachment : class, IAttachment<TKey>, new()
     {

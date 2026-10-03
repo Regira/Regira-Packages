@@ -100,7 +100,7 @@ that. See *Refresh Tokens* above.
 ### OpenAPI document transformers (`Security.Authentication.Web`)
 
 `Regira.Security.Authentication.Web.OpenApi.Transformers` describes the API's authentication in the generated
-OpenAPI document (.NET 9+). Two transformers are enough whatever the scheme count — the first declares the schemes,
+OpenAPI document (.NET 10). Two transformers are enough whatever the scheme count — the first declares the schemes,
 which is what makes the Swagger/Scalar authentication prompt appear; the second records **which** operations need
 one, without which a generated client cannot tell a public endpoint from a guarded one.
 
@@ -116,9 +116,11 @@ convention. Adding a scheme needs no transformer change.
 
 <!-- no-compile -->
 ```csharp
+using Regira.Security.Authentication.Web.OpenApi.Transformers;   // package Regira.Security.Authentication.Web
+
 builder.Services.AddOpenApi(options =>
 {
-    options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
+    options.AddDocumentTransformer<AuthenticationSchemeDocumentTransformer>();
     options.AddOperationTransformer<SecurityRequirementOperationTransformer>();
 });
 ```

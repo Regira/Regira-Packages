@@ -147,7 +147,8 @@ internal static class ConcurrencyTokenExtensions
     /// </para>
     /// </summary>
     /// <exception cref="EntityInputException{T}">A required version stamp (<see cref="IsRequiredVersionStamp"/>) the
-    /// client left out. Thrown before anything is attached, so the tracker is as the caller left it.</exception>
+    /// client left out. Thrown before this method attaches anything; <c>EntityWriteService.Modify</c> checks it before its
+    /// preppers run, so a refused update marks no row.</exception>
     internal static EntityEntry TrackAsUpdateOf<TEntity>(this DbContext dbContext, TEntity incoming, TEntity stored, ClientConcurrencyTokens clientTokens)
         where TEntity : class
     {
@@ -202,7 +203,7 @@ internal static class ConcurrencyTokenExtensions
     /// Refuses the update when a required version stamp was not supplied, naming every such stamp as a field error —
     /// the shape the web layers return as a 400 — with the incoming entity as the exception's item.
     /// </summary>
-    private static void RequireSuppliedStamps<TEntity>(TEntity incoming, ClientConcurrencyTokens clientTokens)
+    internal static void RequireSuppliedStamps<TEntity>(TEntity incoming, ClientConcurrencyTokens clientTokens)
         where TEntity : class
     {
         var missing = clientTokens.Values

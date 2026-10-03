@@ -187,4 +187,108 @@ public class RelatedCollectionTempIdTests
             Assert.That(category.Products!.Select(p => p.CategoryId), Has.All.EqualTo(category.Id));
         });
     }
+
+    // ── nested: a new row under an EXISTING owned row ─────────────────────────
+
+    public class Event : Regira.Entities.Models.Abstractions.IEntity<int>
+    {
+        public int Id { get; set; }
+        public string? Title { get; set; }
+        public ICollection<Session>? Sessions { get; set; }
+    }
+    public class Session : Regira.Entities.Models.Abstractions.IEntity<int>
+    {
+        public int Id { get; set; }
+        public int EventId { get; set; }
+        public string? Title { get; set; }
+        public ICollection<SessionSpeaker>? Speakers { get; set; }
+    }
+    public class SessionSpeaker : Regira.Entities.Models.Abstractions.IEntity<int>
+    {
+        public int Id { get; set; }
+        public int SessionId { get; set; }
+        public string? Name { get; set; }
+    }
+    public class EventContext(DbContextOptions<EventContext> options) : DbContext(options)
+    {
+        public DbSet<Event> Events => Set<Event>();
+        public DbSet<Session> Sessions => Set<Session>();
+        public DbSet<SessionSpeaker> SessionSpeakers => Set<SessionSpeaker>();
+    }
+
+    private ServiceProvider BuildEvents() => new ServiceCollection()
+        .AddDbContext<EventContext>(db => db.UseSqlite(_connection))
+        .UseEntities<EventContext>(o => o.UseDefaults())
+        .For<Event>(e => e
+            .Related(x => x.Sessions, s => s.Related(x => x.Speakers))
+            .Includes((q, _) => q.Include(x => x.Sessions!).ThenInclude(x => x.Speakers)))
+        .Services
+        .BuildServiceProvider();
+
+    private async Task<ServiceProvider> SeedEvent()
+    {
+        var sp = BuildEvents();
+        using var scope = sp.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<EventContext>();
+        await ctx.Database.EnsureCreatedAsync();
+        ctx.Events.Add(new Event
+        {
+            Id = 1,
+            Title = "Conference",
+            Sessions = [new Session { Id = 1, Title = "Keynote", Speakers = [new SessionSpeaker { Id = 1, Name = "Ada" }] }]
+        });
+        await ctx.SaveChangesAsync();
+        return sp;
+    }
+
+    /// <summary>
+    /// Attaching an existing owned row tracks everything below it, so a new grandchild was tracked with its temp key
+    /// still on it, and clearing that key afterwards failed the save: "The property 'SessionSpeaker.Id' is part of a
+    /// key and so cannot be modified". Rows one level down, and new rows under a new parent, never hit it.
+    /// </summary>
+    [TestCase(-5)]
+    [TestCase(0)]
+    public async Task A_New_Row_Under_An_Existing_Owned_Row_Is_Inserted_Under_A_Store_Key(int tempId)
+    {
+        var sp = await SeedEvent();
+
+        using (var scope = sp.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Event, int>>();
+            await service.Save(new Event
+            {
+                Id = 1,
+                Title = "Conference",
+                Sessions =
+                [
+                    new Session
+                    {
+                        Id = 1,
+                        EventId = 1,
+                        Title = "Keynote",
+                        Speakers =
+                        [
+                            new SessionSpeaker { Id = 1, SessionId = 1, Name = "Ada" },
+                            new SessionSpeaker { Id = tempId, SessionId = 1, Name = "Grace" },
+                        ]
+                    },
+                    new Session { Id = -7, EventId = 1, Title = "Workshop", Speakers = [new SessionSpeaker { Id = -8, Name = "Linus" }] },
+                ]
+            });
+            await service.SaveChanges();
+        }
+
+        using var readScope = sp.CreateScope();
+        var ctx = readScope.ServiceProvider.GetRequiredService<EventContext>();
+        var speakers = await ctx.SessionSpeakers.AsNoTracking().ToListAsync();
+        var sessions = await ctx.Sessions.AsNoTracking().ToListAsync();
+        Assert.Multiple(() =>
+        {
+            Assert.That(speakers.Select(x => x.Name), Is.EquivalentTo(new[] { "Ada", "Grace", "Linus" }));
+            Assert.That(speakers.Select(x => x.Id), Has.All.GreaterThan(0), "no row keeps a client-minted temp key");
+            Assert.That(speakers.Single(x => x.Name == "Grace").SessionId, Is.EqualTo(1));
+            Assert.That(sessions.Select(x => x.Id), Has.All.GreaterThan(0));
+            Assert.That(speakers.Single(x => x.Name == "Ada").Id, Is.EqualTo(1), "the existing row is kept, not re-inserted");
+        });
+    }
 }

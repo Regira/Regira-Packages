@@ -1,4 +1,5 @@
 # Regira Web AI Agent Instructions
+<!-- {% raw %} -->
 
 > Razor-based HTML template rendering plus common web utilities, middleware, and Swagger configuration.
 
@@ -144,12 +145,21 @@ services.AddControllers(options =>
     options.InputFormatters.Insert(0, new TextPlainInputFormatter()));
 ```
 
-### `ControllerExtensions`
+### `ControllerExtensions` and `FormFileExtensions`
 
 <!-- no-compile -->
 ```csharp
 return this.File(namedFile, inline: true);  // return INamedFile as download or inline
+var upload = formFile.ToNamedFile();        // IFormFile → INamedFile
 ```
+
+- `File()` sends `X-Content-Type-Options: nosniff` and, with every file but a PDF, `Content-Security-Policy:
+  sandbox`, so a file served from the app's origin renders but runs no script, whatever its name or stored type. A PDF
+  goes without: a sandbox keeps the browser's PDF viewer from loading. The sandbox is added to a policy the app
+  already sent, not put in its place; a middleware that sets `Content-Security-Policy` once the response starts
+  (`OnStarting`) must append to the header too, or it replaces the sandbox.
+- `ToNamedFile()` sets `ContentType` from the file name's extension (`application/octet-stream` when unknown), never
+  from the type the client declared. Restrict uploads by extension where it matters.
 
 ### `RequestUtility` — `HttpRequest` extension methods
 
@@ -194,3 +204,5 @@ builder.Services.AddControllers().DisplayEnumAsString();
 locally, before wiring any of them.
 
 ---
+
+<!-- {% endraw %} -->

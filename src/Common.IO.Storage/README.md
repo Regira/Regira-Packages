@@ -119,6 +119,13 @@ Identifier  →                   invoices/2024/inv-001.pdf
 Path        →  /var/app/storage/invoices/2024/inv-001.pdf
 ```
 
+The local and SFTP backends resolve every identifier against the root and throw `UnauthorizedAccessException` when it
+escapes it (through `../`, say); zip extraction to a folder (the `targetDirectory` overloads of `ZipUtility.Unzip`)
+checks every entry the same way, while `ZipUtility.Unzip(IBinaryFile)` returns each entry name as stored, `../x`
+included — check one before using it as a path. Folder names compare as the file
+system does: regardless of case on Windows and macOS, exactly elsewhere. The check is on by default (`Contained = true`
+on `FileSystemOptions` and `SftpConfig`); turn it off only for trusted input.
+
 ### Converting between identifier and absolute URI
 
 `IFileService` provides helpers to move between the two representations:
@@ -175,7 +182,6 @@ var service = new BinaryFileService(new FileSystemOptions { RootFolder = "/var/a
 
 **Network shares** — for a UNC path protected by a username & password, use `NetworkFileService` with a `NetworkShareCommunicator`. The communicator authenticates against the share lazily on the first file operation (or eagerly via `await communicator.Open()`); dispose it on application shutdown to release the connection.
 
-<!-- no-compile -->
 ```csharp
 services.AddSingleton(new NetworkFileSystemOptions
 {
@@ -230,6 +236,13 @@ var service = new BinaryBlobService(communicator);
 | `ContainerName` | `string?` | `null` | Blob container name |
 | `CreateContainerIfNotExists` | `bool` | `true` | Create the container when missing — set `false` to fail fast on misconfigured names |
 
+`Save` stores its `contentType` as the blob's `Content-Type`, which decides whether a browser following a SAS or CDN
+link shows the file or downloads it. Without one — `null`, empty or blank — the type comes from the identifier's
+extension. Never pass an upload's `IFormFile.ContentType`: the client chose it, so an `avatar.png` declared `text/html`
+would be served as a web page. Leave the argument out, or derive it from the name with
+`ContentTypeUtility.GetContentType(fileName)`. `Save` sets no `Content-Encoding`; a blob that already carries one keeps
+it until it is saved again.
+
 ---
 
 ### SSH / SFTP (`SftpService`)
@@ -239,11 +252,12 @@ var service = new BinaryBlobService(communicator);
 ```csharp
 var communicator = new SftpCommunicator(new SftpConfig
 {
-    Host          = "sftp.example.com",
-    Port          = 22,
-    UserName      = "deploy",
-    Password      = "s3cr3t",
-    ContainerName = "/home/deploy/files"
+    Host               = "sftp.example.com",
+    Port               = 22,
+    UserName           = "deploy",
+    Password           = configuration["Sftp:Password"],
+    ContainerName      = "/home/deploy/files",
+    HostKeyFingerprint = "SHA256:ohD8VZEXGWo6Ez8GSEJQ9WpafgLFsOfLOtGGQCQo6Og"   // the key type the server negotiates: ssh-keyscan sftp.example.com | ssh-keygen -lf - lists one per type
 });
 
 var service = new SftpService(communicator);
@@ -255,6 +269,7 @@ var service = new SftpService(communicator);
 | `Port` | `int` | `22` | SSH port |
 | `UserName` | `string` | *(required)* | Login username |
 | `Password` | `string?` | `null` | Login password |
+| `HostKeyFingerprint` | `string?` | `null` | The server's SHA-256 host key fingerprint, as `ssh-keygen -lf` prints it. A server presenting another key is refused. Left empty, **any host key is accepted**, so an impersonating server goes unnoticed |
 | `ContainerName` | `string?` | `"/"` | Remote base directory |
 | `Contained` | `bool` | `true` | Reject identifiers that escape `ContainerName` |
 
@@ -273,7 +288,7 @@ var service = new GitHubService(
     new GitHubCommunicator(new GitHubOptions
     {
         Uri       = "https://api.github.com/repos/owner/repo",
-        Key       = "ghp_xxxxxxxxxxxx",   // PAT — optional for public-repo reads
+        Key       = configuration["GitHub:Token"],   // PAT — optional for public-repo reads; keep it out of source
         UserAgent = "MyApp/1.0"
     }),
     jsonSerializer
@@ -309,6 +324,9 @@ using var newZip = new ZipFileService(new ZipFileCommunicator());
 await newZip.Save("data.csv", csvBytes);
 ```
 
+`List` and `Save` answer identifiers with `/` between folders, and a `FolderUri` — written with either separator —
+matches that folder as a whole: `dir2/dir2.1` does not include `dir2/dir2.10`.
+
 | `ZipFileCommunicator` | Type | Description |
 |-----------------------|------|-------------|
 | `SourceFile` | `IMemoryFile?` | Existing zip to open — omit to start empty |
@@ -338,6 +356,13 @@ IMemoryFile zipFromPaths    = paths.Zip(baseFolder: "/var/exports");   // paths 
 BinaryFileCollection items  = ZipUtility.Unzip(existingZip);           // zip → collection
 string[] extracted          = ZipUtility.Unzip(existingZip, targetDirectory: "/tmp/out");
 ```
+
+An entry is named after the file's `Identifier` (its `FileName` when there is none) with `/` between folders,
+as the ZIP format requires, so an archive made on Windows unzips into the same folders on Linux and macOS.
+`Unzip` reads a `\` in an entry name as a separator too.
+
+Neither `ZipUtility.Unzip` nor `ZipFileService` caps what an archive unpacks to. For one from an untrusted source, such
+as an upload, use `ZipManager` with `MaxUnzippedSize` ([Compression](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/docs/compression.html)).
 
 ## Helpers
 
@@ -382,15 +407,20 @@ FileNameUtility.GetAbsoluteUri("folder/file.txt", root)
 FileNameUtility.GetRelativeUri(absolutePath, root)
 FileNameUtility.GetCleanFileName("folder/sub/file.txt")  // → "file.txt"
 FileNameUtility.Combine("folder", "sub", "file.txt")
-FileNameUtility.SanitizeFilename(@"CON\report.txt")      // → @"_XXX_\report.txt" — replaces path segments that exactly match a Windows reserved name ("con.txt" is left as-is)
+FileNameUtility.SanitizeFilename(@"CON\report:v2.txt")   // → "_XXX_/report_v2.txt" ('\' on Windows) — replaces the characters Windows rejects and any path segment that exactly matches a Windows reserved name ("con.txt" is left as-is), on every platform
 FileNameUtility.GetUncShareRoot(@"\\server\share\sub")   // → @"\\server\share" (null for non-UNC)
 ```
+
+`SanitizeFilename` makes a path valid, not safe: `..` segments and a leading separator pass through. The file
+services refuse an identifier that leaves their root while `Contained` is on (the default); for a path you build
+yourself from untrusted input, `FileNameUtility.EnsureContained(Path.Combine(root, path), root)` returns the full path
+or throws `UnauthorizedAccessException`.
 
 ## Overview
 
 1. **[Index](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/)** — Overview, interface, and implementation reference
 1. [Examples](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/docs/examples.html) — Backend swap, transform & re-upload, GitHub→Azure mirror, ZIP export, safe upload
-1. [Compression](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/docs/compression.html) — Password-protected ZIP via SharpZipLib
+1. [Compression](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/docs/compression.html) — SharpZipLib's `ZipManager`: password-protected ZIP, and a size cap for an untrusted archive
 
 ## License
 

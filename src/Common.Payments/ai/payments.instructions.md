@@ -49,6 +49,7 @@ Both accept and return the shared `IPayment` model and can be registered as sing
 
 ### `PaymentService` (Mollie)
 
+<!-- no-compile -->
 ```csharp
 var svc = new Regira.Payments.Mollie.Services.PaymentService(new MollieConfig
 {
@@ -67,6 +68,7 @@ await svc.Delete(payment!);                // cancels the payment
 
 ### Webhook Handling
 
+<!-- no-compile -->
 ```csharp
 await svc.WebHook(paymentId, async p =>
 {
@@ -96,6 +98,7 @@ await svc.WebHook(paymentId, async p =>
 
 ### `PaymentService` (POM)
 
+<!-- no-compile -->
 ```csharp
 // jsonSerializer: Regira.Serializing.Abstractions.ISerializer
 IPaymentService svc = new Regira.Payments.Pom.PaymentService(pomSettings, jsonSerializer);

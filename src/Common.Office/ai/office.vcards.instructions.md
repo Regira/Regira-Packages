@@ -32,6 +32,7 @@ var manager = new VCardManager();
 
 ## Reading
 
+<!-- no-compile -->
 ```csharp
 // Single vCard from a .vcf string
 VCard contact = await manager.Read(vcfContent);
@@ -44,6 +45,7 @@ IEnumerable<VCard> contacts = await manager.ReadMany(vcfContent);
 
 ## Writing
 
+<!-- no-compile -->
 ```csharp
 // Single contact (default version: 3.0)
 string vcf = await manager.Write(contact);

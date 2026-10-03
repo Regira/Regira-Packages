@@ -139,7 +139,7 @@ public class AsposeTests() : WordTestsBase(new WordService(LicenseFromEnvironmen
     public override Task Nested_Documents_Do_Not_Wear_Out_The_Service() => base.Nested_Documents_Do_Not_Wear_Out_The_Service();
 
     [Test]
-    public override void A_Template_That_Includes_Itself_Fails() => base.A_Template_That_Includes_Itself_Fails();
+    public override Task A_Template_That_Includes_Itself_Fails() => base.A_Template_That_Includes_Itself_Fails();
 
     [Test]
     public override Task A_Missing_Collection_Table_Leaves_The_Others() => base.A_Missing_Collection_Table_Leaves_The_Others();
@@ -149,6 +149,61 @@ public class AsposeTests() : WordTestsBase(new WordService(LicenseFromEnvironmen
 
     [Test]
     public override Task A_Parameter_Key_Is_Matched_Literally() => base.A_Parameter_Key_Is_Matched_Literally();
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public override Task A_Conditional_Block_Keeps_The_Branch_That_Holds(bool isPaid) => base.A_Conditional_Block_Keeps_The_Branch_That_Holds(isPaid);
+
+    [Test]
+    public override Task A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value() => base.A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value();
+
+    [Test]
+    public override Task A_Parameter_Value_Holding_A_Marker_Is_Written_As_Text() => base.A_Parameter_Value_Holding_A_Marker_Is_Written_As_Text();
+    [Test]
+    public override Task Conditional_Blocks_Nest() => base.Conditional_Blocks_Nest();
+
+    [Test]
+    public override Task A_Conditional_Block_Drops_A_Table_Or_A_Cells_Content() => base.A_Conditional_Block_Drops_A_Table_Or_A_Cells_Content();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Header_Is_Resolved() => base.A_Conditional_Block_In_A_Header_Is_Resolved();
+
+    [Test]
+    public override Task A_Malformed_Conditional_Block_Fails() => base.A_Malformed_Conditional_Block_Fails();
+
+    [Test]
+    public override Task Markers_In_Deleted_Revisions_And_Field_Codes_Do_Not_Count() => base.Markers_In_Deleted_Revisions_And_Field_Codes_Do_Not_Count();
+
+    [Test]
+    public override Task A_Marker_Edited_Under_Track_Changes_Reads_As_Edited() => base.A_Marker_Edited_Under_Track_Changes_Reads_As_Edited();
+
+    [Test]
+    public override Task Marker_Text_In_A_Document_Without_Blocks_Stays_As_It_Is() => base.Marker_Text_In_A_Document_Without_Blocks_Stays_As_It_Is();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Text_Box_Or_Content_Control_Leaves_A_Paragraph() => base.A_Conditional_Block_In_A_Text_Box_Or_Content_Control_Leaves_A_Paragraph();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Grouped_Text_Box_Is_Resolved() => base.A_Conditional_Block_In_A_Grouped_Text_Box_Is_Resolved();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Grouped_Text_Box_In_A_Header_Is_Resolved() => base.A_Conditional_Block_In_A_Grouped_Text_Box_In_A_Header_Is_Resolved();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Grouped_Text_Box_Reads_Its_Markers_In_Any_Case() => base.A_Conditional_Block_In_A_Grouped_Text_Box_Reads_Its_Markers_In_Any_Case();
+
+    [Test]
+    public override Task A_Deletion_Inside_The_Braces_Stays_Deleted() => base.A_Deletion_Inside_The_Braces_Stays_Deleted();
+
+    [Test]
+    public override Task A_Marker_Paragraph_Ending_A_Section_Leaves_Only_The_Break() => base.A_Marker_Paragraph_Ending_A_Section_Leaves_Only_The_Break();
+
+    [Test]
+    public override Task A_Block_In_A_Footnote_Stays_As_Text() => base.A_Block_In_A_Footnote_Stays_As_Text();
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public override Task A_Dropped_Branch_Inserts_No_Nested_Document(bool hasAppendix) => base.A_Dropped_Branch_Inserts_No_Nested_Document(hasAppendix);
 
     [TestCase(HeaderFooterType.Even, true)]
     [TestCase(HeaderFooterType.Even, false)]
@@ -196,9 +251,9 @@ public class AsposeTests() : WordTestsBase(new WordService(LicenseFromEnvironmen
 
     [TestCase(FileFormat.Png)]
     [TestCase(FileFormat.Jpeg)]
-    public void Convert_To_Image_Points_At_ToImages(FileFormat format)
+    public async Task Convert_To_Image_Points_At_ToImages(FileFormat format)
     {
-        var ex = Assert.ThrowsAsync<NotSupportedException>(
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(
             () => Service.Convert(TemplateInput("template.docx"), format));
         Assert.That(ex!.Message, Does.Contain("ToImages"));
     }
@@ -207,13 +262,8 @@ public class AsposeTests() : WordTestsBase(new WordService(LicenseFromEnvironmen
     [TestCase(FileFormat.Html, "text/html")]
     [TestCase(FileFormat.Odt, "application/vnd.oasis.opendocument.text")]
     [TestCase(FileFormat.EPub, "application/epub+zip")]
-    public async Task Convert_Tags_The_Actual_Output_Format(FileFormat format, string contentType)
-    {
-        // Word.Spire reports a Word content type for every format; this backend does not.
-        using var output = await Service.Convert(TemplateInput("template.docx"), format);
-
-        Assert.That(output.ContentType, Is.EqualTo(contentType));
-    }
+    public override Task Convert_Tags_The_Actual_Output_Format(FileFormat format, string contentType)
+        => base.Convert_Tags_The_Actual_Output_Format(format, contentType);
 
     [Test]
     public async Task Convert_To_Html_Is_Self_Contained()

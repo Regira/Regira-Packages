@@ -3,14 +3,16 @@ using Regira.GuideVerifier;
 
 // Compile-the-guides verifier. The manifest defines snippet GROUPS; each group pairs a set of guide
 // files/folders with the src projects their snippets compile against. Per group: scan for fenced
-// ```csharp blocks (skipping ```csharp no-compile), classify each as a declaration or a statement
-// snippet, emit a throwaway compilation project that ProjectReferences the group's src projects, run
-// `dotnet build`, and report every failure as `file.md § heading`. Exits non-zero when any group fails.
+// ```csharp blocks (skipping any with a `<!-- no-compile -->` line above), classify each as a declaration
+// or a statement snippet, emit a throwaway compilation project that ProjectReferences the group's src
+// projects, run `dotnet build`, and report every failure as `file.md § heading`. Exits non-zero when any
+// group fails.
 //
 //   dotnet run --project tools/GuideVerifier [-- repoRoot] [--group name[,name…]]
 //
-// Best-effort: many guide snippets are partial fragments and must be marked ```csharp no-compile (see
-// tools/GuideVerifier/README.md). The value is that fully-formed snippets are now compiler-checked.
+// Best-effort: many guide snippets are partial fragments and must be marked with a `<!-- no-compile -->`
+// line above the fence (see tools/GuideVerifier/README.md). The value is that fully-formed snippets are
+// now compiler-checked.
 
 // First positional (non-flag) arg is the repo root; ignore stray flags like --nologo so a mistaken
 // `dotnet run ... --nologo` doesn't get treated as a path. `--group` filters to the named group(s).
@@ -156,7 +158,7 @@ if (failedGroups.Count == 0)
 Console.Error.WriteLine(
     $"\nFAILED group(s): {string.Join(", ", failedGroups)}.\n" +
     "Each fully-formed snippet must compile. Fix the guide, or if the block is a genuine partial " +
-    "fragment, mark it ```csharp no-compile (see tools/GuideVerifier/README.md).");
+    "fragment, put a <!-- no-compile --> line directly above its fence (see tools/GuideVerifier/README.md).");
 return 1;
 
 static string Sanitize(string name)

@@ -11,6 +11,7 @@ using Regira.Office.Word.Abstractions;
 using Regira.Office.Word.Models;
 using Regira.Office.Word.Syncfusion.Extensions;
 using Regira.Office.Word.Syncfusion.Internal;
+using Regira.Office.Word.Templating;
 using Regira.Utilities;
 using Syncfusion.DocIO;
 using Syncfusion.DocIO.DLS;
@@ -34,6 +35,8 @@ namespace Regira.Office.Word.Syncfusion;
 public class WordService : IWordService
 {
     private static readonly Regex ParamRegex = new("{{ *[a-zA-Z0-9._]+ *}}");
+    // what a marker opens with — not a placeholder's {{ — read as the blocks read it: in any case, else a whole word
+    private static readonly Regex MarkerStartRegex = new(@"\{\{\s*(?:#|/|else\b)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     public WordService(SyncfusionWordConfig? config = null)
     {
@@ -61,7 +64,6 @@ public class WordService : IWordService
     {
         using var doc = CreateDocument(input);
         var converted = ConvertDocument(doc, options);
-        // Unlike Word.Spire, the content type follows the actual output format.
         return Task.FromResult(converted.ToMemoryFile(GetContentType(options.OutputFormat)));
     }
 
@@ -189,6 +191,9 @@ public class WordService : IWordService
 
     private WordDocument FillDocument(WordDocument doc, WordTemplateInput input, WordDocument reference)
     {
+        // first, so a dropped branch's placeholders are never filled or inserted
+        ResolveConditions(doc, input);
+
         if (input.DocumentParameters?.Any() == true)
         {
             InsertDocuments(doc, input.DocumentParameters);
@@ -470,6 +475,145 @@ public class WordService : IWordService
         }
     }
 
+    /// <summary>Resolves the document's conditional blocks, as <see cref="ConditionalBlocks"/> describes them.</summary>
+    protected internal void ResolveConditions(WordDocument doc, WordTemplateInput input)
+    {
+        var stories = doc.Sections.OfType<WSection>()
+            .SelectMany(section => new[]
+            {
+                section.Body,
+                section.HeadersFooters.Header, section.HeadersFooters.FirstPageHeader, section.HeadersFooters.EvenHeader, section.HeadersFooters.OddHeader,
+                section.HeadersFooters.Footer, section.HeadersFooters.FirstPageFooter, section.HeadersFooters.EvenFooter, section.HeadersFooters.OddFooter
+            });
+        var paragraphs = stories
+            .SelectMany(BlockParagraphs)
+            .Concat(MarkerParagraphs(doc))
+            .Distinct()
+            .Select(paragraph => (Paragraph: paragraph, Text: GetVisibleText(paragraph)))
+            .ToArray();
+        if (!paragraphs.Any(paragraph => ConditionalBlocks.OpensBlock(paragraph.Text)))
+        {
+            return;
+        }
+
+        var containers = paragraphs
+            .Where(paragraph => ConditionalBlocks.ContainsMarker(paragraph.Text))
+            .Select(paragraph => paragraph.Paragraph.Owner)
+            .OfType<ICompositeEntity>()
+            .Distinct()
+            .ToArray();
+
+        foreach (var container in containers)
+        {
+            var children = container.ChildEntities;
+            var texts = children.OfType<IEntity>()
+                .Select(child => child is WParagraph paragraph ? GetVisibleText(paragraph) : null)
+                .ToArray();
+
+            foreach (var index in ConditionalBlocks.Resolve(texts, input).OrderByDescending(i => i))
+            {
+                children.RemoveAt(index);
+            }
+
+            // whatever holds paragraphs ends with one: a body, cell, header, footer, text box or content control
+            if (container is WTextBody body && (children.Count == 0 || children[children.Count - 1] is WTable))
+            {
+                body.AddParagraph();
+            }
+        }
+    }
+
+    /// <summary>
+    /// The paragraphs blocks are read from: the story's own, its tables' and content controls', and those of its
+    /// text boxes and shapes, which <see cref="WordDocumentExtensions.Descendants"/> does not enter. A footnote,
+    /// endnote or comment is not part of a template's blocks, as on the other backends.
+    /// </summary>
+    private static IEnumerable<WParagraph> BlockParagraphs(IEntity? entity)
+    {
+        if (entity is not ICompositeEntity composite)
+        {
+            yield break;
+        }
+
+        foreach (var child in composite.ChildEntities.OfType<IEntity>())
+        {
+            var inner = child switch
+            {
+                WFootnote or WComment => null,
+                WTextBox textBox => textBox.TextBoxBody,
+                Shape shape => shape.TextBody,
+                _ => child
+            };
+            if (child is WParagraph paragraph)
+            {
+                yield return paragraph;
+            }
+            foreach (var offspring in BlockParagraphs(inner))
+            {
+                yield return offspring;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The paragraphs a marker opens in, found by search, in a document holding a group of text boxes (<c>wpg:wgp</c>):
+    /// a group loads as a <c>GroupShape</c>, whose shapes the public object model does not expose, so
+    /// <see cref="BlockParagraphs"/> cannot walk into it. Only then: reading a match splits and merges the runs around
+    /// it, which a document without a group is spared. A footnote, endnote or comment is left out, as there.
+    /// </summary>
+    private static IEnumerable<WParagraph> MarkerParagraphs(WordDocument doc)
+        => (doc.FindAllItemsByProperty(EntityType.GroupShape, null, null) is not { Count: > 0 } ? [] : doc.FindAll(MarkerStartRegex) ?? [])
+            .Select(selection => selection.GetAsOneRange()?.OwnerParagraph)
+            .OfType<WParagraph>()
+            .Where(paragraph => !InNoteOrComment(paragraph));
+
+    private static bool InNoteOrComment(IEntity entity)
+    {
+        for (var owner = entity.Owner; owner != null; owner = owner.Owner)
+        {
+            if (owner is WFootnote or WComment)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// The paragraph's text without its field codes and deleted revisions, which <see cref="WParagraph.Text"/> holds.
+    /// </summary>
+    private static string GetVisibleText(WParagraph paragraph)
+    {
+        var text = new VisibleText();
+        Read(paragraph.Items);
+        return text.ToString();
+
+        void Read(ParagraphItemCollection items)
+        {
+            foreach (ParagraphItem item in items)
+            {
+                switch (item)
+                {
+                    case WField:
+                        text.FieldStart();
+                        break;
+                    case WFieldMark { Type: FieldMarkType.FieldSeparator }:
+                        text.FieldSeparator();
+                        break;
+                    case WFieldMark { Type: FieldMarkType.FieldEnd }:
+                        text.FieldEnd();
+                        break;
+                    case WTextRange range:
+                        text.Append(range.Text, range.IsDeleteRevision);
+                        break;
+                    case InlineContentControl control:
+                        Read(control.ParagraphItems);
+                        break;
+                }
+            }
+        }
+    }
+
     protected internal void ReplaceGlobalParameters(WordDocument doc, IDictionary<string, object> parameters)
     {
         // BookmarkCollection is not IEnumerable
@@ -700,14 +844,7 @@ public class WordService : IWordService
     }
 
     protected internal static string GetContentType(RegiraFileFormat format)
-        => format switch
-        {
-            RegiraFileFormat.Pdf => ContentTypes.PDF,
-            RegiraFileFormat.Html => ContentTypes.HTML,
-            RegiraFileFormat.Doc or RegiraFileFormat.Dot => ContentTypes.DOC,
-            RegiraFileFormat.Docx or RegiraFileFormat.Dotx or RegiraFileFormat.Docm or RegiraFileFormat.Dotm => ContentTypes.DOCX,
-            _ => ContentTypeUtility.GetContentType($"x.{format.ToString().ToLowerInvariant()}")
-        };
+        => WordContentTypes.Of(format);
 
     private static bool IsOpenDocumentText(Stream stream)
     {

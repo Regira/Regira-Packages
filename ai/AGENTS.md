@@ -187,9 +187,9 @@ When the consumer project already contains Regira packages, inspect the project'
 
 | Installed package pattern | Module or family | Guidance | Use when | Main packages and defaults |
 |---------------------------|------------------|----------|----------|----------------------------|
-| `Regira.Entities*` | `Entities` | Dedicated module guides | CRUD APIs, entity services, DTO mapping, EF Core repositories, and generated endpoints | `Regira.Entities`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Mapping.Mapster` (default mapping), `Regira.Entities.Mapping.AutoMapper`, `Regira.Entities.EFcore`, `Regira.Entities.Web` |
+| `Regira.Entities*` | `Entities` | Dedicated module guides | CRUD APIs, entity services, DTO mapping, EF Core repositories, and generated endpoints | `Regira.Entities`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Mapping.Mapster` (default mapping), `Regira.Entities.Mapping.AutoMapper`, `Regira.Entities.Validation.FluentValidation` (FluentValidation rules as entity validators), `Regira.Entities.EFcore`, `Regira.Entities.Web` |
 | `Regira.IO.Storage*` | `IO.Storage` | Dedicated module guides | File storage, uploads, Azure Blob, SFTP, ZIP, or SimpleTCP file transfer | `Regira.IO.Storage`, `Regira.IO.Storage.Azure`, `Regira.IO.Storage.SSH`, `Regira.IO.Storage.GitHub`, `Regira.IO.Storage.SimpleTCP` |
-| `Regira.IO.Compression.SharpZipLib` | `IO.Compression` | No dedicated family guide | ZIP archive creation and extraction, especially password-protected ZIP files | `Regira.IO.Compression.SharpZipLib` |
+| `Regira.IO.Compression.SharpZipLib` | `IO.Compression` | The `IO.Storage` guide, § `ZipManager` (`io.storage.instructions`, shipped with `Regira.IO.Storage` — read it over MCP when only this package is installed) | ZIP archive creation and extraction, especially password-protected ZIP files, and unzipping an archive from an untrusted source (`MaxUnzippedSize`) | `Regira.IO.Compression.SharpZipLib` |
 | `Regira.Office` | `Office` | Dedicated family overview | Office family overview or when the user still needs to choose between PDF, Excel, Word, Mail, OCR, and related submodules | `Regira.Office` |
 | `Regira.Office.Clients` | `Office.Clients` | No dedicated family guide | HTTP client extensions for consuming Regira Office services remotely | `Regira.Office.Clients` |
 | `Regira.Office.PDF*` | `Office.PDF` | Dedicated module guides | HTML to PDF, PDF operations, printing | `Regira.Office.PDF.SelectPdf` (preferred for HTML to PDF), `Regira.Office.PDF.DocNET` (preferred for PDF operations), `Regira.Office.PDF.Spire` (preferred when print and PDF ops are both needed); also `Regira.Office.PDF.Puppeteer`, `Regira.Office.PDF.MsPlaywright`, `Regira.Office.PDF.PDFtoPrinter`, `Regira.Office.PDF.PockyBum522` |
@@ -211,7 +211,7 @@ When the consumer project already contains Regira packages, inspect the project'
 | `Regira.Common` | `Common` | No dedicated family guide | Shared abstractions, utilities, normalizing helpers, base contracts | `Regira.Common` |
 | `Regira.Caching.Runtime` | `Caching` | No dedicated family guide | Runtime caching on top of the common abstractions | `Regira.Caching.Runtime` |
 | `Regira.DAL.EFcore` | `DAL.EFcore` | No dedicated family guide | EF Core extensions and repository utilities | `Regira.DAL.EFcore` |
-| `Regira.DAL.MongoDB` | `DAL.MongoDB` | No dedicated family guide | MongoDB connectivity and backup or restore workflows | `Regira.DAL.MongoDB` |
+| `Regira.DAL.MongoDB` | `DAL.MongoDB` | No dedicated family guide | MongoDB connectivity and backup or restore workflows. A filter or sort names a field as the serializer stores it: camelCase with `Regira.Serializing.Newtonsoft` | `Regira.DAL.MongoDB` |
 | `Regira.DAL.MySQL*` | `DAL.MySQL` | No dedicated family guide | MySQL or MariaDB connectivity and backup workflows | `Regira.DAL.MySQL`, `Regira.DAL.MySQL.MySqlBackup` |
 | `Regira.DAL.PostgreSQL` | `DAL.PostgreSQL` | No dedicated family guide | PostgreSQL connectivity | `Regira.DAL.PostgreSQL` |
 | `Regira.DAL.SqlServer` | `DAL.SqlServer` | No dedicated family guide | SQL Server backup and restore (native `.bak`) | `Regira.DAL.SqlServer` |

@@ -3,6 +3,7 @@ using Entities.TestApi.Infrastructure.Courses;
 using Entities.TestApi.Infrastructure.Departments;
 using Entities.TestApi.Infrastructure.Persons;
 using Entities.Web.Testing.Infrastructure;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
@@ -241,6 +242,12 @@ public class PersonControllerTests : IClassFixture<ContosoApiFactory>, IDisposab
         var patchResponse = await client.PatchAsJsonAsync($"/persons/{person.Id}", new { givenName = (string?)null });
 
         Assert.Equal(HttpStatusCode.BadRequest, patchResponse.StatusCode);
+        // the body a PUT's DataAnnotations failure answers with: a ValidationProblemDetails, not the bare field map
+        Assert.Equal("application/problem+json", patchResponse.Content.Headers.ContentType?.MediaType);
+        var problem = await patchResponse.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+        // camelCased: this host serializes with Newtonsoft's camelCase resolver, which applies to dictionary keys
+        Assert.Contains("givenName", problem!.Errors.Keys);
+        Assert.False(problem.Extensions.ContainsKey("errorDetails"));
     }
     [Fact]
     public async Task Patch_404()

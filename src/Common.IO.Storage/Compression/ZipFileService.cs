@@ -37,15 +37,16 @@ public class ZipFileService(ZipFileCommunicator communicator) : IFileService, ID
     }
     public Task<IEnumerable<string>> List(FileSearchObject? so = null)
     {
-        var identifiers = ZipArchive.Entries
-            .Select(e => e.FullName);
+        // as Unzip names them: an archive another tool wrote may separate its folders with '\'
+        IEnumerable<string> identifiers = ZipArchive.Entries.Select(e => ZipUtility.NormalizePath(e.FullName));
 
         if (so != null)
         {
-            if (!string.IsNullOrWhiteSpace(so.FolderUri))
+            // the folder itself, whole: dir2/dir2.1 does not reach into dir2/dir2.10
+            var folder = string.IsNullOrWhiteSpace(so.FolderUri) ? "" : ZipUtility.NormalizePath(so.FolderUri)!.TrimEnd('/');
+            if (folder.Length > 0)
             {
-                var folderUri = so.FolderUri!.TrimStart('/');
-                identifiers = identifiers.Where(x => x.TrimStart('/').StartsWith(folderUri, StringComparison.InvariantCultureIgnoreCase));
+                identifiers = identifiers.Where(x => x.StartsWith(folder + '/', StringComparison.InvariantCultureIgnoreCase));
             }
             if (so.Extensions?.Any() == true)
             {
@@ -58,14 +59,15 @@ public class ZipFileService(ZipFileCommunicator communicator) : IFileService, ID
 #if NET10_0_OR_GREATER
     public async IAsyncEnumerable<string> ListAsync(FileSearchObject? so = null)
     {
-        IEnumerable<string> identifiers = ZipArchive.Entries.Select(e => e.FullName);
+        IEnumerable<string> identifiers = ZipArchive.Entries.Select(e => ZipUtility.NormalizePath(e.FullName));
 
         if (so != null)
         {
-            if (!string.IsNullOrWhiteSpace(so.FolderUri))
+            // the folder itself, whole: dir2/dir2.1 does not reach into dir2/dir2.10
+            var folder = string.IsNullOrWhiteSpace(so.FolderUri) ? "" : ZipUtility.NormalizePath(so.FolderUri)!.TrimEnd('/');
+            if (folder.Length > 0)
             {
-                var folderUri = so.FolderUri!.TrimStart('/');
-                identifiers = identifiers.Where(x => x.TrimStart('/').StartsWith(folderUri, StringComparison.InvariantCultureIgnoreCase));
+                identifiers = identifiers.Where(x => x.StartsWith(folder + '/', StringComparison.InvariantCultureIgnoreCase));
             }
             if (so.Extensions?.Any() == true)
             {
@@ -83,14 +85,14 @@ public class ZipFileService(ZipFileCommunicator communicator) : IFileService, ID
         var file = bytes.ToBinaryFile(contentType);
         file.Identifier = identifier;
         ZipArchive.AddFile(file);
-        return Task.FromResult(identifier);
+        return Task.FromResult(ZipUtility.NormalizePath(identifier)!);
     }
     public Task<string> Save(string identifier, Stream stream, string? contentType = null)
     {
         var file = stream.ToBinaryFile(contentType);
         file.Identifier = identifier;
         ZipArchive.AddFile(file);
-        return Task.FromResult(identifier);
+        return Task.FromResult(ZipUtility.NormalizePath(identifier)!);
     }
     public Task Delete(string identifier)
     {
@@ -102,7 +104,8 @@ public class ZipFileService(ZipFileCommunicator communicator) : IFileService, ID
     public Task Move(string sourceIdentifier, string targetIdentifier)
     {
         var entry = ZipArchive.Find(sourceIdentifier);
-        if (entry == null)
+        // a target naming the same entry, whatever its separators, leaves it where it is
+        if (entry == null || ZipUtility.NormalizePath(entry.FullName) == ZipUtility.NormalizePath(targetIdentifier))
         {
             return Task.CompletedTask;
         }

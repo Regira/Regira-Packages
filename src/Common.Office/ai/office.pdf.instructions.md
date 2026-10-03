@@ -43,17 +43,18 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 | Package | Backend | HTML→PDF | PDF Ops | Print | Runtime footprint |
 |---|---|---|---|---|---|
-| `PDF.SelectPdf` | Select.HtmlToPdf | ✓ full | — | — | Pulls `System.Drawing.Common`, which throws on non-Windows from .NET 6 on — treat as **Windows** |
+| `PDF.SelectPdf` | Select.HtmlToPdf | ✓ full | — | — | Pulls `System.Drawing.Common`, which throws on non-Windows from .NET 6 on — treat as **Windows**. The free Community Edition converts only the first **five pages'** worth of a document and drops the rest without an error or a notice |
 | `PDF.Puppeteer` | PuppeteerSharp | ✓ A4 | — | — | **Downloads Chromium on first use** (`BrowserFetcher().DownloadAsync()`) — needs network + disk at runtime, or a pre-seeded cache |
 | `PDF.MsPlaywright` | Microsoft.Playwright | ✓ A4 | — | — | **Installs its browser on first use** — same constraint; the install is guarded by a process-wide lock, so the first request pays for it |
 | `PDF.DocNET` | Docnet.Core | — | merge, split, img↔pdf, text | — | Managed wrapper over a native library — the RID must be one `Docnet.Core` ships binaries for |
-| `PDF.Spire` | FreeSpire.PDF | — | merge, split, img, text | ✓ | The **free** edition — the vendor caps document size/pages; confirm the current terms before relying on it |
+| `PDF.Spire` | FreeSpire.PDF | — | merge, split, img, text | ✓ | The **free** edition: loading or creating a PDF of more than **ten pages** throws (a merge whose result passes ten included), and `ToImages` renders only the first **three** pages, returning blank images for the rest |
 | `PDF.PDFtoPrinter` | PDFtoPrinter | — | — | ✓ (Win) | Drives an external printing utility |
 | `PDF.PockyBum522` | SimpleFreePdfPrinter | — | — | ✓ (Win) | Targets `net*-windows` — **will not build** on a non-Windows TFM |
 
 **Recommendations:**
-- HTML → PDF: **SelectPdf** on Windows (full options, nothing to download); **Puppeteer**/**Playwright**
-  where the host is Linux or the CSS must be pixel-perfect and a first-run browser fetch is acceptable
+- HTML → PDF: **SelectPdf** on Windows for documents of up to five pages (full options, nothing to download);
+  **Puppeteer**/**Playwright** where the host is Linux, a document runs longer, or the CSS must be pixel-perfect,
+  and a first-run browser fetch is acceptable
 - PDF operations: **DocNET** (merge, split, images, text extraction) — the only cross-platform ops backend
 - Printing: **Spire** (operations + print) or **PDFtoPrinter** (print-only, Windows)
 
@@ -63,18 +64,21 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 ### `IHtmlToPdfService`
 
+<!-- no-compile -->
 ```csharp
 Task<IMemoryFile> Create(HtmlInput input, CancellationToken cancellationToken = default);
 ```
 
 ### `IPdfMerger`
 
+<!-- no-compile -->
 ```csharp
 Task<IMemoryFile?>             Merge(IEnumerable<IMemoryFile> items, CancellationToken cancellationToken = default);
 ```
 
 ### `IPdfSplitter`
 
+<!-- no-compile -->
 ```csharp
 Task<IEnumerable<IMemoryFile>>  Split(IMemoryFile pdf, IEnumerable<PdfSplitRange> ranges, CancellationToken cancellationToken = default);
 Task<int>                       GetPageCount(IMemoryFile pdf, CancellationToken cancellationToken = default);
@@ -82,12 +86,14 @@ Task<int>                       GetPageCount(IMemoryFile pdf, CancellationToken 
 
 ### `IPdfEditor` (extends `IPdfMerger` + `IPdfSplitter`)
 
+<!-- no-compile -->
 ```csharp
 Task<IMemoryFile?>  RemovePages(IMemoryFile pdf, IEnumerable<int> pages, CancellationToken cancellationToken = default);
 ```
 
 ### `IPdfToImageService` / `IImagesToPdfService`
 
+<!-- no-compile -->
 ```csharp
 Task<IList<IImageFile>>  ToImages(IMemoryFile pdf, PdfToImagesOptions? options = null, CancellationToken cancellationToken = default);
 Task<IMemoryFile?>       ImagesToPdf(ImagesInput input, CancellationToken cancellationToken = default);
@@ -95,18 +101,21 @@ Task<IMemoryFile?>       ImagesToPdf(ImagesInput input, CancellationToken cancel
 
 ### `IPdfToImageAsyncService`
 
+<!-- no-compile -->
 ```csharp
 IAsyncEnumerable<IImageFile>  ToImagesAsync(IMemoryFile pdf, PdfToImagesOptions? options = null);
 ```
 
 ### `IPdfTextExtractor`
 
+<!-- no-compile -->
 ```csharp
 Task<string>          GetText(IMemoryFile pdf, CancellationToken cancellationToken = default);
 ```
 
 ### `IPdfTextService` (extends `IPdfTextExtractor`)
 
+<!-- no-compile -->
 ```csharp
 Task<IList<string>>   GetTextPerPage(IMemoryFile pdf, CancellationToken cancellationToken = default);
 Task<IMemoryFile?>    RemoveEmptyPages(IMemoryFile pdf, CancellationToken cancellationToken = default);
@@ -114,6 +123,7 @@ Task<IMemoryFile?>    RemoveEmptyPages(IMemoryFile pdf, CancellationToken cancel
 
 ### `IPdfPrinter`
 
+<!-- no-compile -->
 ```csharp
 string              DefaultPrinter { get; }
 Task<IList<string>> List(CancellationToken cancellationToken = default);
@@ -122,7 +132,7 @@ Task                Print(PdfPrinterInput input, CancellationToken cancellationT
 
 ### `IPdfService`
 
-Composite: `IPdfEditor + IPdfImageService + IPdfTextService`. Implemented by `PDF.DocNET.PdfManager` and `PDF.Spire.PdfManager`.
+Composite: `IPdfEditor + IPdfImageService + IPdfTextService`. Implemented by `PDF.DocNET.PdfManager`. `PDF.Spire.PdfManager` implements `IPdfMerger`, `IPdfSplitter`, `IPdfToImageService` and `IPdfTextExtractor` only — resolve those, not `IPdfService`.
 
 ---
 
@@ -169,6 +179,7 @@ Composite: `IPdfEditor + IPdfImageService + IPdfTextService`. Implemented by `PD
 
 ## Usage
 
+<!-- no-compile -->
 ```csharp
 // HTML → PDF (SelectPdf)
 IHtmlToPdfService pdf = new Regira.Office.PDF.SelectPdf.PdfManager();

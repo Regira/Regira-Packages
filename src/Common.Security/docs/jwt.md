@@ -50,6 +50,9 @@ services.AddJwtAuthentication(options =>
 });
 ```
 
+`Authority` is optional for these self-issued tokens: it is written into each token as its issuer and checked when a
+token comes in. Left unset, tokens carry no issuer and none is checked.
+
 ### ClaimsPrincipal extensions
 
 Namespace `Regira.Security.Authentication.Jwt.Extensions` — historical; these apply to every scheme.

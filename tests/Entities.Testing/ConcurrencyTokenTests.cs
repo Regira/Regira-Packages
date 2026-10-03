@@ -208,7 +208,7 @@ public class ConcurrencyTokenTests
         await OtherWriter<Order>(order.Id, x => { x.Status = "Paid"; x.Version = Guid.NewGuid(); });
 
         // what a PUT carries: the client's snapshot, token included
-        var ex = Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(new Order { Id = order.Id, Status = "Cancelled", Version = read }));
+        var ex = await Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(new Order { Id = order.Id, Status = "Cancelled", Version = read }));
 
         var stored = await Find<Order>(order.Id);
         Assert.Multiple(() =>
@@ -264,7 +264,7 @@ public class ConcurrencyTokenTests
         await service.Modify(new Order { Id = order.Id, Status = "Shipped" });
         await OtherWriter<Order>(order.Id, x => x.Version = Guid.NewGuid());
 
-        Assert.ThrowsAsync<EntityConcurrencyException>(() => service.SaveChanges());
+        await Assert.ThrowsAsync<EntityConcurrencyException>(() => service.SaveChanges());
     }
 
     [Test]
@@ -278,7 +278,7 @@ public class ConcurrencyTokenTests
         var current = Guid.NewGuid();
         await OtherWriter<Ticket>(ticket.Id, x => x.Version = current);
 
-        Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(new Ticket { Id = ticket.Id, Subject = "Stale", Version = read }));
+        await Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(new Ticket { Id = ticket.Id, Subject = "Stale", Version = read }));
         await Write(new Ticket { Id = ticket.Id, Subject = "Fresh", Version = current });
 
         Assert.That((await Find<Ticket>(ticket.Id)).Subject, Is.EqualTo("Fresh"));
@@ -305,7 +305,7 @@ public class ConcurrencyTokenTests
         var lineCurrent = Guid.NewGuid();
         await OtherWriter<OrderLine>(lineId, x => { x.Quantity = 5; x.Version = lineCurrent; });
 
-        Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(Snapshot(order.Id, version, "Cancelled", lineId, lineRead, 2)));
+        await Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(Snapshot(order.Id, version, "Cancelled", lineId, lineRead, 2)));
         var statusAfterRefusal = (await Find<Order>(order.Id)).Status;
         var quantityAfterRefusal = (await Find<OrderLine>(lineId)).Quantity;
 
@@ -352,7 +352,7 @@ public class ConcurrencyTokenTests
         await RawSql("UPDATE Articles SET Title = 'Edited elsewhere' WHERE Id = {0}", article.Id);
         var current = (await Find<Article>(article.Id)).RowVersion;
 
-        Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(new Article { Id = article.Id, Title = "Stale", RowVersion = read }));
+        await Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(new Article { Id = article.Id, Title = "Stale", RowVersion = read }));
         await Write(new Article { Id = article.Id, Title = "Fresh", RowVersion = current });
 
         // read back through a fresh query: SQLite's RETURNING does not see what an AFTER trigger wrote
@@ -374,7 +374,7 @@ public class ConcurrencyTokenTests
         await OtherWriter<Page>(page.Id, x => { x.Content = "Edited elsewhere"; x.ETag = ETagPrimer.Hash(x.Content); });
 
         // the stale client writes back exactly what it read: the primer computes the ETag it already holds
-        Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(new Page { Id = page.Id, Content = "Draft", ETag = read }));
+        await Assert.ThrowsAsync<EntityConcurrencyException>(() => Write(new Page { Id = page.Id, Content = "Draft", ETag = read }));
         var afterRefusal = (await Find<Page>(page.Id)).Content;
         await Write(new Page { Id = page.Id, Content = "Fresh", ETag = ETagPrimer.Hash("Edited elsewhere") });
         var afterCurrentWrite = (await Find<Page>(page.Id)).Content;
@@ -425,7 +425,7 @@ public class ConcurrencyTokenTests
         await service.Modify(new Customer { Id = customer.Id, LastName = "Peeters", City = "Brugge" });
         await OtherWriter<Customer>(customer.Id, x => x.LastName = "Maes");
 
-        Assert.ThrowsAsync<EntityConcurrencyException>(() => service.SaveChanges());
+        await Assert.ThrowsAsync<EntityConcurrencyException>(() => service.SaveChanges());
         Assert.That((await Find<Customer>(customer.Id)).LastName, Is.EqualTo("Maes"), "the other writer's change must survive");
     }
 
@@ -487,7 +487,7 @@ public class ConcurrencyTokenTests
         await service.Modify(new Order { Id = order.Id, Status = "Shipped", Version = order.Version });
         await RawSql("DELETE FROM Orders WHERE Id = {0}", order.Id);
 
-        var ex = Assert.ThrowsAsync<EntityConcurrencyException>(() => service.SaveChanges());
+        var ex = await Assert.ThrowsAsync<EntityConcurrencyException>(() => service.SaveChanges());
 
         var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
         Assert.Multiple(() =>

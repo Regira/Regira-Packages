@@ -4,6 +4,7 @@
 
 ## Generate a QR code for a stock item
 
+<!-- no-compile -->
 ```csharp
 IQRCodeService qr  = new Regira.Office.Barcodes.ZXing.QRCodeService();
 IImageFile     img = await qr.Create($"https://warehouse.example.com/items/{item.Id}");
@@ -14,6 +15,7 @@ await _fileService.Save($"items/{item.Id}/qr.jpg", img.GetBytes()!);
 
 ## Generate a Code128 barcode for a shipment
 
+<!-- no-compile -->
 ```csharp
 IBarcodeService bc      = new Regira.Office.Barcodes.ZXing.BarcodeService();
 IImageFile      barcode = await bc.Create(new BarcodeInput
@@ -26,6 +28,7 @@ IImageFile      barcode = await bc.Create(new BarcodeInput
 
 ## Scan a barcode from an uploaded image
 
+<!-- no-compile -->
 ```csharp
 public async Task<string?> ScanIncomingLabel(byte[] labelImageBytes)
 {

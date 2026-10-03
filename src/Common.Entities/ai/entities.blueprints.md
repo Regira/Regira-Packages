@@ -349,7 +349,7 @@ modelBuilder.Entity<PartyRelationship>(entity =>
 ```
 
 - `Party` is `IArchivable`, so the archived query filter `UseDefaults()` wires in applies — on the `Party` root only, which covers both discriminator values.
-- Owned children **cascade**; the self-referencing relation FKs are **`Restrict`** (cascade on a self-reference is rejected by SQL Server, and archival goes through `IArchivable` anyway). Per the `OnDelete` rule in the instructions: deleting a still-referenced party surfaces as a 409 Conflict (no prepper runs on a delete, so the 409 is the answer).
+- Owned children **cascade**; the self-referencing relation FKs are **`Restrict`** (cascade on a self-reference is rejected by SQL Server, and archival goes through `IArchivable` anyway). Per the `OnDelete` rule in the instructions: deleting a still-referenced party surfaces as a 409 Conflict — or as a field-level 400 from a validator that checks the references on `Remove`.
 - The unique index makes a duplicate edge a `UNIQUE constraint failed` instead of silent data drift.
 
 ### Registration
@@ -898,7 +898,6 @@ public record CategorySearchObject : SearchObject
     public bool? IsRoot { get; set; }
     public ICollection<int>? AncestorId { get; set; }   // recursive: any depth below these ids
     public ICollection<int>? OffspringId { get; set; }  // recursive: any depth above these ids
-    public ICollection<int>? RootId { get; set; }       // recursive: reachable from these seeds
 }
 
 // in the query filter — the TVF composes server-side inside the predicate (one SQL statement):
@@ -909,8 +908,6 @@ public override IQueryable<Category> Build(IQueryable<Category> query, CategoryS
         query = query.Where(x => dbContext.GetCategoryOffspring(so.AncestorId, 9).Any(o => o.ChildId == x.Id));
     if (so?.OffspringId?.Any() == true)
         query = query.Where(x => dbContext.GetCategoryAncestors(so.OffspringId, 9).Any(o => o.ParentId == x.Id));
-    if (so?.RootId?.Any() == true)
-        query = query.Where(x => dbContext.GetCategoryOffspring(so.RootId, 9).Any(o => o.RootId == x.Id));
     return query;
 }
 ```

@@ -7,11 +7,15 @@ using Microsoft.Extensions.Logging;
 using Regira.Entities.DependencyInjection.Extensions;
 using Regira.Entities.DependencyInjection.QueryBuilders;
 using Regira.Entities.DependencyInjection.ServiceCollections.Models;
+using Regira.Entities.DependencyInjection.Validators;
 using Regira.Entities.Models.Abstractions;
 using Regira.Entities.QueryBuilders.Abstractions;
 using Regira.Entities.EFcore.Primers;
 using Regira.Entities.EFcore.Primers.Abstractions;
 using Regira.Entities.EFcore.QueryBuilders.GlobalFilterBuilders;
+using Regira.Entities.EFcore.Services;
+using Regira.Entities.Preppers.Abstractions;
+using Regira.Entities.Services.Abstractions;
 
 namespace Entities.Testing;
 
@@ -29,7 +33,7 @@ public class StartupValidationTests
     [TearDown]
     public void TearDown() => _connection.Close();
 
-    private sealed class CaptureLoggerProvider : ILoggerProvider
+    internal sealed class CaptureLoggerProvider : ILoggerProvider
     {
         public List<string> Warnings { get; } = [];
         public List<string> Errors { get; } = [];
@@ -50,7 +54,7 @@ public class StartupValidationTests
         }
     }
 
-    private static async Task RunHostedServices(ServiceProvider serviceProvider)
+    internal static async Task RunHostedServices(ServiceProvider serviceProvider)
     {
         foreach (var hostedService in serviceProvider.GetServices<IHostedService>())
         {
@@ -59,7 +63,7 @@ public class StartupValidationTests
     }
 
     [Test]
-    public void Validation_Is_Skipped_Without_Environment_Or_OptIn()
+    public async Task Validation_Is_Skipped_Without_Environment_Or_OptIn()
     {
         // primers without interceptor would be an error — but validation is off outside Development
         var services = new ServiceCollection();
@@ -69,11 +73,11 @@ public class StartupValidationTests
             .For<Product>(e => e.Prime(_ => { }));
 
         using var sp = services.BuildServiceProvider();
-        Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
+        await Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
     }
 
     [Test]
-    public void Missing_Primer_Interceptor_Warns_Without_Failing_Startup()
+    public async Task Missing_Primer_Interceptor_Warns_Without_Failing_Startup()
     {
         // An overridden SaveChanges applying primers manually is undetectable, so a missing interceptor
         // warns loudly instead of gating startup on a configuration the validator cannot see.
@@ -85,13 +89,13 @@ public class StartupValidationTests
             .For<Product>(e => e.Prime(_ => { }));
 
         using var sp = services.BuildServiceProvider();
-        Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
+        await Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
 
         Assert.That(capture.Warnings, Has.Some.Contains(nameof(ProductContext)).And.Some.Contains("WireDbContext"));
     }
 
     [Test]
-    public void Wired_Primer_Interceptor_Passes_Validation()
+    public async Task Wired_Primer_Interceptor_Passes_Validation()
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -104,11 +108,11 @@ public class StartupValidationTests
             .For<Product>(e => e.Prime(_ => { }));
 
         using var serviceProvider = services.BuildServiceProvider();
-        Assert.DoesNotThrowAsync(() => RunHostedServices(serviceProvider));
+        await Assert.DoesNotThrowAsync(() => RunHostedServices(serviceProvider));
     }
 
     [Test]
-    public void Missing_Interceptor_Warning_Is_Logged_With_The_Fix_Snippet()
+    public async Task Missing_Interceptor_Warning_Is_Logged_With_The_Fix_Snippet()
     {
         var capture = new CaptureLoggerProvider();
         var services = new ServiceCollection();
@@ -122,14 +126,14 @@ public class StartupValidationTests
             .For<Product>(e => e.Prime(_ => { }));
 
         using var sp = services.BuildServiceProvider();
-        Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
+        await Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
         Assert.That(capture.Warnings, Has.Some.Contains("WireDbContext"));
     }
 
     // Abstract-base registrations (UseEntities<Base>() + AddDbContext<Derived>()) must be validated
     // against the concrete context EF actually builds — not warn "could not inspect" on the base.
     [Test]
-    public void Abstract_Base_Registration_Validates_The_Concrete_Context()
+    public async Task Abstract_Base_Registration_Validates_The_Concrete_Context()
     {
         var capture = new CaptureLoggerProvider();
         var services = new ServiceCollection();
@@ -143,7 +147,7 @@ public class StartupValidationTests
             .For<Product>(e => e.Prime(_ => { }));
 
         using var sp = services.BuildServiceProvider();
-        Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
+        await Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
 
         Assert.That(capture.Warnings, Has.None.Contains("Could not inspect"));
         Assert.That(capture.Warnings, Has.None.Contains("no primer interceptor"));
@@ -215,7 +219,7 @@ public class StartupValidationTests
     }
 
     [Test]
-    public void Second_Context_Without_PrimeAble_Entities_Does_Not_Fail_Startup()
+    public async Task Second_Context_Without_PrimeAble_Entities_Does_Not_Fail_Startup()
     {
         // Regression: primers registered for ProductContext's Product must not force a primer interceptor
         // on an unrelated NoteContext whose entity has no primers.
@@ -237,7 +241,7 @@ public class StartupValidationTests
                 .For<Note>();
 
             using var sp = services.BuildServiceProvider();
-            Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
+            await Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
         }
         finally
         {
@@ -260,7 +264,7 @@ public class StartupValidationTests
     }
 
     [Test]
-    public void Validation_Message_With_Braces_Does_Not_Crash_Logging()
+    public async Task Validation_Message_With_Braces_Does_Not_Crash_Logging()
     {
         var capture = new CaptureLoggerProvider();
         var services = new ServiceCollection();
@@ -270,12 +274,12 @@ public class StartupValidationTests
         services.UseEntities<ProductContext>(o => o.ConfigureValidation(v => v.Enabled = true)).For<Product>();
 
         using var sp = services.BuildServiceProvider();
-        Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
+        await Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
         Assert.That(capture.Warnings, Has.Some.Contains("{braces}"));
     }
 
     [Test]
-    public void Typed_Only_Primer_Without_Interceptor_Is_Flagged()
+    public async Task Typed_Only_Primer_Without_Interceptor_Is_Flagged()
     {
         // A primer registered only under IEntityPrimer<Product> is not returned by GetServices<IEntityPrimer>();
         // the validator must still see it (via the service type) and warn about the missing interceptor.
@@ -287,12 +291,12 @@ public class StartupValidationTests
         services.UseEntities<ProductContext>(o => o.ConfigureValidation(v => v.Enabled = true)).For<Product>();
 
         using var sp = services.BuildServiceProvider();
-        Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
+        await Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
         Assert.That(capture.Warnings, Has.Some.Contains("WireDbContext"));
     }
 
     [Test]
-    public void Primer_Resolution_Failure_Warns_Instead_Of_Crashing_Startup()
+    public async Task Primer_Resolution_Failure_Warns_Instead_Of_Crashing_Startup()
     {
         var capture = new CaptureLoggerProvider();
         var services = new ServiceCollection();
@@ -302,7 +306,7 @@ public class StartupValidationTests
         services.UseEntities<ProductContext>(o => o.ConfigureValidation(v => v.Enabled = true)).For<Product>();
 
         using var sp = services.BuildServiceProvider();
-        Assert.DoesNotThrowAsync(() => RunHostedServices(sp)); // a diagnostic must not crash the host
+        await Assert.DoesNotThrowAsync(() => RunHostedServices(sp)); // a diagnostic must not crash the host
         Assert.That(capture.Warnings, Has.Some.Contains("Could not resolve primers"));
     }
 
@@ -336,7 +340,7 @@ public class StartupValidationTests
     }
 
     [Test]
-    public void Global_Filter_Depending_On_A_Scoped_Service_Is_Still_Checked()
+    public async Task Global_Filter_Depending_On_A_Scoped_Service_Is_Still_Checked()
     {
         // Resolving the filters from the root provider threw on the scoped dependency and downgraded the whole
         // check to a single "could not resolve" line — disabling it for exactly the filters it exists to guard.
@@ -353,13 +357,13 @@ public class StartupValidationTests
             .For<Product>();
 
         using var sp = services.BuildServiceProvider();
-        Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
+        await Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
         Assert.That(capture.Infos, Has.None.Contains("Could not resolve global filters"));
         Assert.That(capture.Warnings, Has.Some.Contains(nameof(CallerScopedFilter)));
     }
 
     [Test]
-    public void Global_Filter_Matching_No_Registered_Entity_Warns()
+    public async Task Global_Filter_Matching_No_Registered_Entity_Warns()
     {
         var capture = new CaptureLoggerProvider();
         var services = new ServiceCollection();
@@ -373,12 +377,12 @@ public class StartupValidationTests
             .For<Product>();
 
         using var sp = services.BuildServiceProvider();
-        Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
+        await Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
         Assert.That(capture.Warnings, Has.Some.Contains(nameof(OutOfScopeFilter)));
     }
 
     [Test]
-    public void Global_Filter_Scoped_To_The_Concrete_Entity_Does_Not_Warn()
+    public async Task Global_Filter_Scoped_To_The_Concrete_Entity_Does_Not_Warn()
     {
         // Scoping the concrete entity type is valid and must not be reported as inert.
         var capture = new CaptureLoggerProvider();
@@ -393,7 +397,7 @@ public class StartupValidationTests
             .For<Product>();
 
         using var sp = services.BuildServiceProvider();
-        Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
+        await Assert.DoesNotThrowAsync(() => RunHostedServices(sp));
         Assert.That(capture.Warnings, Has.None.Contains(nameof(ProductScopedFilter)));
     }
 
@@ -420,6 +424,34 @@ public class StartupValidationTests
         Assert.That(capture.Warnings, Has.None.Contains("FilterArchivables"), "built-in inert filter warned");
         Assert.That(capture.Warnings, Has.None.Contains("never runs"));
         Assert.That(capture.Infos, Has.Some.Contains("Built-in global filters that never run"));
+    }
+
+    [Test]
+    public async Task Inert_Builtin_Line_Names_Only_The_Capabilities_Of_The_Inert_Filters()
+    {
+        // Product has timestamps but is not IArchivable: only the archive filter is inert, so naming the
+        // timestamp capabilities in that line would tell the reader their (working) filters never run.
+        var capture = new CaptureLoggerProvider();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(capture));
+        services.AddDbContext<ProductContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<ProductContext>(o =>
+            {
+                o.UseDefaults();
+                o.ConfigureValidation(v => v.Enabled = true);
+            })
+            .For<Product>();
+
+        using var sp = services.BuildServiceProvider();
+        await RunHostedServices(sp);
+
+        var line = capture.Infos.Single(m => m.Contains("Built-in global filters that never run"));
+        Assert.Multiple(() =>
+        {
+            Assert.That(line, Does.Contain("IArchivable"));
+            Assert.That(line, Does.Not.Contain("IHasCreated"));
+            Assert.That(line, Does.Not.Contain("IHasLastModified"));
+        });
     }
 
     [Test]
@@ -511,7 +543,7 @@ public class StartupValidationTests
     }
 
     [Test]
-    public void ServerOwned_On_The_Archived_Flag_And_On_A_Navigation_Fail_Startup()
+    public async Task ServerOwned_On_The_Archived_Flag_And_On_A_Navigation_Fail_Startup()
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -524,7 +556,7 @@ public class StartupValidationTests
             .For<Invoice>();
 
         using var sp = services.BuildServiceProvider();
-        var ex = Assert.ThrowsAsync<InvalidOperationException>(() => RunHostedServices(sp));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => RunHostedServices(sp));
 
         Assert.Multiple(() =>
         {
@@ -676,5 +708,78 @@ public class StartupValidationTests
         await RunHostedServices(sp);
 
         Assert.That(capture.Warnings, Has.None.Contains("circular dependency"));
+    }
+
+    // ── entity validators ───────────────────────────────────────────────────────
+
+    /// <summary>A write service that still calls the constructor without validators.</summary>
+    public class LegacyProductWriteService(ProductContext dbContext, IEntityReadService<Product, int> readService,
+        IEnumerable<IEntityPrepper> preppers, ILoggerFactory? loggerFactory = null)
+        : EntityWriteService<ProductContext, Product>(dbContext, readService, preppers, loggerFactory);
+
+    /// <summary>A wrapping service: the check follows it to the repository and write service behind it.</summary>
+    public class AuditedProductService(IEntityRepository<Product, int, Regira.Entities.Models.SearchObject<int>> repository) : EntityWrappingServiceBase<Product>(repository);
+
+    private async Task<CaptureLoggerProvider> StartWithValidation(Action<Regira.Entities.DependencyInjection.ServiceCollections.EntityServiceCollection<ProductContext>> configure,
+        Action<EntityServiceCollectionOptions>? options = null)
+    {
+        var capture = new CaptureLoggerProvider();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(capture));
+        services.AddDbContext<ProductContext>(db => db.UseSqlite(_connection));
+        configure(services.UseEntities<ProductContext>(o =>
+        {
+            o.ConfigureValidation(v => v.Enabled = true);
+            options?.Invoke(o);
+        }));
+
+        await using var sp = services.BuildServiceProvider();
+        await RunHostedServices(sp);
+        return capture;
+    }
+
+    [Test]
+    public async Task An_Entity_Validator_No_Registered_Entity_Is_In_Scope_Of_Warns()
+    {
+        // Category is written only through the Product it belongs to here — it has no For<>() — so a validator scoped
+        // to it never runs
+        var capture = await StartWithValidation(
+            s => s.For<Product>(e => e.Validate(_ => { })),
+            o => o.AddValidator<Category>(_ => { }));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(capture.Warnings, Has.Some.Contains("EntityValidator<Category>").And.Some.Contains("never runs"));
+            Assert.That(capture.Warnings, Has.None.Contains("EntityValidator<Product>"));
+        });
+    }
+
+    [Test]
+    public async Task A_Write_Service_On_The_Constructor_Without_Validators_Warns()
+    {
+        var capture = await StartWithValidation(s => s.For<Product>(e => e
+            .UseEntityService<AuditedProductService>()
+            .UseWriteService<LegacyProductWriteService>()
+            .Validate(_ => { })));
+
+        Assert.That(capture.Warnings, Has.Some.Contains("'LegacyProductWriteService'").And.Some.Contains("IEnumerable<IEntityValidator>"));
+    }
+
+    [Test]
+    public async Task A_Write_Path_That_Reaches_The_Validators_Is_Silent()
+    {
+        var capture = await StartWithValidation(s => s.For<Product>(e => e
+            .UseEntityService<AuditedProductService>()
+            .Validate(_ => { })));
+
+        Assert.That(capture.Warnings, Has.None.Contains("IEntityValidator"));
+    }
+
+    [Test]
+    public async Task A_Write_Service_Without_Validators_In_Scope_Is_Not_Reported()
+    {
+        var capture = await StartWithValidation(s => s.For<Product>(e => e.UseWriteService<LegacyProductWriteService>()));
+
+        Assert.That(capture.Warnings, Has.None.Contains("IEntityValidator"));
     }
 }

@@ -1,13 +1,22 @@
 ﻿using Entities.Web.Testing.Infrastructure;
 using Entities.TestApi.Infrastructure;
 using Entities.TestApi.Infrastructure.Courses;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore;
+using Regira.Entities.Attachments.Models;
+using Regira.Entities.DependencyInjection.Validators;
 using Regira.Entities.Mapping.Models;
 using Regira.Entities.Models;
+using Regira.Entities.Services.Abstractions;
 using Regira.Entities.Web.Models;
 using Regira.IO.Utilities;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using Testing.Library.Contoso;
 using Testing.Library.Data;
@@ -334,6 +343,8 @@ public class CourseAttachmentsControllerTests : IClassFixture<ContosoApiFactory>
         };
         var wrongParentResponse = await client.PutAsJsonAsync($"/courses/4/attachments/{insertedItem.Id}", itemToUpdate);
         Assert.Equal(HttpStatusCode.BadRequest, wrongParentResponse.StatusCode);
+        var problem = await wrongParentResponse.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+        Assert.Equal(["Not a link of this owner."], problem!.Errors["objectId"]);
 
         // body pointing at a different row/parent is ignored — the route's row is the one updated
         var retargetingBody = new CourseAttachmentInputDto
@@ -408,6 +419,582 @@ public class CourseAttachmentsControllerTests : IClassFixture<ContosoApiFactory>
         // ...and none of the client's folders reached storage
         var entityFolder = Path.Combine(_factory.AttachmentsDirectory, "Course", "Attachments", courseId.ToString());
         Assert.False(Directory.Exists(Path.Combine(entityFolder, "archive")), "the virtual folder must stay virtual");
+    }
+
+    // A store or a link serves a file with the type it holds, so the upload is typed by its file name — the thing an app
+    // checks — and a .png declared text/html is not served as a page.
+    [Fact]
+    public async Task An_Upload_Is_Typed_By_Its_File_Name_Not_By_The_Type_The_Client_Declared()
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 3;
+        var file = new ByteArrayContent("<script>alert(1)</script>"u8.ToArray());
+        file.Headers.ContentType = new MediaTypeHeaderValue("text/html");
+        var content = new MultipartFormDataContent { { file, "file", "declared-html.png" } };
+        (await client.PostAsync($"/courses/{courseId}/files", content)).EnsureSuccessStatusCode();
+
+        var download = await client.GetAsync($"/courses/{courseId}/files/declared-html.png");
+
+        Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+        Assert.Equal("image/png", download.Content.Headers.ContentType?.MediaType);
+    }
+
+    // NewContentType is ignored: a client that sends one still gets the type the file name gives
+    [Fact]
+    public async Task A_Content_Type_Sent_With_New_Bytes_Is_Ignored()
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 5;
+        var details = await (await client.GetAsync($"/courses/{courseId}")).Content.ReadFromJsonAsync<DetailsResult<CourseDto>>();
+#pragma warning disable CS0618 // the obsolete member is the point of the test
+        var attachment = new CourseAttachmentInputDto
+        {
+            ObjectId = courseId,
+            NewFileName = "declared-in-json.png",
+            NewBytes = "<script>alert(1)</script>"u8.ToArray(),
+            NewContentType = "text/html"
+        };
+#pragma warning restore CS0618
+        var courseInput = new CourseInputDto
+        {
+            Id = details!.Item.Id,
+            Title = details.Item.Title,
+            DepartmentId = details.Item.DepartmentId,
+            Credits = details.Item.Credits,
+            Attachments = [attachment]
+        };
+        (await client.PutAsJsonAsync($"/courses/{courseId}", courseInput)).EnsureSuccessStatusCode();
+
+        var download = await client.GetAsync($"/courses/{courseId}/files/declared-in-json.png");
+
+        Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+        Assert.Equal("image/png", download.Content.Headers.ContentType?.MediaType);
+    }
+
+    // The attachment's own metadata route changes the file the way the owner's save does: a new name retypes it,
+    // new bytes replace what is stored.
+    [Fact]
+    public async Task Renaming_Through_The_Metadata_Route_Retypes_The_File()
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 3;
+        var name = $"renamed-{Guid.NewGuid():N}";
+        var content = new MultipartFormDataContent { { new ByteArrayContent([137, 80, 78, 71]), "file", $"{name}.png" } };
+        var uploaded = await (await client.PostAsync($"/courses/{courseId}/files", content)).Content.ReadFromJsonAsync<SaveResult<CourseAttachmentDto>>();
+
+        var rename = new CourseAttachmentInputDto
+        {
+            Id = uploaded!.Item.Id,
+            ObjectId = courseId,
+            AttachmentId = uploaded.Item.AttachmentId,
+            NewFileName = $"{name}.pdf"
+        };
+        (await client.PutAsJsonAsync($"/courses/{courseId}/attachments/{uploaded.Item.Id}", rename)).EnsureSuccessStatusCode();
+
+        var download = await client.GetAsync($"/courses/{courseId}/files/{name}.pdf");
+        Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+        Assert.Equal("application/pdf", download.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/courses/{courseId}/files/{name}.png")).StatusCode);
+    }
+
+    [Fact]
+    public async Task Renaming_Through_The_Owner_Retypes_The_File()
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 4;
+        var name = $"renamed-by-owner-{Guid.NewGuid():N}";
+        var content = new MultipartFormDataContent { { new ByteArrayContent([137, 80, 78, 71]), "file", $"{name}.png" } };
+        var uploaded = await (await client.PostAsync($"/courses/{courseId}/files", content)).Content.ReadFromJsonAsync<SaveResult<CourseAttachmentDto>>();
+
+        var details = await (await client.GetAsync($"/courses/{courseId}")).Content.ReadFromJsonAsync<DetailsResult<CourseDto>>();
+        var courseInput = new CourseInputDto
+        {
+            Id = details!.Item.Id,
+            Title = details.Item.Title,
+            DepartmentId = details.Item.DepartmentId,
+            Credits = details.Item.Credits,
+            Attachments = details.Item.Attachments!.Select(a => new CourseAttachmentInputDto
+            {
+                Id = a.Id,
+                ObjectId = a.ObjectId,
+                AttachmentId = a.AttachmentId,
+                NewFileName = a.Id == uploaded!.Item.Id ? $"{name}.pdf" : null
+            }).ToList()
+        };
+        (await client.PutAsJsonAsync($"/courses/{courseId}", courseInput)).EnsureSuccessStatusCode();
+
+        var download = await client.GetAsync($"/courses/{courseId}/files/{name}.pdf");
+        Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+        Assert.Equal("application/pdf", download.Content.Headers.ContentType?.MediaType);
+    }
+
+    // A validator judges a rename: the item carries the new name and the original the stored one, and a refusal leaves
+    // the stored file as it was. The rule compares the types the names give, not their extensions, so a rename between
+    // spellings of one type (.JPEG to .jpg) passes.
+    [Fact]
+    public async Task A_Validator_Judges_A_Rename_Through_The_Metadata_Route()
+    {
+        using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddValidator<CourseAttachment>(ctx =>
+            {
+                var stored = ctx.Original?.Attachment?.FileName;
+                var renamed = ctx.Item.Attachment?.FileName;
+                if (stored != null && renamed != null
+                    && ContentTypeUtility.GetContentType(stored) != ContentTypeUtility.GetContentType(renamed))
+                {
+                    ctx.AddError(nameof(CourseAttachmentInputDto.NewFileName), "A rename keeps the file's type.");
+                }
+            })));
+        using var client = app.CreateClient();
+
+        var courseId = 6;
+        var name = $"validated-{Guid.NewGuid():N}";
+        var content = new MultipartFormDataContent { { new ByteArrayContent([255, 216, 255]), "file", $"{name}.JPEG" } };
+        var uploaded = await (await client.PostAsync($"/courses/{courseId}/files", content)).Content.ReadFromJsonAsync<SaveResult<CourseAttachmentDto>>();
+        CourseAttachmentInputDto Rename(string fileName) => new()
+        {
+            Id = uploaded!.Item.Id,
+            ObjectId = courseId,
+            AttachmentId = uploaded.Item.AttachmentId,
+            NewFileName = fileName
+        };
+
+        var refused = await client.PutAsJsonAsync($"/courses/{courseId}/attachments/{uploaded!.Item.Id}", Rename($"{name}.pdf"));
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        var unchanged = await client.GetAsync($"/courses/{courseId}/files/{name}.JPEG");
+        Assert.Equal(HttpStatusCode.OK, unchanged.StatusCode);
+        Assert.Equal("image/jpeg", unchanged.Content.Headers.ContentType?.MediaType);
+
+        (await client.PutAsJsonAsync($"/courses/{courseId}/attachments/{uploaded.Item.Id}", Rename($"{name}.jpg"))).EnsureSuccessStatusCode();
+        var renamed = await client.GetAsync($"/courses/{courseId}/files/{name}.jpg");
+        Assert.Equal(HttpStatusCode.OK, renamed.StatusCode);
+        Assert.Equal("image/jpeg", renamed.Content.Headers.ContentType?.MediaType);
+    }
+
+    // New bytes replace the stored file, leaving one file in storage: through the link's metadata route and the owner's
+    // save they go under a key of their own and the stored file goes once the save is committed, and the file route
+    // stores a new attachment and removes the old one.
+    [Theory]
+    [InlineData("metadata")]
+    [InlineData("owner")]
+    [InlineData("file")]
+    public async Task New_Bytes_Replace_The_File(string route)
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 3;
+        // letters only, so the storage key keeps it as written
+        var stem = "replaced-" + string.Concat(Guid.NewGuid().ToString("N").Select(c => (char)('a' + Convert.ToInt32(c.ToString(), 16))));
+        var name = $"{stem}.txt";
+        var uploaded = await Upload(client, courseId, name, "first version");
+        var storedPath = StoredPath(uploaded.AttachmentId);
+        var newBytes = FileUtility.GetBytesFromString("second version");
+
+        var response = route switch
+        {
+            "metadata" => await client.PutAsJsonAsync($"/courses/{courseId}/attachments/{uploaded.Id}",
+                new CourseAttachmentInputDto { Id = uploaded.Id, ObjectId = courseId, AttachmentId = uploaded.AttachmentId, NewBytes = newBytes }),
+            "owner" => await SaveOwnerWithNewBytes(client, courseId, uploaded.Id, newBytes),
+            _ => await client.PutAsync($"/courses/{courseId}/files/{uploaded.Id}", new MultipartFormDataContent { { new ByteArrayContent(newBytes), "file", name } })
+        };
+        response.EnsureSuccessStatusCode();
+
+        Assert.Equal("second version", await client.GetStringAsync($"/courses/{courseId}/files/{name}"));
+        Assert.Single(Directory.GetFiles(_factory.AttachmentsDirectory, $"*{stem}*", SearchOption.AllDirectories));
+        if (route != "file")
+        {
+            Assert.NotEqual(storedPath, StoredPath(uploaded.AttachmentId));
+            Assert.Equal(newBytes.Length, _dbContext.Attachments.AsNoTracking().Single(x => x.Id == uploaded.AttachmentId).Length);
+        }
+    }
+
+    // A save the database refuses leaves the stored file as it was, as it leaves the row: the new bytes went under a key
+    // of their own, and the stored file is removed only once a save is committed.
+    [Fact]
+    public async Task A_Refused_Save_Leaves_The_Stored_File()
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 10;
+        var stem = "refused-" + string.Concat(Guid.NewGuid().ToString("N").Select(c => (char)('a' + Convert.ToInt32(c.ToString(), 16))));
+        var name = $"{stem}.txt";
+        var uploaded = await Upload(client, courseId, name, "first version");
+        var storedPath = StoredPath(uploaded.AttachmentId);
+        var theirs = await Upload(client, 9, $"theirs-{Guid.NewGuid():N}.txt", "their file");
+
+        var details = await client.GetFromJsonAsync<DetailsResult<CourseDto>>($"/courses/{courseId}");
+        var attachments = details!.Item.Attachments!.Select(a => new CourseAttachmentInputDto
+        {
+            Id = a.Id,
+            ObjectId = a.ObjectId,
+            AttachmentId = a.AttachmentId,
+            NewBytes = a.Id == uploaded.Id ? FileUtility.GetBytesFromString("second version") : null
+        }).ToList();
+        // a new link naming another owner's attachment fails its foreign key, so the whole save is refused
+        attachments.Add(new CourseAttachmentInputDto { ObjectId = courseId, AttachmentId = theirs.AttachmentId });
+        var courseInput = new CourseInputDto
+        {
+            Id = details.Item.Id,
+            Title = details.Item.Title,
+            DepartmentId = details.Item.DepartmentId,
+            Credits = details.Item.Credits,
+            Attachments = attachments
+        };
+
+        var response = await client.PutAsJsonAsync($"/courses/{courseId}", courseInput);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("first version", await client.GetStringAsync($"/courses/{courseId}/files/{name}"));
+        Assert.Equal(storedPath, StoredPath(uploaded.AttachmentId));
+        // nor the file it wrote for the new bytes
+        Assert.Single(Directory.GetFiles(_factory.AttachmentsDirectory, $"*{stem}*", SearchOption.AllDirectories));
+    }
+
+    // A save the database refuses keeps the file of a link it would have deleted: the file goes once a save is committed.
+    [Fact]
+    public async Task A_Refused_Save_Keeps_The_File_Of_A_Link_It_Would_Delete()
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 11;
+        var name = $"dropped-{Guid.NewGuid():N}.txt";
+        var dropped = await Upload(client, courseId, name, "kept content");
+        var theirs = await Upload(client, 9, $"theirs-{Guid.NewGuid():N}.txt", "their file");
+
+        var details = await client.GetFromJsonAsync<DetailsResult<CourseDto>>($"/courses/{courseId}");
+        var attachments = details!.Item.Attachments!
+            .Where(a => a.Id != dropped.Id)
+            .Select(a => new CourseAttachmentInputDto { Id = a.Id, ObjectId = a.ObjectId, AttachmentId = a.AttachmentId })
+            .ToList();
+        // the link left out is deleted with its attachment; the new one fails its foreign key, so the save is refused
+        attachments.Add(new CourseAttachmentInputDto { ObjectId = courseId, AttachmentId = theirs.AttachmentId });
+        var courseInput = new CourseInputDto
+        {
+            Id = details.Item.Id,
+            Title = details.Item.Title,
+            DepartmentId = details.Item.DepartmentId,
+            Credits = details.Item.Credits,
+            Attachments = attachments
+        };
+
+        var response = await client.PutAsJsonAsync($"/courses/{courseId}", courseInput);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("kept content", await client.GetStringAsync($"/courses/{courseId}/files/{name}"));
+    }
+
+    // New bytes saved through the attachment's own service, in a transaction rolled back, leave the stored file as it was.
+    [Fact]
+    public async Task A_Rolled_Back_Replace_Through_The_Attachment_Service_Leaves_The_Stored_File()
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 12;
+        var name = $"rolled-back-{Guid.NewGuid():N}.txt";
+        var uploaded = await Upload(client, courseId, name, "first version");
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ContosoContext>();
+            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Attachment, int>>();
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            var attachment = await service.Details(uploaded.AttachmentId);
+            attachment!.Bytes = FileUtility.GetBytesFromString("second version");
+            await service.Save(attachment);
+            await service.SaveChanges();
+            await transaction.RollbackAsync();
+        }
+
+        Assert.Equal("first version", await client.GetStringAsync($"/courses/{courseId}/files/{name}"));
+    }
+
+    private string? StoredPath(int attachmentId)
+        => _dbContext.Attachments.AsNoTracking().Single(x => x.Id == attachmentId).Path;
+
+    private static async Task<HttpResponseMessage> SaveOwnerWithNewBytes(HttpClient client, int courseId, int linkId, byte[] newBytes)
+    {
+        var details = await client.GetFromJsonAsync<DetailsResult<CourseDto>>($"/courses/{courseId}");
+        var courseInput = new CourseInputDto
+        {
+            Id = details!.Item.Id,
+            Title = details.Item.Title,
+            DepartmentId = details.Item.DepartmentId,
+            Credits = details.Item.Credits,
+            Attachments = details.Item.Attachments!.Select(a => new CourseAttachmentInputDto
+            {
+                Id = a.Id,
+                ObjectId = a.ObjectId,
+                AttachmentId = a.AttachmentId,
+                NewBytes = a.Id == linkId ? newBytes : null
+            }).ToList()
+        };
+        return await client.PutAsJsonAsync($"/courses/{courseId}", courseInput);
+    }
+
+    // The body's AttachmentId cannot point a link at another attachment, another owner's file among them: the link keeps
+    // the one it has, and a rename sent with it renames that one.
+    [Fact]
+    public async Task The_Metadata_Route_Keeps_A_Link_On_Its_Attachment()
+    {
+        using var client = _factory.CreateClient();
+
+        var mine = await Upload(client, 3, $"mine-{Guid.NewGuid():N}.txt", "my file");
+        var theirsName = $"theirs-{Guid.NewGuid():N}.txt";
+        var theirs = await Upload(client, 4, theirsName, "their file");
+        var renamed = $"mine-renamed-{Guid.NewGuid():N}.txt";
+
+        var retarget = new CourseAttachmentInputDto { Id = mine.Id, ObjectId = 3, AttachmentId = theirs.AttachmentId, NewFileName = renamed };
+        (await client.PutAsJsonAsync($"/courses/3/attachments/{mine.Id}", retarget)).EnsureSuccessStatusCode();
+
+        var link = await client.GetFromJsonAsync<DetailsResult<CourseAttachmentDto>>($"/courses/attachments/{mine.Id}");
+        Assert.Equal(mine.AttachmentId, link!.Item.AttachmentId);
+        Assert.Equal("my file", await client.GetStringAsync($"/courses/3/files/{renamed}"));
+        Assert.Equal("their file", await client.GetStringAsync($"/courses/4/files/{theirsName}"));
+    }
+
+    // The owner's save holds a kept link to the same: the AttachmentId its body sends for the link is not followed.
+    [Fact]
+    public async Task The_Owner_Keeps_A_Link_On_Its_Attachment()
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 5;
+        var mineName = $"mine-{Guid.NewGuid():N}.txt";
+        var mine = await Upload(client, courseId, mineName, "my file");
+        var theirs = await Upload(client, 6, $"theirs-{Guid.NewGuid():N}.txt", "their file");
+
+        var details = await client.GetFromJsonAsync<DetailsResult<CourseDto>>($"/courses/{courseId}");
+        var courseInput = new CourseInputDto
+        {
+            Id = details!.Item.Id,
+            Title = details.Item.Title,
+            DepartmentId = details.Item.DepartmentId,
+            Credits = details.Item.Credits,
+            Attachments = details.Item.Attachments!.Select(a => new CourseAttachmentInputDto
+            {
+                Id = a.Id,
+                ObjectId = a.ObjectId,
+                AttachmentId = a.Id == mine.Id ? theirs.AttachmentId : a.AttachmentId
+            }).ToList()
+        };
+        (await client.PutAsJsonAsync($"/courses/{courseId}", courseInput)).EnsureSuccessStatusCode();
+
+        var link = await client.GetFromJsonAsync<DetailsResult<CourseAttachmentDto>>($"/courses/attachments/{mine.Id}");
+        Assert.Equal(mine.AttachmentId, link!.Item.AttachmentId);
+        Assert.Equal("my file", await client.GetStringAsync($"/courses/{courseId}/files/{mineName}"));
+    }
+
+    // A new link in the owner's save may point at an attachment the owner already links, and at no other: one naming
+    // another owner's attachment links nothing, so that owner's file is neither served here nor deleted with the link.
+    [Fact]
+    public async Task The_Owner_Cannot_Link_Another_Owners_Attachment()
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 8;
+        var theirsName = $"theirs-{Guid.NewGuid():N}.txt";
+        var theirs = await Upload(client, 9, theirsName, "their file");
+
+        var details = await client.GetFromJsonAsync<DetailsResult<CourseDto>>($"/courses/{courseId}");
+        var courseInput = new CourseInputDto
+        {
+            Id = details!.Item.Id,
+            Title = details.Item.Title,
+            DepartmentId = details.Item.DepartmentId,
+            Credits = details.Item.Credits,
+            Attachments = [new CourseAttachmentInputDto { ObjectId = courseId, AttachmentId = theirs.AttachmentId }]
+        };
+        // a link left without an attachment fails its foreign key, as one sent without a file does
+        Assert.Equal(HttpStatusCode.Conflict, (await client.PutAsJsonAsync($"/courses/{courseId}", courseInput)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/courses/{courseId}/files/{theirsName}")).StatusCode);
+
+        // saved again without it: a link made above would be removed now, and its attachment with it
+        courseInput.Attachments = [];
+        (await client.PutAsJsonAsync($"/courses/{courseId}", courseInput)).EnsureSuccessStatusCode();
+        Assert.Equal("their file", await client.GetStringAsync($"/courses/9/files/{theirsName}"));
+    }
+
+    // on an insert every link is new, whatever id it carries
+    [Theory]
+    [InlineData(0)]
+    [InlineData(965233)]
+    public async Task A_New_Owner_Cannot_Link_Another_Owners_Attachment(int linkId)
+    {
+        using var client = _factory.CreateClient();
+
+        var theirsName = $"theirs-{Guid.NewGuid():N}.txt";
+        var theirs = await Upload(client, 9, theirsName, "their file");
+
+        var department = (await client.GetFromJsonAsync<DetailsResult<CourseDto>>("/courses/8"))!.Item.DepartmentId;
+        var courseInput = new CourseInputDto
+        {
+            Title = $"New course {Guid.NewGuid():N}",
+            DepartmentId = department,
+            Credits = 1,
+            Attachments = [new CourseAttachmentInputDto { Id = linkId, AttachmentId = theirs.AttachmentId }]
+        };
+        var response = await client.PostAsJsonAsync("/courses", courseInput);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Equal("their file", await client.GetStringAsync($"/courses/9/files/{theirsName}"));
+    }
+
+    // The upload route creates a link: an Id in its form cannot turn the upload into a write to another link.
+    [Fact]
+    public async Task An_Upload_Creates_A_Link_Whatever_Id_Its_Form_Sends()
+    {
+        using var client = _factory.CreateClient();
+
+        var theirsName = $"theirs-{Guid.NewGuid():N}.txt";
+        var theirs = await Upload(client, 9, theirsName, "their file");
+        var content = new MultipartFormDataContent
+        {
+            { new StreamContent(FileUtility.GetStreamFromString("my file")), "file", $"mine-{Guid.NewGuid():N}.txt" },
+            { new StringContent(theirs.Id.ToString()), nameof(CourseAttachmentInputDto.Id) }
+        };
+        var response = await client.PostAsync("/courses/8/files", content);
+        response.EnsureSuccessStatusCode();
+        var mine = (await response.Content.ReadFromJsonAsync<SaveResult<CourseAttachmentDto>>())!.Item;
+
+        Assert.NotEqual(theirs.Id, mine.Id);
+        var link = await client.GetFromJsonAsync<DetailsResult<CourseAttachmentDto>>($"/courses/attachments/{theirs.Id}");
+        Assert.Equal(9, link!.Item.ObjectId);
+        Assert.Equal(theirs.AttachmentId, link.Item.AttachmentId);
+        Assert.Equal("their file", await client.GetStringAsync($"/courses/9/files/{theirsName}"));
+    }
+
+    // A rename retypes the attachment before the validators run, so a rule on the type judges the type the file is stored
+    // with: renaming an allowed file into a refused type is refused.
+    [Fact]
+    public async Task A_Validator_Judges_The_Type_A_Rename_Gives()
+    {
+        using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddValidator<CourseAttachment>(ctx =>
+            {
+                if (ctx.Item.Attachment?.ContentType is { } type && !type.StartsWith("image/"))
+                {
+                    ctx.AddError(nameof(CourseAttachmentInputDto.NewFileName), "ImagesOnly");
+                }
+            })));
+        using var client = app.CreateClient();
+
+        var courseId = 6;
+        var name = $"photo-{Guid.NewGuid():N}";
+        var content = new MultipartFormDataContent { { new ByteArrayContent([137, 80, 78, 71]), "file", $"{name}.png" } };
+        var uploaded = await (await client.PostAsync($"/courses/{courseId}/files", content)).Content.ReadFromJsonAsync<SaveResult<CourseAttachmentDto>>();
+        var rename = new CourseAttachmentInputDto
+        {
+            Id = uploaded!.Item.Id,
+            ObjectId = courseId,
+            AttachmentId = uploaded.Item.AttachmentId,
+            NewFileName = $"{name}.html"
+        };
+
+        var refused = await client.PutAsJsonAsync($"/courses/{courseId}/attachments/{uploaded.Item.Id}", rename);
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        var unchanged = await client.GetAsync($"/courses/{courseId}/files/{name}.png");
+        Assert.Equal(HttpStatusCode.OK, unchanged.StatusCode);
+        Assert.Equal("image/png", unchanged.Content.Headers.ContentType?.MediaType);
+    }
+
+    // A new attachment added through the owner's save reaches the validators typed by its name, as an upload does.
+    [Fact]
+    public async Task A_New_Attachment_Through_The_Owner_Reaches_The_Validators_Typed()
+    {
+        using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddValidator<Course>(ctx =>
+            {
+                if (ctx.Item.Attachments?.Any(x => x.Attachment != null && x.Attachment.ContentType?.StartsWith("image/") != true) == true)
+                {
+                    ctx.AddError(nameof(Course.Attachments), "ImagesOnly");
+                }
+            })));
+        using var client = app.CreateClient();
+
+        var courseId = 7;
+        var name = $"b-{Guid.NewGuid():N}.png";
+        var details = await client.GetFromJsonAsync<DetailsResult<CourseDto>>($"/courses/{courseId}");
+        var attachments = (details!.Item.Attachments ?? [])
+            .Select(a => new CourseAttachmentInputDto { Id = a.Id, ObjectId = a.ObjectId, AttachmentId = a.AttachmentId })
+            .ToList();
+        attachments.Add(new CourseAttachmentInputDto { ObjectId = courseId, NewFileName = name, NewBytes = [137, 80, 78, 71] });
+        var courseInput = new CourseInputDto
+        {
+            Id = details.Item.Id,
+            Title = details.Item.Title,
+            DepartmentId = details.Item.DepartmentId,
+            Credits = details.Item.Credits,
+            Attachments = attachments
+        };
+
+        (await client.PutAsJsonAsync($"/courses/{courseId}", courseInput)).EnsureSuccessStatusCode();
+        var download = await client.GetAsync($"/courses/{courseId}/files/{name}");
+        Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+        Assert.Equal("image/png", download.Content.Headers.ContentType?.MediaType);
+    }
+
+    private static async Task<CourseAttachmentDto> Upload(HttpClient client, int courseId, string fileName, string text)
+    {
+        var content = new MultipartFormDataContent { { new StreamContent(FileUtility.GetStreamFromString(text)), "file", fileName } };
+        var response = await client.PostAsync($"/courses/{courseId}/files", content);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<SaveResult<CourseAttachmentDto>>())!.Item;
+    }
+
+    // an upload an app accepts by name may still render as a page, so every file but a PDF is served in a sandbox that
+    // runs no script; a PDF goes without, for the browser's viewer
+    [Theory]
+    [InlineData("page.html", true)]
+    [InlineData("drawing.svg", true)]
+    [InlineData("photo.png", true)]
+    [InlineData("report.pdf", false)]
+    public async Task Every_File_But_A_Pdf_Is_Served_In_A_Sandbox(string fileName, bool sandboxed)
+    {
+        using var client = _factory.CreateClient();
+
+        var courseId = 6;
+        var content = new MultipartFormDataContent { { new ByteArrayContent("<script>alert(1)</script>"u8.ToArray()), "file", fileName } };
+        (await client.PostAsync($"/courses/{courseId}/files", content)).EnsureSuccessStatusCode();
+
+        var download = await client.GetAsync($"/courses/{courseId}/files/{fileName}");
+
+        Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+        Assert.Equal(sandboxed, download.Headers.TryGetValues("Content-Security-Policy", out var csp) && csp.Contains("sandbox"));
+    }
+
+    /// <summary>A policy the app sends for every response; a browser enforces each policy it receives.</summary>
+    private sealed class AppPolicy : IStartupFilter
+    {
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use((context, nextMiddleware) =>
+            {
+                context.Response.Headers["Content-Security-Policy"] = "default-src 'self'";
+                return nextMiddleware();
+            });
+            next(app);
+        };
+    }
+
+    [Fact]
+    public async Task The_Sandbox_Adds_To_A_Policy_The_App_Sent()
+    {
+        using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddTransient<IStartupFilter, AppPolicy>()));
+        using var client = app.CreateClient();
+
+        var courseId = 7;
+        var content = new MultipartFormDataContent { { new ByteArrayContent("<script>alert(1)</script>"u8.ToArray()), "file", "page.html" } };
+        (await client.PostAsync($"/courses/{courseId}/files", content)).EnsureSuccessStatusCode();
+
+        var download = await client.GetAsync($"/courses/{courseId}/files/page.html");
+
+        Assert.Equal(HttpStatusCode.OK, download.StatusCode);
+        Assert.Equal(["default-src 'self'", "sandbox"], download.Headers.GetValues("Content-Security-Policy"));
     }
 
     [Fact]

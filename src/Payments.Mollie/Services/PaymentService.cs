@@ -8,7 +8,6 @@ using Regira.Invoicing.Payments.Models;
 using Regira.Payments.Mollie.Config;
 using Regira.Payments.Mollie.Models;
 using Regira.Utilities;
-using System.Globalization;
 
 namespace Regira.Payments.Mollie.Services;
 
@@ -28,7 +27,7 @@ public class PaymentService(MollieConfig config)
             throw new ArgumentNullException(nameof(id));
         }
 
-        var response = await _paymentClient.GetPaymentAsync(id.ToString()!);
+        var response = (await _paymentClient.GetPaymentAsync(id.ToString()!)).EnsureSuccess();
 
         if (response == null!)
         {
@@ -47,7 +46,7 @@ public class PaymentService(MollieConfig config)
         do
         {
             var limit = Math.Min(pageSize, _maxPageSize);
-            var response = await _paymentClient.GetPaymentListAsync(lastItem?.Id, limit > 0 ? limit : null);
+            var response = (await _paymentClient.GetPaymentListAsync(lastItem?.Id, limit > 0 ? limit : null)).EnsureSuccess();
 
             IEnumerable<IPayment> items = response.Items
                 .Select(Convert)
@@ -75,7 +74,7 @@ public class PaymentService(MollieConfig config)
     public async Task<CreatePaymentResponse> Save(IPayment item)
     {
         var request = Convert(item);
-        var response = await _paymentClient.CreatePaymentAsync(request);
+        var response = (await _paymentClient.CreatePaymentAsync(request)).EnsureSuccess();
         item.Id = response.Id;
         var checkoutUrl = response.Links.Checkout?.Href;
         return new CreatePaymentResponse
@@ -88,7 +87,7 @@ public class PaymentService(MollieConfig config)
     {
         // Not supported by Mollie anymore
         //await _paymentClient.DeletePaymentAsync(item.Id);
-        await _paymentClient.CancelPaymentAsync(item.Id);
+        (await _paymentClient.CancelPaymentAsync(item.Id)).EnsureSuccess();
     }
 
     public async Task WebHook(string id, Func<IPayment?, Task> handleWebHook)
@@ -107,11 +106,11 @@ public class PaymentService(MollieConfig config)
         return new Payment
         {
             Id = response.Id,
-            Amount = decimal.Parse(response.Amount.Value, NumberStyles.Number, CultureInfo.InvariantCulture),
+            Amount = response.Amount.Value,
             Currency = response.Amount.Currency,
             Status = Convert(response.Status),
             Description = response.Description,
-            CreatedAt = response.CreatedAt,
+            CreatedAt = response.CreatedAt.LocalDateTime,
             Metadata = !string.IsNullOrEmpty(response.Metadata)
                 ? response.GetMetadata<IDictionary<string, object?>>()
                 : new Dictionary<string, object?>()

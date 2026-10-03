@@ -7,6 +7,8 @@ This guide demonstrates the Regira Entities framework using a simple webshop sce
 ### Entity Model
 
 ```csharp
+using Regira.Normalizing; // external namespace: [Normalized]
+
 public class Product : IEntity<int>, IHasTimestamps, IArchivable, IHasTitle, IHasDescription
 {
     public int Id { get; set; }
@@ -73,6 +75,8 @@ public enum ProductIncludes
 ### Query Builder (Separate Class)
 
 ```csharp
+using Regira.Entities.QueryBuilders.Abstractions;
+
 public class ProductQueryBuilder : FilteredQueryBuilderBase<Product, int, ProductSearchObject>
 {
     public override IQueryable<Product> Build(IQueryable<Product> query, ProductSearchObject? so)
@@ -128,6 +132,8 @@ public class ProductInputDto
 ### Controller
 
 ```csharp
+using Regira.Entities.Web.Controllers.Abstractions;
+
 [ApiController]
 [Route("[controller]")]
 public class ProductsController : EntityControllerBase<Product, ProductSearchObject, ProductSortBy, ProductIncludes, ProductDto, ProductInputDto>
@@ -138,6 +144,9 @@ public class ProductsController : EntityControllerBase<Product, ProductSearchObj
 ### Dependency Injection
 
 ```csharp
+using Regira.Entities.DependencyInjection.Normalizers;
+using Regira.Entities.Validators.Abstractions;
+
 services.UseEntities<ShopDbContext>(options =>
 {
     options.AddDefaultEntityNormalizer();
@@ -151,8 +160,18 @@ services.UseEntities<ShopDbContext>(options =>
             // AfterMapper: Add category title to DTO
             dto.CategoryTitle = product.Category?.Title;
         });
+
+    // Validator: runs after every prepper, and on delete
+    e.Validate(async (ctx, db, token) =>
+    {
+        if (ctx.Operation != EntityWriteOperation.Remove && !await db.Categories.AnyAsync(c => c.Id == ctx.Item.CategoryId, token))
+            ctx.AddError(nameof(Product.CategoryId), $"Category {ctx.Item.CategoryId} does not exist.");
+    });
 });
 ```
+
+An unknown category answers **400**, a `ValidationProblemDetails` whose `errors` hold
+`{ "CategoryId": ["Category 99 does not exist."] }`, instead of the database's 409. More on validators: [Services → Entity Validators](services.md#entity-validators).
 
 ## Example 2: Category with Inline Configuration
 
@@ -196,6 +215,8 @@ public class CategoryInputDto
 ### Controller
 
 ```csharp
+using Regira.Entities.Web.Controllers.Abstractions;
+
 [ApiController]
 [Route("[controller]")]
 public class CategoriesController : EntityControllerBase<Category, CategoryDto, CategoryInputDto>
@@ -241,6 +262,7 @@ public class ProductAttachment : EntityAttachment
 
 ### Update Product Entity
 
+<!-- no-compile -->
 ```csharp
 public class Product : IEntity<int>, IHasTimestamps, IArchivable, IHasTitle, IHasDescription,
     IHasAttachments, IHasAttachments<ProductAttachment>
@@ -261,7 +283,9 @@ public class Product : IEntity<int>, IHasTimestamps, IArchivable, IHasTitle, IHa
 ### DbContext Configuration
 
 ```csharp
-public class ShopDbContext : DbContext
+using Regira.DAL.EFcore.Extensions; // external namespace
+
+public class ShopDbContext(DbContextOptions<ShopDbContext> options) : DbContext(options)
 {
     public DbSet<Product> Products { get; set; }
     public DbSet<Category> Categories { get; set; }
@@ -287,6 +311,7 @@ public class ShopDbContext : DbContext
 
 Both entity and attachment endpoints require a controller:
 
+<!-- no-compile -->
 ```csharp
 [ApiController]
 [Route("[controller]")]
@@ -310,7 +335,13 @@ entity, the file store and the bytes→file primer (framework infrastructure —
 `HasAttachments<…>(x => x.Attachments)` — chained on the owner's `For<>()` builder — registers the typed
 per-owner services, the link prepper and DTO mapping (**one simple-tier slot** — the per-owner join entity).
 
+<!-- no-compile -->
 ```csharp
+using Regira.Entities.DependencyInjection.Attachments;       // HasAttachments
+using Regira.Entities.DependencyInjection.Extensions;        // UseEntities, UseDefaults
+using Regira.Entities.Web.Attachments.DependencyInjection;   // UseAttachmentUris
+using Regira.IO.Storage.FileSystem;                          // BinaryFileService, FileSystemOptions
+
 // only the provider — UseEntities(options => options.UseDefaults()) below auto-wires the
 // interceptors and the UTC date convention
 services.AddDbContext<ShopDbContext>(db =>
@@ -344,6 +375,9 @@ services
 ### Separate Normalizer Class
 
 ```csharp
+using Regira.Entities.Normalizing.Abstractions;
+using Regira.Normalizing.Abstractions; // external namespace: INormalizer
+
 public class ProductNormalizer : EntityNormalizerBase<Product>
 {
     private readonly INormalizer _normalizer;
@@ -353,10 +387,11 @@ public class ProductNormalizer : EntityNormalizerBase<Product>
         _normalizer = normalizer;
     }
 
-    public override async Task HandleNormalize(Product item, CancellationToken token = default)
+    public override Task HandleNormalize(Product item, CancellationToken token = default)
     {
         var content = $"{item.Title} {item.Description}".Trim();
-        item.NormalizedContent = await _normalizer.Normalize(content);
+        item.NormalizedContent = _normalizer.Normalize(content);
+        return Task.CompletedTask;
     }
 }
 ```
@@ -376,7 +411,7 @@ services.UseEntities<ShopDbContext>(options => { /* ... */ })
 
 1. [Index](../README.md) — Overview of Regira Entities
 1. [Entity Models](models.md) — Creating and structuring entity models
-1. [Services](services.md) — Implementing entity services and repositories
+1. [Services](services.md) — Implementing entity services, repositories and the write pipeline
 1. [Mapping](mapping.md) — Mapping Entities to and from DTOs
 1. [Web Endpoints](web-endpoints.md) — Exposing entity operations as HTTP endpoints
 1. [Normalizing](normalizing.md) — Data normalization techniques

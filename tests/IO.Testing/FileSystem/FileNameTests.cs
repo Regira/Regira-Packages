@@ -8,16 +8,19 @@ namespace IO.Testing.FileSystem;
 [TestFixture]
 public class FileNameTests
 {
+    // expected paths are written with '/'; SanitizeFilename joins the segments with the platform's separator
     [TestCase("image.jpeg", "image.jpeg")]
     [TestCase("in\"v<a>li|d.jpeg", "in_v_a_li_d.jpeg")]
-    [TestCase("in\"v<a>li|d\\image.jpeg", "in_v_a_li_d\\image.jpeg")]
-    [TestCase("CLOCK$\\image.jpeg", "_XXX_\\image.jpeg")]
-    [TestCase("COM5\\LPT5\\image.jpeg", "_XXX_\\_XXX_\\image.jpeg")]
-    [TestCase("xCOM5\\xLPT5\\image.jpeg", "xCOM5\\xLPT5\\image.jpeg")]
-    public void Sanitize_FileName(string input, string? expected)
+    [TestCase("in\"v<a>li|d\\image.jpeg", "in_v_a_li_d/image.jpeg")]
+    [TestCase("CLOCK$\\image.jpeg", "_XXX_/image.jpeg")]
+    [TestCase("COM5\\LPT5\\image.jpeg", "_XXX_/_XXX_/image.jpeg")]
+    [TestCase("xCOM5\\xLPT5\\image.jpeg", "xCOM5/xLPT5/image.jpeg")]
+    [TestCase("reports/CON/q3:v2*?.txt", "reports/_XXX_/q3_v2_.txt")]
+    [TestCase("tab\tname.txt", "tab_name.txt")]
+    public void Sanitize_FileName(string input, string expected)
     {
         var sanitized = FileNameUtility.SanitizeFilename(input);
-        Assert.That(sanitized, Is.EqualTo(expected));
+        Assert.That(sanitized, Is.EqualTo(expected.Replace('/', Path.DirectorySeparatorChar)));
     }
 
     [Test]

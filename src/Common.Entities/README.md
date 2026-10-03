@@ -69,6 +69,7 @@ Assuming a `Repository` with a `DbContext` is being used.
 1. Input
 1. Mapping (+AfterMapping)*
 1. Preppers (Repository)
+1. Validators (Repository)
 1. SaveChanges (DbContext)
    1. Primers (Interceptors)
    1. Submit changes
@@ -80,6 +81,7 @@ Assuming a `Repository` with a `DbContext` is being used.
 - **QueryBuilders**: Build IQueryable based on SearchObject, SortBy & Includes
 - **Processors**: Modify entities after fetching (e.g. setting non-mapped properties)
 - **Preppers**: Executed by the Repository before saving to prepare entities
+- **Validators**: Executed by the Repository after every prepper, and on delete, to refuse a write with one 400 holding every error (FluentValidation plugs in through `Regira.Entities.Validation.FluentValidation`)
 - **Primers**: EF Core SaveChangesInterceptors triggered by DbContext when executing SaveChanges
 - **Reactors**: Run once the save is committed, in a DI scope of their own (e.g. sending mail, starting a follow-up workflow when a status changes)
 - **AfterMapper**: Decorates DTOs or Entities after Mapper completes (e.g. calculating URIs)
@@ -123,7 +125,7 @@ public class ProductController : EntityControllerBase<Product, int, ProductSearc
 public class OrderController : EntityControllerBase<Order, int, OrderSearchObject, OrderSortBy, OrderIncludes, OrderDto, OrderInputDto>;
 ```
 
-> **Free tier available:** this package (`Regira.Entities`) is Apache-2.0 — the abstractions are free to reference anywhere. The implementation packages (`Regira.Entities.EFcore`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Web`, the mapping packages) carry the Regira Commercial License; the registration package `Regira.Entities.DependencyInjection` validates keys, with a free tier of 5 simple + 2 complex entity registrations per application, and a license key is required beyond that. Register the key with `services.UseRegira(configuration)` (reads `Regira:LicenseKeys`) **before** calling `UseEntities()`. Without a key the free tier applies automatically. Obtain a key at [https://regira.com/licensing](https://regira.com/licensing).
+> **Free tier available:** this package (`Regira.Entities`) is Apache-2.0 — the abstractions are free to reference anywhere. The implementation packages (`Regira.Entities.EFcore`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Web`, the mapping and FluentValidation adapter packages) carry the Regira Commercial License; the registration package `Regira.Entities.DependencyInjection` validates keys, with a free tier of 5 simple + 2 complex entity registrations per application, and a license key is required beyond that. Register the key with `services.UseRegira(configuration)` (reads `Regira:LicenseKeys`) **before** calling `UseEntities()`. Without a key the free tier applies automatically. Obtain a key at [https://regira.com/licensing](https://regira.com/licensing).
 
 > **Paging defaults:** set `options.DefaultPageSize` / `options.MaxPageSize` in the `UseEntities()` callback (or per entity with `e.SetPageSize(...)`) so List/Search endpoints page automatically instead of returning the full set. See [Web Endpoints → Paging](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/web-endpoints.html#paging).
 
@@ -133,7 +135,7 @@ public class OrderController : EntityControllerBase<Order, int, OrderSearchObjec
 
 1. **[Index](https://regira.github.io/Regira-Packages/src/Common.Entities/)** — Overview of Regira Entities
 1. [Entity Models](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/models.html) — Creating and structuring entity models
-1. [Services](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/services.html) — Implementing entity services and repositories
+1. [Services](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/services.html) — Implementing entity services, repositories and the write pipeline
 1. [Mapping](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/mapping.html) — Mapping Entities to and from DTOs
 1. [Web Endpoints](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/web-endpoints.html) — Exposing entity operations as HTTP endpoints
 1. [Normalizing](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/normalizing.html) — Data normalization techniques

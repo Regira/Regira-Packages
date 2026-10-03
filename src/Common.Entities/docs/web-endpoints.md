@@ -14,6 +14,7 @@ Controllers provide a more traditional, attribute-based approach using `EntityCo
 
 ### Controller Selection
 
+<!-- no-compile -->
 ```csharp
 // basic (not recommended)
 EntityControllerBase<TEntity>
@@ -35,6 +36,7 @@ Keep controller `[Route]` attributes **resource-relative** — `[Route("[control
 - **At the host:** an IIS virtual directory / reverse-proxy path, or `app.UsePathBase("/api")`.
 - **In the app:** a global route-prefix convention (the prefix can come from configuration):
 
+<!-- no-compile -->
 ```csharp
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
@@ -64,12 +66,16 @@ Simple and complex controller bases expose different endpoint sets. **Simple** b
 #### Fetch Endpoints
 
 **Details (all bases):**
+
+<!-- no-compile -->
 ```csharp
 // GET /{entities}/{id} - Single entity
 Details(id) -> DetailsResult
 ```
 
 **List (all bases):**
+
+<!-- no-compile -->
 ```csharp
 // GET /{entities} - Basic List
 List() -> ListResult
@@ -83,6 +89,8 @@ List(searchObject, pagingInfo, includes[], sortBy[]) -> ListResult
 ```
 
 **Search (all bases):**
+
+<!-- no-compile -->
 ```csharp
 // GET /{entities}/search?q={keyword}&page=1 - List + Count combined
 // SearchResult carries a total Count alongside the items — use it to drive paging.
@@ -90,6 +98,8 @@ Search(searchObject, pagingInfo) -> SearchResult
 ```
 
 **Complex POST endpoints — complex bases only:**
+
+<!-- no-compile -->
 ```csharp
 // POST /{entities}/list (collection of SearchObjects in body)
 List([FromBody] searchObject[], pagingInfo, includes[], sortBy[]) -> ListResult
@@ -104,6 +114,7 @@ Search([FromBody] searchObject[], pagingInfo, includes[], sortBy[]) -> SearchRes
 
 List and Search endpoints accept optional `page` and `pageSize` query parameters. By default, when no `pageSize` is sent, the **full set** is returned. You can configure a default and/or maximum page size so endpoints page automatically:
 
+<!-- no-compile -->
 ```csharp
 // Global — applies to every entity controller
 services.UseEntities<AppDbContext>(options =>
@@ -114,13 +125,11 @@ services.UseEntities<AppDbContext>(options =>
     options.MaxPageSize = 200;      // any larger requested pageSize is clamped to this
     // or
     options.SetPageSize(pageSize: 50, maxPageSize: 200);
-});
-
+})
 // Per-entity override — fully replaces the global values for that entity
-services.For<Product>(e => e.SetPageSize(defaultPageSize: 25, maxPageSize: 100));
-
+.For<Product>(e => e.SetPageSize(defaultPageSize: 25, maxPageSize: 100))
 // Opt out — this entity is never force-paged, even when a global default is set
-services.For<AuditLog>(e => e.SetPageSize());
+.For<AuditLog>(e => e.SetPageSize());
 ```
 
 - Both values are optional; `null` means that aspect is off.
@@ -129,6 +138,7 @@ services.For<AuditLog>(e => e.SetPageSize());
 
 #### Save (Add/Modify/Patch)
 
+<!-- no-compile -->
 ```csharp
 // POST /{entities} - Create
 Create(inputDto) -> SaveResult
@@ -149,13 +159,31 @@ Save(inputDto) -> SaveResult
 > - The merge base is the current entity serialized to JSON and then deserialized as `TInputDto`, so only properties declared on the input model can be modified — audit/computed fields on `TEntity` are automatically excluded.
 > - Related collections not included in the patch body are left intact (the entity is fetched without includes, so `null` collections are treated as absent, not as "remove all").
 > - Assumes `TInputDto` property names match the corresponding `TEntity` property names.
+> - The merged input is validated against `TInputDto`'s DataAnnotations before the save: a failure answers **400** with
+>   the `ValidationProblemDetails` model binding answers with, without `errorDetails`. The save then runs the
+>   validators as a `PUT` does.
 
 #### DELETE Endpoint
 
+<!-- no-compile -->
 ```csharp
 // DELETE /{entities}/{id} - Delete
 Delete(id) -> DeleteResult
 ```
+
+> **Refused writes:** a [validator](services.md#entity-validators) that rejects a write makes every write endpoint,
+> `DELETE` included, answer **400** with a `ValidationProblemDetails` holding all the errors. In `errors` each message of
+> a field is its own entry — `""` for an error on the entity as a whole — and `errorDetails` lists every error in order,
+> with its args ([Input Exceptions](built-in-features.md#input-exceptions)):
+>
+> ```json
+> { "title": "One or more validation errors occurred.", "status": 400,
+>   "errors": { "Code": ["Code is taken.", "Code must start with ORD-."], "": ["The order is incomplete."] },
+>   "errorDetails": [
+>     { "key": "Code", "message": "Code is taken." },
+>     { "key": "Code", "message": "Code must start with ORD-." },
+>     { "key": "", "message": "The order is incomplete." } ] }
+> ```
 
 ### Notes
 
@@ -168,7 +196,7 @@ Delete(id) -> DeleteResult
 - The controller's generic types must match the service's generic types (DTOs excluded)
 - It's **not necessary to inject** the service in the constructor — the base controller resolves it via `HttpContext.RequestServices`
 - Responsible for mapping to/from DTO models using `IEntityMapper`
-- **Error status codes:** `EntityInputException` → **400** with the field errors as `ModelState`; a database
+- **Error status codes:** `EntityInputException` → **400** with the field errors as a `ValidationProblemDetails`; a database
   constraint violation (`EntityConstraintException`) → **409 Conflict** with a generic `ProblemDetails`
   detail (the provider message is logged server-side); a write built on a stale read
   (`EntityConcurrencyException`) → **409 Conflict** with a `ProblemDetails` titled "Concurrency conflict"; a
@@ -224,7 +252,7 @@ public record DeleteResult<TDto>
 
 1. [Index](../README.md) — Overview of Regira Entities
 1. [Entity Models](models.md) — Creating and structuring entity models
-1. [Services](services.md) — Implementing entity services and repositories
+1. [Services](services.md) — Implementing entity services, repositories and the write pipeline
 1. [Mapping](mapping.md) — Mapping Entities to and from DTOs
 1. **[Web Endpoints](web-endpoints.md)** — Exposing entity operations as HTTP endpoints
 1. [Normalizing](normalizing.md) — Data normalization techniques

@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using Aspose.Words;
 using Aspose.Words.Drawing;
+using Aspose.Words.Fields;
 using Aspose.Words.Replacing;
 using Aspose.Words.Saving;
 using Aspose.Words.Tables;
@@ -14,6 +15,7 @@ using Regira.Office.Word.Abstractions;
 using Regira.Office.Word.Aspose.Extensions;
 using Regira.Office.Word.Aspose.Internal;
 using Regira.Office.Word.Models;
+using Regira.Office.Word.Templating;
 using Regira.Utilities;
 using AsposeDocumentBuilder = Aspose.Words.DocumentBuilder;
 using AsposeParagraph = Aspose.Words.Paragraph;
@@ -66,7 +68,6 @@ public class WordService : IWordService
     {
         var doc = CreateDocument(input);
         var converted = ConvertDocument(doc, options);
-        // Unlike Word.Spire, the content type follows the actual output format.
         return Task.FromResult(converted.ToMemoryFile(GetContentType(options.OutputFormat)));
     }
 
@@ -166,6 +167,9 @@ public class WordService : IWordService
 
         var doc = LoadDocument(input.Template);
         reference ??= doc;
+
+        // first, so a dropped branch's placeholders are never filled or inserted
+        ResolveConditions(doc, input);
 
         if (input.DocumentParameters?.Any() == true)
         {
@@ -418,6 +422,79 @@ public class WordService : IWordService
             // even-page stories only render once the document tells odd and even pages apart
             doc.FirstSection.PageSetup.OddAndEvenPagesHeaderFooter = true;
         }
+    }
+
+    /// <summary>Resolves the document's conditional blocks, as <see cref="ConditionalBlocks"/> describes them.</summary>
+    protected internal void ResolveConditions(Document doc, WordTemplateInput input)
+    {
+        var paragraphs = doc.FindAllParagraphs()
+            // a footnote, endnote or comment is not part of a template's blocks, as on the other backends
+            .Where(paragraph => paragraph.GetAncestor(NodeType.Footnote) == null
+                && paragraph.GetAncestor(NodeType.Comment) == null)
+            .Select(paragraph => (Paragraph: paragraph, Text: GetVisibleText(paragraph)))
+            .ToArray();
+        if (!paragraphs.Any(paragraph => ConditionalBlocks.OpensBlock(paragraph.Text)))
+        {
+            return;
+        }
+
+        var containers = paragraphs
+            .Where(paragraph => ConditionalBlocks.ContainsMarker(paragraph.Text))
+            .Select(paragraph => paragraph.Paragraph.ParentNode)
+            .OfType<CompositeNode>()
+            .Distinct()
+            .ToArray();
+
+        foreach (var container in containers)
+        {
+            var children = container.ToArray();
+            var texts = children
+                .Select(child => child is AsposeParagraph paragraph ? GetVisibleText(paragraph) : null)
+                .ToArray();
+
+            foreach (var index in ConditionalBlocks.Resolve(texts, input))
+            {
+                children[index].Remove();
+            }
+
+            if (container.LastChild is null or Table)
+            {
+                // whatever holds paragraphs ends with one: a body, cell, header, footer, text box or content control
+                container.AppendChild(new AsposeParagraph(doc));
+            }
+        }
+    }
+
+    /// <summary>
+    /// The paragraph's text without its field codes and deleted revisions, which <see cref="Node.GetText"/> holds,
+    /// and without that of a text box inside it, whose paragraphs are read on their own.
+    /// </summary>
+    private static string GetVisibleText(AsposeParagraph paragraph)
+    {
+        var text = new VisibleText();
+        foreach (Node node in paragraph.GetChildNodes(NodeType.Any, true))
+        {
+            if (node.GetAncestor(NodeType.Paragraph) != paragraph)
+            {
+                continue;
+            }
+            switch (node)
+            {
+                case FieldStart:
+                    text.FieldStart();
+                    break;
+                case FieldSeparator:
+                    text.FieldSeparator();
+                    break;
+                case FieldEnd:
+                    text.FieldEnd();
+                    break;
+                case Run run:
+                    text.Append(run.Text, run.IsDeleteRevision);
+                    break;
+            }
+        }
+        return text.ToString();
     }
 
     protected internal void ReplaceGlobalParameters(Document doc, IDictionary<string, object> parameters)
@@ -676,14 +753,5 @@ public class WordService : IWordService
         };
 
     protected internal static string GetContentType(RegiraFileFormat format)
-        => format switch
-        {
-            RegiraFileFormat.Pdf => ContentTypes.PDF,
-            RegiraFileFormat.Html => ContentTypes.HTML,
-            RegiraFileFormat.Doc or RegiraFileFormat.Dot => ContentTypes.DOC,
-            RegiraFileFormat.Docx or RegiraFileFormat.Dotx or RegiraFileFormat.Docm or RegiraFileFormat.Dotm => ContentTypes.DOCX,
-            RegiraFileFormat.Odt => "application/vnd.oasis.opendocument.text",
-            RegiraFileFormat.EPub => "application/epub+zip",
-            _ => ContentTypeUtility.GetContentType($"x.{format.ToString().ToLowerInvariant()}")
-        };
+        => WordContentTypes.Of(format);
 }

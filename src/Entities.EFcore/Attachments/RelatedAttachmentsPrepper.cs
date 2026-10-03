@@ -28,18 +28,33 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
 
     public override async Task Prepare(TEntity modified, TEntity? original, CancellationToken token = default)
     {
+        var selectorFunc = navigationExpression.Compile();
+        var modifiedItems = selectorFunc(modified);
+        if (modifiedItems == null)
+        {
+            return;
+        }
+
+        // A new link may point only at an attachment the owner already links. On an insert of the owner every link is
+        // new, whatever id it carries; on an update, one without an id or one the stored links do not hold — and
+        // without the stored links, only one without an id is known to be new.
+        var storedItems = original != null ? selectorFunc(original) : null;
+        var ownedAttachmentIds = storedItems?.Select(x => x.AttachmentId).ToArray() ?? [];
+        foreach (var link in modifiedItems.Where(m => original == null || IsNew(m) || (storedItems != null && storedItems.All(o => m.Id!.Equals(o.Id) != true))))
+        {
+            EntityAttachmentContent.KeepToOwner(link, ownedAttachmentIds);
+        }
+
         if (original != null)
         {
-            var selectorFunc = navigationExpression.Compile();
-            var originalItems = selectorFunc(original);
-            var modifiedItems = selectorFunc(modified);
+            var originalItems = storedItems;
 
-            if (modifiedItems == null || originalItems == null)
+            if (originalItems == null)
             {
                 return;
             }
 
-            var relatedItemsToAdd = modifiedItems.Where(m => m.Id == null || m.Id.Equals(default(TEntityAttachmentKey)) || originalItems.All(o => m.Id.Equals(o.Id) != true)).ToArray();
+            var relatedItemsToAdd = modifiedItems.Where(m => IsNew(m) || originalItems.All(o => m.Id!.Equals(o.Id) != true)).ToArray();
             var relatedItemsToDelete = originalItems.Where(o => modifiedItems.All(m => m.Id != null && m.Id.Equals(o.Id) != true)).ToArray();
             foreach (var entity in relatedItemsToAdd)
             {
@@ -48,11 +63,12 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
                     entity.Attachment = new TAttachment();
                     entity.Attachment.Bytes = entity.NewBytes;
                     entity.Attachment.FileName = entity.NewFileName.ToVirtualPath();
-                    entity.Attachment.ContentType = entity.NewContentType;
                 }
                 // Only add when attachment has content
                 if (entity.Attachment?.HasContent() == true)
                 {
+                    // typed now as the save types it, so the validators judge its type
+                    EntityAttachmentContent.TypeByName(entity.Attachment);
                     dbContext.Entry(entity.Attachment).State = EntityState.Added;
                     dbContext.Entry(entity).State = EntityState.Added;
                 }
@@ -63,7 +79,12 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
             {
                 var originalEntity = originalItems.Single(p => p.Id!.Equals(entity.Id));
 
-                if (!string.IsNullOrWhiteSpace(entity.NewFileName) || !string.IsNullOrWhiteSpace(entity.NewContentType) || entity.NewBytes?.Any() == true)
+                if (entity.Attachment?.IsNew() != true)
+                {
+                    // a kept link keeps its attachment, as on the link's own route
+                    EntityAttachmentContent.KeepAttachment(entity, originalEntity);
+                }
+                if (!string.IsNullOrWhiteSpace(entity.NewFileName) || entity.NewBytes?.Any() == true)
                 {
                     entity.Attachment ??= originalEntity.Attachment;
                 }
@@ -72,6 +93,7 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
                 {
                     if (entity.Attachment.IsNew())
                     {
+                        EntityAttachmentContent.TypeByName(entity.Attachment);
                         dbContext.Entry(entity.Attachment).State = EntityState.Added;
                         if (_options.IsStrictRelation && entity.AttachmentId?.Equals(originalEntity.AttachmentId) != true)
                         {
@@ -85,6 +107,8 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
                     }
                     else
                     {
+                        // the new name and bytes before the save, as the link's own route applies them
+                        EntityAttachmentContent.ApplyBeforeSave(dbContext, entity, originalEntity.Attachment);
                         dbContext.Entry(entity.Attachment).State = EntityState.Modified;
                     }
                 }
@@ -106,6 +130,8 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
             }
         }
     }
+
+    private static bool IsNew(TEntityAttachment link) => link.Id == null || link.Id.Equals(default(TEntityAttachmentKey));
 
     /// <summary>
     /// The attachment to mark deleted when the entity being removed never loaded it.

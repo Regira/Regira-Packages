@@ -17,7 +17,7 @@ foreach (var product in products)
 await service.SaveChanges();      // one round-trip flushes the whole batch
 ```
 
-> ⚠️ **Writes batch; preppers do not.** `Add()` is only free while nothing is registered against the entity — a prepper that queries the `DbContext` (FK validation, price lookup, a per-row `FindAsync`) runs **inside the loop**, once per item. A 500-row seed wave against an entity with a two-query prepper issues ~1,000 round-trips before the single flush, and nothing in the code shape shows it. Hoist the lookup into a dictionary built once before the loop.
+> ⚠️ **Writes batch; preppers and validators do not.** `Add()` issues no round-trip while nothing is registered against the entity — a prepper or validator that queries the `DbContext` (an existence check, a price lookup, a per-row `FindAsync`) runs **inside the loop**, once per item. A 500-row seed wave against an entity with a two-query prepper issues ~1,000 round-trips before the single flush, and nothing in the code shape shows it. Hoist the lookup into a dictionary built once before the loop.
 
 Two timing facts drive how you order a bulk run:
 
@@ -78,7 +78,7 @@ foreach (var product in products)
     await links.Add(new ProductAttachment
     {
         ObjectId = product.Id,
-        Attachment = new Attachment { FileName = "spec.pdf", ContentType = "application/pdf", Bytes = bytes }
+        Attachment = new Attachment { FileName = "spec.pdf", Bytes = bytes }
         // (set Attachment.Identifier to pick the storage key; otherwise it is derived from FileName)
     });
 
@@ -86,7 +86,7 @@ await links.SaveChanges();   // one flush; pipeline writes files, fills Path/Len
 ```
 
 - The bytes→file step runs only inside this pipeline, **not** during an owner-graph cascade. Set the nested `Attachment` on the link, don't nest under `owner.Attachments` and save the owner.
-- The `New*` fields (`NewBytes`/`NewFileName`/`NewContentType`) **replace** an existing attachment's content — they don't create one. Setting them without a nested `Attachment` leaves `AttachmentId` at `0` and fails the FK.
+- The `New*` fields (`NewBytes`/`NewFileName`) **replace** an existing attachment's content — they don't create one. Setting them without a nested `Attachment` leaves `AttachmentId` at `0` and fails the FK. The content type follows the file name: `NewContentType` is obsolete and ignored.
 
 ## In-code recipes (how_to)
 
@@ -111,15 +111,15 @@ var links = sp.GetRequiredService<IEntityService<ProductAttachment, int>>();
 await links.Add(new ProductAttachment
 {
     ObjectId = product.Id,
-    Attachment = new Attachment { FileName = "spec.pdf", ContentType = "application/pdf", Bytes = bytes }
+    Attachment = new Attachment { FileName = "spec.pdf", Bytes = bytes }
 });
 await links.SaveChanges(); // pipeline writes the file, fills Path/Length, assigns AttachmentId
 ```
 
 - The bytes→file step runs only inside this pipeline, **not** during an owner-graph cascade.
-- `New*` fields (`NewBytes`/`NewFileName`/`NewContentType`) **replace** an existing
+- `New*` fields (`NewBytes`/`NewFileName`) **replace** an existing
   attachment's content — they don't create one. Without a nested `Attachment`, `AttachmentId`
-  stays `0` and the FK fails.
+  stays `0` and the FK fails. The content type follows the file name (`NewContentType` is ignored).
 
 **See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "Bulk insert / update")`
 and `get_package(id: "Regira.Entities", section: "examples", heading: "Attachments")`.
@@ -204,7 +204,7 @@ return await this.Details<CreditRequest, CreditRequestDto>(id) ?? NotFound();   
 - **Gate the transition set, not only the fields.** A generic transition endpoint that reaches a state a
   role-gated action also reaches voids that action's role check; decide who may reach which state in the one
   service every path calls.
-- **An append-only history** is its own entity with the workflow service as only writer: a prepper refusing
+- **An append-only history** is its own entity with the workflow service as only writer: a validator refusing
   any create or update without the trusted-writer flag, no collection on the parent's input DTO, no `DELETE`.
 
 **See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "Domain actions on an entity resource")`
@@ -220,7 +220,8 @@ every write path that reaches the row — CRUD PATCH, a domain action, an import
 ```csharp
 e.React(x => x.Status, OrderStatus.Shipped, (change, services, token) =>
 {
-    // hand the work to a job system; the reactor itself runs before SaveChanges() returns
+    // hand the work to a job system; the reactor itself runs inside the call that commits —
+    // SaveChanges(), or Commit() when the save ran inside a transaction
     services.GetRequiredService<IBackgroundJobClient>().Enqueue<IOrderMailer>(m => m.SendShipped(change.Entity.Id, CancellationToken.None));
     return Task.CompletedTask;
 });
@@ -618,7 +619,7 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
         if (item.Status != RequestStatus.Submitted)
         {
             ModelState.AddModelError(nameof(item.Status), "Only a submitted request can be approved.");
-            return BadRequest(ModelState);
+            return ValidationProblem(ModelState);
         }
 
         item.Status = RequestStatus.Approved;                                // …decide, stamp
@@ -630,12 +631,14 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
 }
 ```
 
-- **Either shape returns a 400 here.** `ModelState` + `BadRequest` as above, or
+- **Either form returns a 400 `ValidationProblemDetails` here.** `ModelState` + `ValidationProblem` as above, or
   `throw new EntityInputException<CreditRequest>(…) { InputErrors = { [nameof(item.Status)] = "…" } }` — the
   filter `ConfigureDefaultJsonOptions()` registers maps the exception on **any** action, so this controller
-  and the generated one answer alike. That covers a prepper too: preppers run in
-  `EntityWriteService.PrepareItem`, reached from the `service.Modify(item)` above, and one throwing there
-  lands on the same filter rather than escaping as a 500. Catch it explicitly only to add context — and then
+  and the generated one answer alike. Either message can be a translation key; only the exception adds `errorDetails`,
+  with the args a translation fills in: `Errors = { new EntityInputError(nameof(item.Status), "…", new Dictionary<string, object?> { … }) }`.
+  (`BadRequest(ModelState)` is a different body — a bare map, no `errors` wrapper.) That covers the write pipeline too: validators and preppers run inside
+  the `service.Modify(item)` above, so a validator's errors — and a prepper that throws — land on the same
+  filter rather than escaping as a 500. Catch it explicitly only to add context — and then
   catch the non-generic base `EntityInputException`, since a prepper guarding a *related* entity throws
   `EntityInputException<Product>`.
 - **Write through `IEntityService`** — keeps preppers, primers and row security in play, so the action and the
@@ -721,9 +724,116 @@ protects nothing — the caller takes the other route. Put the role-per-target-s
 every transition goes through, and let the endpoint attributes only narrow it.
 
 **An append-only history** (a status log, an audit trail of transitions) is the same guard on its own entity:
-the workflow service is its only writer, so its prepper throws `EntityInputException` for any create or update
-made without the trusted-writer flag, the parent's input DTO leaves the collection out (one writer per save
+the workflow service is its only writer, so its validator refuses any create or update made without the
+trusted-writer flag, the parent's input DTO leaves the collection out (one writer per save
 path), and its controller exposes no `DELETE` (override it to return `405`).
+
+## Input validation with FluentValidation
+
+`Regira.Entities.Validation.FluentValidation` runs `AbstractValidator<T>` rules as the write pipeline's validator
+stage (entities.instructions §Step 8 → Validators): after every prepper, on `DELETE` too, with every error in one 400.
+Add the package and call `UseFluentValidation` inside `UseEntities()`:
+
+```csharp
+using FluentValidation;
+using Regira.Entities.DependencyInjection.ServiceCollections;
+using Regira.Entities.Validation.FluentValidation;
+
+public enum OrderStatus { Pending, Shipped, Delivered }
+
+public class Customer : IEntityWithSerial
+{
+    public int Id { get; set; }
+    [MaxLength(64)] public string? Name { get; set; }
+}
+
+public class Order : IEntityWithSerial
+{
+    public int Id { get; set; }
+    [MaxLength(20)] public string? Code { get; set; }
+    public int CustomerId { get; set; }
+    public OrderStatus Status { get; set; }
+    public ICollection<OrderLine>? Lines { get; set; }
+}
+
+public class OrderLine : IEntityWithSerial
+{
+    public int Id { get; set; }
+    public int OrderId { get; set; }
+    public int Quantity { get; set; }
+}
+
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+{
+    public DbSet<Customer> Customers => Set<Customer>();
+    public DbSet<Order> Orders => Set<Order>();
+}
+
+public static class OrderStatusRules
+{
+    public static bool CanMove(OrderStatus from, OrderStatus to) => to >= from;
+}
+
+public class OrderValidator : AbstractValidator<Order>
+{
+    public OrderValidator(AppDbContext db)
+    {
+        RuleFor(x => x.Code).NotEmpty().MaximumLength(20);
+
+        // db sees every row: with scoped reads, check through the filtered read service (entities.instructions §Step 8 → Validators)
+        RuleFor(x => x.CustomerId)
+            .MustAsync((id, ct) => db.Customers.AnyAsync(c => c.Id == id, ct))
+            .WithMessage(x => $"Customer {x.CustomerId} does not exist");
+
+        // a Related() collection is validated through its parent — keys like Lines[1].Quantity
+        RuleForEach(x => x.Lines).ChildRules(line => line.RuleFor(l => l.Quantity).GreaterThan(0));
+
+        RuleFor(x => x.Status)
+            .Must((_, status, ctx) => ctx.GetOriginal() is not { } stored || OrderStatusRules.CanMove(stored.Status, status))
+            .WithMessage("Status change not allowed");
+
+        RuleSet(EntityRuleSets.Remove, () =>
+            RuleFor(x => x.Status).NotEqual(OrderStatus.Shipped).WithMessage("A shipped order cannot be deleted"));
+    }
+}
+
+public static class OrderServiceConfiguration
+{
+    public static EntityServiceCollection<AppDbContext> AddOrders(this IServiceCollection services)
+        => services
+            .UseEntities<AppDbContext>(o =>
+            {
+                o.UseDefaults();
+                // registers the assembly's validators (scoped, so they can take the DbContext)
+                o.UseFluentValidation(typeof(OrderValidator).Assembly);
+            })
+            .For<Order>(e => e.Related(x => x.Lines))
+            .For<Customer>();
+}
+```
+
+- **Scope** — an `AbstractValidator<T>` checks every entity that is, derives from or implements `T`, like an
+  `IEntityValidator<T>`: `AbstractValidator<IHasTenantId>` checks every tenant-owned entity, and
+  `AbstractValidator<Party>` a `Person` saved through any service. Several validators of one type all run — so a
+  `PersonValidator` that calls `Include(new PartyValidator())` in an assembly that also holds `PartyValidator` runs
+  the `Party` rules twice for a `Person`, and each message appears twice: rely on the scope rule instead of `Include`.
+- **A rule set per write** — `Add` and `Modify` run the rules outside any rule set plus `EntityRuleSets.Add` or
+  `EntityRuleSets.Modify`; `Remove` runs `EntityRuleSets.Remove` alone, against the row as stored, so the shape
+  rules and their lookups stay off a delete and a delete by key is judged by the row's state. A rule for inserts
+  only goes in `RuleSet(EntityRuleSets.Add, …)`.
+- **The write, from any rule** — `ctx.GetOriginal()` is the stored row on `Modify` (`null` otherwise) and
+  `ctx.GetOperation()` the write, read from the `ValidationContext<T>` a three-argument `Must` receives. A child
+  validator shares that context data; its `GetOriginal()` answers `null` unless its `T` is the entity's type.
+- **Async** — rules always run through `ValidateAsync`, so `MustAsync` against the `DbContext` works; it runs
+  once per item, like a prepper (§Bulk insert / update).
+- **Only errors refuse** — `Severity.Warning` and `Severity.Info` failures neither block the save nor reach the
+  response. Keys are FluentValidation's property names; a rule on the whole object (`RuleFor(x => x)`) uses `""`.
+- **The message is the error's message** — a text, or a translation key a client pairs with its own messages
+  (entities.instructions §Step 8 → Validators): `.LessThanOrEqualTo(10_000).WithMessage("ValueTooLarge")`. The
+  values the message was formatted with go out as the args (`{ComparisonValue}`, `{MaxLength}`) — all but the
+  attempted `{PropertyValue}`, which can be a password.
+- **Entities, not input DTOs** — this stage checks the entity the pipeline writes. DataAnnotations on `TInputDto`
+  keep producing ASP.NET's own 400 before the pipeline runs.
 
 ## Role-gated write authorization filter
 
@@ -794,7 +904,8 @@ a filter that reached them would 403 ordinary users out of their own session.
 
 ⚠️ **Attachment controllers do not share the entity controller's entry.** `ProductAttachmentController` is
 its own controller with its own route value, so an entry for `Products` alone leaves file upload
-(`POST {objectId}/files`) and replace (`PUT {objectId}/attachments/{id}`) open to any signed-in user.
+(`POST {objectId}/files`), file replace (`PUT {objectId}/files/{id}`), the link's update
+(`PUT {objectId}/attachments/{id}`) and its delete (`DELETE attachments/{id}`) open to any signed-in user.
 
 ## Owned children that are both sortable and individually togglable
 
@@ -845,7 +956,7 @@ e.Prepare(async (order, dbContext) =>
 });
 ```
 
-- Throw `EntityInputException<Order>` on a rule breach — parameterized by the **serviced** entity (`Order`, the one with the `.For<>()`/controller), **not** the related `Product`. Both still return 400 (the registered filter matches the non-generic base), but the generated action's own `catch` is on its closed `EntityInputException<TEntity>`, so only the matching type argument reaches its `ModelState` — and any `catch` you write should be on the base for the same reason.
+- Throw `EntityInputException<Order>` on a rule breach — parameterized by the **serviced** entity (`Order`, the one with the `.For<>()`/controller), **not** the related `Product`. Both still return 400 (the registered filter matches the non-generic base), but the generated action's own `catch` is on its closed `EntityInputException<TEntity>`, so only the matching type argument gets the action's own 400 — another reaches the filter, and a host without it answers 500 — and any `catch` you write should be on the base for the same reason.
 - On **update** the decrement would compound — diff against the original quantities (prepper-with-original, or a primer branching on `EntityState.Modified`) and apply only the delta.
 
 ## Server-owned / immutable fields on update
@@ -1021,13 +1132,17 @@ What each write is checked against:
 | Write | Checked against |
 |---|---|
 | `PUT` carrying the token | the client's token — a stale one answers 409 |
-| `PUT` without it (`null`, empty, `Guid.Empty`, `0`) | nothing the client read: it writes, only a write racing it is caught, and the empty value never overwrites the token (the marker's primer still mints a new one). `[VersionStamp(Required = true)]` on the token refuses it instead — 400 with the token as the field, before anything is attached — for a client that must always prove what it read; on the marker, put the attribute on the implementing `ConcurrencyToken` property. An insert is never refused |
+| `PUT` without it (`null`, empty, `Guid.Empty`, `0`) | nothing the client read: it writes, only a write racing it is caught, and the empty value never overwrites the token (the marker's primer still mints a new one). `[VersionStamp(Required = true)]` on the token refuses it instead — 400 naming the token (below), before anything is attached — for a client that must always prove what it read; on the marker, put the attribute on the implementing `ConcurrencyToken` property. An insert is never refused |
 | `PATCH` | the token in the body when it carries one; otherwise the merge base supplies the value read at `PATCH` time |
 | `DELETE`, and child rows a save drops | no client token reaches them — only a write racing them is caught |
 | Your own code on the raw `DbContext` (load, copy the DTO, `SaveChanges()`) | the token the entity was **loaded** with — copying the client's token onto a tracked entity changes only its current value, so a stale client wins. Set the original yourself: `db.Entry(order).Property(x => x.ConcurrencyToken).OriginalValue = dto.ConcurrencyToken` |
 | Owned children (`Related()`) | each child's own token, when it declares one; one stale child fails the whole save. A CLR type EF maps more than once — a shared-type entity, an owned type with several owners — has no single model to read its token from, so only a write racing it is caught |
 | A data-column token | the stored row — only a write racing the save is caught |
 
+- A required stamp left out answers the field-level 400, keyed by the token's C# property name:
+  `"errors": { "ConcurrencyToken": ["Required on an update: send the value read with the record."] }`. The camelCase naming
+  policy does not reach dictionary keys, so a client that sends `concurrencyToken` reads the error under
+  `ConcurrencyToken`, as it does every input error key (`entities.instructions` → Response Types).
 - A token whose default is a legitimate value — an `int` version starting at `0` — cannot be told apart from an
   absent one. Start it at `1`, or use a `Guid`. A primer that increments an application-owned token counts from
   `entry.Property(...).OriginalValue`, the stored value, so a client that omits the token cannot reset it.
@@ -1133,6 +1248,10 @@ Two constraints come with the shape:
   keep the index and let a genuine collision surface as a 409.
 
 Stamp from a primer exactly as above: mint on `Added`, restore from `entry.OriginalValues` on `Modified`.
+The primer is also what keeps the sequence gapless: it runs inside `SaveChanges()`, after the validators, so a
+create they refuse uses no number. Minted in a prepper or with `e.ServerOwned(x => x.Code, mint)`, which run
+before the validators, the refused create has already taken its number, and the next one skips it. Only a save that
+then fails in the database still leaves a gap.
 
 ⚠️ **Primer vs prepper when a second writer exists.** A prepper runs only on the entity-service write path
 (`IEntityService.Add`/`Modify`/`Save` — so `original` is `null` on create, the stored row on update). A

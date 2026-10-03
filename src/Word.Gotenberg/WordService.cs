@@ -105,29 +105,35 @@ public class WordService(
 
     /// <summary>
     /// The bytes to upload and the extension to upload them under. An input that needs template
-    /// processing is rendered by the <see cref="IWordCreator"/> first, which produces <c>.docx</c>.
+    /// processing is rendered by the <see cref="IWordCreator"/> first, which produces <c>.docx</c> — and so is an
+    /// OOXML template holding conditional blocks, which need resolving even when the input gives no parameters.
     /// </summary>
     private async Task<(byte[] Bytes, string Extension)> GetSource(WordTemplateInput input, CancellationToken cancellationToken)
     {
         var templateFeatures = FindTemplateFeatures(input);
-        if (templateFeatures.Count > 0)
+        if (templateFeatures.Count == 0)
         {
-            if (creator == null)
+            var template = input.Template ?? throw new ArgumentException("Template is required.", nameof(input));
+            var bytes = template.GetBytes() ?? throw new ArgumentException("Template has no content.", nameof(input));
+            var extension = SourceFormat.Resolve(template, bytes);
+            if (!SourceFormat.IsOpenXml(extension) || !ConditionalMarkers.Any(bytes))
             {
-                throw new NotSupportedException(
-                    $"Gotenberg converts finished documents and cannot apply {string.Join(", ", templateFeatures)}. " +
-                    "Supply an IWordCreator (Regira.Office.Word.Mini, for example) to render the template first.");
+                return (bytes, extension);
             }
-
-            using var created = await creator.Create(input, cancellationToken);
-            var createdBytes = created.GetBytes()
-                ?? throw new InvalidOperationException("The IWordCreator returned a document without content.");
-            return (createdBytes, "docx");
+            templateFeatures.Add("conditional blocks");
         }
 
-        var template = input.Template ?? throw new ArgumentException("Template is required.", nameof(input));
-        var bytes = template.GetBytes() ?? throw new ArgumentException("Template has no content.", nameof(input));
-        return (bytes, SourceFormat.Resolve(template, bytes));
+        if (creator == null)
+        {
+            throw new NotSupportedException(
+                $"Gotenberg converts finished documents and cannot apply {string.Join(", ", templateFeatures)}. " +
+                "Supply an IWordCreator (Regira.Office.Word.Mini, for example) to render the template first.");
+        }
+
+        using var created = await creator.Create(input, cancellationToken);
+        var createdBytes = created.GetBytes()
+            ?? throw new InvalidOperationException("The IWordCreator returned a document without content.");
+        return (createdBytes, "docx");
     }
 
     /// <summary>

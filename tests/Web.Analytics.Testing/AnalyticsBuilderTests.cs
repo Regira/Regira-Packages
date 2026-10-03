@@ -41,7 +41,7 @@ public class AnalyticsBuilderTests
     }
 
     [Test]
-    public void ScopedDependencyStore_SurvivesScopeValidation_AndResolvesPerScope()
+    public async Task ScopedDependencyStore_SurvivesScopeValidation_AndResolvesPerScope()
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -55,7 +55,7 @@ public class AnalyticsBuilderTests
         using var scope = provider.CreateScope();
         var store = scope.ServiceProvider.GetRequiredService<IPageViewStore<PageView>>();
 
-        Assert.DoesNotThrowAsync(() => store.SaveAsync([new PageView { SiteName = "s", Path = "/" }]));
+        await Assert.DoesNotThrowAsync(() => store.SaveAsync([new PageView { SiteName = "s", Path = "/" }]));
     }
 
     [Test]

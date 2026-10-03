@@ -34,6 +34,57 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
     [Test]
     public override Task GetText() => base.GetText();
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public override Task A_Conditional_Block_Keeps_The_Branch_That_Holds(bool isPaid) => base.A_Conditional_Block_Keeps_The_Branch_That_Holds(isPaid);
+
+    [Test]
+    public override Task A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value() => base.A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value();
+
+    [Test]
+    public override Task A_Parameter_Value_Holding_A_Marker_Is_Written_As_Text() => base.A_Parameter_Value_Holding_A_Marker_Is_Written_As_Text();
+    [Test]
+    public override Task Conditional_Blocks_Nest() => base.Conditional_Blocks_Nest();
+
+    [Test]
+    public override Task A_Conditional_Block_Drops_A_Table_Or_A_Cells_Content() => base.A_Conditional_Block_Drops_A_Table_Or_A_Cells_Content();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Header_Is_Resolved() => base.A_Conditional_Block_In_A_Header_Is_Resolved();
+
+    [Test]
+    public override Task A_Malformed_Conditional_Block_Fails() => base.A_Malformed_Conditional_Block_Fails();
+
+    [Test]
+    public override Task Markers_In_Deleted_Revisions_And_Field_Codes_Do_Not_Count() => base.Markers_In_Deleted_Revisions_And_Field_Codes_Do_Not_Count();
+
+    [Test]
+    public override Task A_Marker_Edited_Under_Track_Changes_Reads_As_Edited() => base.A_Marker_Edited_Under_Track_Changes_Reads_As_Edited();
+
+    [Test]
+    public override Task Marker_Text_In_A_Document_Without_Blocks_Stays_As_It_Is() => base.Marker_Text_In_A_Document_Without_Blocks_Stays_As_It_Is();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Text_Box_Or_Content_Control_Leaves_A_Paragraph() => base.A_Conditional_Block_In_A_Text_Box_Or_Content_Control_Leaves_A_Paragraph();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Grouped_Text_Box_Is_Resolved() => base.A_Conditional_Block_In_A_Grouped_Text_Box_Is_Resolved();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Grouped_Text_Box_In_A_Header_Is_Resolved() => base.A_Conditional_Block_In_A_Grouped_Text_Box_In_A_Header_Is_Resolved();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Grouped_Text_Box_Reads_Its_Markers_In_Any_Case() => base.A_Conditional_Block_In_A_Grouped_Text_Box_Reads_Its_Markers_In_Any_Case();
+
+    [Test]
+    public override Task A_Deletion_Inside_The_Braces_Stays_Deleted() => base.A_Deletion_Inside_The_Braces_Stays_Deleted();
+
+    [Test]
+    public override Task A_Marker_Paragraph_Ending_A_Section_Leaves_Only_The_Break() => base.A_Marker_Paragraph_Ending_A_Section_Leaves_Only_The_Break();
+
+    [Test]
+    public override Task A_Block_In_A_Footnote_Stays_As_Text() => base.A_Block_In_A_Footnote_Stays_As_Text();
+
 
     [Test]
     public async Task Create_Sets_Docx_ContentType()
@@ -87,7 +138,7 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
 
 
     [Test]
-    public void Create_Rejects_DocumentParameters()
+    public async Task Create_Rejects_DocumentParameters()
     {
         var input = TemplateInput("parameters.docx");
         input.DocumentParameters = new Dictionary<string, WordTemplateInput>
@@ -95,18 +146,18 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
             ["nested"] = TemplateInput("doc-1.docx")
         };
 
-        var ex = Assert.ThrowsAsync<NotSupportedException>(() => Mini.Create(input));
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(() => Mini.Create(input));
         Assert.That(ex!.Message, Does.Contain(nameof(WordTemplateInput.DocumentParameters)));
     }
 
     [Test]
-    public void Create_Rejects_Headers_And_Footers()
+    public async Task Create_Rejects_Headers_And_Footers()
     {
         var input = TemplateInput("parameters.docx");
         input.Headers = [new WordHeaderFooterInput { Template = TemplateInput("add_header.docx") }];
         input.Footers = [new WordHeaderFooterInput { Template = TemplateInput("add_footer.docx") }];
 
-        var ex = Assert.ThrowsAsync<NotSupportedException>(() => Mini.Create(input));
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(() => Mini.Create(input));
         Assert.Multiple(() =>
         {
             Assert.That(ex!.Message, Does.Contain(nameof(WordTemplateInput.Headers)));
@@ -115,12 +166,12 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
     }
 
     [Test]
-    public void Create_Rejects_Unsupported_Options()
+    public async Task Create_Rejects_Unsupported_Options()
     {
         var input = TemplateInput("parameters.docx");
         input.Options = new InputOptions { EnforceEvenAmountOfPages = true };
 
-        var ex = Assert.ThrowsAsync<NotSupportedException>(() => Mini.Create(input));
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(() => Mini.Create(input));
         Assert.That(ex!.Message, Does.Contain(nameof(WordTemplateInput.Options)));
     }
 
@@ -137,7 +188,7 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
     }
 
     [Test]
-    public void Create_Rejects_A_Key_Used_Twice()
+    public async Task Create_Rejects_A_Key_Used_Twice()
     {
         var input = TemplateInput("parameters.docx");
         input.GlobalParameters = new Dictionary<string, object> { ["logo"] = "text" };
@@ -150,7 +201,7 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
             }
         ];
 
-        var ex = Assert.ThrowsAsync<ArgumentException>(() => Mini.Create(input));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => Mini.Create(input));
         Assert.That(ex!.Message, Does.Contain("logo"));
     }
 
@@ -185,6 +236,79 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
         var text = await Mini.GetText(input);
 
         Assert.That(text, Does.Contain("A spaced key"));
+    }
+
+    /// <summary>
+    /// A marker paragraph that stores the section break is emptied rather than removed, so the break stays.
+    /// </summary>
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task A_Section_Break_On_A_Marker_Paragraph_Survives(bool isDraft)
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Paragraph("Intro"),
+                Docx.Paragraph("{{#if IsDraft}}"),
+                Docx.Paragraph("DRAFTTEXT"),
+                Docx.SectionBreak("{{/if}}"),
+                Docx.Paragraph("Outro")
+            ]),
+            GlobalParameters = new Dictionary<string, object> { ["IsDraft"] = isDraft }
+        };
+
+        using var output = await Mini.Create(input);
+        using var doc = WordprocessingDocument.Open(new MemoryStream(output.GetBytes()!), false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(body.Descendants<W.SectionProperties>().Count(), Is.EqualTo(2), "the break and the final section");
+            Assert.That(body.InnerText, Does.Not.Contain("{{"));
+            Assert.That(body.InnerText, Does.Contain("Intro").And.Contain("Outro"));
+            Assert.That(body.InnerText, isDraft ? Does.Contain("DRAFTTEXT") : Does.Not.Contain("DRAFTTEXT"));
+        });
+    }
+
+    /// <summary>A content control holding a section break ends its section, so a block cannot span it.</summary>
+    [Test]
+    public async Task A_Block_Across_A_Section_Break_In_A_Content_Control_Fails()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Paragraph("{{#if IsDraft}}"),
+                new W.SdtBlock(new W.SdtProperties(new W.SdtId { Val = 1 }), new W.SdtContentBlock(Docx.SectionBreak("Chapter 1"))),
+                Docx.Paragraph("{{/if}}")
+            ]),
+            GlobalParameters = new Dictionary<string, object> { ["IsDraft"] = false }
+        };
+
+        var ex = await Assert.ThrowsAsync<FormatException>(() => Mini.Create(input));
+
+        Assert.That(ex!.Message, Does.Contain("section"));
+    }
+
+    /// <summary>A container that ends as the template wrote it — here in a content control — gets no paragraph added.</summary>
+    [Test]
+    public async Task A_Container_Ending_As_The_Template_Wrote_It_Is_Left_As_It_Is()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Paragraph("{{#if IsDraft}}"),
+                Docx.Paragraph("DRAFTTEXT"),
+                Docx.Paragraph("{{/if}}"),
+                Docx.ContentControl("Signature")
+            ]),
+            GlobalParameters = new Dictionary<string, object> { ["IsDraft"] = true }
+        };
+
+        using var output = await Mini.Create(input);
+        using var doc = WordprocessingDocument.Open(new MemoryStream(output.GetBytes()!), false);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+
+        Assert.That(body.ChildElements.Last(child => child is not W.SectionProperties), Is.InstanceOf<W.SdtBlock>());
     }
 
     /// <summary>

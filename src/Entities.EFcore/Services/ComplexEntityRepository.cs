@@ -36,7 +36,7 @@ public class EntityRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>(
             : Details(id, token);
     public virtual Task<IList<TEntity>> List(TSearchObject? so = null, PagingInfo? pagingInfo = null, CancellationToken token = default)
         => readService.List(so, pagingInfo, token);
-    public Task<long> Count(TSearchObject? so, CancellationToken token = default)
+    public virtual Task<long> Count(TSearchObject? so, CancellationToken token = default)
         => readService.Count(so, token);
 
     public virtual Task<IList<TEntity>> List(IList<TSearchObject?> so, IList<TSortBy> sortBy, TIncludes? includes = null, PagingInfo? pagingInfo = null, CancellationToken token = default)
@@ -45,9 +45,11 @@ public class EntityRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>(
     public virtual Task<long> Count(IList<TSearchObject?> so, CancellationToken token = default)
         => readService.Count(so, token);
 
-    Task<IList<TEntity>> IEntityReadService<TEntity, TKey>.List(object? so, PagingInfo? pagingInfo, CancellationToken token)
+    // the generated controllers' lookups by an anonymous object — the save's existence check, a delete, the attachment
+    // routes — come in here, so an app-wide repository overrides these too to see every read
+    public virtual Task<IList<TEntity>> List(object? so, PagingInfo? pagingInfo, CancellationToken token = default)
         => readService.List(so, pagingInfo, token);
-    Task<long> IEntityReadService<TEntity, TKey>.Count(object? so, CancellationToken token)
+    public virtual Task<long> Count(object? so, CancellationToken token = default)
         => readService.Count(so, token);
 
     public virtual Task Add(TEntity item, CancellationToken token = default)

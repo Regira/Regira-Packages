@@ -120,6 +120,16 @@ ContentTypeUtility.Extend(new Dictionary<string, string[]>
 });
 ```
 
+The map is one shared instance, read without regard to case: what `Extend` adds reaches every later lookup, so call
+it once at startup. A new extension answers its first type; for one the map knows, `Extend` appends the types, and
+`GetContentType` keeps answering the type it had — only `GetExtension` reads the addition. The map knows the common
+web types — `webp`, `avif`, `heic`, `json`, `md`, `webm`, `woff2`, `mjs` among them — answers `text/javascript` for
+`js` (RFC 9239), and `application/octet-stream` for an extension it does not know.
+
+`GetExtension` answers one fixed extension for a type several extensions share: one whose first type it is, then the
+usual one (`jpg`, `html`, `txt`, `mp3`, `mpg`), then the first in alphabetical order — `xml` for `application/xml`,
+`js` for `text/javascript`, `tif` for `image/tiff`.
+
 ---
 
 ## FileUtility

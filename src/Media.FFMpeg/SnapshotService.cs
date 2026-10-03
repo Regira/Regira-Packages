@@ -1,4 +1,5 @@
 ﻿using FFMpegCore;
+using System.Globalization;
 using Regira.IO.Abstractions;
 using Regira.IO.Extensions;
 using Regira.IO.Models;
@@ -17,36 +18,48 @@ public class SnapshotService(IImageService imageService, IProcessHelper? process
 
     public async Task<IImageFile?> Snapshot(IBinaryFile input, ImageSize? size = null, TimeSpan? time = null, CancellationToken cancellationToken = default)
     {
+        // a file without a path is written to a temporary one for ffmpeg, removed again below
+        var inputIsTemporary = !input.HasPath();
         var inputPath = input.GetPath();
-        if (!size.HasValue || size.Value.Width == 0 || size.Value.Height == 0)
+        var framePath = Path.Combine(Path.GetTempPath(), $"regira-snapshot-{Guid.NewGuid():N}.bmp");
+        try
         {
-            var mediaInfo = await FFProbe.AnalyseAsync(inputPath);
-            size = new ImageSize(mediaInfo.PrimaryVideoStream!.Width, mediaInfo.PrimaryVideoStream!.Height);
+            if (!size.HasValue || size.Value.Width == 0 || size.Value.Height == 0)
+            {
+                var mediaInfo = await FFProbe.AnalyseAsync(inputPath);
+                size = new ImageSize(mediaInfo.PrimaryVideoStream!.Width, mediaInfo.PrimaryVideoStream!.Height);
+            }
+
+            // ffmpeg reads the position in seconds; without one it takes the first frame. Before -i it seeks the input
+            // rather than decoding everything up to the position, and stays frame-accurate since it re-encodes the frame
+            var seek = time.HasValue
+                ? $"-ss {time.Value.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture)} "
+                : string.Empty;
+            var cmd = $@"ffmpeg {seek}-i ""{inputPath}"" -update 1 -frames:v 1 ""{framePath}""";
+            // capture what ffmpeg has to say: it reports every failure on stderr, and without it there is only an exit code
+            var result = _processHelper.ExecuteCommand(cmd, waitForOutput: true);
+
+            if (result.ExitCode != 0)
+            {
+                throw new Exception($"Internal error while creating snapshot (ExitCode {result.ExitCode}): {result.Error}");
+            }
+
+            using var frameFile = new BinaryFileItem(framePath);
+            using var img = frameFile.ToImageFile();
+            if (img.Length <= 0)
+            {
+                throw new Exception("Empty file");
+            }
+            using var jpeg = await imageService.ChangeFormat(img, Drawing.Enums.ImageFormat.Jpeg, cancellationToken);
+            return await imageService.Resize(jpeg, size.Value, cancellationToken: cancellationToken);
         }
-
-        var tempPath = $"{Path.GetTempFileName()}.bmp";
-        var ss = time?.ToString().Substring(0, 12);
-        var cmd = $@"ffmpeg -i ""{inputPath}"" -ss {ss} -update 1 -frames:v 1 ""{tempPath}""";
-        // capture what ffmpeg has to say: it reports every failure on stderr, and without it there is only an exit code
-        var result = _processHelper.ExecuteCommand(cmd, waitForOutput: true);
-
-        //var success = await FFMegService.SnapshotAsync(inputPath, tempFile, new Size((int)size.Value.Width, (int)size.Value.Height), time);
-        if (result.ExitCode != 0)
+        finally
         {
-            throw new Exception($"Internal error while creating snapshot (ExitCode {result.ExitCode}): {result.Error}");
+            TempFiles.TryDelete(framePath);
+            if (inputIsTemporary)
+            {
+                TempFiles.TryDelete(inputPath);
+            }
         }
-
-        using var tempFile = new BinaryFileItem(tempPath);
-        using var img = tempFile.ToImageFile();
-        if (img.Length <= 0)
-        {
-            throw new Exception("Empty file");
-        }
-        using var jpeg = await imageService.ChangeFormat(img, Drawing.Enums.ImageFormat.Jpeg, cancellationToken);
-        var resized = await imageService.Resize(jpeg, size.Value, cancellationToken: cancellationToken);
-
-        File.Delete(tempPath);
-
-        return resized;
     }
 }

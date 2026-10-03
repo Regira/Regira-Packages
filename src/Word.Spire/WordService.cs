@@ -8,9 +8,11 @@ using Regira.Office.Word.Abstractions;
 using Regira.Office.Word.Models;
 using Regira.Office.Word.Spire.Extensions;
 using Regira.Office.Word.Spire.Internal;
+using Regira.Office.Word.Templating;
 using Regira.TreeList;
 using Regira.Utilities;
 using Spire.Doc;
+using Spire.Doc.Collections;
 using Spire.Doc.Documents;
 using Spire.Doc.Fields;
 using System.Drawing;
@@ -59,7 +61,7 @@ public class WordService : IWordService
     {
         using var doc = CreateDocument(input);
         var convertedStream = ConvertDocument(doc, options);
-        var file = convertedStream.ToMemoryFile(options.OutputFormat == RegiraFileFormat.Doc ? ContentTypes.DOC : ContentTypes.DOCX);
+        var file = convertedStream.ToMemoryFile(WordContentTypes.Of(options.OutputFormat));
         return Task.FromResult(file);
     }
 
@@ -148,6 +150,9 @@ public class WordService : IWordService
         {
             doc.LoadFromStream(templateStream, SpireFileFormat.Auto, XHTMLValidationType.None);
         }
+
+        // first, so a dropped branch's placeholders are never filled or inserted
+        ResolveConditions(doc, input);
 
         if (input.DocumentParameters?.Any() == true)
         {
@@ -406,6 +411,93 @@ public class WordService : IWordService
         {
             // even-page stories only render once the document tells odd and even pages apart
             doc.Sections[0].PageSetup.DifferentOddAndEvenPagesHeaderFooter = true;
+        }
+    }
+    /// <summary>Resolves the document's conditional blocks, as <see cref="ConditionalBlocks"/> describes them.</summary>
+    protected internal void ResolveConditions(Document doc, WordTemplateInput input)
+    {
+        var paragraphs = doc.ToTreeList()
+            .FindAllParagraphs()
+            .Where(paragraph => !IsInNoteOrComment(paragraph))
+            .Select(paragraph => (Paragraph: paragraph, Text: GetVisibleText(paragraph)))
+            .ToArray();
+        if (!paragraphs.Any(paragraph => ConditionalBlocks.OpensBlock(paragraph.Text)))
+        {
+            return;
+        }
+
+        var containers = paragraphs
+            .Where(paragraph => ConditionalBlocks.ContainsMarker(paragraph.Text))
+            .Select(paragraph => paragraph.Paragraph.Owner)
+            .Distinct()
+            .ToArray();
+
+        foreach (var container in containers)
+        {
+            var children = container.ChildObjects;
+            var texts = children.Cast<DocumentObject>()
+                .Select(child => child is SpireParagraph paragraph ? GetVisibleText(paragraph) : null)
+                .ToArray();
+
+            foreach (var index in ConditionalBlocks.Resolve(texts, input).OrderByDescending(i => i))
+            {
+                children.RemoveAt(index);
+            }
+
+            // whatever holds paragraphs ends with one: a body, cell, header, footer, text box or content control
+            if (container is Body body && (children.Count == 0 || children[children.Count - 1] is Table))
+            {
+                body.AddParagraph();
+            }
+        }
+    }
+    /// <summary>
+    /// Whether the paragraph belongs to a footnote, endnote or comment, which are not part of a template's blocks.
+    /// </summary>
+    private static bool IsInNoteOrComment(SpireParagraph paragraph)
+    {
+        for (var owner = paragraph.Owner; owner != null; owner = owner.Owner)
+        {
+            if (owner is Footnote or Comment)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+    /// <summary>
+    /// The paragraph's text without its deleted revisions, and with an inline content control's — what
+    /// <see cref="SpireParagraph.Text"/> gives neither. Spire keeps a field's code on the field, out of the text.
+    /// </summary>
+    private static string GetVisibleText(SpireParagraph paragraph)
+    {
+        var text = new VisibleText();
+        Read(paragraph.ChildObjects);
+        return text.ToString();
+
+        void Read(DocumentObjectCollection items)
+        {
+            foreach (DocumentObject item in items)
+            {
+                switch (item)
+                {
+                    case Field:
+                        text.FieldStart();
+                        break;
+                    case FieldMark { Type: FieldMarkType.FieldSeparator }:
+                        text.FieldSeparator();
+                        break;
+                    case FieldMark { Type: FieldMarkType.FieldEnd }:
+                        text.FieldEnd();
+                        break;
+                    case TextRange range:
+                        text.Append(range.Text, range.IsDeleteRevision);
+                        break;
+                    case StructureDocumentTagInline control:
+                        Read(control.SDTContent.ChildObjects);
+                        break;
+                }
+            }
         }
     }
     protected internal void ReplaceGlobalParameters(Document doc, IDictionary<string, object> parameters)

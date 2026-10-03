@@ -27,6 +27,7 @@ using Regira.TreeList;
 
 Add the abstractions namespace only when you need to reference `ITreeNode<T>` explicitly (e.g. in a children-selector lambda):
 
+<!-- no-compile -->
 ```csharp
 using Regira.TreeList.Abstractions;
 
@@ -74,6 +75,7 @@ The main container. Inherits `List<TreeNode<T>>`.
 
 #### Constructors
 
+<!-- no-compile -->
 ```csharp
 new TreeList<T>(TreeOptions? options = null)
 new TreeList<T>(int capacity, TreeOptions? options = null)
@@ -159,6 +161,7 @@ Use when you know the root items and can enumerate children per node top-down.
 **Method:** `Fill(IEnumerable<T> rootValues, Func<ITreeNode<T>, IEnumerable<T>> getChildren)`
 **Extension:** `ToTreeList<T>(this IEnumerable<T> collection, IEnumerable<T> roots, Func<ITreeNode<T>, IEnumerable<T>> getChildren, TreeOptions? options = null)`
 
+<!-- no-compile -->
 ```csharp
 // Via Fill (mutates an existing TreeList)
 var tree = new TreeList<string>(directories.Length);
@@ -183,6 +186,7 @@ Use when each item has at most one parent and you can return it directly.
 **Method:** `Fill(IEnumerable<T> values, Func<T, T> getParent)`
 **Extension:** `ToTreeList<T>(this IEnumerable<T> collection, Func<T, T> getParent, TreeOptions? options = null)`
 
+<!-- no-compile -->
 ```csharp
 // Items where getParent returns null become roots
 var tree = persons.ToTreeList(p => p.Parent!);
@@ -198,6 +202,7 @@ Use when items can have multiple parents (many-to-many).
 **Method:** `Fill(IEnumerable<T> values, Func<T, IEnumerable<T>> getParents)`
 **Extension:** `ToTreeList<T>(this IEnumerable<T> collection, Func<T, IEnumerable<T>> fkSelector, TreeOptions? options = null)`
 
+<!-- no-compile -->
 ```csharp
 var tree = members.ToTreeList(m => m.Parents ?? []);
 // equivalent:
@@ -241,6 +246,7 @@ All operate on a single `TreeNode<T>` instance.
 | `GetUncles<T>(this TreeNode<T> item) → IEnumerable<TreeNode<T>>` | Children of parent's siblings | Empty when parent has no siblings |
 | `GetNephews<T>(this TreeNode<T> item) → IEnumerable<TreeNode<T>>` | Children of uncles | Empty when there are no uncles |
 
+<!-- no-compile -->
 ```csharp
 // Given: Grandpa → Father → Child1 → GrandChild1
 var grandChild1Node = tree.First(n => n.Value == grandChild1);
@@ -272,6 +278,7 @@ All operate on `IEnumerable<TreeNode<T>>` and return distinct results.
 | `GetBrothers<T>(this IEnumerable<TreeNode<T>> collection) → IEnumerable<TreeNode<T>>` | Distinct siblings of all nodes |
 | `GetUncles<T>(this IEnumerable<TreeNode<T>> collection) → IEnumerable<TreeNode<T>>` | Distinct uncles of all nodes |
 
+<!-- no-compile -->
 ```csharp
 // Find nodes by value (important for many-to-many: same value = multiple nodes)
 var tomatoNodes = tree.GetSelf(tomato);      // may return > 1 node if tomato appears under multiple parents
@@ -303,6 +310,7 @@ All live in `TreeListExtensions`. Use the overload that matches your data shape.
 
 ## `ToTreeView`
 
+<!-- no-compile -->
 ```csharp
 TreeView<T> ToTreeView<T>(this TreeList<T> tree)
 ```
@@ -310,6 +318,7 @@ TreeView<T> ToTreeView<T>(this TreeList<T> tree)
 Returns a `ReadOnlyCollection<T>` of raw values in hierarchical (depth-first) order.
 `view.Tree` gives back the source `TreeList<T>`.
 
+<!-- no-compile -->
 ```csharp
 var view = tree.ToTreeView();
 // view[0] is the first root's value
@@ -320,6 +329,7 @@ var view = tree.ToTreeView();
 
 ## `OrderByHierarchy`
 
+<!-- no-compile -->
 ```csharp
 IEnumerable<TreeNode<T>> OrderByHierarchy<T>(this IEnumerable<TreeNode<T>> collection)
 IEnumerable<TreeNode<T>> OrderByHierarchy<T, TKey>(this IEnumerable<TreeNode<T>> collection, Func<TreeNode<T>, TKey>? keySelector = null)
@@ -329,6 +339,7 @@ Returns nodes in depth-first order: each root is immediately followed by **all**
 When `keySelector` is provided, the roots and the children of every node are sorted by that key — level by level,
 never across levels, so a deep node never overtakes its own parent.
 
+<!-- no-compile -->
 ```csharp
 // Insertion order within siblings
 var ordered = tree.OrderByHierarchy();
@@ -343,6 +354,7 @@ var sorted = tree.OrderByHierarchy(n => n.Value.Name);
 
 ## `ReverseTree`
 
+<!-- no-compile -->
 ```csharp
 TreeList<T> ReverseTree<T>(this TreeList<T> tree)
 ```
@@ -351,6 +363,7 @@ Returns a **new** `TreeList<T>` with the hierarchy inverted: leaf nodes become r
 leaves. In many-to-many trees, duplicate values across subtrees are collapsed — each distinct value
 appears once in the reversed tree.
 
+<!-- no-compile -->
 ```csharp
 var reversed = tree.ReverseTree();
 // Original roots are now leaf nodes (no children)
@@ -374,6 +387,7 @@ and the downward walk never arrives at them. It equally covers a value whose par
 The **children-selector** build takes its roots from the caller and therefore has nothing unreachable to
 report; a cycle it walks into is caught by the ancestor check on the way down (case 1).
 
+<!-- no-compile -->
 ```csharp
 // Default — throws
 person1.Parent = person0;
@@ -406,6 +420,7 @@ Assert.That(bad, Is.Null);
 
 Use `tree.IsValidChild(parent, candidate)` to pre-check before adding:
 
+<!-- no-compile -->
 ```csharp
 if (tree.IsValidChild(parentNode, candidateValue))
     parentNode.AddChild(candidateValue);

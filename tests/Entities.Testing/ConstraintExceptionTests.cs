@@ -46,7 +46,7 @@ public class ConstraintExceptionTests
 
         // explicit duplicate PK → SQLite UNIQUE violation → DbUpdateException wrapped by the write service
         await service.Add(new Category { Id = 1, Title = "Duplicate" });
-        var ex = Assert.ThrowsAsync<EntityConstraintException>(() => service.SaveChanges());
+        var ex = await Assert.ThrowsAsync<EntityConstraintException>(() => service.SaveChanges());
         Assert.That(ex!.InnerException, Is.InstanceOf<DbUpdateException>());
     }
 
@@ -76,7 +76,7 @@ public class ConstraintExceptionTests
     }
 
     [Test]
-    public void Wrapped_Exception_Message_Is_The_Generic_Client_Text()
+    public async Task Wrapped_Exception_Message_Is_The_Generic_Client_Text()
     {
         // Message must be safe to render anywhere — the provider's constraint text stays on InnerException
         using var scope = _serviceProvider.CreateScope();
@@ -87,7 +87,7 @@ public class ConstraintExceptionTests
         service.SaveChanges().GetAwaiter().GetResult();
         service.Add(new Category { Id = 1, Title = "Duplicate" }).GetAwaiter().GetResult();
 
-        var ex = Assert.ThrowsAsync<EntityConstraintException>(() => service.SaveChanges());
+        var ex = await Assert.ThrowsAsync<EntityConstraintException>(() => service.SaveChanges());
         Assert.Multiple(() =>
         {
             Assert.That(ex!.Message, Is.EqualTo(EntityConstraintException.ClientMessage));

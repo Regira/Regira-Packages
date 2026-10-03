@@ -19,6 +19,7 @@ public class AttachmentProcessor<TAttachment, TKey>(IAttachmentFileService<TAtta
             if (includes?.HasFlag(EntityIncludes.All) == true)
             {
                 item.Bytes = await fileService.GetBytes(item, token);
+                StoredContent.Mark(item);
             }
         }
     }

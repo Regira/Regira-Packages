@@ -8,7 +8,7 @@ public class MongoCommunicator(MongoSettings settings)
     protected MongoClientSettings Settings { get; } = settings.ToMongoClientSettings();
     private IMongoClient? _client;
     protected IMongoClient Client => _client ??= new MongoClient(Settings);
-    private static IMongoDatabase? _dbContext;
+    private IMongoDatabase? _dbContext;
     protected internal IMongoDatabase Database => _dbContext ??= Client.GetDatabase(_database);
 
 

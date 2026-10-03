@@ -1,4 +1,5 @@
 # Regira Office.Word AI Agent Instructions
+<!-- {% raw %} -->
 
 ---
 
@@ -41,23 +42,23 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 | Package | Backend | Create | Convert | Merge | Extract | Licence / limits |
 |---|---|---|---|---|---|---|
-| `Word.Spire` | FreeSpire.Doc | ✓ | ✓ | ✓ | ✓ | Free edition: 500 paragraphs or 25 tables per document |
+| `Word.Spire` | FreeSpire.Doc | ✓ | ✓ | ✓ | ✓ | Free edition: 500 paragraphs or 25 tables per document; PDF output stops after 3 pages |
 | `Word.Syncfusion` | Syncfusion DocIO | ✓ | ✓ except EPub | ✓ | ✓ | Commercial licence key required; no size cap |
 | `Word.Aspose` | Aspose.Words | ✓ | ✓ | ✓ | ✓ | Commercial licence required; unlicensed output is watermarked and truncated |
-| `Word.Mini` | MiniWord | partial | — | — | text, images | MIT, no key, no size cap |
+| `Word.Mini` | MiniWord | partial | — | — | text, images | Apache-2.0, no key, no size cap |
 | `Word.Gotenberg` | Gotenberg server (LibreOffice) | — | PDF only | — | page images | MIT; needs a running Gotenberg server |
 
-**Recommendation:** Use **Word.Spire** by default — the widest format coverage, and no vendor key. Use **Word.Syncfusion** when documents exceed the FreeSpire size cap and a Syncfusion licence is already in place. Use **Word.Aspose** when an Aspose licence is in place, or when ODT templates must load and EPUB must be written — it is the only backend that does both. Use **Word.Mini** when conversion and merging are not needed, and pair it with **Word.Gotenberg** for PDF output and page images without a vendor licence — as long as the templates need only what Word.Mini renders (see its limits).
+**Recommendation:** Use **Word.Spire** by default — the widest format coverage, and no vendor key. Use **Word.Syncfusion** when documents exceed the FreeSpire caps — a PDF longer than three pages among them — and a Syncfusion licence is already in place. Use **Word.Aspose** when an Aspose licence is in place, or when ODT templates must load and EPUB must be written — it is the only backend that does both. Use **Word.Mini** when conversion and merging are not needed, and pair it with **Word.Gotenberg** for PDF output and page images without a vendor licence — as long as the templates need only what Word.Mini renders (see its limits).
 
-> **FreeSpire.Doc limit:** Up to 500 paragraphs or 25 tables per document.
+> **FreeSpire.Doc limits:** Up to 500 paragraphs or 25 tables per document, and at most three pages of PDF. `Convert` to `FileFormat.Pdf` of a longer document writes its first three pages and then a notice page — *"Spire Doc. Free version converting word documents to PDF files, you can only get the first 3 page of PDF file."* — in place of the rest, and raises no error, so check the page count if a document can run longer. `ToImages` and the other `Convert` formats (HTML, RTF, ODT, EPUB) carry every page. For longer PDFs use Word.Syncfusion or Word.Aspose (licensed), or Word.Gotenberg (no vendor licence).
 
-> **Word.Syncfusion limits:** ODT templates cannot be **loaded** (saving to ODT works), and EPUB export is unavailable on .NET Core. `Convert` throws `NotSupportedException` for both, and for `Png`/`Jpeg` (use `ToImages`). Without a valid licence key DocIO prepends *"Created with a trial version of Syncfusion Word library or registered the wrong key in your application"* to every document it produces — including conversions and rendered pages. It is ordinary body text, so a containment check on your own content still passes; assert the banner is **absent** if you need to know the key works. Document SDK is priced per developer per year with a minimum team size ([syncfusion.com/sales/products](https://www.syncfusion.com/sales/products)); their Community Licence page names Document Solution SDKs among the products it covers, but the Document Solutions pages do not corroborate that and mention only a 30-day evaluation — confirm eligibility with Syncfusion before relying on a free tier. PDF conversion and `ToImages` render through SkiaSharp 3.119.1 and HarfBuzzSharp 8.3.1.2; on Linux, add `SkiaSharp.NativeAssets.Linux` and `HarfBuzzSharp.NativeAssets.Linux` at the versions of `SkiaSharp` and `HarfBuzzSharp` the application resolves (those two, unless another package raises them).
+> **Word.Syncfusion limits:** ODT templates cannot be **loaded** (saving to ODT works), and EPUB export is unavailable on .NET Core. `Convert` throws `NotSupportedException` for both, and for `Png`/`Jpeg` (use `ToImages`). Without a valid licence key DocIO prepends *"Created with a trial version of Syncfusion Word library or registered the wrong key in your application"* to every document it produces — including conversions and rendered pages. It is ordinary body text, so a containment check on your own content still passes; assert the banner is **absent** if you need to know the key works. Document SDK is priced per developer per year with a minimum team size ([syncfusion.com/sales/products](https://www.syncfusion.com/sales/products)); their Community Licence page names Document Solution SDKs among the products it covers, but the Document Solutions pages do not corroborate that and mention only a 30-day evaluation — confirm eligibility with Syncfusion before relying on a free tier. PDF conversion and `ToImages` render through SkiaSharp 4.150.1 and HarfBuzzSharp 14.2.1.1; on Linux, add `SkiaSharp.NativeAssets.Linux` and `HarfBuzzSharp.NativeAssets.Linux` at the versions of `SkiaSharp` and `HarfBuzzSharp` the application resolves (those two, unless another package raises them).
 
-> **Word.Mini limits:** `Create` renders `GlobalParameters`, `CollectionParameters` and `Images`, with MiniWord's template syntax rather than the other backends': every value fills a `{{tag}}` — a collection fills a table row whose cells hold `{{Items.Name}}` tags (the row repeats per item, and `{{ row_number }}` is not provided), and an image replaces a `{{logo}}` tag, not a picture named by its Alt Text. A template written for Word.Spire therefore renders its global parameters identically and its collection tables and images not at all. Spaces inside the braces are ignored, and a tag Word split over several runs still matches. It throws `NotSupportedException` for `DocumentParameters`, `Headers`, `Footers` and any non-default `InputOptions` — MiniWord has no API for them. A key may appear in only one of `GlobalParameters`, `Images` and `CollectionParameters`; they share one `{{tag}}` namespace and a duplicate throws `ArgumentException`. `GetText` and `GetImages` run against the rendered document, and `ToImages` is unavailable (no layout engine).
+> **Word.Mini limits:** `Create` renders `GlobalParameters`, `CollectionParameters` and `Images`, with MiniWord's template syntax rather than the other backends': every value fills a `{{tag}}` — a collection fills a table row whose cells hold `{{Items.Name}}` tags (the row repeats per item, and `{{ row_number }}` is not provided), and an image replaces a `{{logo}}` tag, not a picture named by its Alt Text. A template written for Word.Spire therefore renders its global parameters identically and its collection tables and images not at all. Spaces inside the braces are ignored, and a tag Word split over several runs still matches. Conditional blocks (`{{#if Key}}`, see *Conditional Blocks*) work as on the other backends, because Word.Mini resolves them before MiniWord renders; use them rather than MiniWord's own `@if` paragraphs, which compare `true`/`false` as text — `@if Flag == true` never holds — and throw on a bare `@if Flag`. It throws `NotSupportedException` for `DocumentParameters`, `Headers`, `Footers` and any non-default `InputOptions` — MiniWord has no API for them. A key may appear in only one of `GlobalParameters`, `Images` and `CollectionParameters`; they share one `{{tag}}` namespace and a duplicate throws `ArgumentException`. `GetText` and `GetImages` run against the rendered document, and `ToImages` is unavailable (no layout engine).
 
 > **Word.Aspose limits:** ODT templates load and EPUB is written; `Convert` writes every document format and throws `NotSupportedException` only for `Png`/`Jpeg` (use `ToImages`). Without a licence Aspose.Words runs in evaluation mode: every document gets *"Created with an evaluation copy of Aspose.Words…"* at the top and *"Evaluation Only. Created with Aspose.Words…"* in place of its own headers and footers, and documents beyond a few hundred paragraphs are cut short. So constructing `WordService` throws when no licence is configured anywhere — a configuration key that resolves to nothing fails the first time the service is built — unless `AsposeWordConfig.AllowEvaluation` accepts evaluation output, or the process already holds a licence. Both banners are ordinary text, so a containment check on your own content still passes — assert they are **absent**, and check the last paragraph of a long document survives, if you need to know the licence works. Aspose sells developer, site and metered licences, which differ in the number of developers and locations and in whether public-facing web apps and SaaS are covered ([purchase.aspose.com/pricing/words/net](https://purchase.aspose.com/pricing/words/net/)); a free 30-day temporary licence is available on request. On Linux, add `SkiaSharp.NativeAssets.Linux` at the version of `SkiaSharp` the application resolves (3.119 or later) and install `libfontconfig1` and `libharfbuzz-icu0`.
 
-> **Word.Gotenberg limits:** Implements `IWordConverter` and `IWordToImagesService` only — Gotenberg has no document model. `Convert` produces PDF only; every other `FileFormat` throws `NotSupportedException`. It reads Word (`.doc`, `.dot`, `.docx`, `.dotx`, `.docm`, `.dotm`), OpenDocument (`.odt`, `.ott`), `.rtf`, `.txt`, `.html`/`.htm` and `.epub` sources. `ConversionOptions.Settings` needs an OOXML source (`.docx`, `.dotx`, `.docm`, `.dotm`), because the page size, orientation and margins are written into the document before upload; any `PageSize` is honoured. An input carrying template substitutions needs an `IWordCreator` that renders it first, and throws `NotSupportedException` without one: `Word.Mini.WordService` covers `GlobalParameters`, `CollectionParameters` and `Images` (in its own template syntax), while `Headers`, `Footers`, `DocumentParameters` and non-default `InputOptions` need a creator with a document model — Word.Spire, Word.Syncfusion or Word.Aspose — because Word.Mini refuses them. `ToImages` needs an `IPdfToImageService` such as `Regira.Office.PDF.DocNET`, which rasterises the PDF. **LibreOffice lays documents out differently from Word:** a font missing from the Gotenberg image is substituted, which moves line and page breaks, so page images and page counts can differ from Word's — install the fonts your documents use in the image. The server enforces its own time limit (`--api-timeout`, 30 seconds by default) and answers 503 when a conversion exceeds it.
+> **Word.Gotenberg limits:** Implements `IWordConverter` and `IWordToImagesService` only — Gotenberg has no document model. `Convert` produces PDF only; every other `FileFormat` throws `NotSupportedException`. It reads Word (`.doc`, `.dot`, `.docx`, `.dotx`, `.docm`, `.dotm`), OpenDocument (`.odt`, `.ott`), `.rtf`, `.txt`, `.html`/`.htm` and `.epub` sources. `ConversionOptions.Settings` needs an OOXML source (`.docx`, `.dotx`, `.docm`, `.dotm`), because the page size, orientation and margins are written into the document before upload; any `PageSize` is honoured. An input carrying template substitutions needs an `IWordCreator` that renders it first, and throws `NotSupportedException` without one — and so does an OOXML template holding a conditional block, even without parameters, because a key the input does not give is false: `Word.Mini.WordService` covers `GlobalParameters`, `CollectionParameters` and `Images` (in its own template syntax), while `Headers`, `Footers`, `DocumentParameters` and non-default `InputOptions` need a creator with a document model — Word.Spire, Word.Syncfusion or Word.Aspose — because Word.Mini refuses them. An OOXML source converted without parameters is scanned for such a block in-process; one whose parts hold more than 32 MiB together, uncompressed and images included, or that has more than 1,000 parts, is not opened, and is uploaded as it is, its blocks unresolved — and so is one the scan cannot read. `ToImages` needs an `IPdfToImageService` such as `Regira.Office.PDF.DocNET`, which rasterises the PDF. **LibreOffice lays documents out differently from Word:** a font missing from the Gotenberg image is substituted, which moves line and page breaks, so page images and page counts can differ from Word's — install the fonts your documents use in the image. The server enforces its own time limit (`--api-timeout`, 30 seconds by default) and answers 503 when a conversion exceeds it.
 
 ---
 
@@ -65,25 +66,31 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 ### `IWordCreator`
 
+<!-- no-compile -->
 ```csharp
 Task<IMemoryFile> Create(WordTemplateInput input, CancellationToken cancellationToken = default);
 ```
 
 ### `IWordConverter`
 
+<!-- no-compile -->
 ```csharp
 Task<IMemoryFile> Convert(WordTemplateInput input, FileFormat format, CancellationToken cancellationToken = default);
 Task<IMemoryFile> Convert(WordTemplateInput input, ConversionOptions options, CancellationToken cancellationToken = default);
 ```
 
+The returned file's `ContentType` names the format produced — `application/pdf` for `FileFormat.Pdf`, `text/html` for `Html` — so a web action can serve it with that type.
+
 ### `IWordMerger`
 
+<!-- no-compile -->
 ```csharp
 Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default);
 ```
 
 ### `IWordTextExtractor` / `IWordImageExtractor` / `IWordToImagesService`
 
+<!-- no-compile -->
 ```csharp
 Task<string>                    GetText(WordTemplateInput input, CancellationToken cancellationToken = default);
 Task<IEnumerable<WordImage>>    GetImages(WordTemplateInput input, CancellationToken cancellationToken = default);
@@ -103,8 +110,8 @@ Composite of all the above. `Word.Spire.WordService`, `Word.Syncfusion.WordServi
 | Property | Type | Description |
 |---|---|---|
 | `Template` | `IMemoryFile` | Source `.docx` template |
-| `GlobalParameters` | `IDictionary<string, object>?` | Simple `{{Key}}` replacements |
-| `CollectionParameters` | `IDictionary<string, ICollection<IDictionary<string, object>>>?` | Table row data — key matches a table placeholder |
+| `GlobalParameters` | `IDictionary<string, object>?` | Simple `{{Key}}` replacements; also decide `{{#if Key}}` conditional blocks |
+| `CollectionParameters` | `IDictionary<string, ICollection<IDictionary<string, object>>>?` | Table rows — the key is the Alt Text title of the table they fill (see *Collection Tables*); `{{#if Key}}` holds when it has rows |
 | `Images` | `ICollection<WordImage>?` | Image replacements (matched by name) |
 | `DocumentParameters` | `IDictionary<string, WordTemplateInput>?` | Nested documents, each inserted in place of a `<{ key }>` placeholder paragraph |
 | `Headers` | `ICollection<WordHeaderFooterInput>?` | Page headers |
@@ -155,13 +162,14 @@ Docx  Doc  Dotx  Dot  Docm  Dotm  Pdf  Html  Rtf  Odt  EPub  Jpeg  Png
 
 | Property | Type | Description |
 |---|---|---|
-| `Template` | `IMemoryFile` | Template fragment for the header/footer |
+| `Template` | `WordTemplateInput` | The header/footer's own template input: its parameters fill it, and its blocks read them, not the main input's |
 | `Type` | `HeaderFooterType` | `Default`, `FirstPage`, `Even`, `Odd` — `FirstPage` and `Even` give those pages stories of their own, headers and footers alike: the `Default` story then serves the other pages, and a story given no `FirstPage`/`Even` version repeats its default on those pages |
 
 ---
 
 ## Usage
 
+<!-- no-compile -->
 ```csharp
 IWordService word = new Regira.Office.Word.Spire.WordService();
 
@@ -183,16 +191,103 @@ IMemoryFile pdf = await word.Convert(new WordTemplateInput { Template = doc }, F
 string text = await word.GetText(new WordTemplateInput { Template = doc });
 ```
 
+### Collection Tables (Word.Spire, Word.Syncfusion and Word.Aspose)
+
+A `CollectionParameters` entry fills the table whose Alt Text title (Table Properties → Alt Text → Title) is its
+key. The table's second row is the template row: it is written once per row of the collection, in order, and the
+rows around it stay where they are — a header above it, a totals row below it:
+
+```text
+Alt Text title: Lines
+| Nr               | Description       | Price         |
+| {{ row_number }} | {{ Description }} | € {{ Price }} |
+| Total            |                   | {{ Total }}   |
+```
+
+<!-- no-compile -->
+```csharp
+CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
+{
+    ["Lines"] = orderLines.Select(l => (IDictionary<string, object>)new Dictionary<string, object>
+    {
+        ["Description"] = l.Description,
+        ["Price"]       = l.Price.ToString("N2")
+    }).ToList()
+}
+```
+
+- The first row stays as it is — a header, which may be left empty — so the template row is always the second.
+  Rows below it are ordinary content: `{{ Total }}` above is filled from `GlobalParameters`.
+- `{{ row_number }}` is the row's position, from 1. Every other tag in the template row reads the collection row,
+  regardless of case, and a tag the row does not have is left empty — a `GlobalParameters` key included, so keep
+  global values out of the template row. A tag whose key holds anything but ASCII letters, digits, `_` and `.` is
+  not a row field and is left for `GlobalParameters`.
+- Only the first paragraph of each cell is filled.
+- Values are written with `ToString()`: format numbers, amounts and dates in code.
+- The title is matched exactly, case included, and one table is filled per title — give each table its own. A key
+  without a table is skipped, and an empty collection leaves the table without its template row: wrap the table in
+  `{{#if Key}}` (see *Conditional Blocks*) to drop it together with its heading.
+- Word.Mini fills collections in MiniWord's own syntax instead (see *Word.Mini limits*); Word.Gotenberg fills them
+  through its `IWordCreator`.
+
 ### HTML Parameters (Word.Spire, Word.Syncfusion and Word.Aspose)
 
 Prefix `GlobalParameters` keys with `html_` to inject raw HTML:
 
+<!-- no-compile -->
 ```csharp
 GlobalParameters = new Dictionary<string, object>
 {
     ["html_Notes"] = "<p>This is <strong>bold</strong> text.</p>"
 }
 ```
+
+### Conditional Blocks (Word.Spire, Word.Syncfusion, Word.Aspose and Word.Mini)
+
+A block keeps or drops a stretch of the template depending on a parameter. Each marker stands alone in its own
+paragraph:
+
+```text
+{{#if IsPaid}}
+Thank you for your payment of {{Amount}}.
+{{else}}
+Please pay {{Amount}} before {{DueDate}}.
+{{/if}}
+```
+
+- `{{#if Key}}` holds when `GlobalParameters[Key]` is set to anything but `null`, `false`, an empty or blank
+  string, zero or an empty collection. The texts `"false"` and `"0"` hold: convert a form or query-string value to
+  `bool` before passing it. A JSON value is read by its kind, so a JSON `false`, `0`, `[]` or `{}` is false. An enum
+  value always holds, its zero member included: compare it in code (`["IsDraft"] = status == Status.Draft`). A
+  `CollectionParameters` key holds when its collection has rows, so `{{#if Items}}` drops a heading together with
+  its empty table. A key found in neither is false. Keys match regardless of case; an exact match comes first.
+- `{{#if !Key}}` negates. `{{else}}` is optional, and blocks nest.
+- Markers are read from the text Word shows: one in a field code or a tracked deletion is not a marker, and a
+  marker edited under track changes reads as edited.
+- The branch that does not hold goes, with everything in it — paragraphs, tables, a `<{ key }>` placeholder —
+  and every marker paragraph goes too, whichever branch holds, with anything else it carries: a page break, a
+  bookmark, a picture anchored to it. Keep those in a paragraph of their own; only a section break stored on a
+  marker paragraph stays. Blocks are resolved before anything is filled, so a dropped branch's parameters, images
+  and nested documents are never processed.
+- There is no comparison syntax: compute the flag in code, as `["IsOverdue"] = invoice.DueDate < DateTime.Today`.
+- Blocks read `GlobalParameters` and `CollectionParameters` only, of the input whose template holds them: a block in a
+  `WordHeaderFooterInput`'s template reads that `Template`'s parameters, not the main input's. A block inside a
+  collection table's template row is decided once, for every row.
+- A block opens and closes in the same body, table cell, text box, content control, header or footer, and within
+  one section — a content control around whole paragraphs is a container of its own, so a block cannot open outside
+  one and close inside it. Footnotes, endnotes and comments are not read for markers.
+- A document uses blocks when one of its paragraphs is `{{#if Key}}` or `{{#if !Key}}` and nothing else, and only
+  then are its blocks resolved. Everything else in a document that uses none stays as it is — marker text among
+  other text, a stray `{{else}}` or `{{/if}}` — so a finished document that writes about templates converts and
+  reads unchanged.
+- The document `Create` fills is read as a template by any later call. A parameter value that fills a paragraph
+  with nothing but a marker — `{{#if X}}` typed into a form — makes that output use blocks: a later `GetText`,
+  `Convert` or `ToImages` of it throws, or drops everything between two such values. Keep user-entered values out
+  of paragraphs of their own, or produce the final format in the call that fills the template, rather than
+  converting the stored output later.
+- In a document that uses blocks, these throw `FormatException`: a block that does not open and close in one
+  container and section, a `{{/if}}` or `{{else}}` without its `{{#if}}`, a second `{{else}}`, a marker sharing its
+  paragraph with other text, and a marker this syntax does not know, such as `{{#unless X}}` or `{{else if X}}`.
 
 ---
 
@@ -203,6 +298,9 @@ and Word.Aspose take their licence through the constructor, because their vendor
 is touched:
 
 ```csharp
+using Regira.Office.Word.Syncfusion;   // SyncfusionWordConfig
+using Regira.Office.Word.Aspose;       // AsposeWordConfig
+
 IWordService word = new Regira.Office.Word.Spire.WordService();
 
 builder.Services.AddSingleton(new SyncfusionWordConfig { LicenseKey = builder.Configuration["Syncfusion:LicenseKey"] });
@@ -224,6 +322,10 @@ registers `IWordConverter` and `IWordToImagesService`, and takes an `IPdfToImage
 `ToImages`) and an `IWordCreator` (for template substitutions) from the container when they are there:
 
 ```csharp
+using Regira.Media.Drawing.Services.Abstractions;          // IImageService
+using Regira.Office.PDF.Abstractions;                      // IPdfToImageService
+using Regira.Office.Word.Gotenberg.DependencyInjection;    // AddGotenbergWord
+
 services.AddSingleton<IImageService, Regira.Drawing.SkiaSharp.Services.ImageService>();
 services.AddSingleton<IPdfToImageService, Regira.Office.PDF.DocNET.PdfManager>();
 services.AddSingleton<IWordCreator, Regira.Office.Word.Mini.WordService>();
@@ -241,3 +343,5 @@ the one resolved — call `AddGotenbergWord` after `AddOfficeClients` to convert
 Office API serves the rest, its `IPdfToImageService` included. For template input that needs headers, footers
 or nested documents, register a backend with a document model as the `IWordCreator` —
 `builder.Services.AddTransient<IWordCreator, Regira.Office.Word.Aspose.WordService>()` beside its config.
+
+<!-- {% endraw %} -->

@@ -191,7 +191,7 @@ public class DeleteCycleTests
         var article = await db.Articles.Include(x => x.Images!).FirstAsync(x => x.Id == id);
         db.Articles.Remove(article);
 
-        var ex = Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
         Assert.That(ex!.Message, Does.Contain("circular dependency"),
             "the fixture only reproduces the trap while both rows are deleted together");
     }
@@ -209,7 +209,7 @@ public class DeleteCycleTests
         // from the ORIGINAL values, so the current value it sets is never read and the save fails identically.
         db.Entry(article).Property(x => x.CoverImageId).CurrentValue = null;
 
-        var ex = Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
         Assert.That(ex!.Message, Does.Contain("circular dependency"));
     }
 
@@ -227,7 +227,7 @@ public class DeleteCycleTests
         // the child it points at is deleted. Two round trips is not an implementation choice.
         db.Entry(article).Property(x => x.CoverImageId).OriginalValue = null;
 
-        var ex = Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        var ex = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
         Assert.That(ex!.InnerException?.Message, Does.Contain("FOREIGN KEY constraint failed"));
     }
 
@@ -411,12 +411,12 @@ public class DeleteCycleTests
         await using var transaction = await db.Database.BeginTransactionAsync();
 
         var added = db.Articles.Add(new Article { Title = "no cycle" });
-        var plain = Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
+        var plain = await Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
         added.State = EntityState.Detached;
 
         db.BreakDeleteCycles = true;
         db.Articles.Remove(article);
-        var broken = Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
+        var broken = await Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
 
         Assert.Multiple(() =>
         {
@@ -512,7 +512,7 @@ public class DeleteCycleTests
         db.Articles.Add(survivor);
         db.FailTheSaveThatDeletesTheArticle = true;
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
 
         Assert.Multiple(async () =>
         {
@@ -567,7 +567,7 @@ public class DeleteCycleTests
         var loaded = article.RowVersion;
         db.Articles.Remove(article);
 
-        Assert.DoesNotThrowAsync(() => db.SaveChangesAsync());
+        await Assert.DoesNotThrowAsync(() => db.SaveChangesAsync());
         Assert.Multiple(async () =>
         {
             Assert.That(await db.Articles.CountAsync(), Is.Zero);
@@ -590,7 +590,7 @@ public class DeleteCycleTests
         // overwrite the other writer's row and then adopt the token that writer left behind.
         await db.Database.ExecuteSqlRawAsync("UPDATE Articles SET Title = 'Edited elsewhere' WHERE Id = {0}", id);
 
-        var ex = Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => db.SaveChangesAsync());
+        var ex = await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => db.SaveChangesAsync());
         Assert.That(ex!.Entries.Select(e => e.Entity), Is.EqualTo(new object[] { article }),
             "EF's documented recovery loops ex.Entries; it must find the row that conflicted");
         var row = await db.Articles.AsNoTracking().SingleAsync();
@@ -616,7 +616,7 @@ public class DeleteCycleTests
         // writer's value and silently defeat the very check the column exists for.
         await db.Database.ExecuteSqlRawAsync("UPDATE Articles SET Version = Version + 1 WHERE Id = {0}", id);
 
-        var ex = Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => db.SaveChangesAsync());
+        var ex = await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => db.SaveChangesAsync());
         Assert.That(ex!.Entries.Select(e => e.Entity), Is.EqualTo(new object[] { article }));
         Assert.That((await db.Articles.AsNoTracking().SingleAsync()).CoverImageId, Is.Not.Null,
             "the conflict rolled the reference drop back along with the delete");
@@ -678,7 +678,7 @@ public class DeleteCycleTests
         var owner = await db.Articles.Include(x => x.Images!).FirstAsync(x => x.Id == id);
         db.Articles.Remove(owner);
 
-        Assert.DoesNotThrowAsync(() => db.SaveChangesAsync());
+        await Assert.DoesNotThrowAsync(() => db.SaveChangesAsync());
         Assert.Multiple(async () =>
         {
             Assert.That(await db.Articles.CountAsync(), Is.Zero);

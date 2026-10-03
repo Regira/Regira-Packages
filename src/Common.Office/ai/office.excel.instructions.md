@@ -50,6 +50,7 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 ### `IExcelReader` / `IExcelReader<T>`
 
+<!-- no-compile -->
 ```csharp
 Task<IEnumerable<ExcelSheet>>    Read(IBinaryFile input, string[]? headers = null, CancellationToken cancellationToken = default);
 Task<IEnumerable<ExcelSheet<T>>> Read(IBinaryFile input, string[]? headers = null, CancellationToken cancellationToken = default);  // generic
@@ -59,6 +60,7 @@ Task<IEnumerable<ExcelSheet<T>>> Read(IBinaryFile input, string[]? headers = nul
 
 ### `IExcelWriter` / `IExcelWriter<T>`
 
+<!-- no-compile -->
 ```csharp
 Task<IMemoryFile> Create(IEnumerable<ExcelSheet> sheets, CancellationToken cancellationToken = default);
 Task<IMemoryFile> Create(IEnumerable<ExcelSheet<T>> sheets, CancellationToken cancellationToken = default);  // generic
@@ -85,6 +87,7 @@ The non-generic `ExcelSheet` is `ExcelSheet<object>`.
 
 ## Usage
 
+<!-- no-compile -->
 ```csharp
 // Construct directly (no DI extensions — pick any implementation)
 IExcelService excel = new Regira.Office.Excel.MiniExcel.ExcelManager();

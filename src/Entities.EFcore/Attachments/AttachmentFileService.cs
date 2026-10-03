@@ -3,6 +3,7 @@ using Regira.Entities.Extensions;
 using Regira.IO.Extensions;
 using Regira.IO.Storage.Abstractions;
 using Regira.IO.Storage.Helpers;
+using Regira.IO.Utilities;
 using Regira.Utilities;
 
 namespace Regira.Entities.EFcore.Attachments;
@@ -49,7 +50,8 @@ public class AttachmentFileService<TAttachment, TKey>(IFileService fileService) 
         }
 
         await using var fileStream = item.GetStream()!;
-        if (item.IsNew())
+        // a new attachment, or a stored one given a key other than its own: never written over another file
+        if (item.IsNew() || string.IsNullOrWhiteSpace(item.Path) || fileService.GetIdentifier(item.Identifier) != fileService.GetIdentifier(item.Path))
         {
             var fileNameHelper = new FileNameHelper(fileService);
             // every filename should be unique!
@@ -57,7 +59,9 @@ public class AttachmentFileService<TAttachment, TKey>(IFileService fileService) 
             item.Identifier = identifier;
         }
 
-        var path = await fileService.Save(item.Identifier, fileStream, item.ContentType);
+        // typed by its name, whatever type the row holds: a store serves a file with the type it was saved under, and a
+        // row saved before uploads were typed by name may hold one a client declared
+        var path = await fileService.Save(item.Identifier, fileStream, ContentTypeUtility.GetContentType(item.Identifier));
         // don't save full path (increases flexibility for multiple platforms)
         item.Path = fileService.GetIdentifier(path);
         item.Prefix = fileService.GetRelativeFolder(item.Identifier);

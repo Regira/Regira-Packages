@@ -4,6 +4,7 @@
 
 Resize an uploaded image to a bounded thumbnail and convert to WebP.
 
+<!-- no-compile -->
 ```csharp
 public async Task<byte[]> CreateThumbnail(byte[] input, int maxSize = 200)
 {
@@ -20,6 +21,7 @@ public async Task<byte[]> CreateThumbnail(byte[] input, int maxSize = 200)
 
 Composite a diagonal text stamp and a logo over an existing photo.
 
+<!-- no-compile -->
 ```csharp
 public async Task<IImageFile> AddWatermark(IImageFile photo, string watermarkText)
 {
@@ -65,6 +67,7 @@ public async Task<IImageFile> AddWatermark(IImageFile photo, string watermarkTex
 
 Compose a name badge from scratch: a coloured canvas, an avatar photo positioned top-left, and a name label.
 
+<!-- no-compile -->
 ```csharp
 public async Task<IImageFile> BuildBadge(string name, IImageFile avatar)
 {
@@ -108,8 +111,35 @@ public async Task<IImageFile> BuildBadge(string name, IImageFile avatar)
 ## Example 4: RichImageService — API service pattern
 
 Wraps `ImageBuilder` in an application-level service that accepts DTO input and returns either a composed image or a PDF.
+The request DTO is the application's own; each layer maps to an `IImageLayer` through the `ToImageLayer` extensions
+on the package's layer DTOs (`Regira.Media.Drawing.Models.DTO`). The PDF comes from `IImagesToPdfService`, in
+`Regira.Office`.
 
 ```csharp
+using Regira.IO.Abstractions;
+using Regira.IO.Extensions;
+using Regira.Media.Drawing.Models.Abstractions;
+using Regira.Media.Drawing.Models.DTO;
+using Regira.Media.Drawing.Models.DTO.Extensions;
+using Regira.Media.Drawing.Utilities;
+using Regira.Office.PDF.Abstractions;
+using Regira.Office.PDF.Models;
+
+// The request: a base (an image or a blank canvas) and the layers to draw on it, one of Image/Canvas/Label per layer
+public class DrawImageLayerDto
+{
+    public byte[]? TargetImage { get; set; }
+    public CanvasImageLayerDto? TargetCanvas { get; set; }
+    public LayerDto[] Items { get; set; } = [];
+
+    public class LayerDto
+    {
+        public ImageLayerDto? Image { get; set; }
+        public CanvasImageLayerDto? Canvas { get; set; }
+        public LabelImageLayerDto? Label { get; set; }
+    }
+}
+
 public interface IRichImageService
 {
     Task<IImageFile>  Generate(DrawImageLayerDto input);
@@ -139,9 +169,15 @@ public class RichImageService(
             targetSize = targetCanvas.Size;
         }
 
-        builder.Add(input.Items.ToImageLayers(targetSize, imageService).ToArray());
+        builder.Add(input.Items.Select(item => ToImageLayer(item, targetSize)));
         return await builder.Build();
     }
+
+    private static IImageLayer ToImageLayer(DrawImageLayerDto.LayerDto item, ImageSize targetSize)
+        => item.Image?.ToImageLayer(targetSize, item.Image.DrawOptions?.Dpi)
+           ?? item.Label?.ToImageLayer(targetSize, item.Label.LabelOptions?.Dpi)
+           ?? item.Canvas?.ToImageLayer(targetSize)
+           ?? throw new ArgumentException("Each layer needs an Image, a Canvas or a Label.");
 
     public async Task<IMemoryFile> Print(DrawImageLayerDto input)
     {
@@ -153,6 +189,7 @@ public class RichImageService(
 
 Register alongside the image creators:
 
+<!-- no-compile -->
 ```csharp
 services.AddSingleton<IRichImageService, RichImageService>();
 ```

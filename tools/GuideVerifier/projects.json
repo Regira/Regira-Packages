@@ -26,7 +26,8 @@
         "src/Common.Entities/Common.Entities.csproj",
         "src/Entities.EFcore/Entities.EFcore.csproj",
         "src/Entities.DependencyInjection/Entities.DependencyInjection.csproj",
-        "src/Entities.Web/Entities.Web.csproj"
+        "src/Entities.Web/Entities.Web.csproj",
+        "src/Entities.Validation.FluentValidation/Entities.Validation.FluentValidation.csproj"
       ],
       "guideDirs": [
         "src/Common.Entities/ai",
@@ -34,7 +35,15 @@
         "src/Entities.Web/ai"
       ],
       "guideFiles": [
-        "src/Common.Entities/README.md"
+        "src/Common.Entities/README.md",
+        "src/Common.Entities/docs/attachments.md",
+        "src/Common.Entities/docs/built-in-features.md",
+        "src/Common.Entities/docs/checklist.md",
+        "src/Common.Entities/docs/mapping.md",
+        "src/Common.Entities/docs/models.md",
+        "src/Common.Entities/docs/normalizing.md",
+        "src/Common.Entities/docs/services.md",
+        "src/Common.Entities/docs/web-endpoints.md"
       ],
       "usings": [
         "System.ComponentModel.DataAnnotations",
@@ -56,6 +65,39 @@
       ]
     },
     {
+      "//": "A narrative walkthrough: each block builds on the types the previous ones declare.",
+      "name": "entities-examples",
+      "projects": [
+        "src/Common.Entities/Common.Entities.csproj",
+        "src/Entities.EFcore/Entities.EFcore.csproj",
+        "src/Entities.DependencyInjection/Entities.DependencyInjection.csproj",
+        "src/Entities.Web/Entities.Web.csproj",
+        "src/Entities.Validation.FluentValidation/Entities.Validation.FluentValidation.csproj"
+      ],
+      "guideFiles": [
+        "src/Common.Entities/docs/examples.md"
+      ],
+      "usings": [
+        "System.ComponentModel.DataAnnotations",
+        "System.Threading",
+        "Microsoft.EntityFrameworkCore",
+        "Microsoft.Extensions.DependencyInjection",
+        "Regira.Entities.Models",
+        "Regira.Entities.Models.Abstractions",
+        "Regira.Entities.Services.Abstractions",
+        "Regira.Entities.Extensions",
+        "Regira.Entities.Attachments.Models",
+        "Regira.Entities.Attachments.Abstractions",
+        "Regira.Entities.DependencyInjection.Extensions",
+        "Regira.Entities.DependencyInjection.Attachments",
+        "Microsoft.AspNetCore.Mvc"
+      ],
+      "frameworkReferences": [
+        "Microsoft.AspNetCore.App"
+      ],
+      "sharedTypes": true
+    },
+    {
       "name": "core",
       "projects": [
         "src/Common/Common.csproj",
@@ -63,9 +105,13 @@
         "src/Serializing.Newtonsoft/Serializing.Newtonsoft.csproj",
         "src/Globalization.LibPhoneNumber/Globalization.LibPhoneNumber.csproj"
       ],
+      "guideDirs": [
+        "src/TreeList/ai"
+      ],
       "guideFiles": [
         "src/Common/README.md",
         "src/TreeList/README.md",
+        "src/TreeList/docs/examples.md",
         "src/Serializing.Newtonsoft/README.md",
         "src/Globalization.LibPhoneNumber/README.md"
       ],
@@ -284,7 +330,11 @@
       "projects": [
         "src/Common.Security/Common.Security.csproj",
         "src/Security.Hashing.BCryptNet/Security.Hashing.BCryptNet.csproj",
-        "src/Security.Authentication/Security.Authentication.csproj"
+        "src/Security.Authentication/Security.Authentication.csproj",
+        "src/Security.Authentication.Web/Security.Authentication.Web.csproj"
+      ],
+      "guideDirs": [
+        "src/Common.Security/ai"
       ],
       "guideFiles": [
         "src/Common.Security/README.md",
@@ -295,6 +345,7 @@
         "src/Common.Security/docs/cookies.md",
         "src/Common.Security/docs/schemes.md",
         "src/Common.Security/docs/controllers.md",
+        "src/Common.Security/docs/examples.md",
         "src/Common.Setup/ai/project.setup.md"
       ],
       "usings": [
@@ -313,7 +364,8 @@
         "Regira.Security.Authentication.Cookie.Extensions",
         "Regira.Security.Authentication.OpenIdConnect.Extensions"
       ],
-      "frameworkReferences": ["Microsoft.AspNetCore.App"]
+      "frameworkReferences": ["Microsoft.AspNetCore.App"],
+      "packages": { "Microsoft.AspNetCore.OpenApi": "10.0.12" }
     },
     {
       "name": "storage",
@@ -325,10 +377,15 @@
         "src/IO.Compression.SharpZipLib/IO.Compression.SharpZipLib.csproj",
         "src/Serializing.Newtonsoft/Serializing.Newtonsoft.csproj"
       ],
+      "guideDirs": [
+        "src/Common.IO.Storage/ai",
+        "src/Common.IO.Storage/docs"
+      ],
       "guideFiles": [
         "src/Common.IO.Storage/README.md"
       ],
       "usings": [
+        "Microsoft.Extensions.DependencyInjection",
         "Regira.IO.Abstractions",
         "Regira.IO.Models",
         "Regira.IO.Storage",
@@ -341,7 +398,8 @@
         "Regira.IO.Storage.SSH",
         "Regira.Serializing.Abstractions",
         "Regira.Serializing.Newtonsoft.Json"
-      ]
+      ],
+      "frameworkReferences": [ "Microsoft.AspNetCore.App" ]
     },
     {
       "name": "dal",
@@ -357,7 +415,9 @@
       "guideFiles": [
         "src/DAL.EFcore/README.md",
         "src/DAL.MongoDB/README.md",
+        "src/DAL.MongoDB/docs/examples.md",
         "src/DAL.MySQL/README.md",
+        "src/DAL.MySQL/docs/examples.md",
         "src/DAL.PostgreSQL/README.md",
         "src/DAL.PostgreSQL/docs/examples.md",
         "src/DAL.SqlServer/README.md",
@@ -396,11 +456,16 @@
         "src/Invoicing.ViaAdValvas/Invoicing.ViaAdValvas.csproj",
         "src/Serializing.Newtonsoft/Serializing.Newtonsoft.csproj"
       ],
+      "guideDirs": [
+        "src/Common.Payments/ai",
+        "src/Common.Invoicing/ai"
+      ],
       "guideFiles": [
         "src/Common.Payments/README.md",
         "src/Common.Invoicing/README.md"
       ],
       "usings": [
+        "Microsoft.Extensions.DependencyInjection",
         "System.Xml.Linq",
         "Regira.Invoicing.Invoices.Models",
         "Regira.Invoicing.Invoices.Models.Abstractions",
@@ -411,14 +476,21 @@
         "Regira.Payments.Pom",
         "Regira.Serializing.Abstractions",
         "Regira.Serializing.Newtonsoft.Json"
-      ]
+      ],
+      "frameworkReferences": [ "Microsoft.AspNetCore.App" ]
     },
     {
       "name": "media",
       "projects": [
         "src/Common.Media/Common.Media.csproj",
+        "src/Common.Office/Common.Office.csproj",
+        "src/Media.FFMpeg/Media.FFMpeg.csproj",
         "src/Drawing.SkiaSharp/Drawing.SkiaSharp.csproj",
         "src/Drawing.GDI/Drawing.GDI.csproj"
+      ],
+      "guideDirs": [
+        "src/Common.Media/ai",
+        "src/Common.Media/docs"
       ],
       "guideFiles": [
         "src/Common.Media/README.md"
@@ -445,7 +517,10 @@
       ],
       "guideFiles": [
         "src/Common.Office/README.md",
-        "src/Common.Office/docs/pdf/README.md"
+        "src/Common.Office/ai/office.pdf.instructions.md",
+        "src/Common.Office/ai/office.pdf.examples.md",
+        "src/Common.Office/docs/pdf/README.md",
+        "src/Common.Office/docs/pdf/examples.md"
       ],
       "usings": [
         "System.IO",
@@ -467,7 +542,10 @@
         "src/Excel.NpoiMapper/Excel.NpoiMapper.csproj"
       ],
       "guideFiles": [
-        "src/Common.Office/docs/excel/README.md"
+        "src/Common.Office/ai/office.excel.instructions.md",
+        "src/Common.Office/ai/office.excel.examples.md",
+        "src/Common.Office/docs/excel/README.md",
+        "src/Common.Office/docs/excel/examples.md"
       ],
       "usings": [
         "System.Data",
@@ -491,7 +569,10 @@
         "src/Drawing.SkiaSharp/Drawing.SkiaSharp.csproj"
       ],
       "guideFiles": [
-        "src/Common.Office/docs/word/README.md"
+        "src/Common.Office/ai/office.word.instructions.md",
+        "src/Common.Office/ai/office.word.examples.md",
+        "src/Common.Office/docs/word/README.md",
+        "src/Common.Office/docs/word/examples.md"
       ],
       "usings": [
         "System.IO",
@@ -517,7 +598,10 @@
         "src/Security.Authentication.Web/Security.Authentication.Web.csproj"
       ],
       "guideFiles": [
-        "src/Common.Office/docs/mail/README.md"
+        "src/Common.Office/ai/office.mail.instructions.md",
+        "src/Common.Office/ai/office.mail.examples.md",
+        "src/Common.Office/docs/mail/README.md",
+        "src/Common.Office/docs/mail/examples.md"
       ],
       "usings": [
         "Microsoft.AspNetCore.Identity.UI.Services",
@@ -547,12 +631,22 @@
         "src/Common.Web/Common.Web.csproj"
       ],
       "guideFiles": [
+        "src/Common.Office/ai/office.csv.instructions.md",
+        "src/Common.Office/ai/office.csv.examples.md",
+        "src/Common.Office/ai/office.vcards.instructions.md",
+        "src/Common.Office/ai/office.vcards.examples.md",
+        "src/Common.Office/ai/office.barcodes.instructions.md",
+        "src/Common.Office/ai/office.barcodes.examples.md",
+        "src/Common.Office/ai/office.ocr.instructions.md",
+        "src/Common.Office/ai/office.ocr.examples.md",
         "src/Common.Office/docs/csv/README.md",
         "src/Common.Office/docs/vcards/README.md",
         "src/Common.Office/docs/barcodes/README.md",
+        "src/Common.Office/docs/barcodes/examples.md",
         "src/Common.Office/docs/ocr/README.md"
       ],
       "usings": [
+        "Microsoft.Extensions.DependencyInjection",
         "System.IO",
         "Regira.IO.Abstractions",
         "Regira.IO.Extensions",

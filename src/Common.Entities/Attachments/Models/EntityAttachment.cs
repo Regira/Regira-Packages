@@ -21,6 +21,7 @@ public class EntityAttachment<TKey, TObjectKey, TAttachmentKey, TAttachment> : I
     [NotMapped]
     public string? NewFileName { get; set; }
     [NotMapped]
+    [Obsolete("Ignored: an attachment's content type follows its file name, so a client cannot choose the type its file is served as.")]
     public string? NewContentType { get; set; }
     [NotMapped]
     public byte[]? NewBytes { get; set; }

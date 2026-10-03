@@ -226,7 +226,7 @@ public class ArchivedQueryFilterValidatorTests
 
 #if NET10_0_OR_GREATER
     [Test]
-    public void A_Missing_Archived_Query_Filter_Stops_The_Host_By_Default()
+    public async Task A_Missing_Archived_Query_Filter_Stops_The_Host_By_Default()
     {
         var services = new ServiceCollection();
         services.AddLogging();
@@ -241,7 +241,7 @@ public class ArchivedQueryFilterValidatorTests
             .For<Doc>();
 
         using var sp = services.BuildServiceProvider();
-        var ex = Assert.ThrowsAsync<InvalidOperationException>(() => RunHostedServices(sp));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => RunHostedServices(sp));
         Assert.That(ex!.Message, Does.Contain(MissingFilterError));
     }
 #endif

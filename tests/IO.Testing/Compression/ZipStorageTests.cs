@@ -1,5 +1,6 @@
 ﻿using IO.Testing.Helpers;
 using Regira.IO.Abstractions;
+using Regira.IO.Storage;
 using Regira.IO.Storage.Compression;
 
 namespace IO.Testing.Compression;
@@ -58,7 +59,35 @@ public class ZipStorageTests
     [Test]
     public async Task Update_File() => await StorageTestContext.Test_Update_File();
     [Test]
+    public async Task Update_File_With_Shorter_Content() => await StorageTestContext.Test_Update_File_With_Shorter_Content();
+    [Test]
     public async Task Remove_File() => await StorageTestContext.Test_Remove_File();
+
+    [Test]
+    public async Task Move_File()
+    {
+        var identifier = StorageTestContext.SourceFiles.First().Identifier!.Replace('\\', '/');
+        var expected = await StorageTestContext.FileService.GetBytes(identifier);
+        var target = $"moved/{Path.GetFileName(identifier)}";
+
+        await StorageTestContext.FileService.Move(identifier, target);
+
+        Assert.That(await StorageTestContext.FileService.Exists(identifier), Is.False);
+        Assert.That(await StorageTestContext.FileService.GetBytes(target), Is.EqualTo(expected));
+    }
+
+    // a target naming the same entry, whatever its separators, leaves it where it is
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Move_Onto_The_Same_Entry_Keeps_It(bool backslashes)
+    {
+        var identifier = StorageTestContext.SourceFiles.First(x => x.Identifier!.Contains('\\') || x.Identifier.Contains('/')).Identifier!.Replace('\\', '/');
+        var expected = await StorageTestContext.FileService.GetBytes(identifier);
+
+        await StorageTestContext.FileService.Move(backslashes ? identifier.Replace('/', '\\') : identifier, identifier);
+
+        Assert.That(await StorageTestContext.FileService.GetBytes(identifier), Is.EqualTo(expected));
+    }
 
 
     [Test]
@@ -69,6 +98,16 @@ public class ZipStorageTests
         Assert.That(await StorageTestContext.FileService.Exists(identifier), Is.True);
         await using var stream = await StorageTestContext.FileService.GetStream(identifier);
         Assert.That(stream, Is.Not.Null);
+    }
+
+    [TestCase("dir2/dir2.1")]
+    [TestCase(@"dir2\dir2.1")]
+    public async Task List_Nested_Folder(string folderUri)
+    {
+        var files = await StorageTestContext.FileService.List(new FileSearchObject { FolderUri = folderUri });
+
+        var expected = StorageTestContext.SourceFiles.Count(x => x.Identifier!.StartsWith(@"dir2\dir2.1\"));
+        Assert.That(files.Count(), Is.EqualTo(expected));
     }
 
     [Test]

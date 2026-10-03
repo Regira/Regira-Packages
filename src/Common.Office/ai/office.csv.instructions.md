@@ -25,6 +25,7 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 ## `ICsvService` / `ICsvService<T>`
 
+<!-- no-compile -->
 ```csharp
 // Read
 Task<List<T>>     Read(string input,      CsvOptions? options = null, CancellationToken cancellationToken = default);
@@ -66,6 +67,7 @@ Task<IMemoryFile> WriteFile(IEnumerable<T> items,  CsvOptions? options = null, C
 
 ## Usage
 
+<!-- no-compile -->
 ```csharp
 // Non-generic — rows as Dictionary<string, object>
 ICsvService csv = new CsvManager();

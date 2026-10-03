@@ -33,6 +33,7 @@
     <Project Path="src/Entities.EFcore/Entities.EFcore.csproj" />
     <Project Path="src/Entities.Mapping.AutoMapper/Entities.Mapping.AutoMapper.csproj" />
     <Project Path="src/Entities.Mapping.Mapster/Entities.Mapping.Mapster.csproj" />
+    <Project Path="src/Entities.Validation.FluentValidation/Entities.Validation.FluentValidation.csproj" />
     <Project Path="src/Entities.Web/Entities.Web.csproj" />
   </Folder>
   <Folder Name="/src/Globalization/">
@@ -156,6 +157,7 @@
     <Project Path="tests/Hosting.Testing/Hosting.Testing.csproj" />
     <Project Path="tests/IO.Testing/IO.Testing.csproj" />
     <Project Path="tests/Licensing.Testing/Licensing.Testing.csproj" />
+    <Project Path="tests/Media.Testing/Media.Testing.csproj" />
     <Project Path="tests/Normalizing.Testing/Normalizing.Testing.csproj" />
     <Project Path="tests/Office.Barcodes.Testing/Office.Barcodes.Testing.csproj" />
     <Project Path="tests/Office.Clients.Testing/Office.Clients.Testing.csproj" />

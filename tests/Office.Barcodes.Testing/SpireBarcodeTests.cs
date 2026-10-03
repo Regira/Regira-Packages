@@ -1,4 +1,5 @@
 ﻿using Office.Barcodes.Testing.Abstractions;
+using Regira.Office.Barcodes.Abstractions;
 using Regira.Office.Barcodes.Models;
 using Regira.Office.Barcodes.Spire;
 
@@ -51,5 +52,12 @@ public class SpireBarcodeTests() : BarcodeTestsBase(new BarcodeService(), new Ba
     public override Task Create_And_Read_Barcode()
     {
         return base.Create_And_Read_Barcode();
+    }
+
+    [Test]
+    public void Registers_As_IBarcodeService()
+    {
+        // reads and writes, like the ZXing service, so it can stand behind the combined interface
+        Assert.That(new BarcodeService(), Is.InstanceOf<IBarcodeService>());
     }
 }

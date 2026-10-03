@@ -1,9 +1,10 @@
 # Media (Drawing) — Example: Product Image Processing
 
-> Context: An e-commerce API generates thumbnails from uploaded product photos, adds a watermark, and converts images to WebP for serving.
+> Context: An e-commerce API generates thumbnails from uploaded product photos, adds a watermark, converts images to WebP for serving, and takes a preview frame from each product video.
 
 ## DI Registration
 
+<!-- no-compile -->
 ```csharp
 // Program.cs
 services.AddSingleton<IImageService, Regira.Drawing.SkiaSharp.Services.ImageService>();
@@ -18,6 +19,7 @@ services.AddSingleton<IImageCreator>(sp =>
 
 ## Resize and convert uploaded image
 
+<!-- no-compile -->
 ```csharp
 public async Task<byte[]> ProcessProductImage(byte[] uploadedBytes)
 {
@@ -30,6 +32,7 @@ public async Task<byte[]> ProcessProductImage(byte[] uploadedBytes)
 
 ## Generate a thumbnail
 
+<!-- no-compile -->
 ```csharp
 public async Task<byte[]> CreateThumbnail(byte[] imageBytes)
 {
@@ -41,6 +44,7 @@ public async Task<byte[]> CreateThumbnail(byte[] imageBytes)
 
 ## Add a "SALE" watermark
 
+<!-- no-compile -->
 ```csharp
 public async Task<byte[]> AddWatermark(byte[] imageBytes)
 {
@@ -58,5 +62,23 @@ public async Task<byte[]> AddWatermark(byte[] imageBytes)
         .Build();
 
     return result.GetBytes()!;
+}
+```
+
+## Preview frame from a product video
+
+`SnapshotService` (`Regira.Media.FFMpeg`) needs `ffmpeg` on `PATH`, and its default process helper is Windows only.
+
+```csharp
+using Regira.IO.Abstractions;
+using Regira.Media.Drawing.Dimensions;
+using Regira.Media.Drawing.Models.Abstractions;
+using Regira.Media.FFMpeg;
+
+public class ProductVideoPreviews(SnapshotService snapshots)
+{
+    // the frame two seconds in, sized for the product page's video tile
+    public Task<IImageFile?> CreatePreview(IBinaryFile video)
+        => snapshots.Snapshot(video, new ImageSize(320, 180), TimeSpan.FromSeconds(2));
 }
 ```

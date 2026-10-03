@@ -5,6 +5,9 @@
 ## DI Registration
 
 ```csharp
+using Regira.Invoicing.Billit.Config;                // BillitConfig
+using Regira.Invoicing.Billit.DependencyInjection;   // AddBillit
+
 services.AddBillit(sp => new BillitConfig
 {
     PartyId = configuration["Billit:PartyId"],
@@ -14,37 +17,33 @@ services.AddBillit(sp => new BillitConfig
 
 ## Convert and transmit a Peppol invoice
 
+<!-- no-compile -->
 ```csharp
 public async Task SendPeppolInvoice(Order order)
 {
-    // 1. Build UBL XML
+    // 1. Build UBL XML from the invoice domain model
+    IInvoice invoice = MapInvoice(order);   // your mapping: code, dates, supplier, customer, invoice lines
     var converter = new UblConverter();
     XDocument ubl = converter.Convert(new UblDocumentInput
     {
-        InvoiceNumber  = order.InvoiceNumber,
-        IssueDate      = order.InvoiceDate,
-        TypeCode       = InvoiceTypeCode.Commercial,
-        SupplierParty  = MapParty(_myCompany),
-        CustomerParty  = MapParty(order.Customer),
-        Lines          = order.Lines.Select(MapLine).ToList(),
-        TaxTotal       = new TaxTotal { TaxAmount = order.VatTotal, TaxCategoryCode = TaxCategoryCode.Standard }
+        Invoice  = invoice,
+        Supplier = invoice.Supplier   // the converter reads the seller from here only, not from Invoice
     });
 
-    // 2. Transmit via AdValVas
+    // 2. Transmit via AdValVas. Send returns once the gateway accepted the document; otherwise it throws
+    //    PeppolRequestException (a non-2xx answer) or PeppolResponseException (the document was not accepted)
     var peppolService = new PeppolService(_gatewaySettings, _jsonSerializer);
-    var result        = await peppolService.Send(ubl);
-
-    if (!result.Success)
-        throw new Exception($"Peppol transmission failed: {result.Reference}");
+    await peppolService.Send(ubl);
 }
 ```
 
 ## Create and send via Billit
 
+<!-- no-compile -->
 ```csharp
 public async Task SendViaBillit(IInvoice invoice)
 {
     var created = await _invoiceManager.Create(invoice);
-    await _invoiceManager.Send(created.Id!);
+    await _invoiceManager.Send(created.InvoiceId);
 }
 ```

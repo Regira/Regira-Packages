@@ -11,13 +11,22 @@
     <AssemblyName>Regira.Office</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.4.0</Version>
+    <Version>6.5.0</Version>
     <Description>Abstractions for office document operations including PDF, Excel, Word, Mail, CSV, OCR, barcodes, and vCards.</Description>
     <PackageTags>regira;office;pdf;excel;word;mail;csv;ocr;barcodes;vcards;mcp;ai-agents</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.Media\Common.Media.csproj" />
     <ProjectReference Include="..\Common\Common.csproj" />
+  </ItemGroup>
+  <!-- the Word backends share the template syntax (Word/Templating) without making it public API -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Regira.Office.Word.Spire" />
+    <InternalsVisibleTo Include="Regira.Office.Word.Syncfusion" />
+    <InternalsVisibleTo Include="Regira.Office.Word.Aspose" />
+    <InternalsVisibleTo Include="Regira.Office.Word.Mini" />
+    <InternalsVisibleTo Include="Regira.Office.Word.Gotenberg" />
+    <InternalsVisibleTo Include="Office.Word.testing" />
   </ItemGroup>
   <!-- MSBuild targets — auto-imported into consuming builds via NuGet buildTransitive -->
   <ItemGroup>

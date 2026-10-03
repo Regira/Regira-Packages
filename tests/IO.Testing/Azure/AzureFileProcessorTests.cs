@@ -1,5 +1,4 @@
 using IO.Testing.Helpers;
-using Microsoft.Extensions.Configuration;
 using Regira.IO.Extensions;
 using Regira.IO.Storage.Azure;
 
@@ -15,16 +14,13 @@ namespace IO.Testing.Azure;
 public class AzureFileProcessorTests
 {
     private const string TEST_FOLDER = "file_processor";
-    public StorageTestHelper.StorageTestContext<BinaryBlobService> StorageTestContext { get; set; }
+    public StorageTestHelper.StorageTestContext<BinaryBlobService> StorageTestContext { get; set; } = null!;
     [SetUp]
     public async Task Setup()
     {
+        var azureConnectionString = TestSecrets.AzureConnectionString();
         StorageTestContext = StorageTestHelper.CreateDecoratedFileService((_, _) =>
         {
-            var configBuilder = new ConfigurationBuilder();
-            configBuilder.AddUserSecrets(typeof(AzureStorageTests).Assembly, true);
-            var configuration = configBuilder.Build();
-            var azureConnectionString = configuration["Storage:Azure:ConnectionString"];
             var cf = new AzureOptions
             {
                 ConnectionString = azureConnectionString,
@@ -41,7 +37,11 @@ public class AzureFileProcessorTests
     }
 
     [TearDown]
-    public async Task TearDown() => await StorageTestContext.DisposeAsync();
+    public async Task TearDown()
+    {
+        // unset when Setup ignored the fixture
+        if (StorageTestContext != null) await StorageTestContext.DisposeAsync();
+    }
 
     [Test]
     public Task Recursive_Directories() => StorageTestContext.Test_Recursive_Directories(TEST_FOLDER);

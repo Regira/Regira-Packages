@@ -11,6 +11,7 @@ public record EntityAttachmentInputDto<TKey, TObjectId, TAttachmentId> : IEntity
 
 
     public string? NewFileName { get; set; }
+    [Obsolete("Ignored: an attachment's content type follows its file name, so a client cannot choose the type its file is served as.")]
     public string? NewContentType { get; set; }
     public byte[]? NewBytes { get; set; }
 }

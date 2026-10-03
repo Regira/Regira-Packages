@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Entities.Validation.FluentValidation</RootNamespace>
+    <PackageId>Regira.Entities.Validation.FluentValidation</PackageId>
+    <AssemblyName>Regira.Entities.Validation.FluentValidation</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.5.0</Version>
+    <RegiraLicenseEnforced>true</RegiraLicenseEnforced>
+    <Description>FluentValidation integration for Regira entity validation: AbstractValidator rules run in the entity write pipeline. Free tier included — a license key removes the free-tier limits.</Description>
+    <PackageTags>regira;entities;validation;fluentvalidation</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(OutputPath)$(AssemblyName).xml" Pack="true" PackagePath="lib\$(TargetFramework)\" Visible="false" Condition="Exists('$(OutputPath)$(AssemblyName).xml')" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="FluentValidation" Version="12.1.1" />
+    <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="12.1.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Entities.DependencyInjection\Entities.DependencyInjection.csproj" />
+  </ItemGroup>
+</Project>
