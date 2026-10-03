@@ -427,6 +427,34 @@ public class StartupValidationTests
     }
 
     [Test]
+    public async Task Inert_Builtin_Line_Names_Only_The_Capabilities_Of_The_Inert_Filters()
+    {
+        // Product has timestamps but is not IArchivable: only the archive filter is inert, so naming the
+        // timestamp capabilities in that line would tell the reader their (working) filters never run.
+        var capture = new CaptureLoggerProvider();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(capture));
+        services.AddDbContext<ProductContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<ProductContext>(o =>
+            {
+                o.UseDefaults();
+                o.ConfigureValidation(v => v.Enabled = true);
+            })
+            .For<Product>();
+
+        using var sp = services.BuildServiceProvider();
+        await RunHostedServices(sp);
+
+        var line = capture.Infos.Single(m => m.Contains("Built-in global filters that never run"));
+        Assert.Multiple(() =>
+        {
+            Assert.That(line, Does.Contain("IArchivable"));
+            Assert.That(line, Does.Not.Contain("IHasCreated"));
+            Assert.That(line, Does.Not.Contain("IHasLastModified"));
+        });
+    }
+
+    [Test]
     public async Task Deliberately_Registered_Builtin_That_Never_Runs_Still_Warns()
     {
         // Registering FilterArchivablesQueryBuilder by hand states an intent: these rows should be

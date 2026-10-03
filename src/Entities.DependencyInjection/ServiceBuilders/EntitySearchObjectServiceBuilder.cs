@@ -314,4 +314,18 @@ public class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchOb
 
         return this;
     }
+    /// <summary>
+    /// Configures the owned child without a parent prepare function — <c>Related(x =&gt; x.Lines, r =&gt; r.ServerOwned(x =&gt; x.UnitPrice))</c>.
+    /// Without this overload the second lambda binds to <c>prepareFunc</c>, typed as the parent.
+    /// </summary>
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Related{TRelated,TRelatedKey}" />
+    public EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject> Related<TRelated>(
+        Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression,
+        Action<RelatedEntityBuilder<TContext, TRelated, int>> configure)
+        where TRelated : class, IEntity<int>
+    {
+        Related<TRelated, int>(navigationExpression, null, configure);
+
+        return this;
+    }
 }

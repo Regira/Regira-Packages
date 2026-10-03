@@ -693,8 +693,11 @@ and whether typed `Includes` is available. Match the controller base and any man
 > included**, inherits the **untyped** `e.Includes((query, EntityIncludes?) => query.Include(...))`
 > overload (the "Typed `Includes`" column below tracks only the typed form), so simple registrations can
 > still eager-load navigations. The single-arg `e.Related<TRelated>(…)` shortcut works on every int-key
-> builder (incl. the simple `For<TEntity, int, TSearchObject>()`); a non-int related key needs the
-> 2-arg `e.Related<TRelated, TRelatedKey>(…)`.
+> builder (incl. the simple `For<TEntity, int, TSearchObject>()`), and on each of them a lambda in second
+> position may be either the parent `prepareFunc` or the `RelatedEntityBuilder` callback —
+> `e.Related(x => x.Lines, r => r.ServerOwned(x => x.UnitPrice))`. A non-int related key needs the
+> 2-arg `e.Related<TRelated, TRelatedKey>(…)`, where the second position is always `prepareFunc`: name the
+> callback, `configure: r => …`.
 >
 > `HasAttachments` is an extension on the **base** `EntityServiceBuilder` (`Regira.Entities.DependencyInjection.Attachments`),
 > so it applies on **every** tier — a **complex** owner chains `.HasAttachments(...)` exactly like a simple one.

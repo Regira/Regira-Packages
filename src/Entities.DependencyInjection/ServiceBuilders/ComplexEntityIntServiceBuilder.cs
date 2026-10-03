@@ -333,4 +333,14 @@ public class ComplexEntityIntServiceBuilder<TContext, TEntity, TSearchObject, TS
 
         return this;
     }
+    /// <inheritdoc cref="EntitySearchObjectServiceBuilder{TContext,TEntity,TKey,TSearchObject}.Related{TRelated}(Expression{Func{TEntity,ICollection{TRelated}}},Action{RelatedEntityBuilder{TContext,TRelated,int}})" />
+    public new ComplexEntityIntServiceBuilder<TContext, TEntity, TSearchObject, TSortBy, TIncludes> Related<TRelated>(
+        Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression,
+        Action<RelatedEntityBuilder<TContext, TRelated, int>> configure)
+        where TRelated : class, IEntity<int>
+    {
+        Related<TRelated, int>(navigationExpression, null, configure);
+
+        return this;
+    }
 }
