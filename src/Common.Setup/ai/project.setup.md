@@ -615,7 +615,7 @@ try
     app.UseAuthorization();
 
     app.MapControllers();
-    // app.AddEndpoints(); // enable at wish
+    // app.AddEndpoints(); // your own extension in Infrastructure/EndpointExtensions.cs — enable at wish
 
     app.Run();
 }

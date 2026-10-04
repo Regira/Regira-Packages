@@ -55,19 +55,19 @@ Assuming a `Repository` with a `DbContext` is being used.
 
 **Read Pipeline:**
 
-1. EntitySet
+1. DbSet
 1. QueryBuilders 
    1. Filters
    1. Sorting
    1. Paging
    1. Includes
 1. Processors
-1. Mapping (+AfterMapping)*
+1. Mapping (+AfterMappers)*
 
 **Write Pipeline:**
 
 1. Input
-1. Mapping (+AfterMapping)*
+1. Mapping (+AfterInput)*
 1. Preppers (Repository)
 1. Validators (Repository)
 1. SaveChanges (DbContext)
@@ -82,7 +82,7 @@ Assuming a `Repository` with a `DbContext` is being used.
 - **Processors**: Modify entities after fetching (e.g. setting non-mapped properties)
 - **Preppers**: Executed by the Repository before saving to prepare entities
 - **Validators**: Executed by the Repository after every prepper, and on delete, to refuse a write with one 400 holding every error (FluentValidation plugs in through `Regira.Entities.Validation.FluentValidation`)
-- **Primers**: EF Core SaveChangesInterceptors triggered by DbContext when executing SaveChanges
+- **Primers**: run by an EF Core `SaveChangesInterceptor` when the DbContext executes SaveChanges
 - **Reactors**: Run once the save is committed, in a DI scope of their own (e.g. sending mail, starting a follow-up workflow when a status changes)
 - **AfterMapper**: Decorates DTOs or Entities after Mapper completes (e.g. calculating URIs)
 
@@ -112,7 +112,7 @@ builder.Services
         item.AddSortBy<OrderSortedBuilder>();
         item.AddIncludes<OrderIncludableBuilder>();
         item.AddFilter<OrderQueryFilter>();
-        // OrderRepository will handle OrderItems
+        // the repository syncs the OrderItems collection on save
         item.Related(c => c.OrderItems);
     });
 

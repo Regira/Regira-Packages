@@ -389,7 +389,7 @@ public class CodeValidator : EntityValidatorBase<IHasCode>
 
 ### Entity Primers
 
-- Executed as EF Core `SaveChangesInterceptors` by DbContext 
+- Run by an EF Core `SaveChangesInterceptor` when the DbContext saves
 - Run on both `SaveChanges()` and `SaveChangesAsync()`. On the synchronous call a primer that awaits is waited on
   without the caller's synchronization context — its own awaits do not deadlock the caller, but it holds the calling thread for its I/O, so
   prefer `SaveChangesAsync()` when primers do I/O
@@ -468,11 +468,11 @@ services.UseEntities<MyDbContext>(e => e.UseDefaults())
         e.AddReactor<OrderInvoicingReactor>();
     });
 
-public class OrderInvoicingReactor(IInvoiceService invoices) : EntityReactorBase<Order>
+public class OrderInvoicingReactor(IOrderInvoicer invoicer) : EntityReactorBase<Order>
 {
     public override bool CanReact(IEntityChange<Order> change) => change.ChangedTo(x => x.Status, OrderStatus.Delivered);
     public override Task React(IEntityChange<Order> change, CancellationToken token = default)
-        => invoices.CreateFor(change.Entity.Id, token);
+        => invoicer.CreateFor(change.Entity.Id, token);   // IOrderInvoicer: the app's own service
 }
 ```
 

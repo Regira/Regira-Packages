@@ -147,7 +147,7 @@ Create(inputDto) -> SaveResult
 Modify(id, inputDto) -> SaveResult
 
 // PATCH /{entities}/{id} - Partial update (JSON Merge Patch, RFC 7386)
-Patch(id, partialJson) -> SaveResult
+Patch(id) -> SaveResult   // body: the partial JSON document
 
 // POST /{entities}/save - Upsert
 Save(inputDto) -> SaveResult
@@ -191,7 +191,8 @@ Delete(id) -> DeleteResult
   endpoint — including delete and attachment download — is public until the application adds authorization.
   Apply it globally when mapping (`MapControllers().RequireAuthorization()`), or put `[Authorize]` on each
   controller subclass and `[AllowAnonymous]` on the individual actions that must stay public. For row-level
-  scoping (tenant or owner), register a global filter query builder rather than relying on endpoint attributes.
+  scoping (tenant or owner), register a global filter query builder rather than relying on endpoint attributes; an
+  owner with attachments needs one on its link entity too ([Attachments → Controllers](attachments.md#controllers)).
 - A controller reads/writes entities using an `IEntityService`
 - The controller's generic types must match the service's generic types (DTOs excluded)
 - It's **not necessary to inject** the service in the constructor — the base controller resolves it via `HttpContext.RequestServices`

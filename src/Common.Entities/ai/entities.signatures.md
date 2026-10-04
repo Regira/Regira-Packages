@@ -728,7 +728,7 @@ public static EntityServiceCollection<TContext> UseEntities<TContext>(
 using Regira.Entities.DependencyInjection.Extensions;
 
 // Registers in one call: paging defaults (DefaultPageSize=10, MaxPageSize=100), default primers
-// (HasCreated/HasLastModified/Archivable), default global filters (Ids/Archivables/HasCreated/HasLastModified),
+// (AddDefaultPrimers()), the AutoServerOwnedPrepper, default global filters (AddDefaultGlobalQueryFilters()),
 // and the default entity normalizer. Also calls AddDefaultInterceptors() (= WireDbContext(DbContextWiring.All)): UseEntities<TContext>()
 // then wires the primer/normalizer/auto-truncate/reactor interceptors + UTC date convention into the DbContext options
 // automatically (AddDbContext only needs the provider; assignability match — an abstract-base registration
@@ -2051,7 +2051,8 @@ public class EntityServiceCollectionOptions(IServiceCollection services)
 
     // Startup validation (arity mismatches, unwired interceptors, ignored ?q=, competing write authorities,
     // null attachment Uri, out-of-scope global filters, missing archived query filter, archivable reference
-    // data behind a required FK, attachments the input DTO cannot carry). Development-only by default.
+    // data behind a required FK, attachments the input DTO cannot carry, For<>() shapes UseRepository() has no
+    // type for). Development-only by default.
     public EntityServiceCollectionOptions ConfigureValidation(Action<EntityValidationOptions> configure);
 }
 
@@ -2067,7 +2068,7 @@ public enum DbContextWiring
     ArchivedQueryFilter = 1 << 4,
     // IHasConcurrencyToken.ConcurrencyToken declared a concurrency token — without a DbContext change
     ConcurrencyTokens = 1 << 5,
-    // runs registered IEntityReactors once a save's changes are committed
+    // runs the registered IEntityReactor implementations once a save's changes are committed
     Reactors = 1 << 6,
     All = PrimerInterceptors | NormalizerInterceptors | AutoTruncateInterceptors | UtcDateTimeConvention
         | ArchivedQueryFilter | ConcurrencyTokens | Reactors

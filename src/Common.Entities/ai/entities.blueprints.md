@@ -447,7 +447,7 @@ public class PartyController(IPartyService service)
     // base CRUD comes from EntityControllerBase; custom actions use the injected DOMAIN interface
     [HttpGet("family")]
     public async Task<IActionResult> GetFamily([FromQuery] IList<int> ids, [FromQuery] int level = 9)
-        => Ok((await service.GetFamily(ids, level)).ToTreeViewListResult());
+        => Ok(new ListResult<PartyTreeItem> { Items = (await service.GetFamily(ids, level)).ToTreeView() });
 }
 ```
 
@@ -1049,6 +1049,7 @@ public class Country : IHasCode, IHasNormalizedTitle, IHasDefault<string>
     public string? NormalizedTitle { get; set; }
 }
 
+// ICultureContext: the app's own accessor for the request's culture (CountryCode)
 public class CountryRepository(ICultureContext cultureContext) : IEntityService<Country, string, SearchObject<string>>
 {
     public Task<Country?> Details(string id, CancellationToken token = default)

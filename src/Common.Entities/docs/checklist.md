@@ -65,6 +65,7 @@ When implementing a new entity in an application:
     - Add `DbSet<Attachment>` + `DbSet<TAttachment>` and map both relationships in DbContext — the owner side explicitly: `HasMany(x => x.Attachments).WithOne().HasForeignKey(x => x.ObjectId)`
     - Register the typed link: `.For<Owner>(e => e.HasAttachments<TContext, Owner, TAttachment>(x => x.Attachments))`
     - Add a controller `: EntityAttachmentControllerBase<TAttachment>` with the owner base `[Route]` only
+    - Owner scoped per user or tenant? Add a global filter on the link entity that reruns the owner's scope, and a validator for the upload ([Attachments → Controllers](attachments.md#controllers))
 - [ ] Add Normalizers
     - Ensure normalizers are set up
     - Decorate entity properties with Normalized attribute

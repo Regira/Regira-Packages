@@ -407,7 +407,7 @@ public class ProjectNormalizer(ProjectsContext dbContext, INormalizer? normalize
         return Task.CompletedTask;
     }
 }
-public class ProjectAfterMapper(/*ILinkGenerator linkGenerator*/) : EntityAfterMapperBase<Project, ProjectDto>
+public class ProjectAfterMapper(/*LinkGenerator linkGenerator*/) : EntityAfterMapperBase<Project, ProjectDto>
 {
     public override void AfterMap(Project source, ProjectDto target)
         => target.Uri = $"BASE_PATH/{source.Slug}";

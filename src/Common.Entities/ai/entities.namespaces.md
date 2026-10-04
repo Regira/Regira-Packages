@@ -112,7 +112,7 @@
 |---|---|
 | `Regira.Entities.DependencyInjection.Extensions` | `ServiceCollectionExtensions` *(`UseEntities<TContext>()` — on `IServiceCollection`; `GetServices<TContext>()` — on `IEntityServiceCollection<TContext>`, returns the underlying `IServiceCollection`)*, `EntityServiceCollectionExtensions` *(`UseDefaults()` — on `EntityServiceCollectionOptions`)* |
 | `Regira.Licensing.DependencyInjection` | `ServiceCollectionExtensions` *(`UseRegira(configuration)` / `UseRegira(params string?[] licenseKeys)` — on `IServiceCollection`; comes transitively via `Regira.Entities.DependencyInjection`)* |
-| `Regira.Entities.DependencyInjection.ServiceCollections` | `EntityServiceCollection<>` |
+| `Regira.Entities.DependencyInjection.ServiceCollections` | `EntityServiceCollection<>`, `EntityRepositoryRegistry` *(the types `UseRepository()` sets)* |
 | `Regira.Entities.DependencyInjection.ServiceBuilders` | `EntityServiceBuilder<>`, `EntityIntServiceBuilder<>`, `EntitySearchObjectServiceBuilder<>`, `ComplexEntityServiceBuilder<>`, `ComplexEntityIntServiceBuilder<>` |
 | `Regira.Entities.DependencyInjection.ServiceCollections.Models` | `EntityServiceCollectionOptions` |
 | `Regira.Entities.DependencyInjection.ServiceCollections.Abstractions` | `IEntityServiceCollection<>` |

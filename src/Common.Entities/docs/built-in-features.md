@@ -362,8 +362,8 @@ referenced, or explicitly via `ValidateEntityControllers()`), warns when primers
 without their SaveChanges interceptor (an informational note instead when the `RegisterPrimerContainer` +
 `ApplyPrimers()` pattern is detected), warns when `?q=` would be silently ignored for an entity and when an
 attachments owner's collection is not mapped to the link's `ObjectId`, when an entity validator applies to no
-registered entity or an entity's write path cannot run the validators in its scope, and fails on a `[ServerOwned]`
-declaration nothing can enforce.
+registered entity or an entity's write path cannot run the validators in its scope, and when `UseRepository()` has no
+repository type for a `For<>()` shape, and fails on a `[ServerOwned]` declaration nothing can enforce.
 Configure via `UseEntities(o => o.ConfigureValidation(v => { v.Enabled = true; /* Production opt-in */ }))`.
 
 

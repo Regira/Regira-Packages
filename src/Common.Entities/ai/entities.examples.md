@@ -973,11 +973,12 @@ public class ProductQueryBuilder(IQKeywordHelper qHelper) : FilteredQueryBuilder
 
 <!-- no-compile -->
 ```csharp
-// Separate class — applies to all entities implementing the interface:
-public class FilterByTenantQueryBuilder(ITenantContext tenantContext) : GlobalFilteredQueryBuilderBase<ITenantEntity, int>
+// Separate class — applies to all entities implementing the interface. IHasTenantId and ITenantContext are the
+// app's own (entities.blueprints.md → Multi-tenancy):
+public class FilterByTenantQueryBuilder(ITenantContext tenantContext) : GlobalFilteredQueryBuilderBase<IHasTenantId, int>
 {
-    public override IQueryable<ITenantEntity> Build(IQueryable<ITenantEntity> query, ISearchObject<int>? so)
-        => query.Where(x => x.TenantId == tenantContext.CurrentTenantId);
+    public override IQueryable<IHasTenantId> Build(IQueryable<IHasTenantId> query, ISearchObject<int>? so)
+        => query.Where(x => x.TenantId == tenantContext.TenantId);
 }
 // Registration: options.AddGlobalFilterQueryBuilder<FilterByTenantQueryBuilder>();
 // using Regira.Entities.DependencyInjection.QueryBuilders;   ← AddGlobalFilterQueryBuilder lives here
@@ -1003,7 +1004,7 @@ public class ProductNormalizer(INormalizer normalizer) : EntityNormalizerBase<Pr
     }
 }
 // Per-entity: e.AddNormalizer<ProductNormalizer>();
-// Global:     options.AddNormalizer<IHasPhone, PhoneNormalizer>();
+// Global:     options.AddNormalizer<IHasPhone, PhoneNormalizer>();   (IHasPhone: an interface of your own)
 ```
 
 ### Paging defaults

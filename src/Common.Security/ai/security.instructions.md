@@ -26,7 +26,7 @@
 <!-- JWT + API Key authentication -->
 <PackageReference Include="Regira.Security.Authentication" Version="6.*" />
 
-<!-- Pre-built auth controllers (AccountController, UserController, PasswordController) -->
+<!-- Pre-built auth controller bases (AccountControllerBase, UserControllerBase, PasswordControllerBase) -->
 <PackageReference Include="Regira.Security.Authentication.Web" Version="6.*" />
 ```
 
@@ -907,7 +907,7 @@ factory. To carry an Identity role into the token and through every gate:
 > ⚠️ **Custom JWT over a plain (non-`IdentityUser`) entity forgoes this whole account surface.** The recipe above
 > and the controllers below sit on ASP.NET Identity (`IdentityUser` / `UserManager`). Minting tokens for a plain
 > entity (an `Employee`-as-user) with `ITokenHelper.Create(claims, audience)` gets you **login only** — not
-> `PasswordController` (change/recover/reset), `AccountController`, or `UserController`. Treat auth as a package:
+> `PasswordControllerBase` (change/recover/reset), `AccountControllerBase`, or `UserControllerBase`. Treat auth as a package:
 > decide Identity-vs-custom **before** modelling the user, and if custom, implement change/forgot/reset yourself
 > (or adopt the Identity-backed controllers wholesale). "Login works" is not "auth is done."
 

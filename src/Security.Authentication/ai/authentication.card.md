@@ -4,8 +4,9 @@
 > option tables and DI (`get_package id="Regira.Security" section="security.instructions"`). The pre-built
 > controllers that consume these primitives are in `Regira.Security.Authentication.Web`.
 
-- **`AddJwtAuthentication(o => …)`** registers `ITokenHelper` + the JwtBearer scheme. Set `Secret`,
-  `Authority`, `Audience`. **`Algorithm` is a JWA id (`HS512`)** and defaults to `HS512` when unset.
+- **`AddJwtAuthentication(o => …)`** registers `ITokenHelper` + the JwtBearer scheme. Set `Secret` and
+  `Audience`; `Authority` is optional (written as the issuer and checked when set). **`Algorithm` is a JWA id
+  (`HS512`)** and defaults to `HS512` when unset.
 - **`Secret` must be ≥ 64 bytes for the HS512 default** (≥ 48 for HS384, ≥ 32 for HS256). A shorter key
   throws `InvalidOperationException` from `AddJwtAuthentication`, naming the byte count it got and the one it
   needs. `ValidateSecretLength = false` opts out — only correct for a scheme that never issues tokens.
@@ -23,7 +24,7 @@
   `ApiKeyOwner`, `ApiKeyAuthenticationOptions` under `Regira.Security.Authentication.ApiKey.*`.
 - **Refresh tokens:** `.AddRefreshTokens()` chains off `AddJwtAuthentication` — **opt-in**, and without it nothing
   changes (`auth/refresh-token` 404s and `POST auth` keeps its exact body). Rotating, replay-detecting, stored hashed.
-  ⚠️ `auth/refresh` (pre-existing) needs a **still-valid** bearer so it cannot renew an expired token — that is what
+  ⚠️ `auth/refresh` needs a **still-valid** bearer so it cannot renew an expired token — that is what
   `auth/refresh-token` is for. ⚠️ The default `InMemoryRefreshTokenStore` is **dev only**: it loses sessions on restart
   and is per-process, so behind a load balancer users are signed out at random. Implement `IRefreshTokenStore` and
   register it with `.AddRefreshTokenStore<T>()` first. `Refresh` requires a claims resolver so claims are re-read —
