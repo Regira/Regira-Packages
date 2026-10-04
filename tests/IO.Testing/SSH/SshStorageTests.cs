@@ -1,5 +1,4 @@
 ﻿using IO.Testing.Helpers;
-using Microsoft.Extensions.Configuration;
 using Regira.IO.Storage.SSH;
 
 namespace IO.Testing.SSH;
@@ -10,28 +9,20 @@ namespace IO.Testing.SSH;
 [Category("Network")]
 public class SshStorageTests
 {
-    public StorageTestHelper.IStorageTestContext StorageTestContext { get; set; }
+    public StorageTestHelper.IStorageTestContext StorageTestContext { get; set; } = null!;
     [SetUp]
-    public void Setup() => StorageTestContext = StorageTestHelper.CreateDecoratedFileService((_, folder)
-        =>
+    public void Setup()
     {
-        var configBuilder = new ConfigurationBuilder();
-        configBuilder.AddUserSecrets(GetType().Assembly, true);
-        var configuration = configBuilder.Build();
-        var sshSection = configuration.GetSection("Storage:SSH");
-        var config = new SftpConfig
-        {
-            ContainerName = sshSection["ContainerName"],
-            Host = sshSection["Host"],
-            Port = int.Parse(sshSection["Port"]!),
-            UserName = sshSection["Username"],
-            Password = sshSection["Password"]
-        };
-
-        return new SftpService(new SftpCommunicator(config));
-    });
+        var config = TestSecrets.Ssh();
+        StorageTestContext = StorageTestHelper.CreateDecoratedFileService((_, _)
+            => new SftpService(new SftpCommunicator(config)));
+    }
     [TearDown]
-    public async Task TearDown() => await StorageTestContext.DisposeAsync();
+    public async Task TearDown()
+    {
+        // unset when Setup ignored the fixture
+        if (StorageTestContext != null) await StorageTestContext.DisposeAsync();
+    }
 
 
     [Test]
@@ -64,6 +55,8 @@ public class SshStorageTests
     public async Task Add_File() => await StorageTestContext.Test_Add_File();
     [Test]
     public async Task Update_File() => await StorageTestContext.Test_Update_File();
+    [Test]
+    public async Task Update_File_With_Shorter_Content() => await StorageTestContext.Test_Update_File_With_Shorter_Content();
     [Test]
     public async Task Remove_File() => await StorageTestContext.Test_Remove_File();
 }

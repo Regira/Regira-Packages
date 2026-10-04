@@ -4,6 +4,7 @@
 
 Drive the backend choice from configuration so consuming code never changes.
 
+<!-- no-compile -->
 ```csharp
 IFileService storage = config["Storage:Backend"] switch
 {
@@ -14,9 +15,10 @@ IFileService storage = config["Storage:Backend"] switch
                })),
     "sftp"  => new SftpService(new SftpCommunicator(new SftpConfig
                {
-                   Host     = config["Storage:SSH:Host"]!,
-                   UserName = config["Storage:SSH:Username"]!,
-                   Password = config["Storage:SSH:Password"]
+                   Host               = config["Storage:SSH:Host"]!,
+                   UserName           = config["Storage:SSH:Username"]!,
+                   Password           = config["Storage:SSH:Password"],
+                   HostKeyFingerprint = config["Storage:SSH:HostKeyFingerprint"]   // SHA256:…, or any host key is accepted
                })),
     "share" => new NetworkFileService(new NetworkShareCommunicator(new NetworkFileSystemOptions
                {
@@ -39,15 +41,16 @@ services.AddSingleton<IFileService>(storage);
 
 Combine `IFileService` with `IImageService` to process images in place.
 
+<!-- no-compile -->
 ```csharp
 public async Task ResizeAndStore(IFileService storage, IImageService images, string path)
 {
     var bytes = await storage.GetBytes(path);
     if (bytes == null) return;
 
-    using var image   = images.Parse(bytes)!;
-    using var resized = images.Resize(image, new ImageSize(800, 800));
-    using var webp    = images.ChangeFormat(resized, ImageFormat.Webp);
+    using var image   = (await images.Parse(bytes))!;
+    using var resized = await images.Resize(image, new ImageSize(800, 800));
+    using var webp    = await images.ChangeFormat(resized, ImageFormat.Webp);
 
     var newPath = Path.ChangeExtension(path, ".webp");
     await storage.Save(newPath, webp.GetBytes()!);
@@ -60,13 +63,14 @@ public async Task ResizeAndStore(IFileService storage, IImageService images, str
 
 Use `ExportHelper` to copy files from `GitHubService` into `BinaryBlobService`.
 
+<!-- no-compile -->
 ```csharp
 var github = new GitHubService(
-    new GitHubOptions
+    new GitHubCommunicator(new GitHubOptions
     {
-        Uri = "https://api.github.com/repos/acme/assets/contents/",
+        Uri = "https://api.github.com/repos/acme/assets",   // the communicator adds /contents/
         Key = pat
-    },
+    }),
     jsonSerializer);
 
 var communicator = new AzureCommunicator(new AzureOptions
@@ -87,6 +91,7 @@ await new ExportHelper(github, azure)
 
 Collect all files in a folder and stream them to the caller as a single archive.
 
+<!-- no-compile -->
 ```csharp
 public async Task<IMemoryFile> CreateZipExport(IFileService storage, string folder)
 {
@@ -100,8 +105,8 @@ public async Task<IMemoryFile> CreateZipExport(IFileService storage, string fold
     var files = await Task.WhenAll(identifiers.Select(async id =>
         new BinaryFileItem
         {
-            Name  = id,
-            Bytes = await storage.GetBytes(id)
+            FileName = id,
+            Bytes    = await storage.GetBytes(id)
         }));
 
     return await new ZipBuilder().For(files).Build();
@@ -114,6 +119,7 @@ public async Task<IMemoryFile> CreateZipExport(IFileService storage, string fold
 
 Avoid overwriting existing files by finding the next available name before saving.
 
+<!-- no-compile -->
 ```csharp
 public async Task<string> SafeUpload(
     IFileService storage, string folder, string filename, byte[] bytes)
@@ -136,6 +142,7 @@ Given `folder = "invoices"` and `filename = "report.pdf"`:
 
 Open an existing archive, remove an outdated entry, add a replacement, and save the result.
 
+<!-- no-compile -->
 ```csharp
 public async Task<IMemoryFile> ReplaceZipEntry(
     IMemoryFile sourceZip, string oldEntry, string newEntry, byte[] newBytes)

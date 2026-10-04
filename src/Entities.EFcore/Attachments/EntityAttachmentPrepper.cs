@@ -15,9 +15,25 @@ public class EntityAttachmentPrepper<TContext, TEntityAttachment, TEntityAttachm
     {
         item.Attachment ??= original?.Attachment;
 
-        if (item.Attachment?.IsNew() == true && original?.Attachment != null)
+        if (item.Attachment?.IsNew() == true)
         {
-            dbContext.Entry(original.Attachment).State = EntityState.Deleted;
+            // a new file, typed now as the save types it, so the validators judge its type
+            EntityAttachmentContent.TypeByName(item.Attachment);
+            if (original?.Attachment != null)
+            {
+                dbContext.Entry(original.Attachment).State = EntityState.Deleted;
+            }
+        }
+        else
+        {
+            if (original != null)
+            {
+                EntityAttachmentContent.KeepAttachment(item, original);
+            }
+            if (item.Attachment != null)
+            {
+                EntityAttachmentContent.ApplyBeforeSave(dbContext, item, original?.Attachment);
+            }
         }
 
         return Task.CompletedTask;

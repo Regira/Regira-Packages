@@ -347,6 +347,49 @@ public class ServerOwnedTests
         Assert.That(services.Any(d => d.ServiceType == typeof(IEntityPrepper)), Is.True);
     }
 
+    public record OrderSearchObject : SearchObject;
+    public enum OrderSortBy { Default }
+    [Flags] public enum OrderIncludes { Default = 0, Lines = 1, All = Lines }
+
+    /// <summary>
+    /// The same chain on a complex registration. Its <c>Related</c> also takes a parent <c>prepareFunc</c>, so a
+    /// configure lambda in second position bound to it — typed as the parent, where <c>r.ServerOwned(...)</c> is
+    /// CS1061. <c>Quantity</c> carries no attribute: only a configure that ran restores it.
+    /// </summary>
+    [Test]
+    public async Task A_Complex_Registration_Takes_The_Related_Configure_In_Second_Position()
+    {
+        var services = new ServiceCollection();
+        services.AddDbContext<ShopContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<ShopContext>(o => o.UseDefaults())
+            .For<Order, OrderSearchObject, OrderSortBy, OrderIncludes>(e => e
+                .ServerOwned(x => x.Code, _ => "ORD-1")
+                .Related(x => x.Lines, r => r.ServerOwned(x => x.Quantity))
+                .Includes((query, _) => query.Include(x => x.Lines)));
+        await using var sp = services.BuildServiceProvider();
+        var orders = sp.GetRequiredService<IEntityService<Order, int>>();
+
+        var order = new Order { Status = "New", Lines = [new OrderLine { Product = "Widget", UnitPrice = 10m, Quantity = 2 }] };
+        await orders.Add(order);
+        await orders.SaveChanges();
+        var lineId = order.Lines.Single().Id;
+
+        await orders.Modify(new Order
+        {
+            Id = order.Id,
+            Status = "Shipped",
+            Lines = [new OrderLine { Id = lineId, OrderId = order.Id, Product = "Gadget", UnitPrice = 10m, Quantity = 9 }]
+        });
+        await orders.SaveChanges();
+
+        var line = (await orders.Details(order.Id))!.Lines!.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(line.Quantity, Is.EqualTo(2));
+            Assert.That(line.Product, Is.EqualTo("Gadget"));
+        });
+    }
+
     // ── the reflection contract ────────────────────────────────────────────────
 
     [Test]
@@ -361,12 +404,12 @@ public class ServerOwnedTests
     }
 
     [Test]
-    public void The_Prepper_Is_A_No_Op_Without_An_Original()
+    public async Task The_Prepper_Is_A_No_Op_Without_An_Original()
     {
         var prepper = new AutoServerOwnedPrepper<Order>();
         var order = new Order { Code = "KEEP" };
 
-        Assert.DoesNotThrowAsync(() => prepper.Prepare(order, null));
+        await Assert.DoesNotThrowAsync(() => prepper.Prepare(order, null));
         Assert.That(order.Code, Is.EqualTo("KEEP"));
     }
 }

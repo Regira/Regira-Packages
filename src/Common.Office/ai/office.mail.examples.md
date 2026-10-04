@@ -5,12 +5,12 @@
 ## DI Registration
 
 ```csharp
-// Program.cs
 services.AddSendGrid(cfg => cfg.Key = configuration["Mail:SendGrid:Key"]!);
 ```
 
 ## Send order confirmation
 
+<!-- no-compile -->
 ```csharp
 public async Task SendOrderConfirmation(Order order, IMemoryFile invoicePdf)
 {
@@ -39,10 +39,11 @@ public async Task SendOrderConfirmation(Order order, IMemoryFile invoicePdf)
 
 ## Send password-reset email
 
+<!-- no-compile -->
 ```csharp
 public async Task SendPasswordReset(string email, string resetLink)
     => await _mailer.Send(
-        sender:     "no-reply@myshop.com",
+        sender:     new MailAddress { Email = "no-reply@myshop.com" },
         recipients: [new MailRecipient { Email = email }],
         subject:    "Reset your password",
         message:    $"<p>Click <a href='{resetLink}'>here</a> to reset your password.</p>"

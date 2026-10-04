@@ -18,10 +18,10 @@ END:VCARD";
         ClassicAssert.IsNotNull(item);
     }
     [Test]
-    public virtual void Read_Invalid_Expect_InvalidCardException()
+    public virtual async Task Read_Invalid_Expect_InvalidCardException()
     {
         var content = "";
-        Assert.ThrowsAsync<InvalidCardException>(async () => await manager.Read(content));
+        await Assert.ThrowsAsync<InvalidCardException>(async () => await manager.Read(content));
     }
 
     [Test]

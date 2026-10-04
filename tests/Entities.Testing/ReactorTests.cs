@@ -862,7 +862,7 @@ public class ReactorTests
         using var scope = _sp.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
         db.Invoices.Add(new Invoice { OrderId = 1, Number = null! });
-        Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
         db.ChangeTracker.Clear();
         db.Invoices.Add(new Invoice { OrderId = 1, Number = "INV-2" });
         await db.SaveChangesAsync();

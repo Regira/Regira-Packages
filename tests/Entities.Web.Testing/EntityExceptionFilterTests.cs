@@ -9,6 +9,7 @@ using Microsoft.Extensions.Options;
 using Regira.Entities.Models;
 using Regira.Entities.Web.Controllers;
 using Regira.Entities.Web.DependencyInjection;
+using System.Text.Json;
 
 namespace Entities.Web.Testing;
 
@@ -31,14 +32,88 @@ public class EntityExceptionFilterTests
         new EntityExceptionFilter().OnException(context);
 
         Assert.True(context.ExceptionHandled);
-        // BadRequest(ModelState) serializes as a SerializableError — the same body ControllerExtensions.Save
-        // returns, so a hand-written action and the generated one are indistinguishable to a client.
-        var errors = Errors(context);
-        Assert.Equal(["Only a submitted request can be approved."], Assert.IsType<string[]>(errors["Status"]));
+        // the same ValidationProblemDetails ControllerExtensions.Save returns, so a hand-written action and the
+        // generated one are indistinguishable to a client
+        var problem = Problem(context);
+        Assert.Equal(StatusCodes.Status400BadRequest, problem.Status);
+        Assert.Equal(["Only a submitted request can be approved."], problem.Errors["Status"]);
     }
 
-    private static SerializableError Errors(ExceptionContext context) =>
-        Assert.IsType<SerializableError>(Assert.IsType<BadRequestObjectResult>(context.Result).Value);
+    // The error keys are dictionary keys, so the camelCase naming policy of ConfigureDefaultJsonOptions() does not reach
+    // them: each goes out as it was thrown. The concurrency recipe documents the key a required version stamp left out gets.
+    [Fact]
+    public void InputException_Keys_Go_Out_As_Thrown()
+    {
+        var context = ContextFor(new EntityInputException<object>("rejected")
+        {
+            InputErrors = { ["ConcurrencyToken"] = "Required on an update: send the value read with the record." }
+        });
+
+        new EntityExceptionFilter().OnException(context);
+
+        var json = Serialize(Problem(context));
+        Assert.Contains("""
+                        "errors":{"ConcurrencyToken":["Required on an update: send the value read with the record."]}
+                        """, json);
+        Assert.Contains("""
+                        "errorDetails":[{"key":"ConcurrencyToken","message":"Required on an update: send the value read with the record."}]
+                        """, json);
+    }
+
+    // errorDetails lists the errors in order with the args a translation fills in; errors keeps every message
+    [Fact]
+    public void InputException_Lists_Every_Error_With_Its_Args()
+    {
+        var context = ContextFor(new EntityInputException<object>("rejected")
+        {
+            Errors =
+            {
+                new EntityInputError("Code", "TooLong", new Dictionary<string, object?> { ["max"] = 5 }),
+                new EntityInputError(string.Empty, "A locked order cannot be changed.")
+            }
+        });
+
+        new EntityExceptionFilter().OnException(context);
+
+        Assert.Equal(["TooLong"], Problem(context).Errors["Code"]);
+        Assert.Contains("""
+                        "errorDetails":[{"key":"Code","message":"TooLong","args":{"max":5}},{"key":"","message":"A locked order cannot be changed."}]
+                        """, Serialize(Problem(context)));
+    }
+
+    // a value a translation cannot fill in — an entity, a collection — stays on the server
+    [Fact]
+    public void InputException_Args_Keep_Only_Scalar_Values()
+    {
+        var args = new Dictionary<string, object?>
+        {
+            ["max"] = 5,
+            ["due"] = new DateOnly(2026, 10, 1),
+            ["status"] = DayOfWeek.Monday,
+            ["allowed"] = new[] { "A", "B" },
+            ["order"] = new { Id = 7 }
+        };
+        var context = ContextFor(new EntityInputException<object>("rejected") { Errors = { new EntityInputError("Code", "Invalid", args) } });
+
+        new EntityExceptionFilter().OnException(context);
+
+        Assert.Contains("""
+                        "args":{"max":5,"due":"2026-10-01","status":"Monday"}
+                        """, Serialize(Problem(context)));
+    }
+
+    private static ValidationProblemDetails Problem(ExceptionContext context) =>
+        Assert.IsType<ValidationProblemDetails>(Assert.IsType<BadRequestObjectResult>(context.Result).Value);
+
+    // as ConfigureDefaultJsonOptions() has the host serialize it
+    private static string Serialize(ProblemDetails problem)
+    {
+        var services = new ServiceCollection();
+        services.AddOptions();
+        services.ConfigureDefaultJsonOptions();
+        using var sp = services.BuildServiceProvider();
+        return JsonSerializer.Serialize(problem, problem.GetType(), sp.GetRequiredService<IOptions<JsonOptions>>().Value.JsonSerializerOptions);
+    }
 
     // A prepper guarding a related entity throws EntityInputException<Product> while the action's own TEntity
     // is Order. The generated actions catch one closed generic and miss that; the filter matches the base.
@@ -52,6 +127,38 @@ public class EntityExceptionFilterTests
         Assert.IsType<BadRequestObjectResult>(context.Result);
     }
 
+    // Errors is what the body is built from: several messages of one field stay separate entries, where InputErrors
+    // shows them joined.
+    [Fact]
+    public void InputException_Errors_Keep_Every_Message_Of_A_Field()
+    {
+        var ex = new EntityInputException<object>("rejected")
+        {
+            Errors = { new EntityInputError("Code", "At most 5 characters."), new EntityInputError("Code", "Upper case only.") }
+        };
+        var context = ContextFor(ex);
+
+        new EntityExceptionFilter().OnException(context);
+
+        Assert.Equal(["At most 5 characters.", "Upper case only."], Problem(context).Errors["Code"]);
+        Assert.Equal("At most 5 characters. Upper case only.", ex.InputErrors["Code"]);
+    }
+
+    // InputErrors is a view over Errors, not a second store: a field a handler adds to a caught rejection before it
+    // rethrows reaches the body next to the validators' errors.
+    [Fact]
+    public void InputException_A_Field_Added_Through_InputErrors_Joins_The_Errors()
+    {
+        var ex = new EntityInputException<object>("rejected") { Errors = { new EntityInputError("Name", "A name is required.") } };
+        ex.InputErrors["Code"] = "Code is taken.";
+        var context = ContextFor(ex);
+
+        new EntityExceptionFilter().OnException(context);
+
+        Assert.Equal(["A name is required."], Problem(context).Errors["Name"]);
+        Assert.Equal(["Code is taken."], Problem(context).Errors["Code"]);
+    }
+
     [Fact]
     public void InputException_Without_Field_Errors_Still_Carries_Its_Message()
     {
@@ -59,7 +166,7 @@ public class EntityExceptionFilterTests
 
         new EntityExceptionFilter().OnException(context);
 
-        Assert.Equal(["Quantity must be positive."], Assert.IsType<string[]>(Errors(context)[string.Empty]));
+        Assert.Equal(["Quantity must be positive."], Problem(context).Errors[string.Empty]);
     }
 
     [Fact]
@@ -118,8 +225,7 @@ public class EntityExceptionFilterTests
     {
         var services = new ServiceCollection();
         services.AddOptions();
-        // Repeated setup calls are common (UseEntities + a second options instance); a duplicate filter would
-        // add the same model errors twice.
+        // Repeated setup calls are common (UseEntities + a second options instance); they still leave one filter.
         services.ConfigureDefaultJsonOptions();
         services.MapEntityExceptions();
 

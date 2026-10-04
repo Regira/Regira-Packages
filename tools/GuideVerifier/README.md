@@ -1,7 +1,10 @@
 # Regira Guide Verifier
 
-Compiles the fenced ` ```csharp ` code blocks in the AI guides, package READMEs and Office topic docs
-so a snippet that no longer binds against the real API is caught here rather than by a consumer.
+Compiles the fenced ` ```csharp ` code blocks in both documentation layers — the AI guides (`src/*/ai/`)
+and the developer docs (package READMEs, `src/*/docs/` and the root `docs/`) — so a snippet that no longer
+binds against the real API is caught here rather than by a consumer. Only the files a group in
+`projects.json` lists are compiled: a guide missing from the manifest is not verified at all, so add each
+new guide file to its group when you write it (see *Extending coverage*).
 
 ## What it does
 
@@ -11,7 +14,10 @@ so a snippet that no longer binds against the real API is caught here rather tha
    (e.g. `Microsoft.AspNetCore.App`). Groups build independently, so doc families with unrelated —
    or conflicting — dependency sets stay isolated. Two more optional keys:
    - `packages` — NuGet packages as `{ "id": "version" }`, for what a *consumer* installs alongside the
-     Regira projects (an EF Core provider, say). Project references alone cannot cover those.
+     Regira projects (an EF Core provider, say). Project references alone cannot cover those. The
+     `security` group's `Microsoft.AspNetCore.OpenApi` looks redundant, since `Security.Authentication.Web`
+     already references it, but keep it: the package enables the interceptors its source generator emits
+     only for a project that references it directly, so without it the group fails with CS9137.
    - ⚠️ Keep `usings` to what the reader's SDK supplies **implicitly**. A namespace listed here is
      prepended to every snippet in the group, so listing one the doc also declares makes the doc's own
      `using` line dead weight — and a guide that later loses it still compiles green. The `quickstart`
@@ -27,8 +33,11 @@ so a snippet that no longer binds against the real API is caught here rather tha
    - **Statement / expression** blocks are wrapped in an `async` method body. `sp` / `scope` (service
      providers, matching the guides' idiom) and `args` (what a top-level `Program.cs` receives) are
      ambient **fields**, so a snippet may declare its own `scope` — `using (var scope = …)` — without
-     colliding. A statement block's own leading `using` **directives** are hoisted to file scope; a
-     `using var x = …` declaration is a statement and stays put.
+     colliding. A group that references `Microsoft.AspNetCore.App` also gets the startup ambients a
+     `Program.cs` block uses: `services` (`IServiceCollection`), `app` (`WebApplication`), `builder`
+     (`WebApplicationBuilder`) and `configuration` (`IConfiguration`), so a registration line needs no marker
+     for its receiver or its settings. A statement block's own leading `using` **directives** are hoisted to
+     file scope; a `using var x = …` declaration is a statement and stays put.
 4. Per group: writes a throwaway project to a temp dir (outside the repo, so it inherits no
    `Directory.Build.props`) that references the group's src projects, runs `dotnet build`, and reports
    each failure as `file.md § <heading>` with the compiler error. Exits non-zero when any group fails.
@@ -72,16 +81,16 @@ verified); anything illustrative-only gets the marker.
 > went unnoticed — only the human-facing site was affected. Keep the marker on its own line and the fence a
 > bare ` ```csharp `.
 
-The old form now **fails loudly** rather than silently: the extractor no longer reads the info string, so
-` ```csharp no-compile ` is collected as an ordinary C# block and the fragment breaks the build.
+The old form now **fails loudly** rather than silently: the extractor reads the info string only to detect
+the language, so ` ```csharp no-compile ` is collected as an ordinary C# block and the fragment breaks the build.
 
 As the guides are cleaned up so that more blocks are self-contained, remove `no-compile` markers to bring
 those snippets back under verification.
 
 **Blind spot — blockquoted snippets.** A fence indented inside a blockquote (`> ```csharp `) is invisible to
-the extractor, marker or not, so those blocks are never verified. Four exist today, in
-`entities.instructions.md` and `entities.patterns.md`; they carry `> <!-- no-compile -->` for consistency,
-but the marker is inert. Don't rely on a blockquoted block being checked.
+the extractor, marker or not, so those blocks are never verified. Nine exist today, in
+`entities.instructions.md`, `entities.patterns.md` and `entities.setup.md`. Five of them carry
+`> <!-- no-compile -->`, but the marker is inert there, with or without it. Don't rely on a blockquoted block being checked.
 
 ## Scope and CI
 
@@ -96,5 +105,6 @@ but the marker is inert. Don't rely on a blockquoted block being checked.
 Add a group (or extend an existing one) in `projects.json`: guide sources plus the src projects those
 snippets need, and any group-wide `usings`. Keep a group's dependency set coherent — when two doc
 families need conflicting implementation packages (as the Office backends do), give each its own group.
-Start small — each new guide file usually needs a triage pass to mark its partial snippets `no-compile`
-before the run is green.
+A narrative guide that needs `sharedTypes` also gets a group of its own (`entities-examples`), since every
+snippet in such a group shares one namespace. Start small — each new guide file usually needs a triage
+pass to mark its partial snippets `no-compile` before the run is green.

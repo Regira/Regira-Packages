@@ -11,13 +11,13 @@
     <AssemblyName>Regira.DAL.SqlServer</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.4.0</Version>
+    <Version>6.5.0</Version>
     <Description>SQL Server backup and restore for Regira using native BACKUP DATABASE / RESTORE DATABASE.</Description>
     <PackageTags>regira;dal;sqlserver;mssql;backup;restore</PackageTags>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Dapper" Version="2.1.86" />
-    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.3" />
+    <PackageReference Include="Dapper" Version="2.1.89" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.1.1" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
   </ItemGroup>
   <ItemGroup>

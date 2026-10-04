@@ -124,7 +124,7 @@ public class StaleReferenceAttachmentTests
             Assert.That(item.Attachments!.First().Ticket, Is.SameAs(item), "the link must reference its owner for this path");
 
             item.Attachments!.First().ObjectId = otherId;
-            Assert.DoesNotThrowAsync(async () =>
+            await Assert.DoesNotThrowAsync(async () =>
             {
                 await service.Modify(item);
                 await service.SaveChanges();

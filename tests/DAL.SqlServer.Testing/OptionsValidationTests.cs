@@ -14,33 +14,33 @@ public class OptionsValidationTests
     private static readonly byte[] Content = [1, 2, 3];
 
     [Test]
-    public void Backup_Requires_A_Backup_Directory()
+    public async Task Backup_Requires_A_Backup_Directory()
     {
         var options = new SqlServerOptions { ConnectionString = Unreachable };
 
-        var ex = Assert.ThrowsAsync<ArgumentException>(() => new SqlServerBackupService(options).Backup());
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => new SqlServerBackupService(options).Backup());
         Assert.That(ex!.Message, Does.Contain(nameof(SqlServerOptions.BackupDirectory)));
     }
 
     [Test]
-    public void Restore_Requires_A_Backup_Directory()
+    public async Task Restore_Requires_A_Backup_Directory()
     {
         var options = new SqlServerOptions { ConnectionString = Unreachable };
 
-        var ex = Assert.ThrowsAsync<ArgumentException>(() => new SqlServerRestoreService(options).Restore(Content.ToMemoryFile()));
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => new SqlServerRestoreService(options).Restore(Content.ToMemoryFile()));
         Assert.That(ex!.Message, Does.Contain(nameof(SqlServerOptions.BackupDirectory)));
     }
 
     [Test]
-    public void Backup_Requires_Connection_Data()
+    public async Task Backup_Requires_Connection_Data()
     {
         var options = new SqlServerOptions { BackupDirectory = @"D:\SqlBackups" };
 
-        Assert.ThrowsAsync<ArgumentException>(() => new SqlServerBackupService(options).Backup());
+        await Assert.ThrowsAsync<ArgumentException>(() => new SqlServerBackupService(options).Backup());
     }
 
     [Test]
-    public void Backup_Requires_A_Database_Name()
+    public async Task Backup_Requires_A_Database_Name()
     {
         var options = new SqlServerOptions
         {
@@ -48,14 +48,14 @@ public class OptionsValidationTests
             BackupDirectory = @"D:\SqlBackups"
         };
 
-        Assert.ThrowsAsync<ArgumentException>(() => new SqlServerBackupService(options).Backup());
+        await Assert.ThrowsAsync<ArgumentException>(() => new SqlServerBackupService(options).Backup());
     }
 
     [Test]
-    public void Restore_Requires_File_Content()
+    public async Task Restore_Requires_File_Content()
     {
         var options = new SqlServerOptions { ConnectionString = Unreachable, BackupDirectory = @"D:\SqlBackups" };
 
-        Assert.ThrowsAsync<ArgumentException>(() => new SqlServerRestoreService(options).Restore(new BinaryFileItem()));
+        await Assert.ThrowsAsync<ArgumentException>(() => new SqlServerRestoreService(options).Restore(new BinaryFileItem()));
     }
 }

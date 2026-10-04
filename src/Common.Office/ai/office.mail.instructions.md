@@ -37,6 +37,7 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 Both backends implement this interface.
 
+<!-- no-compile -->
 ```csharp
 // Parameter-based
 Task<IMailResponse> Send(
@@ -91,6 +92,10 @@ MailAddress named = new() { Email = "alice@example.com", DisplayName = "Alice" }
 
 `ToString()` returns `"Alice <alice@example.com>"` when `DisplayName` is set.
 
+The implicit conversions from a string — this one and `MailRecipient`'s below — apply only where the concrete type is
+expected. `Send` takes `IMailAddress` and `IEnumerable<IMailRecipient>`, so a string passed to it fails with CS1503:
+construct the model, or convert into a typed variable first.
+
 ### `IMailRecipient` / `MailRecipient`
 
 Extends `IMailAddress` with a recipient type.
@@ -128,6 +133,7 @@ var bcc = new MailRecipient { Email = "carol@example.com", RecipientType = Recip
 
 ## DI Registration
 
+<!-- no-compile -->
 ```csharp
 // SendGrid
 services.AddSendGrid(cfg => cfg.Key = configuration["Mail:SendGrid:Key"]!);
@@ -181,6 +187,7 @@ services.AddSingleton<IMailService, DummyMailer>();
 
 Accept email requests over HTTP with `Mail.Web`:
 
+<!-- no-compile -->
 ```csharp
 [HttpPost]
 public async Task<IActionResult> Send([FromBody] MailInput input, IMailService mailer)

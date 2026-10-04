@@ -11,8 +11,8 @@ Samples:
 - Auditing (Can also be done using Primers for write operations)
 - Security
 - Caching
-- Validation
 
+<!-- no-compile -->
 ```csharp
 .For<Order>(e =>
 {
@@ -23,12 +23,17 @@ Samples:
 ```
 
 Possible overrides:
+
+<!-- no-compile -->
 ```csharp
 // Read
 Task<TEntity?> Details(TKey id, CancellationToken token = default)
-Task<IList<TEntity>> List(TSearchObject? so = null, PagingInfo? pagingInfo = null, CancellationToken token = default)
+Task<TEntity?> Details(TKey id, ArchivedFilter? archived, CancellationToken token = default) // an archived-explicit read goes straight to the inner service: override both
+Task<IList<TEntity>> List(TSearchObject? so = null, PagingInfo? pagingInfo = null, CancellationToken token = default) // not virtual on the complex base
+Task<IList<TEntity>> List(object? so, PagingInfo? pagingInfo, CancellationToken token = default)
 Task<IList<TEntity>> List(IList<TSearchObject?> so, IList<TSortBy> sortBy, TIncludes? includes, PagingInfo? pagingInfo, CancellationToken token = default)
-Task<long> Count(TSearchObject? so, CancellationToken token = default)
+Task<long> Count(TSearchObject? so, CancellationToken token = default) // not virtual on the complex base
+Task<long> Count(object? so, CancellationToken token = default)
 Task<long> Count(IList<TSearchObject?> so, CancellationToken token = default)
 
 // Write
@@ -42,14 +47,41 @@ Task<int> SaveChanges(CancellationToken token = default)
 
 ### Input Exceptions
 
-**EntityInputException**: returned as BadRequest (400), with `InputErrors` as the ModelState payload.
+**EntityInputException**: returned as BadRequest (400), a `ValidationProblemDetails` — the body model binding answers
+with too. Its `errors` map each key to its messages, and its `errorDetails` list every error in order with its args:
+
+```json
+{
+  "title": "One or more validation errors occurred.",
+  "status": 400,
+  "errors": { "Code": ["A code is required."], "Total": ["ValueTooLarge"] },
+  "errorDetails": [
+    { "key": "Code", "message": "A code is required." },
+    { "key": "Total", "message": "ValueTooLarge", "args": { "max": 10000 } }
+  ]
+}
+```
+
+`Errors` holds every error, several per key, and is what the body is built from; with no errors, the exception's
+message goes out under the empty key. A message is a text the client shows, or a translation key it pairs with its
+own messages — the Regira front-end shows the translation when it has one, and the message as is when it has not. An
+error's `Args` are the values a translation fills in (`{max}`); only scalar ones reach the client, and `args` is left
+out of an error that has none.
+The keys go out as thrown: System.Text.Json applies no dictionary-key policy, so `nameof(Order.Status)` reaches a
+camelCase client as `Status`. A host that sets `DictionaryKeyPolicy`, or serializes with Newtonsoft's camelCase
+resolver, camelCases them, and the args' names too.
 
 ```csharp
 public abstract class EntityInputException(string message, Exception? innerException = null)
     : Exception(message, innerException)
 {
-    public IDictionary<string, string> InputErrors { get; set; } = new Dictionary<string, string>();
+    public IList<EntityInputError> Errors { get; set; }          // pre-initialized
+    // a view over Errors, one message per key (joined by a space): setting a key replaces its messages, so a key
+    // added to a caught rejection reaches the 400; assigning a dictionary copies its entries
+    public IDictionary<string, string> InputErrors { get; set; }
 }
+
+public record EntityInputError(string Key, string Message, IReadOnlyDictionary<string, object?>? Args = null);
 
 public class EntityInputException<T>(string message, Exception? innerException = null)
     : EntityInputException(message, innerException)
@@ -92,11 +124,14 @@ public class EntityConstraintException(string message, Exception? innerException
   `DbUpdateException`; `DbContext.SaveChanges()` throws EF's `DbUpdateException` for both. `Message` is the same
   generic text (safe to render anywhere); the provider message is on `InnerException` and in the write service's
   warning log.
-- The response is deliberately generic — throw `EntityInputException` from a prepper when the client
-  should receive a field-level 400 instead.
+- The response is deliberately generic — check the rule in a [validator](services.md#entity-validators) when the
+  client should receive a field-level 400 instead; a validator also runs on the delete a `Restrict` FK refuses.
 
 
 ### Concurrency Exceptions
+
+Concurrency checks are opt-in: they apply only to an entity that implements `IHasConcurrencyToken` or declares
+a token of its own, which an app adds when several users edit the same rows or a stale write must not win.
 
 **EntityConcurrencyException**: thrown by the EFcore write services when `SaveChanges()` fails with EF Core's
 `DbUpdateConcurrencyException` — an `UPDATE`/`DELETE` that matched no row, because the row no longer holds the
@@ -125,8 +160,10 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
   only a write racing it is caught, and the empty value never overwrites the token — with `IHasConcurrencyToken`
   the primer still mints a new one. `PATCH` carries the stored value unless its body sets the token; `DELETE`
   carries none. `[VersionStamp(Required = true)]` refuses such an update instead: `EntityInputException` → 400
-  with the token as the field, thrown before anything is attached. It serves on the marker's implementing
-  `ConcurrencyToken` property too. An insert is never refused, and `PATCH` still passes on the merge base.
+  keyed by the token's C# property name,
+  `"errors": { "ConcurrencyToken": ["Required on an update: send the value read with the record."] }`, thrown before anything
+  is attached. It serves on the marker's implementing `ConcurrencyToken` property too. An insert is never refused,
+  and `PATCH` still passes on the merge base.
 - **The token must move on every write.** `IHasConcurrencyToken` takes care of it: `UseDefaults()` declares its
   `ConcurrencyToken` a concurrency token and `HasConcurrencyTokenDbPrimer` mints a new one on every insert and
   update. A token the database moves (SQL Server `rowversion`, PostgreSQL `xmin`) needs nothing; an
@@ -153,6 +190,7 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
 
 **SetDecimalPrecisionConvention**: *Automatically configures decimal properties.*
 
+<!-- no-compile -->
 ```csharp
 using Regira.DAL.EFcore.Extensions; // external namespace
 
@@ -172,6 +210,7 @@ automatically (`DbContextWiring.ArchivedQueryFilter`) and applied at model final
 registered through `AddDbContext` needs no soft-delete configuration of its own. The two forms below are for a
 context built outside that wiring.*
 
+<!-- no-compile -->
 ```csharp
 using Regira.Entities.EFcore.Extensions;
 
@@ -182,6 +221,7 @@ new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()
     .Options);
 ```
 
+<!-- no-compile -->
 ```csharp
 using Regira.Entities.EFcore.Extensions;
 
@@ -202,6 +242,7 @@ implementing `IHasConcurrencyToken`.*
 `.IsConcurrencyToken(false)` in `OnModelCreating` still opts one entity type out. Call it on the options builder of
 a context built outside that wiring.*
 
+<!-- no-compile -->
 ```csharp
 using Regira.Entities.EFcore.Extensions;
 
@@ -222,6 +263,7 @@ own value converter is left alone, which doubles as the per-property opt-out. Us
 *(With `UseEntities(e => e.UseDefaults())` the convention is wired automatically — the forms below are for
 standalone EF usage without the entities stack.)*
 
+<!-- no-compile -->
 ```csharp
 using Regira.DAL.EFcore.Extensions; // external namespace
 
@@ -242,6 +284,7 @@ protected override void ConfigureConventions(ModelConfigurationBuilder configura
 **AddAutoTruncateInterceptors**: *Truncates string properties based on MaxLength attribute before saving to database,
 on `SaveChanges()` and `SaveChangesAsync()` alike. Adds the `AutoTruncateDbContextInterceptor`*.
 
+<!-- no-compile -->
 ```csharp
 using Regira.DAL.EFcore.Services; // external namespace
 
@@ -257,6 +300,7 @@ services.AddDbContext<MyDbContext>(db =>
 
 ### Defaults
 
+<!-- no-compile -->
 ```csharp
 using Regira.Entities.DependencyInjection.Extensions;
 
@@ -293,6 +337,7 @@ Registers a set of commonly used features for typical applications, including:
 
 ### Read behavior
 
+<!-- no-compile -->
 ```csharp
 services.UseEntities<AppDbContext>(o =>
 {
@@ -316,8 +361,9 @@ generic-arity mismatches (the controller check activates automatically when `Reg
 referenced, or explicitly via `ValidateEntityControllers()`), warns when primers/normalizers/reactors are registered
 without their SaveChanges interceptor (an informational note instead when the `RegisterPrimerContainer` +
 `ApplyPrimers()` pattern is detected), warns when `?q=` would be silently ignored for an entity and when an
-attachments owner's collection is not mapped to the link's `ObjectId`, and fails on a `[ServerOwned]`
-declaration nothing can enforce.
+attachments owner's collection is not mapped to the link's `ObjectId`, when an entity validator applies to no
+registered entity or an entity's write path cannot run the validators in its scope, and when `UseRepository()` has no
+repository type for a `For<>()` shape, and fails on a `[ServerOwned]` declaration nothing can enforce.
 Configure via `UseEntities(o => o.ConfigureValidation(v => { v.Enabled = true; /* Production opt-in */ }))`.
 
 
@@ -329,10 +375,11 @@ Configure via `UseEntities(o => o.ConfigureValidation(v => { v.Enabled = true; /
 | **AutoServerOwnedPrepper**   | *Restores every `[ServerOwned]` scalar from the stored row on update. Registered for all entities by `AddDefaultPreppers()`.* |
 | **ServerOwnedPrepper**       | *The fluent form: restores one property on update and mints it on create. Registered by `e.ServerOwned(...)`.* |
 
+<!-- no-compile -->
 ```csharp
 // use shortcut when configuring Entity (creates RelatedCollectionPrepper in background)
 .For<Order>(e => {
-    e.Related(x => x.OrderItems, (item, _) => item.OrderItems?.Prepare());
+    e.Related(x => x.OrderItems);
 });
 ```
 
@@ -342,6 +389,7 @@ A field left off `TInputDto` maps onto the entity as `null`/default on PUT **and
 back that way: a status-only PATCH resets a generated `Code` or a computed `Total`, returns 200 and logs
 nothing. Declare such a field server-owned and the write path restores it from the stored row instead.
 
+<!-- no-compile -->
 ```csharp
 public class Order : IEntity<int>
 {
@@ -368,6 +416,56 @@ public class Order : IEntity<int>
 - Scalars and FKs only. A navigation, a property without both accessors, and `IArchivable.IsArchived` (a
   restore has to be able to clear it) cannot be server-owned: the fluent form throws at registration, the
   attribute is skipped and reported by startup validation.
+
+### Validators
+
+A validator refuses a write; [Entity Validators](services.md#entity-validators) explains the stage — where it runs,
+which validators apply to an entity, and what a refusal leaves behind. The `Regira.Entities.Validation.FluentValidation`
+package runs `AbstractValidator<T>` rules in that stage, under the same scope rule: an `AbstractValidator<Party>`
+checks a `Person` saved through any service. Every validator in scope runs, so a `PersonValidator` that calls
+`Include(new PartyValidator())` in an assembly that also holds `PartyValidator` reports each `Party` message twice —
+the scope rule already runs it. An `AbstractValidator<T>` runs only when a write service saves a `T`: one for a
+`Related()` child (`AbstractValidator<OrderLine>`) or for an input DTO is registered by the assembly scan and never
+runs, and startup validation does not warn about it. Validate children from the parent, with
+`RuleForEach(x => x.Lines).ChildRules(...)` or `.SetValidator(new OrderLineValidator())`.
+
+<!-- no-compile -->
+```csharp
+using FluentValidation;
+using Regira.Entities.DependencyInjection.Extensions;
+using Regira.Entities.Validation.FluentValidation;
+
+services.UseEntities<AppDbContext>(o =>
+{
+    o.UseDefaults();
+    o.UseFluentValidation(typeof(OrderValidator).Assembly);   // registers the assembly's validators, scoped
+});
+
+public class OrderValidator : AbstractValidator<Order>
+{
+    public OrderValidator(AppDbContext db)
+    {
+        RuleFor(x => x.Code).NotEmpty().MaximumLength(20);
+        // db sees every row: with scoped reads, check through the filtered read service (services.md → Entity Validators)
+        RuleFor(x => x.CustomerId)
+            .MustAsync((id, ct) => db.Customers.AnyAsync(c => c.Id == id, ct))
+            .WithMessage(x => $"Customer {x.CustomerId} does not exist");
+        RuleFor(x => x.Status)
+            .Must((_, status, ctx) => ctx.GetOriginal() is not { } stored || stored.Status <= status)
+            .WithMessage("Status change not allowed");
+        RuleSet(EntityRuleSets.Remove, () =>
+            RuleFor(x => x.Status).NotEqual(OrderStatus.Shipped).WithMessage("A shipped order cannot be deleted"));
+    }
+}
+```
+
+`Add` and `Modify` run the rules outside any rule set plus `EntityRuleSets.Add` / `EntityRuleSets.Modify`; `Remove`
+runs `EntityRuleSets.Remove` alone, against the row as stored. `ctx.GetOriginal()` and `ctx.GetOperation()` read the write from any rule, and
+only `Severity.Error` failures refuse it.
+
+A failure's message is the error's [message](#input-exceptions), so `WithMessage("ValueTooLarge")` pairs a rule with a
+translation key. The values the message was formatted with — `{ComparisonValue}`, `{MaxLength}` — go out as its args,
+all but the attempted `{PropertyValue}`.
 
 ### Primers
 
@@ -396,6 +494,7 @@ can apply the same convention via `AddUtcDateTimeConvention()` / `SetUtcDateTime
 
 UTC handling is one policy per process (`Regira.Utilities.DateTimeDefaults.UseUtc`, on by default):
 
+<!-- no-compile -->
 ```csharp
 services.UseEntities<AppDbContext>(e => e.UseDefaults()); // UTC (default)
 services.UseEntities<AppDbContext>(e => e.UseDefaults().UseUtc(false)); // local time; values used as given
@@ -475,6 +574,7 @@ keeps applying on both target frameworks.
 
 ### Query Extensions
 
+<!-- no-compile -->
 ```csharp
 public static class QueryExtensions
 {
@@ -503,18 +603,20 @@ public static class QueryExtensions
 
 ### Pagination
 
+<!-- no-compile -->
 ```csharp
 using Regira.DAL.Paging; // external namespace
 
 public static class QueryExtensions
 {
     public static IQueryable<T> PageQuery<T>(this IQueryable<T> query, PagingInfo? info)
-    public static IQueryable<T> PageQuery<T>(this IQueryable<T> query, int pageSize, int page = 1)
+    public static IQueryable<T> PageQuery<T>(this IQueryable<T> query, int? pageSize, int page = 1)
 }
 ```
 
 **Default & maximum page size** — configure these so List/Search endpoints page automatically instead of returning the full set. Enforced at the HTTP boundary only (by the MVC controllers, via the shared `ApplyPagingDefaults` clamp); direct `IEntityService` calls keep full control.
 
+<!-- no-compile -->
 ```csharp
 // Global (all entities)
 services.UseEntities<AppDbContext>(options =>
@@ -525,17 +627,17 @@ services.UseEntities<AppDbContext>(options =>
     options.MaxPageSize = 200;      // clamp larger requested pageSize values (null = no limit)
     // or
     options.SetPageSize(pageSize: 50, maxPageSize: 200);
-});
-
+})
 // Per-entity override (fully replaces the global values for that entity)
-services.For<Product>(e => e.SetPageSize(defaultPageSize: 25, maxPageSize: 100));
-services.For<AuditLog>(e => e.SetPageSize()); // opt out — never force-paged
+.For<Product>(e => e.SetPageSize(defaultPageSize: 25, maxPageSize: 100))
+.For<AuditLog>(e => e.SetPageSize()); // opt out — never force-paged
 ```
 
 > See [Web Endpoints → Paging](web-endpoints.md#paging) for the full behaviour.
 
 ## Entity Extensions
 
+<!-- no-compile -->
 ```csharp
 public static class EntityExtensions
 {
@@ -565,7 +667,7 @@ public static class EntityExtensions
 
 1. [Index](../README.md) — Overview of Regira Entities
 1. [Entity Models](models.md) — Creating and structuring entity models
-1. [Services](services.md) — Implementing entity services and repositories
+1. [Services](services.md) — Implementing entity services, repositories and the write pipeline
 1. [Mapping](mapping.md) — Mapping Entities to and from DTOs
 1. [Web Endpoints](web-endpoints.md) — Exposing entity operations as HTTP endpoints
 1. [Normalizing](normalizing.md) — Data normalization techniques

@@ -223,6 +223,36 @@ public interface IEntityWriteService<TEntity, TKey>
 }
 ```
 
+The default implementation, and the base of a custom write service:
+
+<!-- no-compile -->
+```csharp
+using Regira.Entities.EFcore.Services;
+
+public class EntityWriteService<TContext, TEntity, TKey>(
+    TContext dbContext,
+    IEntityReadService<TEntity, TKey> readService,
+    IEnumerable<IEntityPrepper> preppers,
+    IEnumerable<IEntityValidator> validators,
+    ILoggerFactory? loggerFactory = null) : IEntityWriteService<TEntity, TKey>
+    where TContext : DbContext
+    where TEntity : class, IEntity<TKey>
+{
+    // runs no validators — a subclass passes IEnumerable<IEntityValidator> to the constructor above
+    public EntityWriteService(TContext dbContext, IEntityReadService<TEntity, TKey> readService,
+        IEnumerable<IEntityPrepper> preppers, ILoggerFactory? loggerFactory = null);
+
+    // Add / Modify: PrepareItem, then ValidateItem, then the entity is tracked
+    public virtual Task PrepareItem(TEntity item, TEntity? original, CancellationToken token = default);
+    // not virtual: validators are the one way to refuse a write; their queries on this context track nothing
+    public Task ValidateItem(TEntity item, TEntity? original, EntityWriteOperation operation,
+        CancellationToken token = default);
+    // Remove: ValidateItem with the stored row, then RemoveItem — mark extra rows for a delete here, once the validators passed
+    protected virtual Task RemoveItem(TEntity item, CancellationToken token = default);
+}
+// int-keyed: EntityWriteService<TContext, TEntity>, with the same two constructors
+```
+
 ### Combined (IEntityService)
 
 ```csharp
@@ -251,7 +281,8 @@ public interface IEntityService<TEntity, TSearchObject, TSortBy, TIncludes>
 
 ### IEntityRepository / IEntityManager
 
-Custom services with `HasRepository<>()` or `HasManager<>()`.
+Custom services with `HasRepository<>()` or `HasManager<>()` per entity, or app-wide with
+`UseEntities(o => o.UseRepository(...))` (see `entities.instructions.md` → Replacing the repository app-wide).
 
 <!-- no-compile -->
 ```csharp
@@ -283,9 +314,13 @@ public abstract class EntityWrappingServiceBase<TEntity, TKey, TSearchObject>(
 {
     protected readonly IEntityService<TEntity, TKey, TSearchObject> Service = service;
 
+    // All members are virtual:
     public virtual Task<TEntity?> Details(TKey id, CancellationToken token = default);
+    public virtual Task<TEntity?> Details(TKey id, ArchivedFilter? archived, CancellationToken token = default); // an archived-explicit read goes straight to the inner service: override both
     public virtual Task<IList<TEntity>> List(TSearchObject? so = null, PagingInfo? pagingInfo = null, CancellationToken token = default);
-    public virtual Task<long> Count(TSearchObject? so, CancellationToken token = default);
+    public virtual Task<IList<TEntity>> List(object? so, PagingInfo? pagingInfo, CancellationToken token = default);
+    public virtual Task<long> Count(TSearchObject? so = null, CancellationToken token = default);
+    public virtual Task<long> Count(object? so, CancellationToken token = default);
     public virtual Task Add(TEntity item, CancellationToken token = default);
     public virtual Task<TEntity?> Modify(TEntity item, CancellationToken token = default);
     public virtual Task Save(TEntity item, CancellationToken token = default);
@@ -311,11 +346,12 @@ public abstract class EntityWrappingServiceBase<TEntity, TKey, TSearchObject, TS
     where TSortBy : struct, Enum
     where TIncludes : struct, Enum
 {
-    // All IEntityService members are virtual — override as needed:
+    // Virtual — override as needed:
     public virtual Task<TEntity?> Details(TKey id, CancellationToken token = default);
-    public virtual Task<IList<TEntity>> List(TSearchObject? so = null, PagingInfo? pagingInfo = null, CancellationToken token = default);
+    public virtual Task<TEntity?> Details(TKey id, ArchivedFilter? archived, CancellationToken token = default); // an archived-explicit read goes straight to the inner service: override both
+    public virtual Task<IList<TEntity>> List(object? so = null, PagingInfo? pagingInfo = null, CancellationToken token = default);
     public virtual Task<IList<TEntity>> List(IList<TSearchObject?> so, IList<TSortBy> sortBy, TIncludes? includes = null, PagingInfo? pagingInfo = null, CancellationToken token = default);
-    public virtual Task<long> Count(TSearchObject? so, CancellationToken token = default);
+    public virtual Task<long> Count(object? so, CancellationToken token = default);
     public virtual Task<long> Count(IList<TSearchObject?> so, CancellationToken token = default);
     public virtual Task Add(TEntity item, CancellationToken token = default);
     public virtual Task<TEntity?> Modify(TEntity item, CancellationToken token = default);
@@ -323,6 +359,10 @@ public abstract class EntityWrappingServiceBase<TEntity, TKey, TSearchObject, TS
     public virtual Task Remove(TEntity item, CancellationToken token = default);
     public virtual Task<int> SaveChanges(CancellationToken token = default);
     public virtual TSearchObject? Convert(object? so);
+
+    // Not virtual — they call the inner service directly, and overriding them fails with CS0506:
+    public Task<IList<TEntity>> List(TSearchObject? so = null, PagingInfo? pagingInfo = null, CancellationToken token = default);
+    public Task<long> Count(TSearchObject? so = null, CancellationToken token = default);
 }
 ```
 
@@ -417,6 +457,8 @@ The verb attribute is **inherited** by the override, so the route survives witho
 > (the body/array variants), but do expose `GET /search` (single search object, with count for paging)
 > alongside basic list via `GET /?q=…`. For response envelope shapes
 > (`item` / `items,count`) see `entities.instructions.md` §Step 13.
+
+A write a validator refuses — save, create, modify, patch or delete — answers 400 with a `ValidationProblemDetails`.
 
 ---
 
@@ -652,8 +694,11 @@ and whether typed `Includes` is available. Match the controller base and any man
 > included**, inherits the **untyped** `e.Includes((query, EntityIncludes?) => query.Include(...))`
 > overload (the "Typed `Includes`" column below tracks only the typed form), so simple registrations can
 > still eager-load navigations. The single-arg `e.Related<TRelated>(…)` shortcut works on every int-key
-> builder (incl. the simple `For<TEntity, int, TSearchObject>()`); a non-int related key needs the
-> 2-arg `e.Related<TRelated, TRelatedKey>(…)`.
+> builder (incl. the simple `For<TEntity, int, TSearchObject>()`), and on each of them a lambda in second
+> position may be either the parent `prepareFunc` or the `RelatedEntityBuilder` callback —
+> `e.Related(x => x.Lines, r => r.ServerOwned(x => x.UnitPrice))`. A non-int related key needs the
+> 2-arg `e.Related<TRelated, TRelatedKey>(…)`, where the second position is always `prepareFunc`: name the
+> callback, `configure: r => …`.
 >
 > `HasAttachments` is an extension on the **base** `EntityServiceBuilder` (`Regira.Entities.DependencyInjection.Attachments`),
 > so it applies on **every** tier — a **complex** owner chains `.HasAttachments(...)` exactly like a simple one.
@@ -683,7 +728,7 @@ public static EntityServiceCollection<TContext> UseEntities<TContext>(
 using Regira.Entities.DependencyInjection.Extensions;
 
 // Registers in one call: paging defaults (DefaultPageSize=10, MaxPageSize=100), default primers
-// (HasCreated/HasLastModified/Archivable), default global filters (Ids/Archivables/HasCreated/HasLastModified),
+// (AddDefaultPrimers()), the AutoServerOwnedPrepper, default global filters (AddDefaultGlobalQueryFilters()),
 // and the default entity normalizer. Also calls AddDefaultInterceptors() (= WireDbContext(DbContextWiring.All)): UseEntities<TContext>()
 // then wires the primer/normalizer/auto-truncate/reactor interceptors + UTC date convention into the DbContext options
 // automatically (AddDbContext only needs the provider; assignability match — an abstract-base registration
@@ -761,6 +806,46 @@ public static EntityServiceCollectionOptions AddPrepper<TContext, TEntity, TKey>
     where TEntity : class, IEntity<TKey>;
 ```
 
+#### Validators (global)
+
+<!-- no-compile -->
+```csharp
+using Regira.Entities.DependencyInjection.Validators;
+
+// A validator class for every entity its IEntityValidator<TScope> covers — an interface or base class reaches every
+// entity implementing it; one implementing only IEntityValidator checks every entity. A class registered twice runs once.
+public static EntityServiceCollectionOptions AddValidator<TValidator>(
+    this EntityServiceCollectionOptions options)
+    where TValidator : class, IEntityValidator;
+
+public static EntityServiceCollectionOptions AddValidator<TScope>(
+    this EntityServiceCollectionOptions options,
+    Action<IEntityValidatorContext<TScope>> validate)
+    where TScope : class;
+// async ctx => … binds here, and the write awaits it
+public static EntityServiceCollectionOptions AddValidator<TScope>(
+    this EntityServiceCollectionOptions options,
+    Func<IEntityValidatorContext<TScope>, Task> validate)
+    where TScope : class;
+
+// receives the request's DbContext (unfiltered) and the write's cancellation token for its queries
+public static EntityServiceCollectionOptions AddValidator<TContext, TScope>(
+    this EntityServiceCollectionOptions options,
+    Func<IEntityValidatorContext<TScope>, TContext, CancellationToken, Task> validate)
+    where TContext : DbContext
+    where TScope : class;
+
+// IServiceCollection forms — the same scope rule
+public static IServiceCollection AddValidator<TValidator>(this IServiceCollection services)
+    where TValidator : class, IEntityValidator;
+public static IServiceCollection AddValidator<TScope>(this IServiceCollection services,
+    Action<IEntityValidatorContext<TScope>> validate) where TScope : class;
+public static IServiceCollection AddValidator<TScope>(this IServiceCollection services,
+    Func<IEntityValidatorContext<TScope>, Task> validate) where TScope : class;
+public static IServiceCollection AddValidator<TContext, TScope>(this IServiceCollection services,
+    Func<IEntityValidatorContext<TScope>, TContext, CancellationToken, Task> validate) where TContext : DbContext where TScope : class;
+```
+
 #### Primers (global)
 
 <!-- no-compile -->
@@ -811,6 +896,11 @@ public static EntityServiceCollectionOptions AddGlobalFilterQueryBuilder<TImplem
 //   + FilterHasCreatedQueryBuilder + FilterHasLastModifiedQueryBuilder
 public static EntityServiceCollectionOptions AddDefaultGlobalQueryFilters(
     this EntityServiceCollectionOptions options);
+
+// Removes every global filter registered before it, UseDefaults()' among them — the archived filter too.
+// On IServiceCollection, so it chains off the UseEntities<TContext>() builder; not on the options.
+public static TServiceCollection RemoveGlobalQueryFilters<TServiceCollection>(this TServiceCollection services)
+    where TServiceCollection : IServiceCollection;
 ```
 
 #### Normalizers (global)
@@ -840,6 +930,7 @@ public static EntityServiceCollectionOptions AddDefaultEntityNormalizer(
 <!-- no-compile -->
 ```csharp
 using Regira.Entities.DependencyInjection.ServiceCollections;
+using Regira.Entities.DependencyInjection.Attachments;   // HasAttachments, the extension below
 
 public class EntityServiceCollection<TContext>
     where TContext : DbContext
@@ -1041,6 +1132,22 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
     EntityServiceBuilder<TContext, TEntity, TKey> AddPrepper<TPrepper>()
         where TPrepper : class, IEntityPrepper<TEntity>;
 
+    // Validators — run after every prepper on Add/Modify/Save, and on Remove; one 400 for all their errors
+    // inline (each call is a validator of its own; the write awaits an async one):
+    EntityServiceBuilder<TContext, TEntity, TKey> Validate(Action<IEntityValidatorContext<TEntity>> validate);
+    // e.Validate(async ctx => …)
+    EntityServiceBuilder<TContext, TEntity, TKey> Validate(Func<IEntityValidatorContext<TEntity>, Task> validate);
+
+    // e.Validate(async (ctx, db, token) => …) with the request's DbContext — unfiltered: check a row-secured reference
+    // through IEntityReadService<,> in a class validator — and the write's cancellation token
+    EntityServiceBuilder<TContext, TEntity, TKey> Validate(
+        Func<IEntityValidatorContext<TEntity>, TContext, CancellationToken, Task> validate);
+
+    // class-based: a validator scoped to an interface or base class TEntity is in checks EVERY entity in that
+    // scope, not only this one (options.AddValidator<T>() is its place)
+    EntityServiceBuilder<TContext, TEntity, TKey> AddValidator<TValidator>()
+        where TValidator : class, IEntityValidator<TEntity>;
+
     // Server-owned scalar/FK: restored from the stored row on update, minted on create when
     // mintOnCreate is supplied and the property is unset. [ServerOwned] is the protect-only
     // attribute form (no registration needed once UseDefaults() has run).
@@ -1157,6 +1264,9 @@ public partial class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, T
     EntitySearchObjectServiceBuilder<...> Filter(
         Func<IQueryable<TEntity>, TSearchObject?, IQueryable<TEntity>> filterFunc);
 
+    // Re-declared to keep the builder type through a chain, here and on the complex builders:
+    // Validate(...) and React(...) — every overload — AddValidator<T>(), AddReactor<T>() and ServerOwned(...)
+
     // NEW: single-type-arg Related shortcut for int-keyed children (related key is int,
     // independent of the parent TKey). Use the inherited Related<TRelated, TRelatedKey> for non-int related keys.
     EntitySearchObjectServiceBuilder<...> Related<TRelated>(
@@ -1192,6 +1302,14 @@ public partial class EntityIntServiceBuilder<TContext, TEntity>
 
     // Int-key shortcuts (no TRelatedKey / TContext parameter needed)
     EntityIntServiceBuilder<TContext, TEntity> Prepare(Func<TEntity, TContext, Task> prepareFunc);
+
+    // Re-declared to keep the builder type through a chain
+    EntityIntServiceBuilder<TContext, TEntity> Validate(Action<IEntityValidatorContext<TEntity>> validate);
+    EntityIntServiceBuilder<TContext, TEntity> Validate(Func<IEntityValidatorContext<TEntity>, Task> validate);
+    EntityIntServiceBuilder<TContext, TEntity> Validate(Func<IEntityValidatorContext<TEntity>, TContext, CancellationToken, Task> validate);
+    EntityIntServiceBuilder<TContext, TEntity> AddValidator<TValidator>()
+        where TValidator : class, IEntityValidator<TEntity>;
+    // React(...) — every overload — and AddReactor<TReactor>() likewise return EntityIntServiceBuilder<TContext, TEntity>
 
     // Re-declared to keep the builder type through a chain — without it the next call falls back to
     // the base Related<TRelated, TRelatedKey>, whose key argument cannot be inferred (CS0411).
@@ -1471,6 +1589,116 @@ public interface IEntityPrepper<in TEntity> : IEntityPrepper
 }
 ```
 
+### Validators
+
+<!-- no-compile -->
+```csharp
+using Regira.Entities.Validators.Abstractions;
+
+public enum EntityWriteOperation { Add, Modify, Remove }   // a soft delete of an IArchivable is Remove
+
+public interface IEntityValidatorContext
+{
+    object Item { get; }                          // after every prepper; Remove: the stored row (else the caller's instance)
+    object? Original { get; }                     // the stored row on Modify; null on Add and Remove
+    EntityWriteOperation Operation { get; }
+    IReadOnlyList<EntityInputError> Errors { get; }   // what every validator of this write added so far
+    // key: property path ("CustomerId", "Lines[0].Quantity"), "" = whole entity; message: a text, or a translation key
+    // a client pairs with its messages; args: the values a translation fills in — new { max = 20 } or a dictionary
+    void AddError(string key, string message, object? args = null);
+}
+public interface IEntityValidatorContext<out TEntity> : IEntityValidatorContext
+{
+    new TEntity Item { get; }
+    new TEntity? Original { get; }
+}
+
+public interface IEntityValidator
+{
+    Task Validate(IEntityValidatorContext context, CancellationToken token = default);
+}
+// TScope: the entity, a base class or an interface — matched against the item's runtime type
+// implement the typed Validate only: the untyped one forwards to it by default (a class implementing two scopes
+// implements the untyped one itself)
+public interface IEntityValidator<in TScope> : IEntityValidator
+{
+    Task Validate(IEntityValidatorContext<TScope> context, CancellationToken token = default);
+}
+
+// one scope: AddValidator refuses a subclass that implements IEntityValidator<T> for a second one, which it would never run
+public abstract class EntityValidatorBase<TScope> : IEntityValidator<TScope> where TScope : class
+{
+    public virtual bool CanValidate(TScope item) => true;   // per-item opt-out
+    public abstract Task Validate(IEntityValidatorContext<TScope> context, CancellationToken token = default);
+}
+
+// a validator scoped wider than what it checks (e.g. to IEntity): it runs only for the item types it covers, and startup
+// validation counts it only for those
+public interface ISelectiveEntityValidator : IEntityValidator
+{
+    bool Covers(Type entityType);
+}
+
+// Regira.Entities.Validators
+// build one to unit-test a validator
+public class EntityValidatorContext<TEntity>(EntityWriteOperation operation, TEntity item, TEntity? original = null)
+    : IEntityValidatorContext<TEntity> where TEntity : class;
+
+public static class EntityValidatorExtensions
+{
+    // runs every validator in scope of the item's runtime type, in order, against one context; throws one
+    // EntityInputException<TEntity> holding all their errors — what a custom repository calls before it writes
+    public static Task ValidateItem<TEntity>(this IEnumerable<IEntityValidator> validators, TEntity item,
+        TEntity? original, EntityWriteOperation operation, CancellationToken token = default) where TEntity : class;
+    // whether any validator runs for an item of itemType — when none does, ValidateItem cannot refuse
+    public static bool AnyApplyTo(this IEnumerable<IEntityValidator> validators, Type itemType);
+}
+
+public static class EntityScopeTypes
+{
+    // the type itself, then every type it derives from or implements — the scope rule of validators and global filters
+    public static IReadOnlyList<Type> Of(Type entityType);
+}
+
+// Regira.Entities.EFcore.Validators — what the builder's Validate(...) registers
+public class EntityValidator<TScope>(Func<IEntityValidatorContext<TScope>, Task> validate)
+    : EntityValidatorBase<TScope> where TScope : class
+{
+    public EntityValidator(Action<IEntityValidatorContext<TScope>> validate);
+}
+public class EntityValidator<TContext, TScope>(TContext dbContext, Func<IEntityValidatorContext<TScope>, TContext, CancellationToken, Task> validate)
+    : EntityValidatorBase<TScope> where TContext : DbContext where TScope : class;
+```
+
+FluentValidation adapter — package `Regira.Entities.Validation.FluentValidation`:
+
+<!-- no-compile -->
+```csharp
+using Regira.Entities.Validation.FluentValidation;
+
+// inside UseEntities(): registers the assemblies' validators (scoped) and the FluentEntityValidator stage
+public static EntityServiceCollectionOptions UseFluentValidation(
+    this EntityServiceCollectionOptions options, params Assembly[] assemblies);
+
+// Add/Modify run the rules outside any rule set plus Add/Modify; Remove runs Remove alone
+public static class EntityRuleSets
+{
+    public const string Add = "Add";
+    public const string Modify = "Modify";
+    public const string Remove = "Remove";
+}
+
+public static class ValidationContextExtensions
+{
+    public static T? GetOriginal<T>(this ValidationContext<T> context);                  // the stored row on Modify
+    public static EntityWriteOperation? GetOperation<T>(this ValidationContext<T> context); // null outside the pipeline
+}
+
+// an IEntityValidator<IEntity>: resolves IValidator<T> for every type in EntityScopeTypes.Of(item.GetType());
+// only Severity.Error failures refuse the write; covers the entities an AbstractValidator applies to
+public class FluentEntityValidator(IServiceProvider services) : EntityValidatorBase<IEntity>, ISelectiveEntityValidator;
+```
+
 ### Primers
 
 <!-- no-compile -->
@@ -1647,7 +1875,7 @@ public interface IEntityAttachment
     string? ObjectType { get; }
 
     string? NewFileName { get; set; }
-    string? NewContentType { get; set; }
+    [Obsolete] string? NewContentType { get; set; }   // ignored: the content type follows the file name
     byte[]? NewBytes { get; set; }
     IAttachment? Attachment { get; set; }
 }
@@ -1688,11 +1916,15 @@ Every `{id}` is the **link** id (`EntityAttachmentDto.Id`), never `attachmentId`
 |---|---|
 | `GET {objectId}/attachments` | the owner's links (`ListResult`) |
 | `GET attachments` · `GET attachments/{id}` | links across owners (`EntityAttachmentSearchObject`) · one link |
-| `POST {objectId}/files` | upload — multipart `file` + the input DTO's fields as form values |
+| `POST {objectId}/files` | upload — multipart `file` + the input DTO's fields as form values; always creates a link, whatever `id` the form sends |
 | `PUT {objectId}/files/{id}` | replace the file's bytes (multipart `file`) |
-| `PUT {objectId}/attachments/{id}` | update the link's own fields (JSON input DTO) |
+| `PUT {objectId}/attachments/{id}` | update the link's own fields (JSON input DTO); `newFileName` renames the file and retypes it, `newBytes` replaces its content. The link keeps its attachment, whatever `attachmentId` the body sends |
 | `DELETE attachments/{id}` | remove the link and its file |
 | `GET files/{id}` · `GET {objectId}/files/{*fileName}` | download by link id · by the client `FileName` (`?inline=false` → attachment) |
+
+A write a validator refuses answers 400 with a `ValidationProblemDetails`, and so do the two `PUT` routes for a link of
+another owner, keyed `objectId`. Validators scoped to the link entity run for these routes only: a `PUT` of the owner
+that syncs its `Attachments` runs the owner's validators alone.
 
 ---
 
@@ -1705,8 +1937,17 @@ using Regira.Entities.Models;
 public abstract class EntityInputException(string message, Exception? innerException = null)
     : Exception(message, innerException)
 {
-    public IDictionary<string, string> InputErrors { get; set; } = new Dictionary<string, string>(); // pre-initialized
+    // several messages per key: the 400 body is built from it (with none, Message goes out under the key "")
+    public IList<EntityInputError> Errors { get; set; }          // pre-initialized
+    // a view over Errors, one message per key (a key's messages joined by a space); setting a key replaces its
+    // messages in Errors, so a key added to a caught rejection before it is rethrown reaches the 400; assigning a
+    // dictionary copies its entries, and a later change to that dictionary does not reach the exception
+    public IDictionary<string, string> InputErrors { get; set; }
 }
+
+// Key "" = the entity as a whole. Message: a text, or a translation key a client pairs with its messages. Args: the
+// values a translation fills in; scalar values only reach the client (text, numbers, booleans, dates, times, Guids, enums)
+public record EntityInputError(string Key, string Message, IReadOnlyDictionary<string, object?>? Args = null);
 
 public class EntityInputException<T>(string message, Exception? innerException = null)
     : EntityInputException(message, innerException)
@@ -1730,14 +1971,17 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
 }
 ```
 
-`ConfigureDefaultJsonOptions()` registers the filter that maps them — 400 with `InputErrors` as the body,
-409 for `EntityConstraintException` and `EntityConcurrencyException` — so a **hand-written** action returns
+`ConfigureDefaultJsonOptions()` registers the filter that maps them — 400 with `Errors` as a
+`ValidationProblemDetails` (`errors`, and `errorDetails` with each error's args), 409 for
+`EntityConstraintException` and `EntityConcurrencyException` — so a **hand-written** action returns
 what the generated ones do.
 Catch the non-generic base if you handle it yourself: the generated write actions catch their own closed
 generic, which misses the one a prepper threw for a related entity (`EntityInputException<Product>` inside
 an `Order` write).
 
-`InputErrors` is initialized, so both forms work — a nested initializer for a fixed set, indexer assignment for a map you build:
+`InputErrors` is initialized, so both forms work — a nested initializer for a fixed set, indexer assignment for a map you build.
+An error with args goes into `Errors` itself. `ctx.AddError(key, message, args?)` in a validator is the other way in;
+all of them land in `Errors`:
 
 <!-- no-compile -->
 ```csharp
@@ -1750,6 +1994,11 @@ var ex = new EntityInputException<Order>("Saving order failed");
 foreach (var line in invalidLines)
     ex.InputErrors[$"OrderLines[{line.Index}].Quantity"] = "Must be greater than zero.";  // dynamic map
 throw ex;
+
+throw new EntityInputException<Order>("Saving order failed")
+{
+    Errors = { new EntityInputError(nameof(Order.Total), "ValueTooLarge", new Dictionary<string, object?> { ["max"] = 10_000 }) }
+};
 ```
 
 ---
@@ -1795,9 +2044,15 @@ public class EntityServiceCollectionOptions(IServiceCollection services)
     // Shorthand for WireDbContext(DbContextWiring.All) — the full default plumbing; called by UseDefaults()
     public EntityServiceCollectionOptions AddDefaultInterceptors();
 
+    // Replaces the default EntityRepository for every For<>() that names no repository of its own.
+    // Open generic types, matched to a For<>() shape by their number of type parameters (1–5).
+    // e.g. UseRepository(typeof(AppRepository<>), typeof(AppRepository<,>))
+    public EntityServiceCollectionOptions UseRepository(params Type[] repositoryTypes);
+
     // Startup validation (arity mismatches, unwired interceptors, ignored ?q=, competing write authorities,
     // null attachment Uri, out-of-scope global filters, missing archived query filter, archivable reference
-    // data behind a required FK, attachments the input DTO cannot carry). Development-only by default.
+    // data behind a required FK, attachments the input DTO cannot carry, For<>() shapes UseRepository() has no
+    // type for). Development-only by default.
     public EntityServiceCollectionOptions ConfigureValidation(Action<EntityValidationOptions> configure);
 }
 
@@ -1813,7 +2068,7 @@ public enum DbContextWiring
     ArchivedQueryFilter = 1 << 4,
     // IHasConcurrencyToken.ConcurrencyToken declared a concurrency token — without a DbContext change
     ConcurrencyTokens = 1 << 5,
-    // runs registered IEntityReactors once a save's changes are committed
+    // runs the registered IEntityReactor implementations once a save's changes are committed
     Reactors = 1 << 6,
     All = PrimerInterceptors | NormalizerInterceptors | AutoTruncateInterceptors | UtcDateTimeConvention
         | ArchivedQueryFilter | ConcurrencyTokens | Reactors

@@ -57,11 +57,13 @@ public static class ServiceCollectionQueryFilterExtensions
     public static TServiceCollection RemoveGlobalQueryFilters<TServiceCollection>(this TServiceCollection services)
         where TServiceCollection : IServiceCollection
     {
+        // listed before any is removed: the collection cannot change while it is enumerated
         var globalFilters = services
             .Where(d =>
                 d.ImplementationType != null
                 && TypeUtility.ImplementsInterface<IGlobalFilteredQueryBuilder>(d.ImplementationType)
-            );
+            )
+            .ToList();
 
         foreach (var descriptor in globalFilters)
         {

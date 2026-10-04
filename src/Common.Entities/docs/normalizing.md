@@ -25,14 +25,15 @@ A normalized property is usually just a **joined string** (using a space), built
 - Derive from base class `EntityNormalizerBase`
 - Derive from `DefaultEntityNormalizer` to extend default behavior
 
+<!-- no-compile -->
 ```csharp
 // base class
 public abstract class EntityNormalizerBase<T>(INormalizer? normalizer = null) : IEntityNormalizer<T>
 {
     public virtual bool IsExclusive => false;
 
-    public abstract Task HandleNormalize(T item, CancellationToken token = default);
-    public virtual async Task HandleNormalizeMany(IEnumerable<T> items, CancellationToken token = default) {...;
+    public virtual Task HandleNormalize(T item, CancellationToken token = default) => Task.CompletedTask;
+    public virtual async Task HandleNormalizeMany(IEnumerable<T> items, CancellationToken token = default) { /* HandleNormalize per item */ }
 }
 ```
 
@@ -59,6 +60,7 @@ handle it, cheapest first:
 - **Save twice (two-phase write).** Persist the child first, then re-stamp the parent so its normalizer
   re-runs against the now-committed child. The fallback when the normalizer must query the DB:
 
+  <!-- no-compile -->
   ```csharp
   await replyService.Add(reply);
   await replyService.SaveChanges();      // phase 1: child is committed
@@ -78,6 +80,8 @@ it's clearer and easier to test.
 - Use same `INormalizer` for saving and filtering (by default)
 
 Sample from `FilterHasNormalizedContentQueryBuilder`
+
+<!-- no-compile -->
 ```csharp
     public IQueryable<IHasNormalizedContent> Build(IQueryable<IHasNormalizedContent> query, ISearchObject<TKey>? so)
     {
@@ -109,6 +113,7 @@ Sample from `FilterHasNormalizedContentQueryBuilder`
 - `Recursive` - Process nested objects (class-level only, default: true)
 - `Normalizer` - Custom normalizer type (must implement `INormalizer` or `IObjectNormalizer`)
 
+<!-- no-compile -->
 ```csharp
 // Normalize from multiple properties (concatenated with space)
 [Normalized(SourceProperties = [nameof(Title), nameof(Description)])]
@@ -122,6 +127,8 @@ public string? NormalizedContent { get; set; }
 Normalizers run as SaveChanges interceptors, on `SaveChanges()` and `SaveChangesAsync()` alike.
 `UseEntities<TContext>(e => e.UseDefaults())` wires the `EntityNormalizerContainerInterceptor` into the DbContext
 options automatically; without `UseDefaults()`, select it explicitly:
+
+<!-- no-compile -->
 ```csharp
 services.UseEntities<MyDbContext>(e => e.WireDbContext(DbContextWiring.NormalizerInterceptors));
 ```
@@ -137,6 +144,8 @@ services.UseEntities<MyDbContext>(e => e.WireDbContext(DbContextWiring.Normalize
 | `IEntityNormalizer` | `DefaultEntityNormalizer<IEntity>` |
 
 ```csharp
+using Regira.Entities.DependencyInjection.Normalizers;
+
 services.UseEntities<DbContext>(e =>
 {
     // Registers all default (normalizing) services
@@ -147,6 +156,7 @@ services.UseEntities<DbContext>(e =>
 
 ### Globally
 
+<!-- no-compile -->
 ```csharp
 services.UseEntities<DbContext>(e =>
 {
@@ -156,6 +166,7 @@ services.UseEntities<DbContext>(e =>
 
 ### Per Entity
 
+<!-- no-compile -->
 ```csharp
 services
     .UseEntities<DbContext>(/*...*/)
@@ -169,7 +180,7 @@ services
 
 1. [Index](../README.md) — Overview of Regira Entities
 1. [Entity Models](models.md) — Creating and structuring entity models
-1. [Services](services.md) — Implementing entity services and repositories
+1. [Services](services.md) — Implementing entity services, repositories and the write pipeline
 1. [Mapping](mapping.md) — Mapping Entities to and from DTOs
 1. [Web Endpoints](web-endpoints.md) — Exposing entity operations as HTTP endpoints
 1. **[Normalizing](normalizing.md)** — Data normalization techniques

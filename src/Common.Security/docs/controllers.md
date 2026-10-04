@@ -32,7 +32,7 @@ public class UsersController(UserManager<AppUser> userManager)
 |---------|-------------|----------|
 | `UserManager<TUser>` + user store | `AddIdentityCore<TUser>().AddEntityFrameworkStores<…>().AddDefaultTokenProviders()` | user lookup, password & token operations |
 | `ITokenHelper` | `AddJwtAuthentication(…)` | issuing JWTs (`AccountController`) |
-| `IUserClaimsPrincipalFactory<TUser>` | `AddIdentityCore` | building token claims |
+| `IUserClaimsPrincipalFactory<TUser>` | `AddIdentityCore` | building token claims (all but Identity's security stamp, which no token carries) |
 | `IEmailSender` | Regira's `IdentityMailer` (over `Regira.Office.Mail`) or your own | recover / confirm emails |
 
 `AddDefaultTokenProviders()` is required — recover and confirm-email generate Identity tokens. The confirm-email/reset token payloads are (de)serialized with `System.Text.Json` internally, so no serializer needs to be registered.
@@ -95,12 +95,12 @@ that. See *Refresh Tokens* above.
 | `POST users` | | `{ username, password, confirmEmailUrl? }` | `200` | `400` identity errors |
 | `POST users/confirm-email` | ✅ | `{ token, userName, password? }` | `200` | `400` malformed token or identity errors |
 
-`username` is used as both the user name and the email address. When `confirmEmailUrl` is supplied, a confirmation email carrying a Base64 `token` is sent; `confirm-email` decodes it and returns `400` on a malformed token. Creating a user that already exists is a no-op `200`. The optional `password` on the confirm-email input is not used by the base implementation — it is available to overrides.
+`username` is used as both the user name and the email address. When `confirmEmailUrl` is supplied, a confirmation email carrying a Base64 `token` is sent; `confirm-email` decodes it and returns `400` on a malformed token. Creating a user that already exists is a no-op `200`. A self-registration override that assigns a role or tenant must check that the user did not exist before, or the role lands on whatever account the caller names. The optional `password` on the confirm-email input is not used by the base implementation — it is available to overrides.
 
 ### OpenAPI document transformers (`Security.Authentication.Web`)
 
 `Regira.Security.Authentication.Web.OpenApi.Transformers` describes the API's authentication in the generated
-OpenAPI document (.NET 9+). Two transformers are enough whatever the scheme count — the first declares the schemes,
+OpenAPI document (.NET 10). Two transformers are enough whatever the scheme count — the first declares the schemes,
 which is what makes the Swagger/Scalar authentication prompt appear; the second records **which** operations need
 one, without which a generated client cannot tell a public endpoint from a guarded one.
 
@@ -116,9 +116,11 @@ convention. Adding a scheme needs no transformer change.
 
 <!-- no-compile -->
 ```csharp
+using Regira.Security.Authentication.Web.OpenApi.Transformers;   // package Regira.Security.Authentication.Web
+
 builder.Services.AddOpenApi(options =>
 {
-    options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
+    options.AddDocumentTransformer<AuthenticationSchemeDocumentTransformer>();
     options.AddOperationTransformer<SecurityRequirementOperationTransformer>();
 });
 ```

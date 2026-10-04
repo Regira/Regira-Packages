@@ -143,6 +143,52 @@ public class RefreshTokenEndpointTests : IClassFixture<TestingWebApplicationFact
         (await authenticated.PostAsync("auth/validate", null)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
     }
 
+    /// <summary>
+    /// ⚠️ A JWT is readable by whoever holds it, and Identity's security stamp is the secret its email and phone token
+    /// providers derive their one-time codes from — so no minted token may carry it, on any path that mints one.
+    /// </summary>
+    [Fact]
+    public async Task Test_Sign_In_Token_Carries_No_Security_Stamp()
+    {
+        await CreateUser(_withoutRefresh);
+        var response = await _withoutRefresh.CreateClient()
+            .PostAsJsonAsync("auth?clientApp=test", new { username = Username, password = Password });
+        var token = (await response.Content.ReadFromJsonAsync<AuthenticateResponseDto>())!.Token!;
+
+        ShouldCarryNoSecurityStamp(token);
+    }
+
+    [Fact]
+    public async Task Test_Renewed_Tokens_Carry_No_Security_Stamp()
+    {
+        await CreateUser(_withRefresh);
+        var signedIn = await SignIn();
+        ShouldCarryNoSecurityStamp(signedIn.Token!);
+
+        // auth/refresh-token: the anonymous exchange of a refresh token
+        var exchanged = await _withRefresh.CreateClient()
+            .PostAsJsonAsync("auth/refresh-token", new { refreshToken = signedIn.RefreshToken });
+        ShouldCarryNoSecurityStamp((await exchanged.Content.ReadFromJsonAsync<AuthenticateResponseDto>())!.Token!);
+
+        // auth/refresh: the renewal of a still-valid bearer
+        var bearer = _withRefresh.CreateClient();
+        bearer.DefaultRequestHeaders.Authorization = new("Bearer", signedIn.Token);
+        var renewed = await bearer.PostAsync("auth/refresh", null);
+        renewed.StatusCode.ShouldBe(HttpStatusCode.OK);
+        ShouldCarryNoSecurityStamp((await renewed.Content.ReadFromJsonAsync<AuthenticateResponseDto>())!.Token!);
+    }
+
+    private static void ShouldCarryNoSecurityStamp(string jwt)
+    {
+        var payload = jwt.Split('.')[1].Replace('-', '+').Replace('_', '/');
+        payload = payload.PadRight(payload.Length + (4 - payload.Length % 4) % 4, '=');
+        var claims = JsonDocument.Parse(Convert.FromBase64String(payload)).RootElement;
+
+        claims.TryGetProperty(new Microsoft.AspNetCore.Identity.ClaimsIdentityOptions().SecurityStampClaimType, out _).ShouldBeFalse();
+        // the user's identity is still there: only the stamp is left out
+        claims.TryGetProperty("sub", out _).ShouldBeTrue();
+    }
+
     private async Task<AuthenticateResponseDto> SignIn()
     {
         var response = await _withRefresh.CreateClient()

@@ -10,7 +10,7 @@ using SpireBarcodeType = Spire.Barcode.BarCodeType;
 
 namespace Regira.Office.Barcodes.Spire;
 
-public class BarcodeService : IBarcodeReader, IBarcodeWriter
+public class BarcodeService : IBarcodeService
 {
     public Task<BarcodeReadResult?> Read(IImageFile imageBytes, BarcodeFormat? format = null, CancellationToken cancellationToken = default)
     {

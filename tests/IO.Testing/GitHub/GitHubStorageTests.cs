@@ -1,5 +1,4 @@
 using IO.Testing.Helpers;
-using Microsoft.Extensions.Configuration;
 using Regira.IO.Extensions;
 using Regira.IO.Storage.GitHub;
 using Regira.Serializing.Newtonsoft.Json;
@@ -17,17 +16,8 @@ public class GitHubStorageTests
     [OneTimeSetUp]
     public async Task Setup()
     {
-        var config = new ConfigurationBuilder()
-            .AddUserSecrets(typeof(GitHubStorageTests).Assembly, true)
-            .Build();
-
-        _communicator = new GitHubCommunicator(new GitHubOptions
-        {
-            Uri = config["Storage:GitHub:Uri"]!,
-            Key = config["Storage:GitHub:Key"],
-            Branch = config["Storage:GitHub:Branch"] ?? "main",
-            ContentPath = $"test-write/{Guid.NewGuid():D}"
-        });
+        var options = TestSecrets.GitHub($"test-write/{Guid.NewGuid():D}");
+        _communicator = new GitHubCommunicator(options);
 
         StorageTestContext = StorageTestHelper.CreateDecoratedFileService((_, _) =>
             new GitHubService(_communicator, new JsonSerializer()));
@@ -43,7 +33,8 @@ public class GitHubStorageTests
     {
         try
         {
-            await StorageTestContext.DisposeAsync();
+            // unset when Setup ignored the fixture
+            if (StorageTestContext != null) await StorageTestContext.DisposeAsync();
         }
         catch (HttpRequestException ex) when (ex.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests or HttpStatusCode.NotFound)
         {
@@ -53,7 +44,7 @@ public class GitHubStorageTests
         }
         finally
         {
-            _communicator.Dispose();
+            _communicator?.Dispose();
         }
     }
 

@@ -1,7 +1,9 @@
 # Regira Office.PDF — Examples
+<!-- {% raw %} -->
 
 ## Example 1: HTML → PDF with header and footer
 
+<!-- no-compile -->
 ```csharp
 IHtmlToPdfService pdf = new Regira.Office.PDF.SelectPdf.PdfManager();
 
@@ -14,7 +16,7 @@ IMemoryFile result = await pdf.Create(new HtmlInput
     FooterHeight        = 15,
     Format              = PageSize.A4,
     Orientation         = PageOrientation.Portrait,
-    Margins             = [20, 20, 20, 20]   // top, right, bottom, left (points)
+    Margins             = new float[] { 20, 20, 20, 20 }   // top, right, bottom, left (points)
 });
 
 await fileService.Save("reports/output.pdf", result.GetBytes()!);
@@ -26,6 +28,7 @@ await fileService.Save("reports/output.pdf", result.GetBytes()!);
 
 Combine `IHtmlParser` (Razor) with `IHtmlToPdfService` for a full template-to-PDF pipeline.
 
+<!-- no-compile -->
 ```csharp
 public class InvoicePdfService(IHtmlParser html, IHtmlToPdfService pdf)
 {
@@ -47,6 +50,7 @@ public class InvoicePdfService(IHtmlParser html, IHtmlToPdfService pdf)
 
 ## Example 3: Merge multiple PDFs
 
+<!-- no-compile -->
 ```csharp
 IPdfMerger merger = new Regira.Office.PDF.DocNET.PdfManager(imageService);
 
@@ -64,6 +68,7 @@ IMemoryFile merged = (await merger.Merge(pages))!;
 
 ## Example 4: Split a PDF into individual pages
 
+<!-- no-compile -->
 ```csharp
 IPdfSplitter splitter = new Regira.Office.PDF.DocNET.PdfManager(imageService);
 
@@ -78,6 +83,7 @@ IEnumerable<IMemoryFile> pages = await splitter.Split(pdf, ranges);
 
 ## Example 5: Convert PDF pages to images
 
+<!-- no-compile -->
 ```csharp
 IPdfToImageService converter = new Regira.Office.PDF.Spire.PdfManager();
 
@@ -96,6 +102,7 @@ foreach (var img in images)
 
 ## Example 6: Extract text for search indexing
 
+<!-- no-compile -->
 ```csharp
 IPdfTextService extractor = new Regira.Office.PDF.DocNET.PdfManager(imageService);
 
@@ -110,6 +117,7 @@ IMemoryFile cleaned = (await extractor.RemoveEmptyPages(pdf))!;
 
 ## Example 7: Print a PDF
 
+<!-- no-compile -->
 ```csharp
 IPdfPrinter printer = new Regira.Office.PDF.Spire.PdfPrinter();
 
@@ -132,3 +140,5 @@ await printer.Print(new PdfPrinterInput
 
 1. [Index](README.md) — Overview, interfaces, models, and implementation notes
 1. **[Examples](examples.md)** — HTML→PDF, merge, split, text extraction, printing
+
+<!-- {% endraw %} -->

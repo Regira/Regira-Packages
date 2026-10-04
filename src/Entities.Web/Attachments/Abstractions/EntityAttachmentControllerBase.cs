@@ -64,7 +64,8 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
             }
             if (original.ObjectId != objectId)
             {
-                return BadRequest($"Bad {nameof(original.ObjectId)}");
+                ModelState.AddModelError(nameof(objectId), "Not a link of this owner.");
+                return ValidationProblem(ModelState);
             }
 
             await service.Save(item);
@@ -79,12 +80,7 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
         }
         catch (EntityInputException<TEntity> ex)
         {
-            foreach (var error in ex.InputErrors)
-            {
-                ModelState.AddModelError(error.Key, error.Value);
-            }
-
-            return BadRequest(ModelState);
+            return ex.ToBadRequest(HttpContext);
         }
     }
 
@@ -143,16 +139,25 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
         var mapper = HttpContext.RequestServices.GetRequiredService<IEntityMapper>();
 
         var item = mapper.Map<TEntity>(model);
+        // the route creates a link: an Id in the form cannot turn the upload into a write to another one
+        item.Id = default;
         item.ObjectId = objectId;
         item.Attachment = file.ToNamedFile().ToAttachment();
 
-        await service.Save(item);
-        var affected = await service.SaveChanges();
-        var savedModel = mapper.Map<TDto>(item);
+        try
+        {
+            await service.Save(item);
+            var affected = await service.SaveChanges();
+            var savedModel = mapper.Map<TDto>(item);
 
-        sw.Stop();
+            sw.Stop();
 
-        return this.SaveResult(savedModel, affected, true, sw.ElapsedMilliseconds);
+            return this.SaveResult(savedModel, affected, true, sw.ElapsedMilliseconds);
+        }
+        catch (EntityInputException<TEntity> ex)
+        {
+            return ex.ToBadRequest(HttpContext);
+        }
     }
     [HttpPut("{objectId}/files/{id}")]
     public virtual async Task<ActionResult<SaveResult<TDto>>> Modify([FromRoute] int objectId, [FromRoute] int id, IFormFile file)
@@ -170,19 +175,27 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
         }
         if (item.ObjectId != objectId)
         {
-            return BadRequest($"Bad {nameof(item.ObjectId)}");
+            ModelState.AddModelError(nameof(objectId), "Not a link of this owner.");
+            return ValidationProblem(ModelState);
         }
 
         item.ObjectId = objectId;
         item.Attachment = file.ToNamedFile().ToAttachment();
 
-        await service.Save(item);
-        var affected = await service.SaveChanges();
-        var savedModel = mapper.Map<TDto>(item);
+        try
+        {
+            await service.Save(item);
+            var affected = await service.SaveChanges();
+            var savedModel = mapper.Map<TDto>(item);
 
-        sw.Stop();
+            sw.Stop();
 
-        return this.SaveResult(savedModel, affected, false, sw.ElapsedMilliseconds);
+            return this.SaveResult(savedModel, affected, false, sw.ElapsedMilliseconds);
+        }
+        catch (EntityInputException<TEntity> ex)
+        {
+            return ex.ToBadRequest(HttpContext);
+        }
     }
 
 

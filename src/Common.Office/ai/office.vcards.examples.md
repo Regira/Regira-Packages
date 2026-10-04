@@ -4,6 +4,7 @@
 
 ## Export a single contact
 
+<!-- no-compile -->
 ```csharp
 public async Task<string> ExportContact(Contact contact)
 {
@@ -22,6 +23,7 @@ public async Task<string> ExportContact(Contact contact)
 
 ## Export multiple contacts
 
+<!-- no-compile -->
 ```csharp
 var contacts = _contactService.List();
 var manager  = new VCardManager();
@@ -37,6 +39,7 @@ string vcf = await manager.Write(cards, VCardVersion.V3_0);
 
 ## Import contacts from an uploaded .vcf file
 
+<!-- no-compile -->
 ```csharp
 using var reader = new StreamReader(file.OpenReadStream());
 string vcfContent = await reader.ReadToEndAsync();

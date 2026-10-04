@@ -128,6 +128,18 @@ Kramdown — Jekyll's parser behind the Pages site — only accepts a single-tok
 read ```` ```csharp no-compile ```` as a fence at all, so the marker rendered as literal text on the
 published page and the mis-paired fences swallowed the prose and headings after them into code blocks.
 
+The Pages site is a legacy Jekyll build of `main`, and Jekyll runs Liquid over every `.md` file in the
+repository before Kramdown sees it. A Liquid opener — two opening curly braces, or an opening curly brace
+followed by `%` — is evaluated even inside backticks or a fence: a Word or HTML template placeholder
+vanishes from the published page, and a tag Liquid does not know fails the whole site build. A page that
+shows either wraps everything below its H1 in a `raw` block hidden in HTML comments — copy the second and
+the last line of `src/Common.Web/README.md`; this file cannot spell them out for the same reason. Liquid
+honours the tags, and GitHub, Kramdown and nuget.org all hide the comments. The H1 stays the file's first
+line (no BOM), because Pages takes the page title from it.
+
+Every project folder carries a `README.md`: it is the package's nuget.org page, and the Pages site serves a
+folder only when it holds one, so a link to a README-less folder 404s there.
+
 Write docs as if authored correctly from scratch — no correction notes or change history.
 
 ### Ship the shape, not the case that reported it

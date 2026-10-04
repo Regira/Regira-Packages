@@ -4,6 +4,7 @@
 
 ## Tesseract — extract text from a scanned invoice
 
+<!-- no-compile -->
 ```csharp
 var ocr = new Regira.Office.OCR.Tesseract.OcrManager(new OcrManager.Options
 {
@@ -19,8 +20,9 @@ if (result.Text != null)
     await ParseInvoiceText(result.Text);
 ```
 
-## Preprocess before OCR (crop + convert to grayscale)
+## Preprocess before OCR (crop + flatten transparency)
 
+<!-- no-compile -->
 ```csharp
 public async Task<string?> ReadCroppedRegion(byte[] imageBytes)
 {
@@ -35,6 +37,7 @@ public async Task<string?> ReadCroppedRegion(byte[] imageBytes)
 
 ## PaddleOCR — multilingual receipt scanning (Windows)
 
+<!-- no-compile -->
 ```csharp
 var ocr = new Regira.Office.OCR.PaddleOCR.OcrManager();
 

@@ -242,17 +242,19 @@ new ImageLayer<LabelImageOptions>  { Source = new() { Text = "DRAFT", FontSize =
 
 ### Custom IImageCreator
 
-Implement `IImageCreator<T>` to make `ImageBuilder` understand any source type:
+Implement `IImageCreator<T>` — or derive from `ImageCreatorBase<T>` and override the async `Create` — to make
+`ImageBuilder` understand any source type. `Regira.Office.Barcodes` ships one that turns a `BarcodeInput` into a layer:
 
 <!-- no-compile -->
 ```csharp
-public class QrCodeCreator(IQrService qr) : ImageCreatorBase<QrCodeOptions>
+// Regira.Office.Barcodes.Drawing.BarcodeImageCreator
+public class BarcodeImageCreator(IBarcodeWriter barcodeWriter) : ImageCreatorBase<BarcodeInput>
 {
-    public override async Task<IImageFile?> Create(QrCodeOptions input, CancellationToken cancellationToken = default) =>
-        new ImageFile { Bytes = await qr.Generate(input.Content, input.Size), Format = ImageFormat.Png };
+    public override async Task<IImageFile?> Create(BarcodeInput input, CancellationToken cancellationToken = default)
+        => await barcodeWriter.Create(input);
 }
 
-services.AddSingleton<IImageCreator, QrCodeCreator>();
+services.AddSingleton<IImageCreator, BarcodeImageCreator>();
 ```
 
 ## Text Images

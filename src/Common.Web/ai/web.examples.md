@@ -1,4 +1,5 @@
 # Web — Example: Invoice Email with Razor Template
+<!-- {% raw %} -->
 
 > Context: A billing service renders an HTML invoice email using a Razor template, then sends it. The API uses global exception handling and a central route prefix.
 
@@ -73,3 +74,5 @@ public async Task<IActionResult> Download(int id)
     return this.File(pdf, inline: false);   // ControllerExtensions
 }
 ```
+
+<!-- {% endraw %} -->

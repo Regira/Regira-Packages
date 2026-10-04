@@ -4,6 +4,7 @@
 
 ## HTML → PDF (SelectPdf)
 
+<!-- no-compile -->
 ```csharp
 IHtmlToPdfService pdf = new Regira.Office.PDF.SelectPdf.PdfManager();
 
@@ -21,6 +22,7 @@ await _fileService.Save($"invoices/{invoice.Number}.pdf", invoicePdf.GetBytes()!
 
 ## Merge monthly invoices into one PDF
 
+<!-- no-compile -->
 ```csharp
 public async Task<IMemoryFile> MergeMonthlyInvoices(int year, int month)
 {
@@ -44,6 +46,7 @@ public async Task<IMemoryFile> MergeMonthlyInvoices(int year, int month)
 
 ## Extract text for search indexing
 
+<!-- no-compile -->
 ```csharp
 public async Task IndexInvoice(string identifier)
 {

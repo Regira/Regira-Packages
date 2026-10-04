@@ -12,6 +12,7 @@ All attachments for all entities are stored in one table.
 
 ### Models
 
+<!-- no-compile -->
 ```csharp
 public interface IAttachment : IBinaryFile, IHasTimestamps;
 public interface IAttachment<TKey> : IAttachment, IEntity<TKey>;
@@ -31,6 +32,7 @@ The Attachment is based on `IBinaryFile` (Part of [Regira.IO](../../Common.IO.St
 
 The `AttachmentFileService` handles the physical file storage and retrieval for attachments.
 
+<!-- no-compile -->
 ```csharp
 public class AttachmentFileService<TAttachment, TKey>(IFileService fileService) : IAttachmentFileService<TAttachment, TKey>
 {
@@ -62,7 +64,7 @@ public interface IEntityAttachment<TKey, TObjectKey, TAttachmentKey, TAttachment
 
     // properties used to update existing attachment values
     string? NewFileName { get; set; }
-    string? NewContentType { get; set; }
+    [Obsolete] string? NewContentType { get; set; }   // ignored: the content type follows the file name
     byte[]? NewBytes { get; set; }
 
     TAttachmentKey AttachmentId { get; set; }
@@ -77,6 +79,7 @@ public interface IEntityAttachment<TKey, TObjectKey, TAttachmentKey, TAttachment
 Inherit the **`EntityAttachment`** base (which maps to `EntityAttachment<int, int, int, Attachment>`) and
 set `ObjectType` in the constructor.
 
+<!-- no-compile -->
 ```csharp
 public class ProductAttachment : EntityAttachment
 {
@@ -94,6 +97,7 @@ After defining the model of the EntityAttachment, 2 interfaces have to be implem
 - `IHasAttachments`
 - `IHasAttachments<TEntityAttachment>`
 
+<!-- no-compile -->
 ```csharp
 // other properties and interfaces are omitted
 public class OwningEntity: IHasAttachments, IHasAttachments<MyEntityAttachment>
@@ -119,6 +123,7 @@ public class OwningEntity: IHasAttachments, IHasAttachments<MyEntityAttachment>
 
 ### DbContext
 
+<!-- no-compile -->
 ```csharp   
     // Add a DbSet for each EntityAttachment type
     public DbSet<MyEntityAttachment> MyEntityAttachments { get; set; } = null!;
@@ -149,6 +154,7 @@ The custom EntityAttachmentController must derive from `EntityAttachmentControll
 `[Route]` to the **owner base path** — the base actions append the sub-routes
 (`{objectId}/attachments`, `attachments/{id}`, `{objectId}/files`, `files/{id}`, …).
 
+<!-- no-compile -->
 ```csharp
 // using default DTOs (EntityAttachmentDto & EntityAttachmentInputDto))
 [ApiController, Route("products")]
@@ -165,24 +171,66 @@ Endpoints exposed (with `[Route("products")]`):
 | `POST` | `{objectId}/files` | Upload a file (multipart `IFormFile` + input model) |
 | `PUT` | `{objectId}/files/{id}` | Replace an existing file |
 | `GET` | `{objectId}/attachments` | List attachments for an owner |
+| `GET` | `attachments` | List links across owners (`EntityAttachmentSearchObject`) |
 | `GET` | `attachments/{id}` | Attachment metadata |
-| `PUT` | `{objectId}/attachments/{id}` | Update attachment metadata |
+| `PUT` | `{objectId}/attachments/{id}` | Update attachment metadata: `NewFileName` renames the file and retypes it, `NewBytes` replaces its content; the link keeps its attachment, whatever `AttachmentId` the body sends |
 | `DELETE` | `attachments/{id}` | Delete (also removes the file) |
 | `GET` | `files/{id}` · `{objectId}/files/{fileName}` | Download the file |
 
 Every `{id}` is the id of the link row (`EntityAttachmentDto.Id`), not its `AttachmentId`; `{objectId}` is the
-owner's id.
+owner's id. The two `PUT` routes answer **400** for a link of another owner, a `ValidationProblemDetails` keyed
+`objectId`.
+
+An attachment's content type follows its file name — whatever the client declared, and whoever writes the row — and
+a download is served with `X-Content-Type-Options: nosniff` and, for every file but a PDF,
+`Content-Security-Policy: sandbox`, so a file renders but runs no script on the API's origin. A write a
+[validator](services.md#entity-validators) refuses answers **400** with a `ValidationProblemDetails`
+([Input Exceptions](built-in-features.md#input-exceptions)).
+
+Validators scoped to the link entity run for these endpoints only. A `PUT` of the owner whose input carries
+`Attachments` syncs the links itself — it adds one for each new entry with `NewBytes`, renames and replaces a kept
+link's file from its `NewFileName` and `NewBytes`, and deletes the ones the array leaves out — and runs only the
+owner's validators. A kept link keeps its attachment, whatever `AttachmentId` the entry sends, and a new one may point
+only at an attachment the owner already links: one naming another owner's is cleared, and without `NewBytes` of its
+own the save answers 409. The
+upload route always creates a link, whatever `Id` its form sends.
+
+**Scope an upload yourself.** An upload is a create: it takes the owner's id from the route and runs no query, so a
+global filter (tenant, owner) never sees it, and any authenticated caller can attach a file to a row it cannot read.
+**Scope the link, too.** The owner's global filter never runs on the link entity, which has no owner column and no
+navigation back to the owner. So on an owner scoped per user or tenant, every other attachment route — the list,
+details, both downloads, the link's `PUT` and `DELETE` — reads across owners until a global filter on the link entity
+reruns the owner's scope through the owner's `DbSet` (`Owners.Any(o => o.Id == link.ObjectId && …)`). With it those
+routes answer 404 for another owner's file; the upload still runs no query. Add a validator on the link entity that
+re-runs the owner's scope on `Add` and refuses when it resolves nothing — a 400, where the read path answers 404 — or
+override the controller's `Add` to answer 404. Read scope is not write scope either: a read scope widened on purpose,
+a manager seeing their reports' rows, grants writes and deletes on those rows too, so put a narrower ownership check in
+a validator, which runs on a delete as well. Repeat a link rule, such as the allowed file types or a file that
+must not be deleted, in the owner's validator, or keep `Attachments` off the owner's input DTO.
 
 ### Dependency Injection
 
 Attachments need **two** registrations:
 
-1. **`WithAttachments(factory)`** registers the shared `Attachment` entity, the file store and the
-   bytes→file primer.
+1. **`WithAttachments(factory)`** registers the shared `Attachment` entity, the file store, the
+   bytes→file primer, and `AttachmentFileReactor`, which removes a file that new bytes replaced, and a deleted
+   attachment's file, once the save is committed — new bytes go under a key of their own, so a refused or rolled-back
+   save leaves the stored files as they were; only a transaction rolled back after a successful save keeps the new file
+   in storage. It runs through the reactor wiring `UseDefaults()` sets; without it, a replaced file is removed once
+   the save succeeds, and a deleted attachment's file during the save.
 2. **`HasAttachments<…>(x => x.Attachments)`** — chained on the owner's `For<>()` builder — registers the
    typed per-owner read/write services, the link prepper and DTO mapping.
 
+The bytes `Details` loads are the attachment's stored file, not new content: saving a rename or another metadata edit
+leaves the file where it is. Bytes or a stream set in their place replace it, stored under the file name's extension.
+
+<!-- no-compile -->
 ```csharp
+using Regira.Entities.DependencyInjection.Attachments;       // HasAttachments
+using Regira.Entities.DependencyInjection.Extensions;        // UseEntities, UseDefaults
+using Regira.Entities.Web.Attachments.DependencyInjection;   // UseAttachmentUris
+using Regira.IO.Storage.FileSystem;                          // BinaryFileService, FileSystemOptions
+
 builder.Services
     .AddHttpContextAccessor()                       // required for attachment Uri resolution
     .UseEntities<MyDbContext>(o =>
@@ -240,7 +288,7 @@ builder.Services
 
 1. [Index](../README.md) — Overview of Regira Entities
 1. [Entity Models](models.md) — Creating and structuring entity models
-1. [Services](services.md) — Implementing entity services and repositories
+1. [Services](services.md) — Implementing entity services, repositories and the write pipeline
 1. [Mapping](mapping.md) — Mapping Entities to and from DTOs
 1. [Web Endpoints](web-endpoints.md) — Exposing entity operations as HTTP endpoints
 1. [Normalizing](normalizing.md) — Data normalization techniques

@@ -39,6 +39,7 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 ## `IOcrService`
 
+<!-- no-compile -->
 ```csharp
 Task<OcrResult> Read(IMemoryFile imgFile, string? lang = null, CancellationToken cancellationToken = default);
 ```
@@ -54,6 +55,7 @@ Both implementations set `OcrResult.Text` to `null` when no text is detected.
 
 Requires language data files (`tessdata` directory with `.traineddata` files).
 
+<!-- no-compile -->
 ```csharp
 var ocr = new Regira.Office.OCR.Tesseract.OcrManager(new OcrManager.Options
 {
@@ -75,6 +77,7 @@ Download language packs from `github.com/tesseract-ocr/tessdata`.
 
 Uses bundled local model files (`Sdcb.PaddleOCR.Models.LocalV5`). No external data directory required.
 
+<!-- no-compile -->
 ```csharp
 var ocr = new Regira.Office.OCR.PaddleOCR.OcrManager();
 

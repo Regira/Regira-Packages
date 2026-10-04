@@ -17,6 +17,7 @@ public class RepositoryTests : IDisposable
     private readonly MongoCommunicator _mongoCommunicator;
     private readonly PersonRepository _personRepo;
     private readonly ConfigRepository _configRepo;
+    private readonly ProductRepository _productRepo;
     private readonly MongoSettings _mongoSettings;
     public RepositoryTests()
     {
@@ -26,6 +27,7 @@ public class RepositoryTests : IDisposable
         _mongoCommunicator = new MongoCommunicator(_mongoSettings);
         _personRepo = new PersonRepository(_mongoCommunicator, serializer);
         _configRepo = new ConfigRepository(_mongoCommunicator, serializer);
+        _productRepo = new ProductRepository(_mongoCommunicator, serializer);
     }
 
     [Test]
@@ -153,6 +155,56 @@ public class RepositoryTests : IDisposable
         Assert.That(affected, Is.EqualTo(1));
         var persons = await _personRepo.List(new { person.Id });
         ClassicAssert.IsEmpty(persons);
+    }
+
+    [Test]
+    public async Task ListProducts_Filters_And_Sorts_On_The_Stored_Field_Names()
+    {
+        var category = $"furniture-{Guid.NewGuid()}";
+        Product[] products =
+        [
+            new() { Name = "Desk", Category = category, Price = 120.5m, Stock = 3 },
+            new() { Name = "Chair", Category = category, Price = 45m, Stock = 12 },
+            new() { Name = "Stool", Category = category, Price = 9.99m, Stock = 7 },
+            new() { Name = "Lamp", Category = $"lighting-{Guid.NewGuid()}", Price = 30m, Stock = 1 }
+        ];
+        foreach (var product in products)
+        {
+            await _productRepo.Save(product);
+        }
+
+        var found = (await _productRepo.List(new ProductSearchObject { Category = category, MinPrice = 10 })).ToList();
+
+        Assert.That(found.Select(p => p.Name), Is.EqualTo(new[] { "Chair", "Desk" }));
+        Assert.That(found.Select(p => (p.Price, p.Stock)), Is.EqualTo(new[] { (45m, 12), (120.5m, 3) }));
+
+        foreach (var product in products)
+        {
+            await _productRepo.Delete(product);
+        }
+    }
+
+    [Test]
+    public async Task Each_Communicator_Uses_Its_Own_Database()
+    {
+        var otherSettings = new MongoSettings("localhost", $"Test-{Guid.NewGuid()}");
+        var otherRepo = new ProductRepository(new MongoCommunicator(otherSettings), new JsonSerializer());
+        try
+        {
+            var category = $"furniture-{Guid.NewGuid()}";
+            await _productRepo.Save(new Product { Name = "Desk", Category = category, Price = 120.5m });
+            await otherRepo.Save(new Product { Name = "Chair", Category = category, Price = 45m });
+
+            var here = await _productRepo.List(new ProductSearchObject { Category = category });
+            var there = await otherRepo.List(new ProductSearchObject { Category = category });
+
+            Assert.That(here.Select(p => p.Name), Is.EqualTo(new[] { "Desk" }));
+            Assert.That(there.Select(p => p.Name), Is.EqualTo(new[] { "Chair" }));
+        }
+        finally
+        {
+            await new MongoClient(otherSettings.ToMongoClientSettings()).DropDatabaseAsync(otherSettings.DatabaseName);
+        }
     }
 
 

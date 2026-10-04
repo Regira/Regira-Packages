@@ -23,7 +23,7 @@ namespace Regira.Entities.EFcore.Extensions;
 internal static class StoredOriginalsExtensions
 {
     private static readonly EntryMarks Marks = new();
-    private static readonly ConditionalWeakTable<IDbContextOptions, object> ReactorWiring = new();
+    private static readonly ConditionalWeakTable<IDbContextOptions, StrongBox<EntityReactorInterceptor?>> ReactorWiring = new();
 
     /// <summary>Marks an entry the write path gave the stored row as its originals.</summary>
     public static void MarkStoredOriginals(this EntityEntry entry)
@@ -41,7 +41,18 @@ internal static class StoredOriginalsExtensions
 
     public static void ClearStoredOriginals(this DbContext dbContext) => Marks.Clear(dbContext);
 
-    private static bool HasReactorInterceptor(this DbContext dbContext)
-        => (bool)ReactorWiring.GetValue(dbContext.GetService<IDbContextOptions>(),
-            options => options.FindExtension<CoreOptionsExtension>()?.Interceptors?.Any(i => i is EntityReactorInterceptor) == true);
+    internal static bool HasReactorInterceptor(this DbContext dbContext) => dbContext.GetReactorInterceptor() != null;
+
+    /// <summary>
+    /// Whether a reactor of <paramref name="reactorType"/>, or derived from it, will run for the committed changes of
+    /// <paramref name="entityType"/> on this context: the context has the reactor wiring, and such a reactor is registered
+    /// for that entity.
+    /// </summary>
+    internal static bool HasReactor(this DbContext dbContext, Type reactorType, Type entityType)
+        => dbContext.GetReactorInterceptor()?.HasReactor(reactorType, entityType) == true;
+
+    private static EntityReactorInterceptor? GetReactorInterceptor(this DbContext dbContext)
+        => ReactorWiring.GetValue(dbContext.GetService<IDbContextOptions>(),
+            options => new StrongBox<EntityReactorInterceptor?>(
+                options.FindExtension<CoreOptionsExtension>()?.Interceptors?.OfType<EntityReactorInterceptor>().FirstOrDefault())).Value;
 }

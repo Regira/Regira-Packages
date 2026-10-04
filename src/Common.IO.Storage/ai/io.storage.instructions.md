@@ -39,6 +39,7 @@ The IO abstraction hierarchy provides the common file contract used throughout I
 
 The standard concrete implementation of `IBinaryFile`.
 
+<!-- no-compile -->
 ```csharp
 var file = new BinaryFileItem
 {
@@ -50,6 +51,7 @@ var file = new BinaryFileItem
 
 Implicit conversions from `byte[]` and `Stream`:
 
+<!-- no-compile -->
 ```csharp
 BinaryFileItem f1 = pdfBytes;
 BinaryFileItem f2 = someStream;
@@ -61,15 +63,16 @@ Both live in `Regira.IO.Extensions` in **`Regira.Common`**. `GetBytes()`/`GetStr
 `HasContent()` come from `MemoryFileExtensions` and work on any `IMemoryFile`; the `ToBinaryFile(...)`
 factories come from `BinaryFileExtensions`.
 
+<!-- no-compile -->
 ```csharp
 byte[]? bytes  = file.GetBytes();
 Stream? stream = file.GetStream();
 long    length = file.GetLength();
 bool    hasIt  = file.HasContent();
 
-IBinaryFile f = bytes.ToBinaryFile("invoice.pdf");
-IBinaryFile f = stream.ToBinaryFile("data.csv");
-IBinaryFile f = memoryFile.ToBinaryFile("copy.pdf");
+IBinaryFile f1 = bytes.ToBinaryFile("application/pdf");   // byte[] / Stream overloads take a content type
+IBinaryFile f2 = stream.ToBinaryFile("text/csv");
+IBinaryFile f3 = memoryFile.ToBinaryFile("copy.pdf");      // the IMemoryFile overload takes a file name
 ```
 
 ⚠️ **`GetBytes()` is the accessor, not `.Bytes`.** `IMemoryFile` extends both `IMemoryBytesFile` (`Bytes`)
@@ -84,18 +87,32 @@ populated.
 ### `ContentTypeUtility`
 
 ```csharp
+using Regira.IO.Utilities;   // ContentTypeUtility, FileUtility — package Regira.Common
+
 string mime = ContentTypeUtility.GetContentType("report.pdf");  // "application/pdf"
 string? ext = ContentTypeUtility.GetExtension("image/webp");    // "webp" (no leading dot)
+
+// once at startup: the map is shared, so every later lookup reads the addition
+ContentTypeUtility.Extend(new Dictionary<string, string[]> { { "abc", ["application/x-abc"] } });
 ```
+
+For an extension the map knows, `Extend` appends the types and `GetContentType` keeps answering the first one. `js`
+answers `text/javascript`. `GetExtension` answers one fixed extension per type: one whose first type it is, then the
+usual one (`jpg`, `html`, `txt`), then the first in alphabetical order (`xml`, `js`, `tif`).
+
+The map ignores case and knows the common web types (`webp`, `avif`, `heic`, `json`, `md`, `webm`, `woff2`, `mjs`,
+…); an extension it does not know answers `application/octet-stream`.
 
 ### `FileUtility`
 
+<!-- no-compile -->
 ```csharp
 byte[]  bytes  = FileUtility.GetBytes(stream);
 Stream  stream = FileUtility.GetStream(bytes);
 string  text   = FileUtility.GetString(bytes, Encoding.UTF8);
 string  b64    = FileUtility.GetBase64String(bytes);
-byte[]  back   = FileUtility.GetBytesFromString(b64);  // Base64 → bytes
+byte[]  back   = FileUtility.GetBytes(b64);             // Base64 → bytes
+byte[]  encoded = FileUtility.GetBytesFromString(text); // text → bytes (encoding)
 ```
 
 ---
@@ -138,7 +155,7 @@ Path        →  /var/app/storage/invoices/2024/inv-001.pdf
 | `Identifier` | Relative key — `Prefix + FileName` — portable across backend swaps |
 | `Path` | `Root + Identifier` — full absolute address |
 
-> **Path containment.** The local and SFTP backends resolve every identifier against `Root` and throw `UnauthorizedAccessException` when it escapes the root (e.g. via `../`); zip extraction enforces the same containment. This is on by default (`Contained = true` in `FileSystemOptions`/`SftpConfig`) — only disable it for trusted, non-user input.
+> **Path containment.** The local and SFTP backends resolve every identifier against `Root` and throw `UnauthorizedAccessException` when it escapes the root (e.g. via `../`); zip extraction to a folder (the `targetDirectory` overloads of `ZipUtility.Unzip`) enforces the same containment, while `ZipUtility.Unzip(IBinaryFile)` returns each entry name as stored, `../x` included — check one before using it as a path. Folder names compare as the file system does: regardless of case on Windows and macOS, exactly elsewhere. This is on by default (`Contained = true` in `FileSystemOptions`/`SftpConfig`) — only disable it for trusted, non-user input.
 
 ---
 
@@ -148,6 +165,7 @@ All backends implement this single interface.
 
 ### Read
 
+<!-- no-compile -->
 ```csharp
 Task<bool>                Exists(string identifier)
 Task<byte[]?>             GetBytes(string identifier)
@@ -158,6 +176,7 @@ IAsyncEnumerable<string>  ListAsync(FileSearchObject? so = null)  // NET10+
 
 ### Write
 
+<!-- no-compile -->
 ```csharp
 Task<string> Save(string identifier, byte[] bytes,  string? contentType = null)
 Task<string> Save(string identifier, Stream stream, string? contentType = null)
@@ -169,6 +188,7 @@ Task         Delete(string identifier)
 
 ### URI Helpers
 
+<!-- no-compile -->
 ```csharp
 string  Root { get; }
 string  GetAbsoluteUri(string identifier)   // relative → absolute
@@ -189,6 +209,7 @@ Filter parameter for `List()`.
 | `Recursive` | `bool` | `false` | Include subdirectories |
 | `Type` | `FileEntryTypes` | `All` | `Files`, `Directories`, or `All` |
 
+<!-- no-compile -->
 ```csharp
 var images = await storage.List(new FileSearchObject
 {
@@ -246,6 +267,7 @@ services.AddSingleton<IFileService, NetworkFileService>();
 
 **Text files** — wrap any `IFileService` with `DefaultTextFileService`:
 
+<!-- no-compile -->
 ```csharp
 var text = new DefaultTextFileService(anyFileService, Encoding.UTF8);
 string? content = await text.GetContents("config/app.json");
@@ -275,6 +297,13 @@ var service = new BinaryBlobService(communicator);
 | `ContainerName` | `string` | *(required)* | Blob container name |
 | `CreateContainerIfNotExists` | `bool` | `true` | Auto-create the container on `Open()`; set `false` to fail fast on a misconfigured name |
 
+`Save` stores its `contentType` as the blob's `Content-Type`, which decides whether a browser following a SAS or CDN
+link shows the file or downloads it. Without one — `null`, empty or blank — the type comes from the identifier's
+extension. Never pass an upload's `IFormFile.ContentType`: the client chose it, so an `avatar.png` declared `text/html`
+would be served as a web page. Leave the argument out, or derive it from the name with
+`ContentTypeUtility.GetContentType(fileName)`. `Save` sets no `Content-Encoding`; a blob that already carries one keeps
+it until it is saved again.
+
 ---
 
 ### SSH / SFTP — `SftpService`
@@ -284,11 +313,12 @@ var service = new BinaryBlobService(communicator);
 ```csharp
 var communicator = new SftpCommunicator(new SftpConfig
 {
-    Host          = "sftp.example.com",
-    Port          = 22,
-    UserName      = "deploy",
-    Password      = "s3cr3t",
-    ContainerName = "/home/deploy/files"
+    Host               = "sftp.example.com",
+    Port               = 22,
+    UserName           = "deploy",
+    Password           = configuration["Sftp:Password"],
+    ContainerName      = "/home/deploy/files",
+    HostKeyFingerprint = "SHA256:ohD8VZEXGWo6Ez8GSEJQ9WpafgLFsOfLOtGGQCQo6Og"   // the key type the server negotiates: ssh-keyscan sftp.example.com | ssh-keygen -lf - lists one per type
 });
 
 var service = new SftpService(communicator);
@@ -300,6 +330,7 @@ var service = new SftpService(communicator);
 | `Port` | `int` | `22` | SSH port |
 | `UserName` | `string` | *(required)* | Login username |
 | `Password` | `string?` | `null` | Login password |
+| `HostKeyFingerprint` | `string?` | `null` | The server's SHA-256 host key fingerprint, as `ssh-keygen -lf` prints it. A server presenting another key is refused. Left empty, **any host key is accepted**, so an impersonating server goes unnoticed |
 | `ContainerName` | `string` | `"/"` | Remote base directory |
 | `Contained` | `bool` | `true` | Reject identifiers that escape `ContainerName` (path traversal) |
 
@@ -312,13 +343,15 @@ var service = new SftpService(communicator);
 **Package:** `Regira.IO.Storage.GitHub`
 
 ```csharp
+ISerializer jsonSerializer = new JsonSerializer();   // e.g. Regira.Serializing.Newtonsoft
+
 var service = new GitHubService(
-    new GitHubOptions
+    new GitHubCommunicator(new GitHubOptions
     {
         Uri       = "https://api.github.com/repos/owner/repo",
-        Key       = "ghp_xxxxxxxxxxxx",
+        Key       = configuration["GitHub:Token"],   // PAT — optional for public-repo reads; keep it out of source
         UserAgent = "MyApp/1.0"
-    },
+    }),
     jsonSerializer
 );
 ```
@@ -340,6 +373,7 @@ Fully implements `IFileService`: reads via the contents API; `Save`/`Move`/`Dele
 
 ### `ZipFileService` — browse an archive via IFileService
 
+<!-- no-compile -->
 ```csharp
 // Open an existing zip
 using var zipService = new ZipFileService(new ZipFileCommunicator { SourceFile = existingZip });
@@ -351,13 +385,17 @@ using var newZip = new ZipFileService(new ZipFileCommunicator());
 await newZip.Save("data.csv", csvBytes);
 ```
 
+`List` and `Save` answer identifiers with `/` between folders, and a `FolderUri` — written with either separator —
+matches that folder as a whole: `dir2/dir2.1` does not include `dir2/dir2.10`.
+
 | `ZipFileCommunicator` | Type | Description |
 |---|---|---|
 | `SourceFile` | `IMemoryFile?` | Existing zip to open — omit to start empty |
-| `Password` | `string?` | Archive password (optional) |
+| `Password` | `string?` | Not read by `ZipFileService` — a password-protected zip needs `ZipManager` (below) |
 
 ### `ZipBuilder` — create archives
 
+<!-- no-compile -->
 ```csharp
 IMemoryFile zip = await new ZipBuilder()
     .For([new BinaryFileItem { FileName = "report.pdf", Bytes = pdfBytes },
@@ -365,14 +403,47 @@ IMemoryFile zip = await new ZipBuilder()
     .Build();
 ```
 
-### `ZipUtility` — extension methods
+### `ZipUtility` — zip/unzip helpers
 
+`Zip` is an extension method; `Unzip` is static.
+
+<!-- no-compile -->
 ```csharp
 IMemoryFile archive        = files.Zip();
-IMemoryFile archive        = paths.Zip(baseFolder: "/var/exports");
-BinaryFileCollection items = existingZip.Unzip();
-string[] extracted         = existingZip.Unzip(targetDirectory: "/tmp/out");
+IMemoryFile folderArchive  = paths.Zip(baseFolder: "/var/exports");
+BinaryFileCollection items = ZipUtility.Unzip(existingZip);
+string[] extracted         = ZipUtility.Unzip(existingZip, targetDirectory: "/tmp/out");
 ```
+
+Entries are named after each file's `Identifier` (else `FileName`) with `/` separators, as the ZIP format
+requires — an archive made on Windows unzips into the same folders on Linux. `Unzip` also reads `\` as a separator.
+
+Neither `ZipUtility.Unzip` nor `ZipFileService` caps what an archive unpacks to: for one from an untrusted source,
+such as an upload, use `ZipManager` with `MaxUnzippedSize` (below).
+
+### `ZipManager` — password-protected archives
+
+**Package:** `Regira.IO.Compression.SharpZipLib`
+
+```csharp
+using Regira.IO.Compression.SharpZipLib;   // ZipManager
+
+IEnumerable<IBinaryFile> files = [new BinaryFileItem { FileName = "report.pdf", Bytes = [] }];
+var password = configuration["Exports:ZipPassword"];
+
+var zipManager = new ZipManager { MaxUnzippedSize = 100 * 1024 * 1024 };   // Unzip throws past 100 MB; null: no limit
+var archive = zipManager.Zip(files, password);                // a Stream, rewound, ready to save or send
+var items   = await zipManager.Unzip(archive, password);      // a BinaryFileCollection; a wrong password throws ZipException
+```
+
+- A password encrypts every entry with AES-256. 7-Zip and WinZip open the archive; the ZIP folders built into
+  Windows Explorer do not.
+- `Unzip` decrypts AES and ZipCrypto entries, and copies a stream that cannot seek into memory first. Entry names come
+  back with `/` separators; one that would leave the folder it is extracted into (a `..` segment, a leading separator
+  or a drive) throws `UnauthorizedAccessException` before anything of it is read. `Zip` drops a leading separator
+  or drive from a file name and refuses a `..` segment the same way, so it never writes an archive `Unzip` refuses.
+- `MaxUnzippedSize` caps the bytes `Unzip` extracts, all entries together, counted while reading:
+  `InvalidDataException` past it. Set it for an archive from an untrusted source, such as an upload.
 
 ---
 
@@ -380,6 +451,7 @@ string[] extracted         = existingZip.Unzip(targetDirectory: "/tmp/out");
 
 ### `FileProcessor` — recursive processing
 
+<!-- no-compile -->
 ```csharp
 await new FileProcessor(fileService).ProcessFiles(
     new FileSearchObject { FolderUri = "exports/", Recursive = true },
@@ -389,6 +461,7 @@ await new FileProcessor(fileService).ProcessFiles(
 
 ### `FileNameHelper` — unique filenames
 
+<!-- no-compile -->
 ```csharp
 var helper = new FileNameHelper(fileService);
 string safe = await helper.NextAvailableFileName("invoices/report.pdf");
@@ -399,6 +472,7 @@ Customise: `new FileNameHelper.Options { NumberPattern = " ({0})" }`
 
 ### `ExportHelper` — copy between services
 
+<!-- no-compile -->
 ```csharp
 await new ExportHelper(source, target)
     .Export(new FileSearchObject { FolderUri = "backups/", Recursive = true });
@@ -406,25 +480,37 @@ await new ExportHelper(source, target)
 
 ### `FileNameUtility` — path helpers
 
+<!-- no-compile -->
 ```csharp
 FileNameUtility.GetAbsoluteUri("folder/file.txt", root)
 FileNameUtility.GetRelativeUri(absolutePath, root)
 FileNameUtility.GetCleanFileName("folder/sub/file.txt")  // → "file.txt"
 FileNameUtility.Combine("folder", "sub", "file.txt")
-FileNameUtility.SanitizeFilename("con.txt")              // avoids Windows reserved names
+FileNameUtility.SanitizeFilename(@"CON\report:v2.txt")   // → "_XXX_/report_v2.txt" ('\' on Windows): Windows-invalid characters and reserved segment names are replaced on every platform
 FileNameUtility.GetUncShareRoot(@"\\server\share\sub")   // → @"\\server\share" (null for non-UNC)
 ```
+
+> ⚠️ `SanitizeFilename` is not a traversal guard: `..` segments and a leading separator pass through. Contain an
+> untrusted path with `Contained = true` on the service (the default) or with
+> `FileNameUtility.EnsureContained(Path.Combine(root, path), root)`, which returns the full path or throws
+> `UnauthorizedAccessException`.
 
 ---
 
 ## DI Registration
 
+Register one backend as `IFileService`; the two below are alternatives. A second `IFileService` registration
+replaces the first wherever `IFileService` is injected, so an app that uses both stores registers the second one
+by its own type, as the *DI Registration* in [`io.storage.examples.md`](./io.storage.examples.md) does.
+
 ```csharp
-// Local file system
+// Either: local file system
 services.AddSingleton<IFileService>(_ =>
     new BinaryFileService(new FileSystemOptions { RootFolder = "/var/app/uploads" }));
+```
 
-// Azure Blob — register options and communicator separately; the service calls Open() lazily
+```csharp
+// Or: Azure Blob — register options and communicator separately; the service calls Open() lazily
 services.AddSingleton(new AzureOptions
 {
     ConnectionString = configuration["Azure:Storage"],

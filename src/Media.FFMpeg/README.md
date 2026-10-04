@@ -1,15 +1,19 @@
-﻿# FFMpeg Media (Video)
+# Regira.Media.FFMpeg
 
-https://github.com/rosenbjerg/FFMpegCore
+Video backend for [Regira Media](https://regira.github.io/Regira-Packages/src/Common.Media/), built on [FFMpegCore](https://www.nuget.org/packages/FFMpegCore). `VideoManager` implements `IVideoService` and `ICompressService`: it reads a video's frame rate and size, and compresses a video to VP9/WebM at the frame rate and size it is given. `SnapshotService` extracts one frame as an image, at a position or the first frame.
 
+## Installation
 
-## Download utils
+```xml
+<PackageReference Include="Regira.Media.FFMpeg" Version="6.*" />
+```
 
-https://ffbinaries.com/downloads
+- The FFMpeg binaries, `ffmpeg` and `ffprobe`, must be on `PATH`; the package does not ship them. Builds for each platform are listed at [ffmpeg.org](https://ffmpeg.org/download.html).
+- `SnapshotService` runs `ffmpeg` through an `IProcessHelper`. The default `ProcessHelper` from Regira.System runs it from a batch file, which is Windows only; on another platform, pass an `IProcessHelper` of your own.
 
-- [ffmpeg.exe (4.4.1)](https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v4.4.1/ffmpeg-4.4.1-win-64.zip)
-- [ffprobe.ext (4.4.1)](https://github.com/ffbinaries/ffbinaries-prebuilt/releases/download/v4.4.1/ffprobe-4.4.1-win-64.zip) 
+## Documentation
 
+- [Video processing](https://regira.github.io/Regira-Packages/src/Common.Media/docs/video.html) — compression settings, snapshot parameters, and what each one defaults to
 
 ## License
 

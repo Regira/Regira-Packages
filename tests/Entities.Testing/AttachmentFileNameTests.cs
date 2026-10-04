@@ -55,6 +55,38 @@ public class AttachmentFileNameTests
         Assert.That(file.ToAttachment().FileName, Is.EqualTo("archive/2026/scan.pdf"));
     }
 
+    // --- SaveFile never writes over another file ---
+
+    // a stored attachment given a key other than its own, as new bytes get one, is made unique, as a new one is: a
+    // generator that derives the key from the name cannot point it at a sibling's file
+    [Test]
+    public async Task A_Stored_Attachment_Given_Another_Key_Does_Not_Overwrite_That_File()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"regira-savefile-{Guid.NewGuid():N}");
+        try
+        {
+            var service = new AttachmentFileService<Attachment, int>(new BinaryFileService(new FileSystemOptions { RootFolder = root }));
+            var sibling = new Attachment { FileName = "b.pdf", Identifier = "docs/b.pdf", Bytes = [1] };
+            await service.SaveFile(sibling);
+            var stored = new Attachment { Id = 7, FileName = "a.pdf", Identifier = "docs/a.pdf", Bytes = [2] };
+            await service.SaveFile(stored);
+
+            stored.Identifier = "docs/b.pdf";
+            stored.Bytes = [3];
+            await service.SaveFile(stored);
+
+            Assert.That(await service.GetBytes(sibling), Is.EqualTo(new byte[] { 1 }));
+            Assert.That(stored.Path, Is.Not.EqualTo(sibling.Path));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, true);
+            }
+        }
+    }
+
     // --- The identifier is internal and carries none of it ---
 
     [Test]

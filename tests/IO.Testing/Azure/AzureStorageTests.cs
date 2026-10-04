@@ -1,5 +1,6 @@
+using System.Text;
+using Azure.Storage.Blobs;
 using IO.Testing.Helpers;
-using Microsoft.Extensions.Configuration;
 using Regira.IO.Extensions;
 using Regira.IO.Storage.Azure;
 
@@ -10,20 +11,19 @@ namespace IO.Testing.Azure;
 [Category("Network")]
 public class AzureStorageTests
 {
-    public StorageTestHelper.StorageTestContext<BinaryBlobService> StorageTestContext { get; set; }
+    private const string ContainerName = "test-container";
+    public StorageTestHelper.StorageTestContext<BinaryBlobService> StorageTestContext { get; set; } = null!;
+    private string ConnectionString { get; set; } = null!;
     [SetUp]
     public async Task Setup()
     {
+        ConnectionString = TestSecrets.AzureConnectionString();
         StorageTestContext = StorageTestHelper.CreateDecoratedFileService((_, _) =>
         {
-            var configBuilder = new ConfigurationBuilder();
-            configBuilder.AddUserSecrets(typeof(AzureStorageTests).Assembly, true);
-            var configuration = configBuilder.Build();
-            var azureConnectionString = configuration["Storage:Azure:ConnectionString"];
             var cf = new AzureOptions
             {
-                ConnectionString = azureConnectionString,
-                ContainerName = "test-container"
+                ConnectionString = ConnectionString,
+                ContainerName = ContainerName
             };
             var cm = new AzureCommunicator(cf);
             return new BinaryBlobService(cm);
@@ -36,7 +36,11 @@ public class AzureStorageTests
     }
 
     [TearDown]
-    public async Task TearDown() => await StorageTestContext.DisposeAsync();
+    public async Task TearDown()
+    {
+        // unset when Setup ignored the fixture
+        if (StorageTestContext != null) await StorageTestContext.DisposeAsync();
+    }
 
     [Test]
     public async Task List() => await StorageTestContext.Test_List();
@@ -69,5 +73,61 @@ public class AzureStorageTests
     [Test]
     public async Task Update_File() => await StorageTestContext.Test_Update_File();
     [Test]
+    public async Task Update_File_With_Shorter_Content() => await StorageTestContext.Test_Update_File_With_Shorter_Content();
+    [Test]
     public async Task Remove_File() => await StorageTestContext.Test_Remove_File();
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Save_Stores_The_Given_Content_Type(bool asStream)
+    {
+        var identifier = "dir3/report";
+        var bytes = Encoding.UTF8.GetBytes("{\"title\":\"report\"}");
+
+        var saved = await Save(identifier, bytes, "application/json", asStream);
+
+        var properties = await GetProperties(saved);
+        Assert.Multiple(() =>
+        {
+            Assert.That(properties.ContentType, Is.EqualTo("application/json"));
+            Assert.That(properties.ContentEncoding, Is.Null);
+        });
+    }
+
+    [TestCase(false, null)]
+    [TestCase(true, null)]
+    [TestCase(false, "")]
+    [TestCase(true, " ")]
+    public async Task Save_Derives_The_Content_Type_From_The_Identifier(bool asStream, string? contentType)
+    {
+        var identifier = "dir3/notes.txt";
+        // a UTF-8 byte-order mark: a character set is still not a content coding
+        var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes("notes")).ToArray();
+
+        var saved = await Save(identifier, bytes, contentType, asStream);
+
+        var properties = await GetProperties(saved);
+        Assert.Multiple(() =>
+        {
+            Assert.That(properties.ContentType, Is.EqualTo("text/plain"));
+            Assert.That(properties.ContentEncoding, Is.Null);
+        });
+    }
+
+    /// <returns>The identifier <c>Save</c> stored the blob under: its name in the container.</returns>
+    private async Task<string> Save(string identifier, byte[] bytes, string? contentType, bool asStream)
+    {
+        if (asStream)
+        {
+            using var stream = new MemoryStream(bytes);
+            return await StorageTestContext.FileService.Save(identifier, stream, contentType);
+        }
+        return await StorageTestContext.FileService.Save(identifier, bytes, contentType);
+    }
+
+    private async Task<global::Azure.Storage.Blobs.Models.BlobProperties> GetProperties(string blobName)
+    {
+        var blob = new BlobContainerClient(ConnectionString, ContainerName).GetBlobClient(blobName);
+        return (await blob.GetPropertiesAsync()).Value;
+    }
 }

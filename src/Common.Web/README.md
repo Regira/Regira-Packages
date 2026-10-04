@@ -1,6 +1,7 @@
-# Regira Web.HTML
+# Regira Web
+<!-- {% raw %} -->
 
-Regira Web.HTML provides Razor-based HTML template rendering plus common web utilities, middleware, and Swagger configuration.
+Regira Web provides Razor-based HTML template rendering plus common web utilities, middleware, and Swagger configuration.
 
 ## Projects
 
@@ -138,13 +139,24 @@ services.AddControllers(options =>
     options.InputFormatters.Insert(0, new TextPlainInputFormatter()));
 ```
 
-### ControllerExtensions
+### ControllerExtensions and FormFileExtensions
 
 <!-- no-compile -->
 ```csharp
 // Return INamedFile as a download or inline
 return this.File(namedFile, inline: true);
+
+// Read an upload as an INamedFile
+var upload = formFile.ToNamedFile();
 ```
+
+- `File()` sends `X-Content-Type-Options: nosniff` and, with every file but a PDF, `Content-Security-Policy:
+  sandbox`, so a file served from the app's origin renders but runs no script, whatever its name or stored type. A PDF
+  goes without: a sandbox keeps the browser's PDF viewer from loading. The sandbox is added to a policy the app
+  already sent, not put in its place; a middleware that sets `Content-Security-Policy` once the response starts
+  (`OnStarting`) must append to the header too, or it replaces the sandbox.
+- `ToNamedFile()` sets `ContentType` from the file name's extension (`application/octet-stream` when unknown), never
+  from the type the client declared. Restrict uploads by extension where it matters.
 
 ### RequestUtility
 
@@ -192,3 +204,5 @@ builder.Services.AddControllers().DisplayEnumAsString();
 ## License
 
 Apache License 2.0 — this package contains no license validation and no runtime limits. See [LICENSE](https://github.com/Regira/Regira-Packages/blob/main/LICENSE). A few companion packages are commercially licensed with a free tier; see the [licensing overview](https://regira.github.io/Regira-Packages/licensing.html).
+
+<!-- {% endraw %} -->

@@ -26,7 +26,7 @@
 <!-- JWT + API Key authentication -->
 <PackageReference Include="Regira.Security.Authentication" Version="6.*" />
 
-<!-- Pre-built auth controllers (AccountController, UserController, PasswordController) -->
+<!-- Pre-built auth controller bases (AccountControllerBase, UserControllerBase, PasswordControllerBase) -->
 <PackageReference Include="Regira.Security.Authentication.Web" Version="6.*" />
 ```
 
@@ -36,6 +36,7 @@
 
 ### `IEncrypter`
 
+<!-- no-compile -->
 ```csharp
 string Encrypt(string plainText, string? key = null);
 string Decrypt(string encryptedText, string? key = null);
@@ -81,11 +82,12 @@ string plain  = enc.Decrypt(cipher);
 
 ### `IHasher` — `Regira.Security.Abstractions`
 
+<!-- no-compile -->
 ```csharp
 using Regira.Security.Abstractions; // IHasher
 
-string Hash(string? plainText);
-bool   Verify(string? plainText, string hashedValue);
+string Hash(string plainText);
+bool   Verify(string plainText, string hashedValue);
 ```
 
 ### `Hasher` — PBKDF2 (in `Regira.Security`)
@@ -153,7 +155,7 @@ registered scheme authenticates a given request. Claims differ per scheme — re
 | `Secret` | `string` | *(required)* | HMAC signing key — **length must fit the algorithm**: `HS256` ≥ 32 bytes, `HS384` ≥ 48, the `HS512` default ≥ 64. Enforced at registration |
 | `Algorithm` | `string?` | `null` | Signing algorithm as a JWA id; `HS512` when unset |
 | `ValidateSecretLength` | `bool` | `true` | Whether registration rejects a `Secret` too short for `Algorithm` |
-| `Authority` | `string?` | `null` | Token issuer |
+| `Authority` | `string?` | `null` | Token issuer: written into each token and checked on the way in. Optional — unset, no issuer is written or checked |
 | `Audience` | `string?` | `null` | Single audience |
 | `Audiences` | `ICollection<string>?` | `null` | Multiple audiences |
 | `LifeSpan` | `int` | `7200` | Token lifetime in seconds |
@@ -167,6 +169,7 @@ is whatever the issuer used, which `Algorithm` does not describe.
 
 ### `ITokenHelper` — `Regira.Security.Authentication.Jwt.Abstraction`
 
+<!-- no-compile -->
 ```csharp
 using Regira.Security.Authentication.Jwt.Abstraction; // ITokenHelper
 using Regira.Security.Authentication.Jwt.Models;      // JwtTokenOptions
@@ -207,6 +210,7 @@ services.AddJwtAuthentication(options =>
 
 ### `ClaimsPrincipal` Extension Methods — `Regira.Security.Authentication.Jwt.Extensions`
 
+<!-- no-compile -->
 ```csharp
 using Regira.Security.Authentication.Jwt.Extensions;
 
@@ -240,6 +244,7 @@ Two of them exist because the naive read is wrong:
 
 ### `IApiKeyOwnerService`
 
+<!-- no-compile -->
 ```csharp
 Task<ApiKeyOwner?> FindByOwner(string id);
 Task<ApiKeyOwner?> FindByKey(string apiKey);
@@ -304,6 +309,7 @@ which each scheme already resolves correctly.
 handler hands its claims to `ClaimsNormalizer.Normalize(...)` and gets an identity carrying the canonical
 spellings as well.
 
+<!-- no-compile -->
 ```csharp
 var identity = ClaimsNormalizer.Normalize(claims, authenticationType);   // ClaimNormalizationOptions optional
 ```
@@ -410,6 +416,7 @@ users are signed out at random.
 Implement `IRefreshTokenStore` over your own `DbContext` — five methods, of which only `TryRevoke` needs care — and
 register it first:
 
+<!-- no-compile -->
 ```csharp
 services.AddJwtAuthentication(…)
         .AddRefreshTokenStore<MyEfRefreshTokenStore>()
@@ -421,6 +428,7 @@ token is by definition one that was already revoked.
 
 ### Abstractions
 
+<!-- no-compile -->
 ```csharp
 // IRefreshTokenService
 Task<TokenPair>  Issue(string userId, IEnumerable<Claim> claims, string? audience = null, CancellationToken ct = default);
@@ -593,6 +601,7 @@ services.AddCookieAuthentication(configuration);
 
 ### Signing in and out
 
+<!-- no-compile -->
 ```csharp
 using Regira.Security.Authentication.Cookie.Extensions;
 
@@ -809,6 +818,8 @@ costs the request its other options.
 ### ⚠️ OpenAPI: two transformers, whatever the scheme count
 
 ```csharp
+using Regira.Security.Authentication.Web.OpenApi.Transformers;   // package Regira.Security.Authentication.Web
+
 services.AddOpenApi(options =>
 {
     options.AddDocumentTransformer<AuthenticationSchemeDocumentTransformer>();
@@ -839,8 +850,8 @@ Users in the same DB, no roles — the happy path (details in the sections below
 
 1. `AppUser : IdentityUser`; make the app `DbContext : IdentityDbContext<AppUser>` (users in the same DB).
 2. `services.AddIdentityCore<AppUser>().AddEntityFrameworkStores<AppDbContext>().AddSignInManager().AddDefaultTokenProviders();`
-3. `services.AddJwtAuthentication(o => configuration.GetSection(AuthenticationSections.Jwt).Bind(o));` — set `Authentication:Jwt:Secret` (**≥ 64 bytes for the HS512 default**, or startup throws — counted as ASCII, so a non-ASCII character is one byte, not the two or three UTF-8 would give it), `Authentication:Jwt:Authority`, and **`Authentication:Jwt:Audience` = the SPA's `clientApp`**; leave `Algorithm` unset (or `"HS512"`). Add `.AddRefreshTokens()` if the SPA needs to survive access-token expiry, and `.AddSchemeSelector()` last if more than one scheme is registered.
-4. Register an `IEmailSender` — the interface is **`Microsoft.AspNetCore.Identity.UI.Services.IEmailSender`** (package `Microsoft.AspNetCore.Identity.UI`, not a Regira type). Use Regira's `IdentityMailer`, or a dev logger that prints the link. No `ISerializer` needed.
+3. `services.AddJwtAuthentication(o => configuration.GetSection(AuthenticationSections.Jwt).Bind(o));` — set `Authentication:Jwt:Secret` (**≥ 64 bytes for the HS512 default**, or startup throws — counted as ASCII, so a non-ASCII character is one byte, not the two or three UTF-8 would give it) and **`Authentication:Jwt:Audience` = the SPA's `clientApp`**. `Authentication:Jwt:Authority` is optional for these self-issued tokens: it is written into each token as its issuer and checked on the way in, and left unset, tokens carry no issuer and none is checked. Leave `Algorithm` unset (or `"HS512"`). Add `.AddRefreshTokens()` if the SPA needs to survive access-token expiry, and `.AddSchemeSelector()` last if more than one scheme is registered.
+4. Register an `IEmailSender` — the interface is **`Microsoft.AspNetCore.Identity.UI.Services.IEmailSender`** (ASP.NET Core shared framework, no package to add; not a Regira type). Use Regira's `IdentityMailer`, which needs a registered Regira `IMailService` and an `IdentityMailerOptions` (`Regira.Office` → `office.mail.instructions` → *ASP.NET Identity Integration*), or a dev logger that prints the link. No `ISerializer` needed.
 5. Subclass the three base controllers with forwarding ctors (below).
 6. `app.UseAuthentication()` **before** `app.UseAuthorization()`; `MapControllers().RequireAuthorization()` — the bases carry no `[Authorize]`.
 7. Seed the first user via `UserManager<AppUser>`.
@@ -851,12 +862,13 @@ Users in the same DB, no roles — the happy path (details in the sections below
 
 <!-- how_to: key=roles-end-to-end aliases=roles,hasrole,role-claims,admin-role -->
 
-The wiring recipe above emits **no role claims** — `AddIdentityCore` alone registers the role-less claims
+The JWT wiring recipe (*Add JWT authentication — wiring recipe*) emits **no role claims** — `AddIdentityCore` alone registers the role-less claims
 factory. To carry an Identity role into the token and through every gate:
 
 1. **Store + emit.** Chain `.AddRoles<IdentityRole>()` (before `AddEntityFrameworkStores`, so the role store
    registers) and align the claim spelling with the JWT scheme:
 
+   <!-- no-compile -->
    ```csharp
    services.AddIdentityCore<AppUser>(o =>
        {
@@ -874,7 +886,10 @@ factory. To carry an Identity role into the token and through every gate:
    `userManager.AddToRoleAsync(user, "Manager")`.
 2. **Token.** Nothing else to do: `AccountControllerBase` mints from the factory's claims, and the outbound
    map renames only `sub`/`name`/`email` — the roles land in the payload under `"role"` (one string, or an
-   array for a multi-role user).
+   array for a multi-role user). It leaves out Identity's security stamp (`AspNet.Identity.SecurityStamp`): a
+   JWT is readable by whoever holds it, and the stamp is the secret the email and phone token providers derive
+   their one-time codes from. A subclass that mints its own claims goes through `CreateSuccessResponse` or
+   `TokenClaims(claims)`, which drop it too.
 3. **Server-side gates.** `[Authorize(Roles = "Manager")]` and `User.IsInRole(...)` now work on the local JWT
    scheme. A handler that must also admit API-key callers (`ClaimTypes.Role`) or external bearer tokens
    (`roles`) reads roles with `principal.FindRoles()`, which probes all three spellings.
@@ -892,12 +907,13 @@ factory. To carry an Identity role into the token and through every gate:
 > ⚠️ **Custom JWT over a plain (non-`IdentityUser`) entity forgoes this whole account surface.** The recipe above
 > and the controllers below sit on ASP.NET Identity (`IdentityUser` / `UserManager`). Minting tokens for a plain
 > entity (an `Employee`-as-user) with `ITokenHelper.Create(claims, audience)` gets you **login only** — not
-> `PasswordController` (change/recover/reset), `AccountController`, or `UserController`. Treat auth as a package:
+> `PasswordControllerBase` (change/recover/reset), `AccountControllerBase`, or `UserControllerBase`. Treat auth as a package:
 > decide Identity-vs-custom **before** modelling the user, and if custom, implement change/forgot/reset yourself
 > (or adopt the Identity-backed controllers wholesale). "Login works" is not "auth is done."
 
 Three abstract base controllers over ASP.NET Core Identity's `UserManager<TUser>` — `Regira.Security.Authentication.Web.Controllers`. Subclass each with a closed `TUser : IdentityUser<string>` (`UserControllerBase` also needs `new()`). `[ApiController]` and the route templates live on the bases and are inherited — **do not add `[ApiController]`/`[Route]` to the subclass**:
 
+<!-- no-compile -->
 ```csharp
 using Regira.Security.Authentication.Web.Controllers;
 
@@ -933,14 +949,47 @@ one that most needs rate-limiting, since the refresh token it accepts is itself 
 
 ⚠️ **`POST users` (create user) requires a signed-in caller — any signed-in caller.** It carries no role check, so
 in an app with roles every user can create accounts: gate it like any other write (a role filter, or
-`[Authorize(Roles = …)]` on an override). It resolves `IEmailSender` (`Microsoft.AspNetCore.Identity.UI.Services`)
+`[Authorize(Roles = …)]` on an override). It resolves `IEmailSender` (`Microsoft.AspNetCore.Identity.UI.Services`, in the shared framework)
 per request, to mail the confirmation link — register one, or the call fails at runtime rather than at startup.
 For **self-registration**, override it:
 
 ```csharp
-[AllowAnonymous]
-public override Task<IActionResult> Create(UserInput model, [FromServices] IEmailSender mailer) => base.Create(model, mailer);
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.UI.Services;          // IEmailSender
+using Microsoft.AspNetCore.Mvc;
+using Regira.Security.Authentication.Web.Controllers;
+using Regira.Security.Authentication.Web.Models;          // UserInput
+
+public class UsersController : UserControllerBase<AppUser>
+{
+    // An explicit constructor with a field of its own: a primary-constructor parameter used in the body AND passed
+    // to the base is captured twice (warning CS9107), and the base keeps its copy private.
+    private readonly UserManager<AppUser> _userManager;
+
+    public UsersController(UserManager<AppUser> userManager) : base(userManager) => _userManager = userManager;
+
+    [AllowAnonymous]
+    public override async Task<IActionResult> Create(UserInput model, [FromServices] IEmailSender mailer)
+    {
+        // the base answers 200 for an existing user too: assign roles only to an account this call created
+        var existed = await _userManager.FindByNameAsync(model.Username) != null;
+        var result = await base.Create(model, mailer);
+        if (!existed && result is OkResult)
+        {
+            var user = await _userManager.FindByNameAsync(model.Username);
+            await _userManager.AddToRoleAsync(user!, "Customer");
+        }
+        return result;
+    }
+}
+
+public class AppUser : IdentityUser;   // stands for your app's own Identity user — don't declare a second one
 ```
+
+⚠️ **The base answers 200 for an existing user too, so check the account is new before you assign anything to it.**
+"On 200, add the role" adds it to whatever account the caller names — an administrator's included. The 200 itself
+stays: it does not tell a caller whether an account exists.
 
 Open sign-up means anyone can create an account: rate-limit it, and keep any role/tenant assignment server-side rather than reading it from the payload.
 

@@ -47,12 +47,12 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     [TestCase(FileFormat.Rtf)]
     [TestCase(FileFormat.Odt)]
     [TestCase(FileFormat.EPub)]
-    public void Convert_To_Anything_But_Pdf_Is_Not_Supported(FileFormat format)
+    public async Task Convert_To_Anything_But_Pdf_Is_Not_Supported(FileFormat format)
     {
         var handler = new StubHandler();
         var service = new WordService(handler.CreateClient());
 
-        var ex = Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(TemplateInput("template.docx"), format));
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(TemplateInput("template.docx"), format));
 
         Assert.Multiple(() =>
         {
@@ -63,18 +63,18 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
 
     [TestCase(FileFormat.Png)]
     [TestCase(FileFormat.Jpeg)]
-    public void Convert_To_Image_Points_At_ToImages(FileFormat format)
+    public async Task Convert_To_Image_Points_At_ToImages(FileFormat format)
     {
         var handler = new StubHandler();
         var service = new WordService(handler.CreateClient());
 
-        var ex = Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(TemplateInput("template.docx"), format));
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(TemplateInput("template.docx"), format));
 
         Assert.That(ex!.Message, Does.Contain("ToImages"));
     }
 
     [Test]
-    public void Template_Input_Without_Creator_Is_Rejected()
+    public async Task Template_Input_Without_Creator_Is_Rejected()
     {
         var handler = new StubHandler();
         var service = new WordService(handler.CreateClient());
@@ -82,7 +82,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         input.GlobalParameters = new Dictionary<string, object> { ["title"] = "A title" };
         input.Headers = [new WordHeaderFooterInput { Template = TemplateInput("add_header.docx") }];
 
-        var ex = Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(input, FileFormat.Pdf));
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(input, FileFormat.Pdf));
 
         Assert.Multiple(() =>
         {
@@ -94,13 +94,13 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     }
 
     [Test]
-    public void Settings_On_A_Non_OpenXml_Source_Are_Rejected()
+    public async Task Settings_On_A_Non_OpenXml_Source_Are_Rejected()
     {
         var handler = new StubHandler();
         var service = new WordService(handler.CreateClient());
         var options = new ConversionOptions { OutputFormat = FileFormat.Pdf, Settings = new DocumentSettings() };
 
-        var ex = Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(TemplateInput("template.odt"), options));
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(TemplateInput("template.odt"), options));
 
         Assert.Multiple(() =>
         {
@@ -110,12 +110,12 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     }
 
     [Test]
-    public void ToImages_Without_A_PdfToImageService_Throws()
+    public async Task ToImages_Without_A_PdfToImageService_Throws()
     {
         var handler = new StubHandler();
         var service = new WordService(handler.CreateClient());
 
-        var ex = Assert.ThrowsAsync<InvalidOperationException>(() => service.ToImages(TemplateInput("template.docx")));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.ToImages(TemplateInput("template.docx")));
 
         Assert.Multiple(() =>
         {
@@ -168,6 +168,321 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
             Assert.That(upload.FileName, Is.EqualTo("document.docx"));
             Assert.That(upload.Bytes, Is.EqualTo(rendered));
         });
+    }
+
+    /// <summary>
+    /// A condition on a key the input does not give is false, so a template holding a block needs rendering even
+    /// without a single parameter.
+    /// </summary>
+    [Test]
+    public async Task A_Template_With_Conditional_Blocks_Needs_A_Creator()
+    {
+        var handler = new StubHandler();
+        var service = new WordService(handler.CreateClient());
+        var input = new WordTemplateInput { Template = Docx.Document("Intro", "{{#if IsDraft}}", "DRAFT", "{{/if}}") };
+
+        var ex = await Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(input, FileFormat.Pdf));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex!.Message, Does.Contain("conditional blocks"));
+            Assert.That(handler.Requests, Is.Empty);
+        });
+    }
+
+    /// <summary>
+    /// Every OOXML conversion is scanned in-process for blocks, so a part beyond the scan's limit — a zip bomb among them —
+    /// is not read, and the document goes to Gotenberg as it is.
+    /// </summary>
+    [Test]
+    public void A_Part_Beyond_The_Scan_Limit_Is_Not_Read()
+    {
+        var template = Docx.Document(new string('x', 2_000), "{{#if IsDraft}}", "DRAFT", "{{/if}}").GetBytes()!;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ConditionalMarkers.Any(template), Is.True, "within the limit");
+            Assert.That(ConditionalMarkers.Any(template, maxBytes: 1_000), Is.False, "beyond it");
+        });
+    }
+
+    /// <summary>
+    /// A document that opens a block is created in-process, which loads every header and footer whole, so the limit counts
+    /// them, past the block found first: a header too large for it sends the document to Gotenberg.
+    /// </summary>
+    [Test]
+    public void The_Limit_Counts_The_Headers()
+    {
+        var template = Docx.Document(Docx.Paragraphs("{{#if IsDraft}}", "DRAFT", "{{/if}}"), header: Docx.Paragraphs(new string('x', 20_000))).GetBytes()!;
+        var bodyOnly = Docx.Document("{{#if IsDraft}}", "DRAFT", "{{/if}}").GetBytes()!;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ConditionalMarkers.Any(bodyOnly, maxBytes: 10_000), Is.True, "the body fits the limit");
+            Assert.That(ConditionalMarkers.Any(template, maxBytes: 10_000), Is.False, "the body and its header do not");
+        });
+    }
+
+    /// <summary>
+    /// A creator other than Word.Mini loads every part, so the limit counts the footnotes too, though no marker there counts.
+    /// </summary>
+    [Test]
+    public void The_Limit_Counts_Every_Part()
+    {
+        var body = Docx.Paragraphs("{{#if IsDraft}}", "DRAFT", "{{/if}}").ToArray();
+        var smallFootnote = Docx.Document(body.Select(x => (W.Paragraph)x.CloneNode(true)), footnote: Docx.Paragraphs("Note")).GetBytes()!;
+        var largeFootnote = Docx.Document(body.Select(x => (W.Paragraph)x.CloneNode(true)), footnote: Docx.Paragraphs(new string('x', 20_000))).GetBytes()!;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ConditionalMarkers.Any(smallFootnote, maxBytes: 10_000), Is.True, "the document fits the limit");
+            Assert.That(ConditionalMarkers.Any(largeFootnote, maxBytes: 10_000), Is.False, "its footnotes do not");
+        });
+    }
+
+    /// <summary>
+    /// Opening a package parses its relationships and content types whole, before any part is scanned, so the limit is
+    /// judged first, on the sizes the zip declares: a relationship target inflating far beyond it is never read.
+    /// </summary>
+    [Test]
+    public void A_Package_Declaring_More_Than_The_Limit_Is_Not_Opened()
+    {
+        var template = Docx.Document("{{#if IsDraft}}", "DRAFT", "{{/if}}").GetBytes()!;
+        // an external hyperlink whose target inflates to 16 MB, from a few KB in the zip
+        var bomb = RewriteEntry(template, "_rels/.rels", xml => xml.Replace("</Relationships>",
+            "<Relationship Id=\"rIdBomb\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\""
+            + $" Target=\"https://example.com/{new string('a', 16 * 1024 * 1024)}\" TargetMode=\"External\"/></Relationships>"));
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        var opensBlock = ConditionalMarkers.Any(bomb, maxBytes: 1024 * 1024);
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(bomb, Has.Length.LessThan(100_000), "the bomb is small");
+            Assert.That(opensBlock, Is.False);
+            Assert.That(allocated, Is.LessThan(1024 * 1024), "its relationships were not read");
+        });
+    }
+
+    /// <summary>
+    /// A size declared smaller than the part inflates to is no way around the limit: the zip reader stops each part at its
+    /// declared size, so the part is read cut short, and the document, unreadable, holds no block.
+    /// </summary>
+    [Test]
+    public void A_Part_Declared_Smaller_Than_It_Inflates_Is_Read_Cut_Short()
+    {
+        // the marker after 4 MB of text, which the zip compresses to a few KB
+        var template = Docx.Document(new string('x', 4 * 1024 * 1024), "{{#if IsDraft}}", "DRAFT", "{{/if}}").GetBytes()!;
+        var forged = DeclareSize(template, "word/document.xml", 10_000);
+
+        var allocated = GC.GetAllocatedBytesForCurrentThread();
+        var opensBlock = ConditionalMarkers.Any(forged, maxBytes: 1024 * 1024);
+        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ConditionalMarkers.Any(template, maxBytes: 1024 * 1024), Is.False, "declared as it is, it exceeds the limit");
+            Assert.That(opensBlock, Is.False);
+            Assert.That(allocated, Is.LessThan(1024 * 1024), "no more than the declared size was read");
+        });
+    }
+
+    /// <summary>
+    /// Opening a package builds an object for every part, so a package holding more parts than a document has is not
+    /// opened, however little it declares.
+    /// </summary>
+    [Test]
+    public void A_Package_With_More_Parts_Than_A_Document_Has_Is_Not_Opened()
+    {
+        var template = Docx.Document("{{#if IsDraft}}", "DRAFT", "{{/if}}").GetBytes()!;
+        byte[] crowded;
+        using (var stream = new MemoryStream())
+        {
+            stream.Write(template);
+            using (var zip = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Update, true))
+            {
+                // empty, unreferenced XML parts: the package would open with them, and its block be found
+                for (var i = 0; i < ConditionalMarkers.MaxParts; i++)
+                {
+                    zip.CreateEntry($"extra/part{i}.xml");
+                }
+            }
+            crowded = stream.ToArray();
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ConditionalMarkers.Any(template), Is.True, "the document");
+            Assert.That(ConditionalMarkers.Any(crowded), Is.False, "the document among a thousand empty parts");
+        });
+    }
+
+    /// <summary>
+    /// A package the SDK cannot read — here one relating an image the zip does not hold, as some editors leave behind —
+    /// holds no block the scan can vouch for, and is uploaded as it is, for Gotenberg to convert.
+    /// </summary>
+    [Test]
+    public async Task A_Package_The_Scan_Cannot_Read_Is_Uploaded_As_Is()
+    {
+        var handler = new StubHandler(_ => Pdf());
+        var service = new WordService(handler.CreateClient());
+        var document = Docx.Document(Docx.Paragraphs("Intro"), header: Docx.Paragraphs("Header")).GetBytes()!;
+        var dangling = RewriteEntry(document, "word/_rels/document.xml.rels", xml => xml.Replace("</Relationships>",
+            "<Relationship Id=\"rIdMissing\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/image\""
+            + " Target=\"media/image1.png\"/></Relationships>"));
+
+        using var _ = await service.Convert(new WordTemplateInput { Template = dangling.ToMemoryFile(ContentTypes.DOCX) }, FileFormat.Pdf);
+
+        Assert.That(handler.Requests.Single().Uploads.Single().Bytes, Is.EqualTo(dangling));
+    }
+
+    private static byte[] RewriteEntry(byte[] package, string entryName, Func<string, string> rewrite)
+    {
+        using var stream = new MemoryStream();
+        stream.Write(package);
+        using (var zip = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Update, true))
+        {
+            var entry = zip.GetEntry(entryName)!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open()))
+            {
+                xml = reader.ReadToEnd();
+            }
+            entry.Delete();
+            using var writer = new StreamWriter(zip.CreateEntry(entryName).Open());
+            writer.Write(rewrite(xml));
+        }
+        return stream.ToArray();
+    }
+
+    // overwrites the uncompressed size an entry declares, in its local header and in the central directory
+    private static byte[] DeclareSize(byte[] package, string entryName, uint size)
+    {
+        var bytes = (byte[])package.Clone();
+        var name = Encoding.UTF8.GetBytes(entryName);
+        for (var i = 0; i + 4 <= bytes.Length; i++)
+        {
+            var (sizeOffset, nameLengthOffset, nameOffset) = BitConverter.ToUInt32(bytes, i) switch
+            {
+                0x04034b50 => (22, 26, 30), // local file header
+                0x02014b50 => (24, 28, 46), // central directory file header
+                _ => (-1, 0, 0)
+            };
+            if (sizeOffset < 0 || i + nameOffset + name.Length > bytes.Length
+                || BitConverter.ToUInt16(bytes, i + nameLengthOffset) != name.Length
+                || !bytes.AsSpan(i + nameOffset, name.Length).SequenceEqual(name))
+            {
+                continue;
+            }
+            BitConverter.TryWriteBytes(bytes.AsSpan(i + sizeOffset, 4), size);
+        }
+        return bytes;
+    }
+
+    /// <summary>
+    /// The scan reads a part through its own stream: a DTD there is refused, as the SDK refuses it, so an entity cannot
+    /// expand into a marker or into anything else.
+    /// </summary>
+    [Test]
+    public void The_Scan_Refuses_A_Dtd()
+    {
+        var template = Docx.Document("{{#if IsDraft}}", "DRAFT", "{{/if}}").GetBytes()!;
+        using var stream = new MemoryStream();
+        stream.Write(template);
+        using (var zip = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Update, true))
+        {
+            var entry = zip.GetEntry("word/document.xml")!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open()))
+            {
+                xml = reader.ReadToEnd();
+            }
+            entry.Delete();
+            // the marker exists only once the entity expands
+            xml = xml.Replace("{{#if IsDraft}}", "&marker;");
+            xml = xml.Insert(xml.IndexOf("<w:document", StringComparison.Ordinal), "<!DOCTYPE w:document [<!ENTITY marker \"{{#if IsDraft}}\">]>");
+            using var writer = new StreamWriter(zip.CreateEntry("word/document.xml").Open());
+            writer.Write(xml);
+        }
+
+        Assert.That(ConditionalMarkers.Any(stream.ToArray()), Is.False);
+    }
+
+    /// <summary>
+    /// The scan streams each part rather than loading it, and reads a paragraph as the creators do: a block opens in a
+    /// header, in a text box — whose paragraphs are read apart from the one anchoring it — and after an empty paragraph.
+    /// </summary>
+    [Test]
+    public void The_Scan_Finds_A_Block_In_A_Header_A_Text_Box_And_After_An_Empty_Paragraph()
+    {
+        var inHeader = Docx.Document([Docx.Paragraph("Body")], header: Docx.Paragraphs("{{#if IsDraft}}", "DRAFT", "{{/if}}"));
+        var inTextBox = Docx.Document([Docx.TextBox("{{#if IsDraft}}", "DRAFT", "{{/if}}")]);
+        var afterEmpty = Docx.Document([new W.Paragraph(), .. Docx.Paragraphs("{{#if IsDraft}}", "DRAFT", "{{/if}}")]);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ConditionalMarkers.Any(inHeader.GetBytes()!), Is.True, "in a header");
+            Assert.That(ConditionalMarkers.Any(inTextBox.GetBytes()!), Is.True, "in a text box");
+            Assert.That(ConditionalMarkers.Any(afterEmpty.GetBytes()!), Is.True, "after an empty paragraph");
+        });
+    }
+
+    [Test]
+    public async Task A_Template_With_Conditional_Blocks_Is_Rendered_By_The_Creator_First()
+    {
+        var rendered = ReadAsset("lorem_ipsum.docx").GetBytes()!;
+        var creator = new StubCreator(rendered);
+        var handler = new StubHandler(_ => Pdf());
+        var service = new WordService(handler.CreateClient(), creator: creator);
+        var input = new WordTemplateInput { Template = Docx.Document("Intro", "{{#if IsDraft}}", "DRAFT", "{{/if}}") };
+
+        using var _ = await service.Convert(input, FileFormat.Pdf);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(creator.Inputs, Is.EqualTo(new[] { input }));
+            Assert.That(handler.Requests.Single().Uploads.Single().Bytes, Is.EqualTo(rendered));
+        });
+    }
+
+    /// <summary>
+    /// A marker counts in a paragraph's visible text only, as the creators read it: one in a deleted revision or a
+    /// field code is not a block.
+    /// </summary>
+    [Test]
+    public async Task Markers_Outside_The_Visible_Text_Need_No_Creator()
+    {
+        var handler = new StubHandler(_ => Pdf());
+        var service = new WordService(handler.CreateClient());
+        var template = Docx.Document([
+            Docx.Paragraph("Intro"),
+            new W.Paragraph(new W.DeletedRun(new W.Run(new W.DeletedText("{{#if IsDraft}}")))),
+            new W.Paragraph(new W.Run(new W.FieldCode(" QUOTE \"{{/if}}\" ")))
+        ]);
+
+        using var _ = await service.Convert(new WordTemplateInput { Template = template }, FileFormat.Pdf);
+
+        Assert.That(handler.Requests.Single().Uploads.Single().Bytes, Is.EqualTo(template.GetBytes()));
+    }
+
+    /// <summary>
+    /// Only a paragraph that opens a block makes a document use blocks, as the creators decide it: a finished document
+    /// that writes about templates converts as it is — marker text among other text, another template language's
+    /// tags on lines of their own, a stray <c>{{/if}}</c>.
+    /// </summary>
+    [TestCase("Intro", "Wrap optional text in {{#if Key}} and {{/if}}.")]
+    [TestCase("A Handlebars sample:", "{{#each items}}", "{{name}}", "{{else}}", "No items.", "{{/each}}")]
+    [TestCase("A block closes with", "{{/if}}")]
+    public async Task A_Document_That_Opens_No_Block_Needs_No_Creator(params string[] paragraphs)
+    {
+        var handler = new StubHandler(_ => Pdf());
+        var service = new WordService(handler.CreateClient());
+        var template = Docx.Document(paragraphs);
+
+        using var _ = await service.Convert(new WordTemplateInput { Template = template }, FileFormat.Pdf);
+
+        Assert.That(handler.Requests.Single().Uploads.Single().Bytes, Is.EqualTo(template.GetBytes()));
     }
 
     [Test]
@@ -223,7 +538,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     }
 
     [Test]
-    public void A_Server_Error_Surfaces_Status_And_Body()
+    public async Task A_Server_Error_Surfaces_Status_And_Body()
     {
         var handler = new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
         {
@@ -231,7 +546,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         });
         var service = new WordService(handler.CreateClient());
 
-        var ex = Assert.ThrowsAsync<HttpRequestException>(() => service.Convert(TemplateInput("template.docx"), FileFormat.Pdf));
+        var ex = await Assert.ThrowsAsync<HttpRequestException>(() => service.Convert(TemplateInput("template.docx"), FileFormat.Pdf));
 
         Assert.Multiple(() =>
         {
@@ -519,7 +834,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     }
 
     [Test]
-    public void AddGotenbergWord_Resolves_Without_The_Optional_Services()
+    public async Task AddGotenbergWord_Resolves_Without_The_Optional_Services()
     {
         var services = new ServiceCollection();
         services.AddGotenbergWord(o => o.BaseUrl = "http://gotenberg.test:3000");
@@ -528,7 +843,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         var toImages = provider.GetRequiredService<IWordToImagesService>();
 
         // resolved with the constructor's defaults: no rasteriser was registered
-        Assert.ThrowsAsync<InvalidOperationException>(() => toImages.ToImages(TemplateInput("template.docx")));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => toImages.ToImages(TemplateInput("template.docx")));
     }
 
     [Test]

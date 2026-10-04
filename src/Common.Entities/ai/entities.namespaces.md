@@ -57,6 +57,19 @@
 
 ---
 
+## Validators
+
+| Namespace | Types |
+|---|---|
+| `Regira.Entities.Validators.Abstractions` | `IEntityValidator`, `IEntityValidator<>`, `EntityValidatorBase<>`, `ISelectiveEntityValidator`, `IEntityValidatorContext`, `IEntityValidatorContext<>`, `EntityWriteOperation` |
+| `Regira.Entities.Validators` | `EntityValidatorContext<>` *(build one to unit-test a validator)*, `EntityValidatorExtensions` *(`ValidateItem()` — for a custom repository; `AnyApplyTo()`)*, `EntityScopeTypes` |
+| `Regira.Entities.Models` | `EntityInputError` |
+| `Regira.Entities.EFcore.Validators` | `EntityValidator<>`, `EntityValidator<,>` *(what `e.Validate(...)` registers)* |
+| `Regira.Entities.DependencyInjection.Validators` | `ServiceCollectionValidatorExtensions` *(`AddValidator<>()` — on `IServiceCollection` and `EntityServiceCollectionOptions`)* |
+| `Regira.Entities.Validation.FluentValidation` | `EntityServiceCollectionOptionsExtensions` *(`UseFluentValidation()`)*, `EntityRuleSets`, `ValidationContextExtensions` *(`GetOriginal()`, `GetOperation()`)*, `FluentEntityValidator` — package `Regira.Entities.Validation.FluentValidation` |
+
+---
+
 ## Primers (EF Core SaveChanges Interceptors)
 
 | Namespace | Types |
@@ -99,11 +112,11 @@
 |---|---|
 | `Regira.Entities.DependencyInjection.Extensions` | `ServiceCollectionExtensions` *(`UseEntities<TContext>()` — on `IServiceCollection`; `GetServices<TContext>()` — on `IEntityServiceCollection<TContext>`, returns the underlying `IServiceCollection`)*, `EntityServiceCollectionExtensions` *(`UseDefaults()` — on `EntityServiceCollectionOptions`)* |
 | `Regira.Licensing.DependencyInjection` | `ServiceCollectionExtensions` *(`UseRegira(configuration)` / `UseRegira(params string?[] licenseKeys)` — on `IServiceCollection`; comes transitively via `Regira.Entities.DependencyInjection`)* |
-| `Regira.Entities.DependencyInjection.ServiceCollections` | `EntityServiceCollection<>` |
+| `Regira.Entities.DependencyInjection.ServiceCollections` | `EntityServiceCollection<>`, `EntityRepositoryRegistry` *(the types `UseRepository()` sets)* |
 | `Regira.Entities.DependencyInjection.ServiceBuilders` | `EntityServiceBuilder<>`, `EntityIntServiceBuilder<>`, `EntitySearchObjectServiceBuilder<>`, `ComplexEntityServiceBuilder<>`, `ComplexEntityIntServiceBuilder<>` |
 | `Regira.Entities.DependencyInjection.ServiceCollections.Models` | `EntityServiceCollectionOptions` |
 | `Regira.Entities.DependencyInjection.ServiceCollections.Abstractions` | `IEntityServiceCollection<>` |
-| `Regira.Entities.DependencyInjection.QueryBuilders` | `ServiceCollectionQueryFilterExtensions` *(`AddFilter<>()`, `AddGlobalFilterQueryBuilder<>()`, `RemoveGlobalQueryFilters()`, `AddDefaultGlobalQueryFilters()` — on `IServiceCollection` and `EntityServiceCollectionOptions`)* |
+| `Regira.Entities.DependencyInjection.QueryBuilders` | `ServiceCollectionQueryFilterExtensions` *(`AddFilter<>()` and `RemoveGlobalQueryFilters()` — on `IServiceCollection`, the `UseEntities<TContext>()` builder included; `AddGlobalFilterQueryBuilder<>()` — on `IServiceCollection` and `EntityServiceCollectionOptions`; `AddDefaultGlobalQueryFilters()` — on `EntityServiceCollectionOptions`)* |
 | `Regira.Entities.DependencyInjection.Preppers` | `ServiceCollectionPrepperExtensions` *(`AddPrepper<>()` — on `IServiceCollection` and `EntityServiceCollectionOptions`)* |
 | `Regira.Entities.DependencyInjection.Processors` | `ServiceCollectionProcessorExtensions` *(`AddProcessor<>()` — on `IServiceCollection`; the per-entity `e.AddProcessor<>()` verb rides the `For<>()` builder)* |
 | `Regira.Entities.DependencyInjection.Mapping` | `ServiceCollectionMappingExtensions` *(`AddMapping<>()`, `AddAfterMapper<>()`, `AfterMap<>()` — on `EntityServiceCollectionOptions`)*, `MappedEntityServiceBuilder<>` |
@@ -142,7 +155,7 @@
 | `Regira.Entities.Attachments.Abstractions` | `IAttachment<>`, `IEntityAttachment<>`, `IHasAttachments<>`, `IAttachmentService<>`, `IAttachmentFileService<>`, `IAttachmentSearchObject<>`, `IEntityAttachmentSearchObject<>`, `IAttachmentUriResolver<>`, `IFileIdentifierGenerator` |
 | `Regira.Entities.Attachments.Models` | `Attachment<>`, `EntityAttachment<>`, `AttachmentSearchObject<>`, `EntityAttachmentSearchObject<>` |
 | `Regira.Entities.Attachments` | `EntityAttachmentUriAfterMapper<>`, `NullAttachmentUriResolver<>` |
-| `Regira.Entities.EFcore.Attachments` | `ITypedAttachmentService`, `TypedAttachmentService<>`, `AttachmentFilteredQueryBuilder<>`, `EntityAttachmentFilteredQueryBuilder<>`, `AttachmentProcessor<>`, `EntityAttachmentProcessor<>`, `AttachmentPrimer`, `EntityAttachmentPrimer`, `DefaultFileIdentifierGenerator<>` |
+| `Regira.Entities.EFcore.Attachments` | `ITypedAttachmentService`, `TypedAttachmentService<>`, `AttachmentFilteredQueryBuilder<>`, `EntityAttachmentFilteredQueryBuilder<>`, `AttachmentProcessor<>`, `EntityAttachmentProcessor<>`, `AttachmentPrimer`, `EntityAttachmentPrimer`, `AttachmentFileReactor<>`, `DefaultFileIdentifierGenerator<>` |
 | `Regira.Entities.DependencyInjection.Attachments` | `EntityAttachmentServiceBuilder<>`, `EntityServiceBuilderExtensions` *(`HasAttachments<>()` — on `EntityServiceBuilder<>`)*, `IEntityAttachmentServiceBuilder<>` |
 | `Regira.Entities.DependencyInjection.Attachments.Abstractions` | `IAttachmentUriResolverRegistrar` |
 | `Regira.Entities.Web.Attachments.Abstractions` | `EntityAttachmentControllerBase<>` |
@@ -253,6 +266,12 @@ Regira.Entities.Processing.Abstractions   → IEntityProcessor<TEntity, TInclude
 ### Creating a prepper
 ```
 Regira.Entities.Preppers.Abstractions   → EntityPrepperBase<TEntity>, IEntityPrepper<TEntity>
+```
+
+### Creating a validator
+```
+Regira.Entities.Validators.Abstractions         → EntityValidatorBase<T>, IEntityValidatorContext<T>, EntityWriteOperation
+Regira.Entities.DependencyInjection.Validators  → AddValidator<T>()  // global: options.AddValidator<T>(); per entity: e.AddValidator<T>() / e.Validate(...) need no using
 ```
 
 ### Marking a field server-owned

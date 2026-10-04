@@ -17,7 +17,7 @@
 - **Required services:** `AddIdentityCore<AppUser>().AddEntityFrameworkStores<TCtx>().AddSignInManager().AddDefaultTokenProviders()`,
   `AddJwtAuthentication(…)` (for `ITokenHelper`), and an `IEmailSender` (recover/confirm email).
   **`IEmailSender` is `Microsoft.AspNetCore.Identity.UI.Services.IEmailSender`** (a Microsoft type, not
-  Regira — package `Microsoft.AspNetCore.Identity.UI`); implement it or use this package's `IdentityMailer`
+  Regira — it ships in the ASP.NET Core shared framework, so there is no package to add); implement it or use this package's `IdentityMailer`
   (`Regira.Security.Authentication.Web.Mail`), which sends through a registered Regira `IMailService` —
   `Regira.Office` → `office.mail.instructions` → *ASP.NET Identity Integration*.
 - **Version floor:** floors `Microsoft.OpenApi` at **2.12.2** and `Microsoft.AspNetCore.OpenApi` at

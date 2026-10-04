@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Regira.Entities.DependencyInjection.Attachments.Abstractions;
+using Regira.Entities.DependencyInjection.ServiceCollections;
 using Regira.Entities.DependencyInjection.Validation;
 using Regira.Entities.Mapping.Abstractions;
 using Regira.Entities.Models;
@@ -153,6 +154,31 @@ public class EntityServiceCollectionOptions(IServiceCollection services)
     public EntityServiceCollectionOptions UseUtc(bool enabled = true)
     {
         Utilities.DateTimeDefaults.UseUtc = enabled;
+        return this;
+    }
+
+    /// <summary>
+    /// Replaces the default <c>EntityRepository</c> with the app's own repository for every <c>For&lt;&gt;()</c>
+    /// registration that names no repository of its own (<c>e.HasRepository&lt;T&gt;()</c> still wins).
+    /// <para>
+    /// Pass each type unbound, e.g. <c>typeof(AppRepository&lt;&gt;), typeof(AppRepository&lt;,&gt;)</c>. A type is
+    /// matched to a registration by its number of type parameters, mirroring the <c>EntityRepository</c> it derives
+    /// from: 1 for <c>For&lt;TEntity&gt;()</c> (int key), 2 for <c>For&lt;TEntity, TKey&gt;()</c>, 3 for
+    /// <c>For&lt;TEntity, TKey, TSearchObject&gt;()</c>, 4 for <c>For&lt;TEntity, TSearchObject, TSortBy, TIncludes&gt;()</c>
+    /// and 5 for <c>For&lt;TEntity, TKey, TSearchObject, TSortBy, TIncludes&gt;()</c>. A registration whose shape has no
+    /// type keeps the default, which startup validation reports.
+    /// </para>
+    /// Applies to the <c>For&lt;&gt;()</c> calls that follow it, across every <c>UseEntities()</c> call on this service collection.
+    /// </summary>
+    /// <param name="repositoryTypes">Open generic repository types, at most one per number of type parameters.</param>
+    /// <returns>The current <see cref="EntityServiceCollectionOptions"/> instance.</returns>
+    public EntityServiceCollectionOptions UseRepository(params Type[] repositoryTypes)
+    {
+        var registry = EntityRepositoryRegistry.For(Services);
+        foreach (var repositoryType in repositoryTypes)
+        {
+            registry.Use(repositoryType);
+        }
         return this;
     }
 

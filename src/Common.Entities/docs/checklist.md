@@ -52,6 +52,7 @@ When implementing a new entity in an application:
 - [ ] Implement query filters
 - [ ] Add Processors
 - [ ] Add Preppers
+- [ ] Add Validators — the rules that refuse a write with a 400, on save and on delete
 - [ ] Add Primers
 - [ ] Configure child properties with Related method — an owned child (order lines, join rows) normally needs **no** own `.For<>()` registration or controller; it rides on the parent's endpoints. Adding one for a dedicated route is fine provided the parent's input DTO leaves that collection `null`
 - [ ] If the child is **sortable**, `SortOrder` must travel on the parent DTO (position drives `SetSortOrder()`), so the collection can't be omitted — guard any per-row field with a `Prepare` hook, and keep the child's FK on its input DTO
@@ -64,6 +65,7 @@ When implementing a new entity in an application:
     - Add `DbSet<Attachment>` + `DbSet<TAttachment>` and map both relationships in DbContext — the owner side explicitly: `HasMany(x => x.Attachments).WithOne().HasForeignKey(x => x.ObjectId)`
     - Register the typed link: `.For<Owner>(e => e.HasAttachments<TContext, Owner, TAttachment>(x => x.Attachments))`
     - Add a controller `: EntityAttachmentControllerBase<TAttachment>` with the owner base `[Route]` only
+    - Owner scoped per user or tenant? Add a global filter on the link entity that reruns the owner's scope, and a validator for the upload ([Attachments → Controllers](attachments.md#controllers))
 - [ ] Add Normalizers
     - Ensure normalizers are set up
     - Decorate entity properties with Normalized attribute
@@ -74,7 +76,7 @@ When implementing a new entity in an application:
 
 1. [Index](../README.md) — Overview of Regira Entities
 1. [Entity Models](models.md) — Creating and structuring entity models
-1. [Services](services.md) — Implementing entity services and repositories
+1. [Services](services.md) — Implementing entity services, repositories and the write pipeline
 1. [Mapping](mapping.md) — Mapping Entities to and from DTOs
 1. [Web Endpoints](web-endpoints.md) — Exposing entity operations as HTTP endpoints
 1. [Normalizing](normalizing.md) — Data normalization techniques

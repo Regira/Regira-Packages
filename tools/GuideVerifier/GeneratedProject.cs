@@ -54,7 +54,7 @@ public static class GeneratedProject
     /// </param>
     /// <param name="aspNetCore">
     /// True when the group references <c>Microsoft.AspNetCore.App</c>, which is what makes the startup
-    /// ambients (<c>services</c>, <c>app</c>, <c>builder</c>) bind. Emitting them elsewhere would fail to
+    /// ambients (<c>services</c>, <c>app</c>, <c>builder</c>, <c>configuration</c>) bind. Emitting them elsewhere would fail to
     /// compile the whole group on the field declarations alone.
     /// </param>
     private static string Emit(Snippet snippet, IReadOnlyList<string> allUsings, bool aspNetCore,
@@ -102,16 +102,19 @@ public static class GeneratedProject
         sb.Append("        private static System.IServiceProvider sp = null!;\n");
         sb.Append("        private static System.IServiceProvider scope = null!;\n");
         sb.Append("        private static string[] args = [];\n");
-        // The startup trio, for the same reason: a guide's registration and pipeline lines are written as
+        // The startup ambients, for the same reason: a guide's registration and pipeline lines are written as
         // they appear inside `Program.cs`, so `services.AddX()` / `app.UseX()` / `builder.Services.AddX()`
         // would otherwise fail on the receiver alone and have to be marked `<!-- no-compile -->` — which
         // exempts the call being documented from any checking at all. `app` is typed `WebApplication` so
-        // both the `IApplicationBuilder` and `IEndpointRouteBuilder` extensions resolve on it.
+        // both the `IApplicationBuilder` and `IEndpointRouteBuilder` extensions resolve on it. `configuration`
+        // is the `IConfiguration` those lines read their settings from (`configuration["Section:Key"]`,
+        // `configuration.GetSection(...)`); a snippet that declares its own still shadows it.
         if (aspNetCore)
         {
             sb.Append("        private static Microsoft.Extensions.DependencyInjection.IServiceCollection services = null!;\n");
             sb.Append("        private static Microsoft.AspNetCore.Builder.WebApplication app = null!;\n");
             sb.Append("        private static Microsoft.AspNetCore.Builder.WebApplicationBuilder builder = null!;\n");
+            sb.Append("        private static Microsoft.Extensions.Configuration.IConfiguration configuration = null!;\n");
         }
         sb.Append("        internal static async System.Threading.Tasks.Task Run()\n");
         sb.Append("        {\n");

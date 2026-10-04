@@ -8,6 +8,7 @@ public interface IEntityAttachment
     string? ObjectType { get; }
 
     string? NewFileName { get; set; }
+    [Obsolete("Ignored: an attachment's content type follows its file name, so a client cannot choose the type its file is served as.")]
     string? NewContentType { get; set; }
     byte[]? NewBytes { get; set; }
     IAttachment? Attachment { get; set; }

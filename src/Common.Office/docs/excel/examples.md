@@ -4,6 +4,7 @@
 
 Use `MiniExcel.ExcelManager<T>` to map rows directly to a POCO without manual column mapping.
 
+<!-- no-compile -->
 ```csharp
 public class Product
 {
@@ -29,6 +30,7 @@ public async Task<IEnumerable<Product>> ImportProducts(byte[] excelBytes)
 
 Build multiple `ExcelSheet` objects and pass them to `Create()`.
 
+<!-- no-compile -->
 ```csharp
 public async Task<IMemoryFile> ExportReport(IEnumerable<Order> orders, IEnumerable<Product> products)
 {
@@ -67,6 +69,7 @@ public async Task<IMemoryFile> ExportReport(IEnumerable<Order> orders, IEnumerab
 
 Use `TransformData` to round decimals or format values during write.
 
+<!-- no-compile -->
 ```csharp
 var excel = new Regira.Office.Excel.EPPlus.ExcelManager(new()
 {
@@ -88,6 +91,7 @@ IMemoryFile file = await excel.Create([sheet]);
 
 Supply a `headers` array to receive only the columns you need.
 
+<!-- no-compile -->
 ```csharp
 IExcelService excel = new Regira.Office.Excel.ClosedXML.ExcelManager();
 
@@ -106,6 +110,7 @@ foreach (var row in sheets.First().Data!.Cast<IDictionary<string, object>>())
 
 Read an existing workbook, modify the data, and produce a new file.
 
+<!-- no-compile -->
 ```csharp
 public async Task<IMemoryFile> ApplyDiscount(byte[] sourceBytes, decimal discountPct)
 {

@@ -9,7 +9,9 @@ using Regira.Entities.EFcore.QueryBuilders;
 using Regira.Entities.QueryBuilders.Abstractions;
 using Regira.Entities.EFcore.Services;
 using Regira.Entities.Models.Abstractions;
+using Regira.Entities.Reactors.Abstractions;
 using Regira.Entities.Services.Abstractions;
+using Regira.Entities.Validators.Abstractions;
 
 using System.Linq.Expressions;
 
@@ -249,6 +251,62 @@ public class ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject,
     public new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> ServerOwned<TProp>(Expression<Func<TEntity, TProp>> selector, Func<TEntity, TProp>? mintOnCreate = null)
     {
         base.ServerOwned(selector, mintOnCreate);
+        return this;
+    }
+
+    // Validators
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.AddValidator{TValidator}" />
+    public new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> AddValidator<TValidator>()
+        where TValidator : class, IEntityValidator<TEntity>
+    {
+        base.AddValidator<TValidator>();
+        return this;
+    }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Validate(Action{IEntityValidatorContext{TEntity}})" />
+    public new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> Validate(Action<IEntityValidatorContext<TEntity>> validate)
+    {
+        base.Validate(validate);
+        return this;
+    }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Validate(Func{IEntityValidatorContext{TEntity},Task})" />
+    public new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> Validate(Func<IEntityValidatorContext<TEntity>, Task> validate)
+    {
+        base.Validate(validate);
+        return this;
+    }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Validate(Func{IEntityValidatorContext{TEntity},TContext,CancellationToken,Task})" />
+    public new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> Validate(Func<IEntityValidatorContext<TEntity>, TContext, CancellationToken, Task> validate)
+    {
+        base.Validate(validate);
+        return this;
+    }
+
+    // Reactors
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.AddReactor{TReactor}" />
+    public new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> AddReactor<TReactor>()
+        where TReactor : class, IEntityReactor<TEntity>
+    {
+        base.AddReactor<TReactor>();
+        return this;
+    }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.React(Func{IEntityChange{TEntity},IServiceProvider,CancellationToken,Task})" />
+    public new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> React(Func<IEntityChange<TEntity>, IServiceProvider, CancellationToken, Task> reactFunc)
+    {
+        base.React(reactFunc);
+        return this;
+    }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.React(Func{IEntityChange{TEntity},bool},Func{IEntityChange{TEntity},IServiceProvider,CancellationToken,Task})" />
+    public new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> React(Func<IEntityChange<TEntity>, bool> canReact,
+        Func<IEntityChange<TEntity>, IServiceProvider, CancellationToken, Task> reactFunc)
+    {
+        base.React(canReact, reactFunc);
+        return this;
+    }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.React{TProp}(Expression{Func{TEntity,TProp}},TProp,Func{IEntityChange{TEntity},IServiceProvider,CancellationToken,Task})" />
+    public new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> React<TProp>(Expression<Func<TEntity, TProp>> property, TProp value,
+        Func<IEntityChange<TEntity>, IServiceProvider, CancellationToken, Task> reactFunc)
+    {
+        base.React(property, value, reactFunc);
         return this;
     }
 

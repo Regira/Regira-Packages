@@ -1,4 +1,5 @@
 using Regira.Entities.QueryBuilders.Abstractions;
+using Regira.Entities.Validators;
 using Regira.Utilities;
 
 namespace Regira.Entities.EFcore.QueryBuilders;
@@ -20,7 +21,7 @@ internal static class GlobalFilterScope
     /// </summary>
     internal static bool AppliesTo(Type filterType, Type entityType)
     {
-        var entityTypes = EntityScopeTypes(entityType);
+        var entityTypes = EntityScopeTypes.Of(entityType);
         var filterTypes = TypeUtility.GetBaseTypes(filterType).Concat([filterType]).Distinct();
         return filterTypes.Any(ft => entityTypes.Any(et => TypeUtility.HasGenericArgument(ft, et)));
     }
@@ -28,12 +29,4 @@ internal static class GlobalFilterScope
     /// <inheritdoc cref="AppliesTo(Type,Type)"/>
     internal static bool AppliesTo(IGlobalFilteredQueryBuilder filter, Type entityType)
         => AppliesTo(filter.GetType(), entityType);
-
-    /// <summary>
-    /// The entity's base types and interfaces, plus the entity type itself. The entity must be included
-    /// explicitly — <see cref="TypeUtility.GetBaseTypes"/> returns only what a type derives from, never the
-    /// type itself — so that a filter scoped to the concrete entity is matched rather than skipped.
-    /// </summary>
-    internal static Type[] EntityScopeTypes(Type entityType)
-        => TypeUtility.GetBaseTypes(entityType).Concat([entityType]).Distinct().ToArray();
 }

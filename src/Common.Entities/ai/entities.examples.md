@@ -386,7 +386,8 @@ public static EntityServiceCollection<AppDbContext> AddSuppliers(this IEntitySer
             : query.Where(x => x.Title!.Contains(so.Title)));
         // Untyped Includes works on simple builders too — only the typed TIncludes overload is complex-only.
         // Eager-loads belong here (not in Filter), so they reach Details. Gate the collection behind the flag
-        // so List/Search stay lean — Details passes EntityIncludes.All, clients opt in via ?includes=All.
+        // so List/Search stay lean — Details passes EntityIncludes.All; a simple List/Search binds no
+        // ?includes=, so the tags load on Details only (a collection needed on every row: no flag).
         // requires: using Microsoft.EntityFrameworkCore;  (Include)
         e.Includes((query, includes) => includes?.HasFlag(EntityIncludes.All) == true
             ? query.Include(x => x.Tags!)
@@ -540,26 +541,15 @@ public class OrderQueryBuilder : IFilteredQueryBuilder<Order, int, OrderSearchOb
     }
 }
 
-// Entities/Orders/OrderManager.cs — EntityWrappingServiceBase with validation + EntityInputException
+// Entities/Orders/OrderManager.cs — EntityWrappingServiceBase: behavior around the call
 // Override Add/Modify (not Save): the controller write path calls Save(), and the base Save()
 // routes to this service's own Add()/Modify() based on IEntity.IsNew() — so wrapping logic belongs there.
+// Refusing a write is not wrapping logic: the order-lines rule is a validator in AddOrders() below.
 public interface IOrderService : IEntityService<Order, OrderSearchObject, EntitySortBy, OrderIncludes>;
 public class OrderManager(IEntityRepository<Order, OrderSearchObject, EntitySortBy, OrderIncludes> service)
     : EntityWrappingServiceBase<Order, OrderSearchObject, EntitySortBy, OrderIncludes>(service), IOrderService
 {
-    public override Task Add(Order item, CancellationToken token = default) { RequireLines(item.OrderLines?.Any() == true); if (string.IsNullOrWhiteSpace(item.Code)) item.Code = $"ORD-{Guid.NewGuid():N}"[..16]; return base.Add(item, token); } // fits Code's [MaxLength(16)]; a longer value truncates and collides on the unique index
-    // Same three-way on the collection as Prepare() below: null = not sent (a status-only PATCH), leave the
-    // stored lines alone; [] = an explicit delete-all, which would strand the order without lines. Validating
-    // null the same as [] rejects every partial update that doesn't resend the full child list.
-    public override Task<Order?> Modify(Order item, CancellationToken token = default) { RequireLines(item.OrderLines is not { Count: 0 }); return base.Modify(item, token); }
-    private static void RequireLines(bool hasLines)
-    {
-        if (!hasLines)
-            throw new EntityInputException<Order>("Saving order failed")
-            {
-                InputErrors = { ["OrderLines"] = "Order must contain at least one order line." }
-            };
-    }
+    public override Task Add(Order item, CancellationToken token = default) { if (string.IsNullOrWhiteSpace(item.Code)) item.Code = $"ORD-{Guid.NewGuid():N}"[..16]; return base.Add(item, token); } // fits Code's [MaxLength(16)]; a longer value truncates and collides on the unique index
 }
 
 // Entities/Orders/OrderServiceConfiguration.cs
@@ -579,8 +569,8 @@ public static EntityServiceCollection<WebshopDbContext> AddOrders(this IEntitySe
             //   null = not sent, stored lines untouched   |   [] = delete-all   |   populated = the new set.
             // Only null may skip the recompute, and even then Total must come from the PERSISTED lines:
             // returning early leaves Total at the DTO's default (0) on every status-only PATCH.
-            // The [] branch is unreachable for Order specifically — OrderManager.Modify rejects an empty
-            // collection above — but keep the three-way: an aggregate that allows delete-all needs it.
+            // For Order the [] case is refused by the validator below, which runs after every prepper — but
+            // keep the three-way: an aggregate that allows delete-all needs it.
             // A rule spanning a scalar and the lines (a supplier certified for every line's product) is no
             // different: a PATCH of the scalar alone arrives with OrderLines == null, so validate it against the
             // persisted lines here too — inside the populated branch only, it is bypassable.
@@ -604,6 +594,21 @@ public static EntityServiceCollection<WebshopDbContext> AddOrders(this IEntitySe
                 line.SubTotal = line.Quantity * line.UnitPrice;
             }
             order.Total = order.OrderLines.Sum(line => line.SubTotal);   // [] sums to 0 — the delete-all case
+        });
+        // Validators run after every prepper, so the rule sees the synced lines. Same three-way as Prepare() above:
+        // null = not sent (a status-only PATCH), leave the stored lines alone; [] = an explicit delete-all, which
+        // would strand the order without lines. Treating null like [] rejects every partial update that doesn't
+        // resend the full child list. (EntityWriteOperation: Regira.Entities.Validators.Abstractions)
+        e.Validate(ctx =>
+        {
+            var stranded = ctx.Operation switch
+            {
+                EntityWriteOperation.Add => ctx.Item.OrderLines is not { Count: > 0 },
+                EntityWriteOperation.Modify => ctx.Item.OrderLines is { Count: 0 },
+                _ => false
+            };
+            if (stranded)
+                ctx.AddError(nameof(Order.OrderLines), "Order must contain at least one order line.");
         });
         e.AddNormalizer<OrderNormalizer>();
         e.AddTransient<IOrderService, OrderManager>();  // enables typed IOrderService injection
@@ -968,11 +973,12 @@ public class ProductQueryBuilder(IQKeywordHelper qHelper) : FilteredQueryBuilder
 
 <!-- no-compile -->
 ```csharp
-// Separate class — applies to all entities implementing the interface:
-public class FilterByTenantQueryBuilder(ITenantContext tenantContext) : GlobalFilteredQueryBuilderBase<ITenantEntity, int>
+// Separate class — applies to all entities implementing the interface. IHasTenantId and ITenantContext are the
+// app's own (entities.blueprints.md → Multi-tenancy):
+public class FilterByTenantQueryBuilder(ITenantContext tenantContext) : GlobalFilteredQueryBuilderBase<IHasTenantId, int>
 {
-    public override IQueryable<ITenantEntity> Build(IQueryable<ITenantEntity> query, ISearchObject<int>? so)
-        => query.Where(x => x.TenantId == tenantContext.CurrentTenantId);
+    public override IQueryable<IHasTenantId> Build(IQueryable<IHasTenantId> query, ISearchObject<int>? so)
+        => query.Where(x => x.TenantId == tenantContext.TenantId);
 }
 // Registration: options.AddGlobalFilterQueryBuilder<FilterByTenantQueryBuilder>();
 // using Regira.Entities.DependencyInjection.QueryBuilders;   ← AddGlobalFilterQueryBuilder lives here
@@ -998,7 +1004,7 @@ public class ProductNormalizer(INormalizer normalizer) : EntityNormalizerBase<Pr
     }
 }
 // Per-entity: e.AddNormalizer<ProductNormalizer>();
-// Global:     options.AddNormalizer<IHasPhone, PhoneNormalizer>();
+// Global:     options.AddNormalizer<IHasPhone, PhoneNormalizer>();   (IHasPhone: an interface of your own)
 ```
 
 ### Paging defaults
@@ -1030,6 +1036,12 @@ services.UseEntities<WebshopDbContext>(options =>
 
 <!-- no-compile -->
 ```csharp
+// for the DI section below
+using Regira.Entities.DependencyInjection.Attachments;       // HasAttachments
+using Regira.Entities.DependencyInjection.Extensions;        // UseEntities, UseDefaults
+using Regira.Entities.Web.Attachments.DependencyInjection;   // UseAttachmentUris
+using Regira.IO.Storage.FileSystem;                          // BinaryFileService, FileSystemOptions
+
 // Attachment entity — inherit the `EntityAttachment` base (maps to int, int, int, Attachment) and set
 // ObjectType in the constructor.
 public class ProductAttachment : EntityAttachment
@@ -1086,6 +1098,36 @@ services
 // Note: UseAttachmentUris() lives in Regira.Entities.Web.Attachments.DependencyInjection, and must be set
 // on this same options instance. A null Uri is never an error — entities.instructions § Attachments lists
 // all four causes and which one logs a warning.
+```
+
+**Owner scoped per user (or tenant)?** The owner's global filter never reaches the link: `ProductAttachment` has no
+owner column and no navigation back, so without this filter every attachment route — list, details, both downloads,
+the link's `PUT` and `DELETE` — serves every owner's files to any signed-in user. Rerun the owner's scope on the link
+through the owner's `DbSet`, with the owner filter's own predicate and exemptions:
+
+<!-- no-compile -->
+```csharp
+using Regira.Entities.Models.Abstractions;               // ISearchObject<>
+using Regira.Entities.QueryBuilders.Abstractions;        // GlobalFilteredQueryBuilderBase<>
+using Regira.Security.Authentication.Jwt.Extensions;     // FindUserId(), FindRoles()
+
+public class ProductAttachmentScopeFilter(AppDbContext db, IHttpContextAccessor httpContextAccessor)
+    : GlobalFilteredQueryBuilderBase<ProductAttachment>
+{
+    public override IQueryable<ProductAttachment> Build(IQueryable<ProductAttachment> query, ISearchObject<int>? so)
+    {
+        var user = httpContextAccessor.HttpContext?.User;
+        var userId = user?.FindUserId();
+        if (userId == null) return query.Where(_ => false);      // no identity sees nothing, as on the owner
+        if (user!.FindRoles().Contains("Administrator", StringComparer.OrdinalIgnoreCase))
+            return query;                                        // only where the owner's filter lets them see every row
+        return query.Where(a => db.Products.Any(p => p.Id == a.ObjectId && p.OwnerId == userId));
+    }
+}
+// Registration, app-wide beside the owner's filter:
+//   options.AddGlobalFilterQueryBuilder<ProductAttachmentScopeFilter>();   // using Regira.Entities.DependencyInjection.QueryBuilders;
+// Another owner's file then answers 404 on every route. The upload is a create no filter sees: it needs its own
+// validator on the link (entities.instructions → Security & Authorization).
 ```
 
 > **File-service factory.** `WithAttachments` takes an `IFileService` *factory* (not a registered

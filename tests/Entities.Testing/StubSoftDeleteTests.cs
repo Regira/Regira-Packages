@@ -212,7 +212,7 @@ public class StubSoftDeleteTests
         db.Suppliers.Attach(stub);
         stub.Title = "Renamed";
 
-        Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => Save(db, synchronous));
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => Save(db, synchronous));
     }
 
     [TestCase(true)]
@@ -228,7 +228,7 @@ public class StubSoftDeleteTests
         db.Suppliers.Attach(stub);
         stub.IsArchived = true;
 
-        Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => Save(db, synchronous));
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => Save(db, synchronous));
     }
 
     [Test]

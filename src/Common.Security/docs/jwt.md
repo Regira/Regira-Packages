@@ -14,7 +14,7 @@ Self-issued JWT bearer tokens and their refresh tokens, from `Regira.Security.Au
 | `Algorithm` | `string?` | `null` | Signing algorithm as a JWA id; HS512 when unset (applied as `SecurityAlgorithms.HmacSha512Signature`, the XML-dsig URI spelling) |
 | `ValidateSecretLength` | `bool` | `true` | Whether registration rejects a `Secret` too short for `Algorithm` |
 | `AuthenticationScheme` | `string` | `"Bearer"` | Name of the JwtBearer scheme |
-| `Authority` | `string?` | `null` | Token issuer |
+| `Authority` | `string?` | `null` | Token issuer, written into each token and checked on the way in. Optional |
 | `Audience` | `string?` | `null` | Single audience |
 | `Audiences` | `ICollection<string>?` | `null` | Multiple audiences |
 | `LifeSpan` | `int` | `7200` | Token lifetime in seconds |
@@ -49,6 +49,9 @@ services.AddJwtAuthentication(options =>
     options.LifeSpan  = 3600;
 });
 ```
+
+`Authority` is optional for these self-issued tokens: it is written into each token as its issuer and checked when a
+token comes in. Left unset, tokens carry no issuer and none is checked.
 
 ### ClaimsPrincipal extensions
 

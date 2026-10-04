@@ -4,6 +4,7 @@
 
 Create a QR code from a URL and push it to any `IFileService` backend.
 
+<!-- no-compile -->
 ```csharp
 public async Task<string> CreateQrCode(IQRCodeService qr, IFileService storage, string content, string folder)
 {
@@ -22,6 +23,7 @@ public async Task<string> CreateQrCode(IQRCodeService qr, IFileService storage, 
 
 ## Example 2: Generate a Code128 barcode for a shipping label
 
+<!-- no-compile -->
 ```csharp
 public async Task<IImageFile> CreateShippingBarcode(IBarcodeService barcodes, string trackingNumber)
 {
@@ -40,11 +42,12 @@ public async Task<IImageFile> CreateShippingBarcode(IBarcodeService barcodes, st
 
 ## Example 3: Scan / read a barcode from an uploaded image
 
+<!-- no-compile -->
 ```csharp
 [HttpPost("scan")]
 public async Task<IActionResult> Scan([FromForm] IFormFile file, IBarcodeService barcodes)
 {
-    using var img = file.ToNamedFile().ToImageFile();
+    using var img = file.ToNamedFile().ToBinaryFile().ToImageFile();
 
     var result = await barcodes.Read(img);
 
@@ -57,6 +60,7 @@ public async Task<IActionResult> Scan([FromForm] IFormFile file, IBarcodeService
 
 Force scanning for a specific format to speed up detection:
 
+<!-- no-compile -->
 ```csharp
 var result = await barcodes.Read(img, BarcodeFormat.Ean13);
 ```
@@ -67,6 +71,7 @@ var result = await barcodes.Read(img, BarcodeFormat.Ean13);
 
 `BarcodeImageCreator` lets you embed a barcode directly into an `ImageBuilder` composition (see [Drawing docs](../../../Common.Media/README.md)).
 
+<!-- no-compile -->
 ```csharp
 // Register
 services.AddSingleton<IBarcodeWriter>(

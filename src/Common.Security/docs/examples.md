@@ -2,6 +2,7 @@
 
 ## Example 1: Hash and verify a password
 
+<!-- no-compile -->
 ```csharp
 // BCrypt is the recommended hasher for passwords
 IHasher hasher = new Regira.Security.Hashing.BCryptNet.Hasher();
@@ -22,6 +23,7 @@ if (!valid)
 
 Use `AesEncrypter` for values that must be recoverable (API keys, tokens, PII).
 
+<!-- no-compile -->
 ```csharp
 var enc = new AesEncrypter(new CryptoOptions
 {
@@ -42,7 +44,6 @@ string plain  = enc.Decrypt(record.Value);
 ## Example 3: JWT authentication setup
 
 ```csharp
-// Program.cs
 services.AddJwtAuthentication(options => configuration.GetSection("Authentication:Jwt").Bind(options));
 
 app.UseAuthentication();
@@ -53,6 +54,7 @@ app.UseAuthorization();
 
 Issue a token after verifying credentials:
 
+<!-- no-compile -->
 ```csharp
 public class AuthController(ITokenHelper tokens, UserManager<AppUser> users) : ControllerBase
 {
@@ -97,8 +99,9 @@ app.UseAuthorization();
 
 Protect an endpoint:
 
+<!-- no-compile -->
 ```csharp
-[Authorize(AuthenticationSchemes = ApiKeyDefaults.AuthenticationScheme)]
+[Authorize(AuthenticationSchemes = "ApiKey")]   // ApiKeyDefaults.AuthenticationScheme's default — an attribute needs a constant
 [HttpGet("data")]
 public IActionResult GetData() => Ok(data);
 ```
@@ -125,6 +128,7 @@ authenticates against the selector, which forwards.
 
 ## Example 8: Cookie sessions
 
+<!-- no-compile -->
 ```csharp
 services.AddCookieAuthentication(o =>
 {
@@ -173,6 +177,7 @@ and `oid` — not `sub` — is the stable user id.
 
 ## Example 10: Refresh tokens
 
+<!-- no-compile -->
 ```csharp
 services.AddJwtAuthentication(o => configuration.GetSection("Authentication:Jwt").Bind(o))
         .AddRefreshTokenStore<MyEfRefreshTokenStore>()   // the in-memory default is development-only
@@ -191,6 +196,7 @@ Inherit the base controller to get `auth`, `auth/validate`, `auth/refresh`, `aut
 `auth/personal-data` for free. `[ApiController]` and `[Route("auth")]` are declared on the base and inherited — do
 **not** repeat them on the subclass, or the route template is overridden:
 
+<!-- no-compile -->
 ```csharp
 public class AuthController(
     ITokenHelper tokens,
@@ -206,6 +212,7 @@ public class AuthController(
 `UserControllerBase<TUser>` takes the `UserManager` alone — no serializer; token payloads use `System.Text.Json`
 internally. As above, the base declares `[ApiController]` and `[Route("users")]`:
 
+<!-- no-compile -->
 ```csharp
 public class UsersController(UserManager<AppUser> users)
     : UserControllerBase<AppUser>(users);
@@ -216,6 +223,7 @@ public class UsersController(UserManager<AppUser> users)
 
 Register the mailer so Identity confirmation emails are sent:
 
+<!-- no-compile -->
 ```csharp
 services.AddSingleton<IEmailSender>(provider =>
     new IdentityMailer(

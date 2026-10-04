@@ -231,6 +231,7 @@ Regira.Entities.Web                       ← Web API entry point — EntityCont
       └─ Regira.Entities                  abstractions / interfaces
 
 Regira.Entities.Mapping.Mapster           ← add separately — DTO mapping (NOT pulled transitively)
+Regira.Entities.Validation.FluentValidation ← optional — AbstractValidator rules as entity validators
 ```
 
 | Host | Install |
@@ -405,7 +406,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite(builder.Configuration.GetConnectionString("Default")));
 
 // add entity services (repositories) and configurations
-builder.Services.AddEntityServices();
+builder.Services.AddEntityServices(builder.Configuration);
 
 // ...
 // build app and configure as in BasicApi
@@ -431,7 +432,7 @@ builder.Services.AddEntityServices();
 > re-creates the mismatch).
 >
 > **The second reason to call it: the entity exceptions.** It also registers `EntityExceptionFilter`, which
-> maps `EntityInputException` → **400** (its `InputErrors` as ModelState) and `EntityConstraintException` →
+> maps `EntityInputException` → **400** (its `Errors` as a `ValidationProblemDetails`) and `EntityConstraintException` →
 > **409** for *every* MVC action. Without it that mapping reaches only the generated write actions, so a
 > hand-written domain action on an entity controller — `POST {id}/approve` and its kind — answers a rule
 > breach with a 500 and a stack trace. `MapEntityExceptions()` registers the filter on its own for a host
@@ -534,7 +535,7 @@ Spell a multi-word resource in **kebab-case plural**: `InterventionType` → `[R
 
 ### Local development vs production (HTTPS + a dev SPA)
 
-`app.UseHttpsRedirection()` 308-redirects every HTTP request to HTTPS. That is correct in production, but it
+`app.UseHttpsRedirection()` 307-redirects every HTTP request to HTTPS. That is correct in production, but it
 breaks a browser SPA dev server (Vite, etc.) that proxies API calls over plain HTTP — the preflight/redirect
 chain fails and requests never reach the API. Two safe options:
 
@@ -589,7 +590,7 @@ Create `Extensions/ServiceCollectionExtensions.cs`. The complete wiring pattern 
 
 <!-- no-compile -->
 ```csharp
-// Program.cs — register license once before any module setup
+// Program.cs — paid keys only: register the license once, before any module setup. Omit on the free tier
 services.UseRegira(configuration);
 
 // Extensions/ServiceCollectionExtensions.cs
@@ -601,7 +602,7 @@ public static IServiceCollection AddEntityServices(this IServiceCollection servi
         .UseEntities<AppDbContext>(options =>
         {
             // ↑ options is EntityServiceCollectionOptions — global settings only
-            // License is resolved from the UseRegira() registration — no license key here
+            // a paid license is resolved from the UseRegira() registration — no license key here
             options.UseDefaults();
             options.UseMapsterMapping();
         })

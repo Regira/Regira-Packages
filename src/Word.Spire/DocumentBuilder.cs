@@ -3,7 +3,6 @@ using Regira.IO.Extensions;
 using Regira.Office.MimeTypes;
 using Regira.Office.Word.Models;
 using Spire.Doc;
-using RegiraFileFormat = Regira.Office.Models.FileFormat;
 
 namespace Regira.Office.Word.Spire;
 
@@ -108,6 +107,6 @@ public class DocumentBuilder(WordService manager)
         // ConversionOptions
         _conversionOptions ??= new ConversionOptions();
         var stream = manager.ConvertDocument(doc, _conversionOptions);
-        return stream.ToMemoryFile(_conversionOptions.OutputFormat == RegiraFileFormat.Doc ? ContentTypes.DOC : ContentTypes.DOCX);
+        return stream.ToMemoryFile(WordContentTypes.Of(_conversionOptions.OutputFormat));
     }
 }

@@ -6,6 +6,8 @@ using Regira.Entities.Extensions;
 using Regira.Entities.Models;
 using Regira.Entities.Models.Abstractions;
 using Regira.Entities.Services.Abstractions;
+using Regira.Entities.Validators;
+using Regira.Entities.Validators.Abstractions;
 
 namespace Regira.Entities.EFcore.Services;
 
@@ -13,21 +15,48 @@ public class EntityWriteService<TContext, TEntity>(
     TContext dbContext,
     IEntityReadService<TEntity, int> readService,
     IEnumerable<IEntityPrepper> preppers,
+    IEnumerable<IEntityValidator> validators,
     ILoggerFactory? loggerFactory = null)
-    : EntityWriteService<TContext, TEntity, int>(dbContext, readService, preppers, loggerFactory)
+    : EntityWriteService<TContext, TEntity, int>(dbContext, readService, preppers, validators, loggerFactory)
     where TContext : DbContext
-    where TEntity : class, IEntity<int>;
+    where TEntity : class, IEntity<int>
+{
+    /// <summary>
+    /// A write service without validators: nothing registered with <c>AddValidator</c> or <c>Validate</c> runs for it.
+    /// A subclass passes <c>IEnumerable&lt;IEntityValidator&gt;</c> to the other constructor to run them.
+    /// </summary>
+    public EntityWriteService(TContext dbContext, IEntityReadService<TEntity, int> readService, IEnumerable<IEntityPrepper> preppers,
+        ILoggerFactory? loggerFactory = null)
+        : this(dbContext, readService, preppers, [], loggerFactory)
+    {
+    }
+}
 
 
+/// <summary>
+/// Writes <typeparamref name="TEntity"/> through its <typeparamref name="TContext"/>: runs the preppers and the
+/// validators, then tracks the change for <see cref="SaveChanges"/>.
+/// </summary>
 public class EntityWriteService<TContext, TEntity, TKey>(
     TContext dbContext,
     IEntityReadService<TEntity, TKey> readService,
     IEnumerable<IEntityPrepper> preppers,
+    IEnumerable<IEntityValidator> validators,
     ILoggerFactory? loggerFactory = null)
     : IEntityWriteService<TEntity, TKey>
     where TContext : DbContext
     where TEntity : class, IEntity<TKey>
 {
+    /// <summary>
+    /// A write service without validators: nothing registered with <c>AddValidator</c> or <c>Validate</c> runs for it.
+    /// A subclass passes <c>IEnumerable&lt;IEntityValidator&gt;</c> to the other constructor to run them.
+    /// </summary>
+    public EntityWriteService(TContext dbContext, IEntityReadService<TEntity, TKey> readService, IEnumerable<IEntityPrepper> preppers,
+        ILoggerFactory? loggerFactory = null)
+        : this(dbContext, readService, preppers, [], loggerFactory)
+    {
+    }
+
     protected ILogger? Logger = loggerFactory?.CreateLogger<EntityWriteService<TContext, TEntity, TKey>>();
 
     protected TContext DbContext = dbContext;
@@ -35,7 +64,11 @@ public class EntityWriteService<TContext, TEntity, TKey>(
 
     public virtual async Task Add(TEntity item, CancellationToken token = default)
     {
-        await PrepareItem(item, null, token);
+        using (var marked = CanBeRefused(item) ? new ChangeTrackerLog(DbContext) : null)
+        {
+            await PrepareItem(item, null, token);
+            await ValidateMarked(marked, item, null, EntityWriteOperation.Add, token);
+        }
 
         Logger?.LogDebug($"Adding new {typeof(TEntity).FullName}");
 
@@ -65,8 +98,22 @@ public class EntityWriteService<TContext, TEntity, TKey>(
         // The concurrency tokens the client sent, read before any prepper runs: a prepper may overwrite them
         // ([ServerOwned] restores from the stored row), and the check has to compare the client's value.
         var clientTokens = DbContext.CaptureClientTokens(item);
+        // a required stamp the client left out refuses the update before a prepper marks anything
+        if (original != null)
+        {
+            ConcurrencyTokenExtensions.RequireSuppliedStamps(item, clientTokens);
+        }
 
-        await PrepareItem(item, original, token);
+        // no stored row, no validation (below): nothing refuses the write, so there is no log to keep
+        using (var marked = original != null && CanBeRefused(item) ? new ChangeTrackerLog(DbContext) : null)
+        {
+            await PrepareItem(item, original, token);
+            // no stored row, no update to check: Modify answers null (not found)
+            if (original != null)
+            {
+                await ValidateMarked(marked, item, original, EntityWriteOperation.Modify, token);
+            }
+        }
 
         if (original != null)
         {
@@ -75,9 +122,44 @@ public class EntityWriteService<TContext, TEntity, TKey>(
 
         return original;
     }
+
+    /// <summary>
+    /// Runs <see cref="ValidateItem"/> after the preppers, before the entity is tracked. A <c>Related()</c> sync has already
+    /// marked child rows by then, so a refused write takes back every row <paramref name="marked"/> saw tracked or change
+    /// state, and stops tracking <paramref name="item"/> itself should the caller have tracked it. No log (<c>null</c>):
+    /// nothing can refuse the write.
+    /// </summary>
+    private async Task ValidateMarked(ChangeTrackerLog? marked, TEntity item, TEntity? original, EntityWriteOperation operation, CancellationToken token)
+    {
+        try
+        {
+            await ValidateItem(item, original, operation, token);
+        }
+        catch when (marked != null)
+        {
+            marked.Undo(item);
+            throw;
+        }
+    }
+    /// <summary>
+    /// Whether a validator runs for <paramref name="item"/>, so that the write can be refused. Only then do <see cref="Add"/>
+    /// and <see cref="Modify"/> record what the write marks, for a refusal to take back.
+    /// </summary>
+    private bool CanBeRefused(TEntity item) => validators.AnyApplyTo(item.GetType());
     public virtual Task Save(TEntity item, CancellationToken token = default)
         => item.IsNew() ? Add(item, token) : Modify(item, token);
-    public virtual Task Remove(TEntity item, CancellationToken token = default)
+    public virtual async Task Remove(TEntity item, CancellationToken token = default)
+    {
+        // a delete rule judges the row as stored: the caller may pass no more than its key, as Remove(new Order { Id = id }) does
+        var stored = CanBeRefused(item) ? await readService.Details(item.Id, ArchivedFilter.Included, token) : null;
+        await ValidateItem(stored ?? item, null, EntityWriteOperation.Remove, token);
+        await RemoveItem(item, token);
+    }
+    /// <summary>
+    /// Marks <paramref name="item"/> for removal, once <see cref="Remove"/> validated it. Override this rather than
+    /// <see cref="Remove"/> to mark more rows alongside it, so nothing is marked for a delete the validators reject.
+    /// </summary>
+    protected virtual Task RemoveItem(TEntity item, CancellationToken token = default)
     {
         // an IArchivable becomes a soft delete at the save, which leaves its dependents as they are: EF must not cascade to them now
         RemoveGuarded(() => DbContext.RemoveWithoutCascade(item, () => DbSet.Remove(item)), item.Id);
@@ -114,6 +196,30 @@ public class EntityWriteService<TContext, TEntity, TKey>(
         {
             Logger?.LogDebug($"Preparing {typeof(TEntity).FullName} #{item.Id} using {prepper.GetType().FullName}");
             await prepper.Prepare(item, original, token);
+        }
+    }
+
+    /// <summary>
+    /// Runs the validators in scope of <paramref name="item"/> and throws an <see cref="EntityInputException{T}"/> of
+    /// <typeparamref name="TEntity"/> holding every error they added. <see cref="Add"/> and <see cref="Modify"/> call it
+    /// after the preppers — <see cref="Modify"/> only when the stored row was found — and <see cref="Remove"/> before
+    /// anything is marked, with the stored row. Not an override point: validators are the one way to refuse a write, and
+    /// whether one runs for the item decides whether <see cref="Add"/> and <see cref="Modify"/> record what a refusal takes back.<br />
+    /// A validator's queries on this write's context track nothing, <c>Find</c> / <c>FindAsync</c> included: a tracked copy
+    /// of the row being written would keep the write from tracking its own. Only an explicit <c>AsTracking()</c> opts back in.
+    /// </summary>
+    public async Task ValidateItem(TEntity item, TEntity? original, EntityWriteOperation operation, CancellationToken token = default)
+    {
+        var tracker = DbContext.ChangeTracker;
+        var tracking = tracker.QueryTrackingBehavior;
+        tracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
+        try
+        {
+            await validators.ValidateItem(item, original, operation, token);
+        }
+        finally
+        {
+            tracker.QueryTrackingBehavior = tracking;
         }
     }
 

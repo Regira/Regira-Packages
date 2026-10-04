@@ -51,7 +51,7 @@ public class SpireTests() : WordTestsBase(new WordService(), "Spire")
     public override Task Nested_Documents_Do_Not_Wear_Out_The_Service() => base.Nested_Documents_Do_Not_Wear_Out_The_Service();
 
     [Test]
-    public override void A_Template_That_Includes_Itself_Fails() => base.A_Template_That_Includes_Itself_Fails();
+    public override Task A_Template_That_Includes_Itself_Fails() => base.A_Template_That_Includes_Itself_Fails();
 
     [Test]
     public override Task A_Missing_Collection_Table_Leaves_The_Others() => base.A_Missing_Collection_Table_Leaves_The_Others();
@@ -61,6 +61,61 @@ public class SpireTests() : WordTestsBase(new WordService(), "Spire")
 
     [Test]
     public override Task A_Parameter_Key_Is_Matched_Literally() => base.A_Parameter_Key_Is_Matched_Literally();
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public override Task A_Conditional_Block_Keeps_The_Branch_That_Holds(bool isPaid) => base.A_Conditional_Block_Keeps_The_Branch_That_Holds(isPaid);
+
+    [Test]
+    public override Task A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value() => base.A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value();
+
+    [Test]
+    public override Task A_Parameter_Value_Holding_A_Marker_Is_Written_As_Text() => base.A_Parameter_Value_Holding_A_Marker_Is_Written_As_Text();
+    [Test]
+    public override Task Conditional_Blocks_Nest() => base.Conditional_Blocks_Nest();
+
+    [Test]
+    public override Task A_Conditional_Block_Drops_A_Table_Or_A_Cells_Content() => base.A_Conditional_Block_Drops_A_Table_Or_A_Cells_Content();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Header_Is_Resolved() => base.A_Conditional_Block_In_A_Header_Is_Resolved();
+
+    [Test]
+    public override Task A_Malformed_Conditional_Block_Fails() => base.A_Malformed_Conditional_Block_Fails();
+
+    [Test]
+    public override Task Markers_In_Deleted_Revisions_And_Field_Codes_Do_Not_Count() => base.Markers_In_Deleted_Revisions_And_Field_Codes_Do_Not_Count();
+
+    [Test]
+    public override Task A_Marker_Edited_Under_Track_Changes_Reads_As_Edited() => base.A_Marker_Edited_Under_Track_Changes_Reads_As_Edited();
+
+    [Test]
+    public override Task Marker_Text_In_A_Document_Without_Blocks_Stays_As_It_Is() => base.Marker_Text_In_A_Document_Without_Blocks_Stays_As_It_Is();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Text_Box_Or_Content_Control_Leaves_A_Paragraph() => base.A_Conditional_Block_In_A_Text_Box_Or_Content_Control_Leaves_A_Paragraph();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Grouped_Text_Box_Is_Resolved() => base.A_Conditional_Block_In_A_Grouped_Text_Box_Is_Resolved();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Grouped_Text_Box_In_A_Header_Is_Resolved() => base.A_Conditional_Block_In_A_Grouped_Text_Box_In_A_Header_Is_Resolved();
+
+    [Test]
+    public override Task A_Conditional_Block_In_A_Grouped_Text_Box_Reads_Its_Markers_In_Any_Case() => base.A_Conditional_Block_In_A_Grouped_Text_Box_Reads_Its_Markers_In_Any_Case();
+
+    [Test]
+    public override Task A_Deletion_Inside_The_Braces_Stays_Deleted() => base.A_Deletion_Inside_The_Braces_Stays_Deleted();
+
+    [Test]
+    public override Task A_Marker_Paragraph_Ending_A_Section_Leaves_Only_The_Break() => base.A_Marker_Paragraph_Ending_A_Section_Leaves_Only_The_Break();
+
+    [Test]
+    public override Task A_Block_In_A_Footnote_Stays_As_Text() => base.A_Block_In_A_Footnote_Stays_As_Text();
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public override Task A_Dropped_Branch_Inserts_No_Nested_Document(bool hasAppendix) => base.A_Dropped_Branch_Inserts_No_Nested_Document(hasAppendix);
 
     [TestCase(HeaderFooterType.Even, true)]
     [TestCase(HeaderFooterType.Even, false)]
@@ -75,6 +130,37 @@ public class SpireTests() : WordTestsBase(new WordService(), "Spire")
     [TestCase(FileFormat.Odt, "converted.odt")]
     [TestCase(FileFormat.EPub, "converted.epub")]
     public override Task Convert_To(FileFormat format, string outputName) => base.Convert_To(format, outputName);
+
+    [TestCase(FileFormat.Pdf, "application/pdf")]
+    [TestCase(FileFormat.Html, "text/html")]
+    [TestCase(FileFormat.Rtf, "text/rtf")]
+    [TestCase(FileFormat.Odt, "application/vnd.oasis.opendocument.text")]
+    [TestCase(FileFormat.EPub, "application/epub+zip")]
+    [TestCase(FileFormat.Doc, "application/msword")]
+    public override Task Convert_Tags_The_Actual_Output_Format(FileFormat format, string contentType)
+        => base.Convert_Tags_The_Actual_Output_Format(format, contentType);
+
+    /// <summary>
+    /// FreeSpire.Doc's free edition writes the first three pages of a longer document to PDF, followed by a notice
+    /// page in place of the rest. Rendering pages is not capped. Pins the vendor limit the guides state: an upgrade
+    /// that moves it fails here.
+    /// </summary>
+    [Test]
+    public async Task Free_Edition_Pdf_Stops_After_Three_Pages_While_Images_Cover_Every_Page()
+    {
+        using var pdf = await Service.Convert(TemplateInput("multipage.docx"), FileFormat.Pdf);
+        var pages = PageTexts(pdf.GetBytes()!);
+        var images = (await Service.ToImages(TemplateInput("multipage.docx"))).ToList();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(pages, Has.Length.EqualTo(4));
+            Assert.That(pages[2], Does.Contain("Page 3"));
+            Assert.That(pages[3], Does.Contain("you can only get the first 3 page"));
+            Assert.That(images, Has.Count.EqualTo(5));
+        });
+        images.ForEach(image => image.Dispose());
+    }
 
     [Test]
     public override Task From_A3_To_Pdf() => base.From_A3_To_Pdf();

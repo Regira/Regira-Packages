@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
+using Regira.Entities.EFcore.Attachments;
 using Regira.Entities.EFcore.Normalizing;
 using Regira.Entities.EFcore.Primers;
 using Regira.Entities.EFcore.Primers.Abstractions;
@@ -115,12 +116,28 @@ internal sealed class InterceptorWiringValidator : IEntityRegistrationValidator
                 }
                 if (hasReactors && !interceptors.Any(i => i is EntityReactorInterceptor))
                 {
+                    var attachmentFiles = context.Services.Any(d => IsAttachmentFileReactor(d.ImplementationType ?? d.ImplementationInstance?.GetType()))
+                        ? " Among them is the AttachmentFileReactor WithAttachments registers: without it, an attachment's deleted file is removed during the save, before the database takes it, and a file new bytes replaced once the save succeeds, before a transaction around it commits."
+                        : string.Empty;
                     yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
-                        $"IEntityReactor services are registered but {inspectType.Name} has no reactor interceptor — reactors will not run after its saves are committed. " +
+                        $"IEntityReactor services are registered but {inspectType.Name} has no reactor interceptor — reactors will not run after its saves are committed.{attachmentFiles} " +
                         $"Fix: services.UseEntities<{contextType.Name}>(e => e.UseDefaults()) — or add DbContextWiring.Reactors to e.WireDbContext(...) for à-la-carte wiring");
                 }
             }
         }
+    }
+
+    // an AttachmentFileReactor<,>, its non-generic alias or a class derived from either
+    private static bool IsAttachmentFileReactor(Type? type)
+    {
+        for (; type != null; type = type.BaseType)
+        {
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(AttachmentFileReactor<,>))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     /// <summary>
