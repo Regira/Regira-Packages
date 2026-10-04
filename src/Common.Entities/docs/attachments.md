@@ -197,7 +197,11 @@ upload route always creates a link, whatever `Id` its form sends.
 
 **Scope an upload yourself.** An upload is a create: it takes the owner's id from the route and runs no query, so a
 global filter (tenant, owner) never sees it, and any authenticated caller can attach a file to a row it cannot read.
-`PUT` and `DELETE` load the link through the service first, and are filtered. Add a validator on the link entity that
+**Scope the link, too.** The owner's global filter never runs on the link entity, which has no owner column and no
+navigation back to the owner. So on an owner scoped per user or tenant, every other attachment route — the list,
+details, both downloads, the link's `PUT` and `DELETE` — reads across owners until a global filter on the link entity
+reruns the owner's scope through the owner's `DbSet` (`Owners.Any(o => o.Id == link.ObjectId && …)`). With it those
+routes answer 404 for another owner's file; the upload still runs no query. Add a validator on the link entity that
 re-runs the owner's scope on `Add` and refuses when it resolves nothing — a 400, where the read path answers 404 — or
 override the controller's `Add` to answer 404. Read scope is not write scope either: a read scope widened on purpose,
 a manager seeing their reports' rows, grants writes and deletes on those rows too, so put a narrower ownership check in

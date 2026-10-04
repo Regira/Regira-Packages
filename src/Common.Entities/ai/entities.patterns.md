@@ -837,25 +837,29 @@ public static class OrderServiceConfiguration
 
 ## Role-gated write authorization filter
 
-<!-- how_to: key=write-authorization-filter aliases=write-authorization,role-gated-writes,action-filter,readonly-role,delete,admin,admins,administrator,role,roles,authorize,permission -->
+<!-- how_to: key=write-authorization-filter aliases=write-authorization,role-gated-writes,action-filter,authorization-filter,readonly-role,delete,admin,admins,administrator,role,roles,authorize,permission -->
 
 *Everyone signed in may read; only some roles may write.* `[Authorize(Roles = …)]` cannot express it — it
 gates a controller's reads too — so the tier goes in one global filter. It **fails closed**: a write to a
 controller it has no entry for is refused and logged, so a controller added later, or one named differently
-than the list expects, shows up as a 403 the first time anyone writes through it, never as an open door:
+than the list expects, shows up as a 403 the first time anyone writes through it, never as an open door.
+
+It is an **authorization filter**, so it runs before model binding: an unauthorized write gets its 401 or 403
+whatever its body holds, where an action filter runs after `[ApiController]`'s model validation and answers a
+malformed body with a 400 listing the model's fields:
 
 <!-- no-compile -->
 ```csharp
 using Microsoft.AspNetCore.Authorization;              // IAllowAnonymous
 using Microsoft.AspNetCore.Http;                       // HttpMethods
-using Microsoft.AspNetCore.Mvc;                        // ForbidResult
+using Microsoft.AspNetCore.Mvc;                        // ChallengeResult, ForbidResult
 using Microsoft.AspNetCore.Mvc.Controllers;            // ControllerActionDescriptor
-using Microsoft.AspNetCore.Mvc.Filters;                // IAsyncActionFilter, ActionExecutingContext
+using Microsoft.AspNetCore.Mvc.Filters;                // IAsyncAuthorizationFilter, AuthorizationFilterContext
 using Microsoft.Extensions.Logging;
 using Regira.Security.Authentication.Jwt.Extensions;   // FindRoles() — package Regira.Security.Authentication
 
 // builder.Services.AddControllers(o => o.Filters.Add<WriteAuthorizationFilter>());
-public class WriteAuthorizationFilter(ILogger<WriteAuthorizationFilter> logger) : IAsyncActionFilter
+public class WriteAuthorizationFilter(ILogger<WriteAuthorizationFilter> logger) : IAsyncAuthorizationFilter
 {
     // Keyed on the controller TYPE: a renamed or mistyped controller fails to compile instead of going ungated.
     // Every controller that takes writes has an entry — an attachment controller is a controller of its own.
@@ -870,7 +874,7 @@ public class WriteAuthorizationFilter(ILogger<WriteAuthorizationFilter> logger) 
         [typeof(UsersController)] = ["Administrator"],     // POST users creates an account
     };
 
-    public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
+    public Task OnAuthorizationAsync(AuthorizationFilterContext context)
     {
         var action = context.ActionDescriptor as ControllerActionDescriptor;
         var route = action?.AttributeRouteInfo?.Template ?? "";
@@ -881,28 +885,34 @@ public class WriteAuthorizationFilter(ILogger<WriteAuthorizationFilter> logger) 
             || route.EndsWith("/search", StringComparison.OrdinalIgnoreCase)
             || route.EndsWith("/list", StringComparison.OrdinalIgnoreCase);
 
-        if (!isRead && !context.ActionDescriptor.EndpointMetadata.Any(m => m is IAllowAnonymous))
-        {
-            if (action is null || !WriteRoles.TryGetValue(action.ControllerTypeInfo.AsType(), out var roles))
-            {
-                // fail closed — and say which controller is missing, or the 403 reads like a role problem
-                logger.LogWarning("WriteAuthorizationFilter has no entry for {Controller}; its writes are refused. Add it to WriteRoles.",
-                    action?.ControllerTypeInfo.Name ?? context.ActionDescriptor.DisplayName);
-                context.Result = new ForbidResult();
-                return;
-            }
+        // A write is public only when its ACTION says so: sign-in, password recovery, confirm-email, a
+        // self-registration override. [AllowAnonymous] on a controller opens its reads, never its writes.
+        var isPublicWrite = action?.MethodInfo.GetCustomAttributes(inherit: true).OfType<IAllowAnonymous>().Any() == true;
 
-            // FindRoles() reads all three role-claim spellings. User.IsInRole reads only the principal's
-            // RoleClaimType, the quiet 403 when an inbound claim map rewrites `role` (security.instructions →
-            // Claim normalization).
-            if (roles.Length > 0 && !roles.Intersect(context.HttpContext.User.FindRoles(), StringComparer.OrdinalIgnoreCase).Any())
-            {
-                context.Result = new ForbidResult();
-                return;
-            }
+        if (isRead || isPublicWrite)
+        {
+            return Task.CompletedTask;
         }
 
-        await next();
+        if (action is null || !WriteRoles.TryGetValue(action.ControllerTypeInfo.AsType(), out var roles))
+        {
+            // fail closed — and say which controller is missing, or the 403 reads like a role problem
+            logger.LogWarning("WriteAuthorizationFilter has no entry for {Controller}; its writes are refused. Add it to WriteRoles.",
+                action?.ControllerTypeInfo.Name ?? context.ActionDescriptor.DisplayName);
+            context.Result = new ForbidResult();
+        }
+        else if (context.HttpContext.User.Identity?.IsAuthenticated != true)
+        {
+            context.Result = new ChallengeResult();      // 401: a controller open for anonymous reads gets here
+        }
+        // FindRoles() reads all three role-claim spellings. User.IsInRole reads only the principal's
+        // RoleClaimType, the quiet 403 when an inbound claim map rewrites `role` (security.instructions →
+        // Claim normalization).
+        else if (roles.Length > 0 && !roles.Intersect(context.HttpContext.User.FindRoles(), StringComparer.OrdinalIgnoreCase).Any())
+        {
+            context.Result = new ForbidResult();
+        }
+        return Task.CompletedTask;
     }
 }
 ```
@@ -913,16 +923,23 @@ Hence the two route exclusions above.
 
 ⚠️ **Every writing controller needs an entry — the account controllers included.** `auth/validate` and
 `auth/refresh` are guarded `POST`s every identity must reach: give `AccountController` an empty entry, or the
-filter refuses ordinary users their own session. `[AllowAnonymous]` actions (sign-in, password reset) pass
-without one.
+filter refuses ordinary users their own session. Actions that carry `[AllowAnonymous]` themselves (sign-in,
+password recovery and reset, `users/confirm-email`) pass without one.
+
+⚠️ **A catalogue open for anonymous browsing keeps its writes gated.** The obvious way to open its reads is
+`[AllowAnonymous]` on the controller, which marks every action, its writes included. The filter therefore
+honours `[AllowAnonymous]` only on the action itself: a write to that controller still needs its entry, an
+anonymous caller gets a 401 and a signed-in one without the role a 403. Never widen the exemption to
+`EndpointMetadata`, which carries the controller's attribute too.
 
 ⚠️ **Attachment controllers do not share the entity controller's entry.** `ProductAttachmentController` is
 its own controller, so it needs its own entry for file upload (`POST {objectId}/files`), file replace
 (`PUT {objectId}/files/{id}`), the link's update (`PUT {objectId}/attachments/{id}`) and its delete
 (`DELETE attachments/{id}`). Without one those writes are refused and logged, not left open.
 
-**Check it** with a signed-in user outside the roles: a write to a gated controller answers 403, a
-`POST …/search` answers 200, and no warning names a controller you meant to list.
+**Check it** with a signed-in user outside the roles: a write to a gated controller answers 403, also with a
+malformed body, a `POST …/search` answers 200, and no warning names a controller you meant to list. On a
+controller open for anonymous reads, the same write without a token answers 401.
 
 ## Owned children that are both sortable and individually togglable
 
@@ -977,6 +994,8 @@ e.Prepare(async (order, dbContext) =>
 - On **update** the decrement would compound — diff against the original quantities (prepper-with-original, or a primer branching on `EntityState.Modified`) and apply only the delta.
 
 ## Server-owned / immutable fields on update
+
+<!-- how_to: key=server-owned-fields aliases=server-owned,serverowned,readonly-fields,mint,code -->
 
 ⚠️ `TInputDto` deliberately omits server-owned fields (`OwnerId`-style FKs, generated codes, computed
 totals) — so on PUT/PATCH they map onto the entity as `null`/default and are **written back that way**. This

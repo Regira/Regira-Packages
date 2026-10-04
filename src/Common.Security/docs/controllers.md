@@ -95,7 +95,7 @@ that. See *Refresh Tokens* above.
 | `POST users` | | `{ username, password, confirmEmailUrl? }` | `200` | `400` identity errors |
 | `POST users/confirm-email` | ✅ | `{ token, userName, password? }` | `200` | `400` malformed token or identity errors |
 
-`username` is used as both the user name and the email address. When `confirmEmailUrl` is supplied, a confirmation email carrying a Base64 `token` is sent; `confirm-email` decodes it and returns `400` on a malformed token. Creating a user that already exists is a no-op `200`. The optional `password` on the confirm-email input is not used by the base implementation — it is available to overrides.
+`username` is used as both the user name and the email address. When `confirmEmailUrl` is supplied, a confirmation email carrying a Base64 `token` is sent; `confirm-email` decodes it and returns `400` on a malformed token. Creating a user that already exists is a no-op `200`. A self-registration override that assigns a role or tenant must check that the user did not exist before, or the role lands on whatever account the caller names. The optional `password` on the confirm-email input is not used by the base implementation — it is available to overrides.
 
 ### OpenAPI document transformers (`Security.Authentication.Web`)
 

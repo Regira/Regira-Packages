@@ -1099,6 +1099,36 @@ services
 // all four causes and which one logs a warning.
 ```
 
+**Owner scoped per user (or tenant)?** The owner's global filter never reaches the link: `ProductAttachment` has no
+owner column and no navigation back, so without this filter every attachment route — list, details, both downloads,
+the link's `PUT` and `DELETE` — serves every owner's files to any signed-in user. Rerun the owner's scope on the link
+through the owner's `DbSet`, with the owner filter's own predicate and exemptions:
+
+<!-- no-compile -->
+```csharp
+using Regira.Entities.Models.Abstractions;               // ISearchObject<>
+using Regira.Entities.QueryBuilders.Abstractions;        // GlobalFilteredQueryBuilderBase<>
+using Regira.Security.Authentication.Jwt.Extensions;     // FindUserId(), FindRoles()
+
+public class ProductAttachmentScopeFilter(AppDbContext db, IHttpContextAccessor httpContextAccessor)
+    : GlobalFilteredQueryBuilderBase<ProductAttachment>
+{
+    public override IQueryable<ProductAttachment> Build(IQueryable<ProductAttachment> query, ISearchObject<int>? so)
+    {
+        var user = httpContextAccessor.HttpContext?.User;
+        var userId = user?.FindUserId();
+        if (userId == null) return query.Where(_ => false);      // no identity sees nothing, as on the owner
+        if (user!.FindRoles().Contains("Administrator", StringComparer.OrdinalIgnoreCase))
+            return query;                                        // only where the owner's filter lets them see every row
+        return query.Where(a => db.Products.Any(p => p.Id == a.ObjectId && p.OwnerId == userId));
+    }
+}
+// Registration, app-wide beside the owner's filter:
+//   options.AddGlobalFilterQueryBuilder<ProductAttachmentScopeFilter>();   // using Regira.Entities.DependencyInjection.QueryBuilders;
+// Another owner's file then answers 404 on every route. The upload is a create no filter sees: it needs its own
+// validator on the link (entities.instructions → Security & Authorization).
+```
+
 > **File-service factory.** `WithAttachments` takes an `IFileService` *factory* (not a registered
 > `IFileService`), so your app stays free to register its own store(s) for other features without conflict.
 > Build one inline — `WithAttachments(_ => new BinaryFileService(...))` — or reuse an app-registered one —

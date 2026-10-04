@@ -953,11 +953,43 @@ in an app with roles every user can create accounts: gate it like any other writ
 per request, to mail the confirmation link — register one, or the call fails at runtime rather than at startup.
 For **self-registration**, override it:
 
-<!-- no-compile -->
 ```csharp
-[AllowAnonymous]
-public override Task<IActionResult> Create(UserInput model, [FromServices] IEmailSender mailer) => base.Create(model, mailer);
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.UI.Services;          // IEmailSender
+using Microsoft.AspNetCore.Mvc;
+using Regira.Security.Authentication.Web.Controllers;
+using Regira.Security.Authentication.Web.Models;          // UserInput
+
+public class UsersController : UserControllerBase<AppUser>
+{
+    // An explicit constructor with a field of its own: a primary-constructor parameter used in the body AND passed
+    // to the base is captured twice (warning CS9107), and the base keeps its copy private.
+    private readonly UserManager<AppUser> _userManager;
+
+    public UsersController(UserManager<AppUser> userManager) : base(userManager) => _userManager = userManager;
+
+    [AllowAnonymous]
+    public override async Task<IActionResult> Create(UserInput model, [FromServices] IEmailSender mailer)
+    {
+        // the base answers 200 for an existing user too: assign roles only to an account this call created
+        var existed = await _userManager.FindByNameAsync(model.Username) != null;
+        var result = await base.Create(model, mailer);
+        if (!existed && result is OkResult)
+        {
+            var user = await _userManager.FindByNameAsync(model.Username);
+            await _userManager.AddToRoleAsync(user!, "Customer");
+        }
+        return result;
+    }
+}
+
+public class AppUser : IdentityUser;   // stands for your app's own Identity user — don't declare a second one
 ```
+
+⚠️ **The base answers 200 for an existing user too, so check the account is new before you assign anything to it.**
+"On 200, add the role" adds it to whatever account the caller names — an administrator's included. The 200 itself
+stays: it does not tell a caller whether an account exists.
 
 Open sign-up means anyone can create an account: rate-limit it, and keep any role/tenant assignment server-side rather than reading it from the payload.
 
