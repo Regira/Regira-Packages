@@ -130,6 +130,9 @@ public class EntityConstraintException(string message, Exception? innerException
 
 ### Concurrency Exceptions
 
+Concurrency checks are opt-in: they apply only to an entity that implements `IHasConcurrencyToken` or declares
+a token of its own, which an app adds when several users edit the same rows or a stale write must not win.
+
 **EntityConcurrencyException**: thrown by the EFcore write services when `SaveChanges()` fails with EF Core's
 `DbUpdateConcurrencyException` — an `UPDATE`/`DELETE` that matched no row, because the row no longer holds the
 concurrency token the client sent, or another writer removed it. The EF exception stays on `InnerException`, with

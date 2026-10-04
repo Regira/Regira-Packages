@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Regira.Security.Authentication.Jwt.Abstraction;
 using Regira.Security.Authentication.Jwt.Extensions;
 using Regira.Security.Authentication.Web.Constants;
@@ -128,7 +129,7 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
                 return null;
             }
 
-            return (await claimsFactory.CreateAsync(user)).Claims;
+            return TokenClaims((await claimsFactory.CreateAsync(user)).Claims);
         });
 
         if (pair == null)
@@ -185,7 +186,7 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
     /// </summary>
     protected async Task<AuthenticateResponseDto> CreateSuccessResponse(IEnumerable<Claim> claims, string? audience, string userId)
     {
-        var claimList = claims as IReadOnlyCollection<Claim> ?? claims.ToArray();
+        var claimList = TokenClaims(claims).ToArray();
 
         var refreshTokenService = RefreshTokenService;
         if (refreshTokenService != null)
@@ -215,6 +216,18 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
         => new()
         {
             IsAuthenticated = true,
-            Token = tokenHelper.Create(claims, audience)
+            Token = tokenHelper.Create(TokenClaims(claims), audience)
         };
+
+    /// <summary>
+    /// The claims a token may carry: the principal's, less Identity's security stamp. A JWT is signed, not encrypted, so
+    /// whoever holds one can read it — and the stamp is the secret Identity's email and phone token providers derive
+    /// their one-time codes from. Nothing validates it on a bearer request either, so leaving it out costs nothing.
+    /// </summary>
+    protected IEnumerable<Claim> TokenClaims(IEnumerable<Claim> claims)
+    {
+        var stampClaimType = HttpContext?.RequestServices.GetService<IOptions<IdentityOptions>>()?.Value.ClaimsIdentity.SecurityStampClaimType
+            ?? new ClaimsIdentityOptions().SecurityStampClaimType;
+        return claims.Where(claim => claim.Type != stampClaimType);
+    }
 }

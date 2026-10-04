@@ -386,7 +386,8 @@ public static EntityServiceCollection<AppDbContext> AddSuppliers(this IEntitySer
             : query.Where(x => x.Title!.Contains(so.Title)));
         // Untyped Includes works on simple builders too — only the typed TIncludes overload is complex-only.
         // Eager-loads belong here (not in Filter), so they reach Details. Gate the collection behind the flag
-        // so List/Search stay lean — Details passes EntityIncludes.All, clients opt in via ?includes=All.
+        // so List/Search stay lean — Details passes EntityIncludes.All; a simple List/Search binds no
+        // ?includes=, so the tags load on Details only (a collection needed on every row: no flag).
         // requires: using Microsoft.EntityFrameworkCore;  (Include)
         e.Includes((query, includes) => includes?.HasFlag(EntityIncludes.All) == true
             ? query.Include(x => x.Tags!)

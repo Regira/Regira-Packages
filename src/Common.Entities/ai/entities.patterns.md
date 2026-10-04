@@ -837,11 +837,12 @@ public static class OrderServiceConfiguration
 
 ## Role-gated write authorization filter
 
-<!-- how_to: key=write-authorization-filter aliases=write-authorization,role-gated-writes,action-filter,readonly-role -->
+<!-- how_to: key=write-authorization-filter aliases=write-authorization,role-gated-writes,action-filter,readonly-role,delete,admin,admins,administrator,role,roles,authorize,permission -->
 
 *Everyone signed in may read; only some roles may write.* `[Authorize(Roles = …)]` cannot express it — it
-gates a controller's reads too — so the tier goes in one global filter, declared once so a new controller
-cannot silently miss it:
+gates a controller's reads too — so the tier goes in one global filter. It **fails closed**: a write to a
+controller it has no entry for is refused and logged, so a controller added later, or one named differently
+than the list expects, shows up as a 403 the first time anyone writes through it, never as an open door:
 
 <!-- no-compile -->
 ```csharp
@@ -850,23 +851,29 @@ using Microsoft.AspNetCore.Http;                       // HttpMethods
 using Microsoft.AspNetCore.Mvc;                        // ForbidResult
 using Microsoft.AspNetCore.Mvc.Controllers;            // ControllerActionDescriptor
 using Microsoft.AspNetCore.Mvc.Filters;                // IAsyncActionFilter, ActionExecutingContext
+using Microsoft.Extensions.Logging;
 using Regira.Security.Authentication.Jwt.Extensions;   // FindRoles() — package Regira.Security.Authentication
 
 // builder.Services.AddControllers(o => o.Filters.Add<WriteAuthorizationFilter>());
-public class WriteAuthorizationFilter : IAsyncActionFilter
+public class WriteAuthorizationFilter(ILogger<WriteAuthorizationFilter> logger) : IAsyncActionFilter
 {
-    // The route value — your controller's class name minus the suffix, so ProductsController is "Products".
-    // Attachment controllers are separate controllers and need their own entry.
-    private static readonly Dictionary<string, string[]> WriteRoles = new(StringComparer.OrdinalIgnoreCase)
+    // Keyed on the controller TYPE: a renamed or mistyped controller fails to compile instead of going ungated.
+    // Every controller that takes writes has an entry — an attachment controller is a controller of its own.
+    // An empty array lets any signed-in user write: the account controllers' auth/validate and auth/refresh are
+    // guarded POSTs every user must reach, whatever the role.
+    private static readonly Dictionary<Type, string[]> WriteRoles = new()
     {
-        ["Products"] = ["Administrator", "Editor"],
-        ["ProductAttachments"] = ["Administrator", "Editor"],
+        [typeof(ProductController)] = ["Administrator", "Editor"],
+        [typeof(ProductAttachmentController)] = ["Administrator", "Editor"],
+        [typeof(AccountController)] = [],
+        [typeof(PasswordController)] = [],
+        [typeof(UsersController)] = ["Administrator"],     // POST users creates an account
     };
 
     public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
-        var controller = context.RouteData.Values["controller"]?.ToString() ?? "";
-        var route = (context.ActionDescriptor as ControllerActionDescriptor)?.AttributeRouteInfo?.Template ?? "";
+        var action = context.ActionDescriptor as ControllerActionDescriptor;
+        var route = action?.AttributeRouteInfo?.Template ?? "";
 
         // Reads: every GET, plus the two POST query overloads. Everything else writes — including the
         // attachment controller's upload/replace and any custom action, which is the safe default.
@@ -874,18 +881,25 @@ public class WriteAuthorizationFilter : IAsyncActionFilter
             || route.EndsWith("/search", StringComparison.OrdinalIgnoreCase)
             || route.EndsWith("/list", StringComparison.OrdinalIgnoreCase);
 
-        // FindRoles() reads all three role-claim spellings.
-        // User.IsInRole reads only the principal's RoleClaimType, which is the quiet 403 when an inbound claim
-        // map rewrites `role` to the WS-2008 URI (security.instructions → Claim normalization).
-        var userRoles = context.HttpContext.User.FindRoles();
-
-        if (!isRead
-            && !context.ActionDescriptor.EndpointMetadata.Any(m => m is IAllowAnonymous)
-            && WriteRoles.TryGetValue(controller, out var roles)
-            && !roles.Intersect(userRoles, StringComparer.OrdinalIgnoreCase).Any())
+        if (!isRead && !context.ActionDescriptor.EndpointMetadata.Any(m => m is IAllowAnonymous))
         {
-            context.Result = new ForbidResult();
-            return;
+            if (action is null || !WriteRoles.TryGetValue(action.ControllerTypeInfo.AsType(), out var roles))
+            {
+                // fail closed — and say which controller is missing, or the 403 reads like a role problem
+                logger.LogWarning("WriteAuthorizationFilter has no entry for {Controller}; its writes are refused. Add it to WriteRoles.",
+                    action?.ControllerTypeInfo.Name ?? context.ActionDescriptor.DisplayName);
+                context.Result = new ForbidResult();
+                return;
+            }
+
+            // FindRoles() reads all three role-claim spellings. User.IsInRole reads only the principal's
+            // RoleClaimType, the quiet 403 when an inbound claim map rewrites `role` (security.instructions →
+            // Claim normalization).
+            if (roles.Length > 0 && !roles.Intersect(context.HttpContext.User.FindRoles(), StringComparer.OrdinalIgnoreCase).Any())
+            {
+                context.Result = new ForbidResult();
+                return;
+            }
         }
 
         await next();
@@ -897,15 +911,18 @@ public class WriteAuthorizationFilter : IAsyncActionFilter
 the array-of-search-objects **read** overloads, so a bare method test 403s the reader's own list screen.
 Hence the two route exclusions above.
 
-⚠️ **An allow-list keyed on the controller, not a deny-list.** Only the controllers you name are gated;
-everything else keeps its own `[Authorize]`. That is what keeps the account controllers out of it —
-`auth/validate` and `auth/refresh` are guarded `POST`s that every identity must reach whatever its role, and
-a filter that reached them would 403 ordinary users out of their own session.
+⚠️ **Every writing controller needs an entry — the account controllers included.** `auth/validate` and
+`auth/refresh` are guarded `POST`s every identity must reach: give `AccountController` an empty entry, or the
+filter refuses ordinary users their own session. `[AllowAnonymous]` actions (sign-in, password reset) pass
+without one.
 
 ⚠️ **Attachment controllers do not share the entity controller's entry.** `ProductAttachmentController` is
-its own controller with its own route value, so an entry for `Products` alone leaves file upload
-(`POST {objectId}/files`), file replace (`PUT {objectId}/files/{id}`), the link's update
-(`PUT {objectId}/attachments/{id}`) and its delete (`DELETE attachments/{id}`) open to any signed-in user.
+its own controller, so it needs its own entry for file upload (`POST {objectId}/files`), file replace
+(`PUT {objectId}/files/{id}`), the link's update (`PUT {objectId}/attachments/{id}`) and its delete
+(`DELETE attachments/{id}`). Without one those writes are refused and logged, not left open.
+
+**Check it** with a signed-in user outside the roles: a write to a gated controller answers 403, a
+`POST …/search` answers 200, and no warning names a controller you meant to list.
 
 ## Owned children that are both sortable and individually togglable
 
@@ -1022,9 +1039,9 @@ public class ShoppingListOwnerPrimer(IHttpContextAccessor httpContextAccessor) :
     public override Task PrepareAsync(ShoppingList entity, EntityEntry entry, CancellationToken token = default)
     {
         if (entry.State == EntityState.Modified)                                  // update — restore the stored owner
-            entity.OwnerId = (int?)entry.OriginalValues[nameof(entity.OwnerId)];
-        else if (entry.State == EntityState.Added)                                 // create — stamp from the claim, never the body
-            entity.OwnerId = httpContextAccessor.HttpContext?.User.FindUserId();
+            entity.OwnerId = (string?)entry.OriginalValues[nameof(entity.OwnerId)];
+        else if (entry.State == EntityState.Added && httpContextAccessor.HttpContext is { } http)
+            entity.OwnerId = http.User.FindUserId();                               // create — stamp from the claim, never the body; a seeder (no request) keeps its owner
         return Task.CompletedTask;
     }
 }
@@ -1049,6 +1066,12 @@ restored like any client — §Role-gated transitions covers that case.
 Two users open the same row and both save. Without a concurrency token the second save silently overwrites the
 first — last write wins, 200 OK. With one, the write built on the stale read answers **409 Conflict** and the
 first user's change survives.
+
+**It is off by default, and an app stays without it** unless the user asks for it or the app is an advanced one:
+several users editing the same rows, or authorization and approval rules where a stale write must not win. Every
+entity that implements it needs its token on both DTOs and a client that sends it back, and a 409 the UI handles —
+cost a simple app does not need. `UseDefaults()` wires the token convention and its primer either way; they act only
+on an entity that implements `IHasConcurrencyToken` or declares a token of its own.
 
 The write path compares every **version stamp** — a concurrency token the server moves on each write — with the
 value the **client sent** — the one it read — never with the row the update reloads. The token is an ordinary DTO field: `GET` returns it,

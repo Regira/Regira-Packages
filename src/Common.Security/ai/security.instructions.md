@@ -851,7 +851,7 @@ Users in the same DB, no roles — the happy path (details in the sections below
 1. `AppUser : IdentityUser`; make the app `DbContext : IdentityDbContext<AppUser>` (users in the same DB).
 2. `services.AddIdentityCore<AppUser>().AddEntityFrameworkStores<AppDbContext>().AddSignInManager().AddDefaultTokenProviders();`
 3. `services.AddJwtAuthentication(o => configuration.GetSection(AuthenticationSections.Jwt).Bind(o));` — set `Authentication:Jwt:Secret` (**≥ 64 bytes for the HS512 default**, or startup throws — counted as ASCII, so a non-ASCII character is one byte, not the two or three UTF-8 would give it) and **`Authentication:Jwt:Audience` = the SPA's `clientApp`**. `Authentication:Jwt:Authority` is optional for these self-issued tokens: it is written into each token as its issuer and checked on the way in, and left unset, tokens carry no issuer and none is checked. Leave `Algorithm` unset (or `"HS512"`). Add `.AddRefreshTokens()` if the SPA needs to survive access-token expiry, and `.AddSchemeSelector()` last if more than one scheme is registered.
-4. Register an `IEmailSender` — the interface is **`Microsoft.AspNetCore.Identity.UI.Services.IEmailSender`** (package `Microsoft.AspNetCore.Identity.UI`, not a Regira type). Use Regira's `IdentityMailer`, or a dev logger that prints the link. No `ISerializer` needed.
+4. Register an `IEmailSender` — the interface is **`Microsoft.AspNetCore.Identity.UI.Services.IEmailSender`** (ASP.NET Core shared framework, no package to add; not a Regira type). Use Regira's `IdentityMailer`, which needs a registered Regira `IMailService` and an `IdentityMailerOptions` (`Regira.Office` → `office.mail.instructions` → *ASP.NET Identity Integration*), or a dev logger that prints the link. No `ISerializer` needed.
 5. Subclass the three base controllers with forwarding ctors (below).
 6. `app.UseAuthentication()` **before** `app.UseAuthorization()`; `MapControllers().RequireAuthorization()` — the bases carry no `[Authorize]`.
 7. Seed the first user via `UserManager<AppUser>`.
@@ -862,7 +862,7 @@ Users in the same DB, no roles — the happy path (details in the sections below
 
 <!-- how_to: key=roles-end-to-end aliases=roles,hasrole,role-claims,admin-role -->
 
-The wiring recipe above emits **no role claims** — `AddIdentityCore` alone registers the role-less claims
+The JWT wiring recipe (*Add JWT authentication — wiring recipe*) emits **no role claims** — `AddIdentityCore` alone registers the role-less claims
 factory. To carry an Identity role into the token and through every gate:
 
 1. **Store + emit.** Chain `.AddRoles<IdentityRole>()` (before `AddEntityFrameworkStores`, so the role store
@@ -886,7 +886,10 @@ factory. To carry an Identity role into the token and through every gate:
    `userManager.AddToRoleAsync(user, "Manager")`.
 2. **Token.** Nothing else to do: `AccountControllerBase` mints from the factory's claims, and the outbound
    map renames only `sub`/`name`/`email` — the roles land in the payload under `"role"` (one string, or an
-   array for a multi-role user).
+   array for a multi-role user). It leaves out Identity's security stamp (`AspNet.Identity.SecurityStamp`): a
+   JWT is readable by whoever holds it, and the stamp is the secret the email and phone token providers derive
+   their one-time codes from. A subclass that mints its own claims goes through `CreateSuccessResponse` or
+   `TokenClaims(claims)`, which drop it too.
 3. **Server-side gates.** `[Authorize(Roles = "Manager")]` and `User.IsInRole(...)` now work on the local JWT
    scheme. A handler that must also admit API-key callers (`ClaimTypes.Role`) or external bearer tokens
    (`roles`) reads roles with `principal.FindRoles()`, which probes all three spellings.
@@ -946,7 +949,7 @@ one that most needs rate-limiting, since the refresh token it accepts is itself 
 
 ⚠️ **`POST users` (create user) requires a signed-in caller — any signed-in caller.** It carries no role check, so
 in an app with roles every user can create accounts: gate it like any other write (a role filter, or
-`[Authorize(Roles = …)]` on an override). It resolves `IEmailSender` (`Microsoft.AspNetCore.Identity.UI.Services`)
+`[Authorize(Roles = …)]` on an override). It resolves `IEmailSender` (`Microsoft.AspNetCore.Identity.UI.Services`, in the shared framework)
 per request, to mail the confirmation link — register one, or the call fails at runtime rather than at startup.
 For **self-registration**, override it:
 

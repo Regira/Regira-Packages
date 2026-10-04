@@ -32,7 +32,7 @@ public class UsersController(UserManager<AppUser> userManager)
 |---------|-------------|----------|
 | `UserManager<TUser>` + user store | `AddIdentityCore<TUser>().AddEntityFrameworkStores<…>().AddDefaultTokenProviders()` | user lookup, password & token operations |
 | `ITokenHelper` | `AddJwtAuthentication(…)` | issuing JWTs (`AccountController`) |
-| `IUserClaimsPrincipalFactory<TUser>` | `AddIdentityCore` | building token claims |
+| `IUserClaimsPrincipalFactory<TUser>` | `AddIdentityCore` | building token claims (all but Identity's security stamp, which no token carries) |
 | `IEmailSender` | Regira's `IdentityMailer` (over `Regira.Office.Mail`) or your own | recover / confirm emails |
 
 `AddDefaultTokenProviders()` is required — recover and confirm-email generate Identity tokens. The confirm-email/reset token payloads are (de)serialized with `System.Text.Json` internally, so no serializer needs to be registered.
