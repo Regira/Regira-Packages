@@ -123,7 +123,7 @@ The hosted server lives at `https://mcp.regira.com/mcp`. No key or sign-up is ne
 |--------|----------------|-------|
 | Claude Code (CLI / VS Code extension) | `claude mcp add --transport http regira https://mcp.regira.com/mcp` — or commit the `.mcp.json` below at the repo root | The first time, Claude Code asks you to approve the project server (or run `/mcp`). `claude mcp list` shows whether it is connected. |
 | Claude Desktop / claude.ai | Customize → Connectors → **+** → **Add custom connector** → name `regira`, URL `https://mcp.regira.com/mcp` | No config file (`claude_desktop_config.json` only takes local servers). Every plan can add one; Free is capped at a single custom connector. |
-| GitHub Copilot (VS Code) | `.vscode/mcp.json` with the JSON below, but with the top key `servers` instead of `mcpServers` | Click the **Start** action VS Code shows above the server entry, then switch Copilot Chat to **Agent mode**. |
+| GitHub Copilot (VS Code, Copilot CLI) | The same `.mcp.json` below at the repo root | Start the server when VS Code prompts (or through **MCP: List Servers**), then switch Copilot Chat to **Agent mode**. VS Code 1.140 deprecated `.vscode/mcp.json` (top key `servers`): it still reads that file, but only older versions need it. |
 | Cursor | Settings → MCP Servers → Add server → paste `https://mcp.regira.com/mcp` | — |
 
 ```json

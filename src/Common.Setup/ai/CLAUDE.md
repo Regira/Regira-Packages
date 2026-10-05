@@ -10,7 +10,7 @@ For full package discovery (including packages not yet installed), the Regira MC
 { "mcpServers": { "regira": { "type": "http", "url": "https://mcp.regira.com/mcp" } } }
 ```
 
-Add this to `.mcp.json` at the repo root (Claude Code — or `claude mcp add --transport http regira https://mcp.regira.com/mcp`); in Claude Desktop use Settings → Connectors → Add custom connector instead. The `"type": "http"` line is required. Then use `recommend_packages`, `search_packages`, or `get_package` to explore the full catalog before installing anything.
+Add this to `.mcp.json` at the repo root (Claude Code — or `claude mcp add --transport http regira https://mcp.regira.com/mcp`; the same file serves GitHub Copilot in VS Code and Copilot CLI); in Claude Desktop use Settings → Connectors → Add custom connector instead. The `"type": "http"` line is required. Then use `recommend_packages`, `search_packages`, or `get_package` to explore the full catalog before installing anything.
 
 ## Non-negotiable rules
 

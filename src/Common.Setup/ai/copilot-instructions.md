@@ -10,7 +10,7 @@ This file covers the essential rules, templates, and package tables needed befor
 
 A Regira MCP server is available at `https://mcp.regira.com/mcp`. When configured, it provides the full package catalog and all AI guides without requiring a build step.
 
-**Configuration (VS Code / Copilot):** add `{ "servers": { "regira": { "type": "http", "url": "https://mcp.regira.com/mcp" } } }` to `.vscode/mcp.json`, click **Start** above the entry, and use Agent mode. Claude Code takes the same entry under `mcpServers` in `.mcp.json`; the `"type": "http"` line is required.
+**Configuration (VS Code / Copilot):** add `{ "mcpServers": { "regira": { "type": "http", "url": "https://mcp.regira.com/mcp" } } }` to `.mcp.json` at the repo root, start the server when prompted (or through **MCP: List Servers**), and use Agent mode. The same file serves Copilot CLI and Claude Code; the `"type": "http"` line is required. VS Code 1.140 deprecated `.vscode/mcp.json` (top key `servers`): it still reads that file, but only older versions need it.
 
 **Tools, cheapest first.** Package arguments are forgiving (`id`, `pkg` and `package` all resolve); the search term is not — it is `query` on `search_packages` / `search_docs`, `pattern` on `get_example`, `feature` on `recommend_packages`, and `task` on `how_to`. A wrong guess is dropped silently rather than rejected.
 

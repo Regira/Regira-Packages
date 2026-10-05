@@ -6,6 +6,10 @@ adds one bullet under **Unreleased** in the same change (format: `` `PackageId` 
 and leaves that package's `<Version>` higher than its last published version. At publish time the
 Unreleased block becomes a dated release heading.
 
+## Unreleased
+
+- `Regira.Setup` 6.5.1 — guide-only: the packed `copilot-instructions.md` and `CLAUDE.md` connect GitHub Copilot in VS Code through the root `.mcp.json` under `mcpServers`, the file Claude Code and Copilot CLI read, since VS Code 1.140 deprecated `.vscode/mcp.json`.
+
 ## 6.5.0 — 2026-10-04
 
 - All packages — version aligned at 6.5.0 for a whole-family publish. `Regira.Entities.Validation.FluentValidation` is new and thirty packages carry a change of their own; twelve move an upstream dependency, three ship an updated packed licence, and fifty-seven pack a README of their own in place of a generated stub. Each set has its bullets below, and a package can be in more than one. Nothing is published outside the aligned number; six packages are republished unchanged so the family shares one version: `Regira.DAL.EFcore`, `Regira.Office.Barcodes.UziGranot`, `Regira.Serializing.Newtonsoft`, `Regira.System`, `Regira.Web.Analytics` and `Regira.Web.Analytics.GeoIP2`.

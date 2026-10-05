@@ -65,18 +65,13 @@ the call form from this table.
 
 **Configuration snippets:**
 
-Claude Code — one command, or a `.mcp.json` at your repo root (approve the project server the first time it asks):
-```sh
-claude mcp add --transport http regira https://mcp.regira.com/mcp
-```
+Claude Code, GitHub Copilot in VS Code and Copilot CLI — one `.mcp.json` at your repo root serves all three:
 ```json
 { "mcpServers": { "regira": { "type": "http", "url": "https://mcp.regira.com/mcp" } } }
 ```
-The `"type": "http"` line is required — Claude Code skips a `url` entry without it and does not know a `transport` key.
+The `"type": "http"` line is required — Claude Code skips a `url` entry without it and does not know a `transport` key. Claude Code asks you to approve the project server the first time, or add it with `claude mcp add --transport http regira https://mcp.regira.com/mcp`. In VS Code, start the server when prompted (or through **MCP: List Servers**) and switch Copilot Chat to Agent mode. VS Code 1.140 deprecated `.vscode/mcp.json` (top key `servers`): it still reads that file, but only older versions need it.
 
 Claude Desktop / claude.ai: Customize → Connectors → **+** → **Add custom connector** → name `regira`, URL `https://mcp.regira.com/mcp` (no config file). Every plan can add one, including Free, which is capped at a single custom connector.
-
-GitHub Copilot (VS Code): the same JSON in `.vscode/mcp.json` with the top key `servers` instead of `mcpServers`, then Agent mode.
 
 Cursor: Settings → MCP Servers → add `https://mcp.regira.com/mcp`.
 
