@@ -3,6 +3,8 @@ using DocumentFormat.OpenXml.Packaging;
 using Regira.IO.Abstractions;
 using Regira.IO.Extensions;
 using Regira.Office.MimeTypes;
+using A = DocumentFormat.OpenXml.Drawing;
+using DW = DocumentFormat.OpenXml.Drawing.Wordprocessing;
 using W = DocumentFormat.OpenXml.Wordprocessing;
 
 namespace Office.Word.testing.Abstractions;
@@ -17,6 +19,17 @@ internal static class Docx
         => new(new W.Run(new W.Text(text) { Space = SpaceProcessingModeValues.Preserve }));
 
     public static IEnumerable<W.Paragraph> Paragraphs(params string[] texts) => texts.Select(Paragraph);
+
+    /// <summary>A paragraph without a run, as Word stores an empty line.</summary>
+    public static W.Paragraph EmptyParagraph() => new();
+
+    /// <summary>A paragraph of the given text, followed by a page break.</summary>
+    public static W.Paragraph PageBreakAfter(string text)
+        => new(new W.Run(new W.Text(text) { Space = SpaceProcessingModeValues.Preserve }, new W.Break { Type = W.BreakValues.Page }));
+
+    /// <summary>A paragraph whose text is split over one run per given text, the way Word saves a text edited in parts.</summary>
+    public static W.Paragraph SplitParagraph(params string[] runs)
+        => new(runs.Select(text => new W.Run(new W.Text(text) { Space = SpaceProcessingModeValues.Preserve })));
 
     /// <summary>A paragraph whose whole text is deleted under track changes.</summary>
     public static W.Paragraph DeletedParagraph(string text)
@@ -63,40 +76,71 @@ internal static class Docx
         {
             properties.AppendChild(new W.PageBreakBefore());
         }
-        properties.AppendChild(new W.SectionProperties(new W.SectionType { Val = W.SectionMarkValues.NextPage }));
+        properties.AppendChild(new W.SectionProperties(new W.SectionType { Val = W.SectionMarkValues.NextPage }, A4()));
         return new W.Paragraph(properties, new W.Run(new W.Text(text)));
     }
 
-    /// <summary>A paragraph holding an inline text box of the given paragraphs.</summary>
+    /// <summary>An A4 portrait page, which Word writes in every section.</summary>
+    private static W.PageSize A4() => new() { Width = (uint)Facts.A4Twips.Width, Height = (uint)Facts.A4Twips.Height };
+
+    /// <summary>A paragraph holding an inline text box of the given paragraphs, written as DrawingML only.</summary>
     public static W.Paragraph TextBox(params string[] texts)
+        => new(new W.Run(new W.Drawing(TextBoxDrawing(texts))));
+
+    /// <summary>
+    /// A paragraph holding an inline text box of the given paragraphs, the way Word writes one: an
+    /// <c>mc:AlternateContent</c> with the DrawingML box as its <c>mc:Choice</c>, and a VML <c>v:textbox</c> holding
+    /// the same paragraphs as its <c>mc:Fallback</c>, for readers that do not know DrawingML shapes.
+    /// </summary>
+    public static W.Paragraph TextBoxWithFallback(params string[] texts)
     {
-        var content = new W.TextBoxContent(Paragraphs(texts));
-        var drawing = $"""
-            <w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-                       xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
-                       xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
-                       xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
-              <wp:inline distT="0" distB="0" distL="0" distR="0">
-                <wp:extent cx="2540000" cy="762000"/>
-                <wp:docPr id="1" name="Text Box 1"/>
-                <a:graphic>
-                  <a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
-                    <wps:wsp>
-                      <wps:cNvSpPr txBox="1"/>
-                      <wps:spPr>
-                        <a:xfrm><a:off x="0" y="0"/><a:ext cx="2540000" cy="762000"/></a:xfrm>
-                        <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-                      </wps:spPr>
-                      <wps:txbx>{content.OuterXml}</wps:txbx>
-                      <wps:bodyPr/>
-                    </wps:wsp>
-                  </a:graphicData>
-                </a:graphic>
-              </wp:inline>
-            </w:drawing>
+        var alternateContent = $"""
+            <mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                                 xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                                 xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
+                                 xmlns:v="urn:schemas-microsoft-com:vml"
+                                 xmlns:o="urn:schemas-microsoft-com:office:office">
+              <mc:Choice Requires="wps">{TextBoxDrawing(texts)}</mc:Choice>
+              <mc:Fallback>
+                <w:pict>
+                  <v:shapetype id="_x0000_t202" coordsize="21600,21600" o:spt="202" path="m,l,21600r21600,l21600,xe">
+                    <v:stroke joinstyle="miter"/>
+                    <v:path gradientshapeok="t" o:connecttype="rect"/>
+                  </v:shapetype>
+                  <v:shape id="Text Box 1" o:spid="_x0000_s1026" type="#_x0000_t202" style="width:200pt;height:60pt">
+                    <v:textbox>{new W.TextBoxContent(Paragraphs(texts)).OuterXml}</v:textbox>
+                  </v:shape>
+                </w:pict>
+              </mc:Fallback>
+            </mc:AlternateContent>
             """;
-        return new W.Paragraph(new W.Run(new W.Drawing(drawing)));
+        return new W.Paragraph(new W.Run(new AlternateContent(alternateContent)));
     }
+
+    private static string TextBoxDrawing(string[] texts) => $"""
+        <w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                   xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+                   xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                   xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+          <wp:inline distT="0" distB="0" distL="0" distR="0">
+            <wp:extent cx="2540000" cy="762000"/>
+            <wp:docPr id="1" name="Text Box 1"/>
+            <a:graphic>
+              <a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+                <wps:wsp>
+                  <wps:cNvSpPr txBox="1"/>
+                  <wps:spPr>
+                    <a:xfrm><a:off x="0" y="0"/><a:ext cx="2540000" cy="762000"/></a:xfrm>
+                    <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+                  </wps:spPr>
+                  <wps:txbx>{new W.TextBoxContent(Paragraphs(texts)).OuterXml}</wps:txbx>
+                  <wps:bodyPr/>
+                </wps:wsp>
+              </a:graphicData>
+            </a:graphic>
+          </wp:inline>
+        </w:drawing>
+        """;
 
     /// <summary>A paragraph holding an inline group of text boxes (<c>wpg:wgp</c>), one per array of paragraphs.</summary>
     public static W.Paragraph GroupedTextBoxes(params string[][] boxes)
@@ -168,14 +212,28 @@ internal static class Docx
 
     /// <summary>
     /// A document of the given body content, with the given content as its default header and as footnote 1, which
-    /// <see cref="FootnoteReference"/> refers to.
+    /// <see cref="FootnoteReference"/> refers to, on A4 pages — turned to landscape when asked. Given a
+    /// <paramref name="normalFontSize"/>, in half-points, its Normal style sets that size and no space between paragraphs.
     /// </summary>
-    public static IMemoryFile Document(IEnumerable<OpenXmlElement> body, IEnumerable<OpenXmlElement>? header = null, IEnumerable<OpenXmlElement>? footnote = null)
+    public static IMemoryFile Document(IEnumerable<OpenXmlElement> body, IEnumerable<OpenXmlElement>? header = null, IEnumerable<OpenXmlElement>? footnote = null,
+        bool landscape = false, int? normalFontSize = null)
     {
         using var stream = new MemoryStream();
         using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
         {
             var main = doc.AddMainDocumentPart();
+            if (normalFontSize is { } fontSize)
+            {
+                main.AddNewPart<StyleDefinitionsPart>().Styles = new W.Styles(new W.Style(
+                    new W.StyleName { Val = "Normal" },
+                    new W.StyleParagraphProperties(new W.SpacingBetweenLines { After = "0", Line = "240", LineRule = W.LineSpacingRuleValues.Auto }),
+                    new W.StyleRunProperties(new W.FontSize { Val = fontSize.ToString() }))
+                {
+                    Type = W.StyleValues.Paragraph,
+                    StyleId = "Normal",
+                    Default = true
+                });
+            }
             var sectionProperties = new W.SectionProperties();
             if (header != null)
             {
@@ -192,6 +250,10 @@ internal static class Docx
                     new W.Footnote(footnote) { Id = 1 });
             }
 
+            // after the header reference: a section's properties keep the schema's order
+            sectionProperties.AppendChild(landscape
+                ? new W.PageSize { Width = (uint)Facts.A4Twips.Height, Height = (uint)Facts.A4Twips.Width, Orient = W.PageOrientationValues.Landscape }
+                : A4());
             var content = new W.Body(body);
             content.AppendChild(sectionProperties);
             main.Document = new W.Document(content);
@@ -200,6 +262,58 @@ internal static class Docx
     }
 
     public static IMemoryFile Document(params string[] paragraphs) => Document(Paragraphs(paragraphs));
+
+    /// <summary>The document with each picture in its body made the given size, in points.</summary>
+    public static IMemoryFile WithPictureSize(IBinaryFile file, double width, double height)
+    {
+        using var stream = new MemoryStream();
+        stream.Write(file.GetBytes()!);
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            foreach (var drawing in doc.MainDocumentPart!.Document!.Body!.Descendants<W.Drawing>())
+            {
+                // wp:extent sizes the picture in the text flow, a:ext the graphic inside it
+                foreach (var extent in drawing.Descendants<DW.Extent>())
+                {
+                    (extent.Cx, extent.Cy) = ((long)Math.Round(width * 12700), (long)Math.Round(height * 12700));
+                }
+                foreach (var extent in drawing.Descendants<A.Extents>())
+                {
+                    (extent.Cx, extent.Cy) = ((long)Math.Round(width * 12700), (long)Math.Round(height * 12700));
+                }
+            }
+        }
+        return stream.ToArray().ToMemoryFile(ContentTypes.DOCX);
+    }
+
+    /// <summary>The document with each picture in its body made the given width, in points, keeping its proportions.</summary>
+    public static IMemoryFile WithPictureWidth(IBinaryFile file, double width)
+    {
+        using var stream = new MemoryStream();
+        stream.Write(file.GetBytes()!);
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            foreach (var drawing in doc.MainDocumentPart!.Document!.Body!.Descendants<W.Drawing>())
+            {
+                var cx = drawing.Descendants<DW.Extent>().FirstOrDefault()?.Cx?.Value;
+                if (cx is not > 0)
+                {
+                    continue;
+                }
+                // wp:extent sizes the picture in the text flow, a:ext the graphic inside it
+                var scale = width * 12700 / cx.Value;
+                foreach (var extent in drawing.Descendants<DW.Extent>())
+                {
+                    (extent.Cx, extent.Cy) = ((long)Math.Round(extent.Cx!.Value * scale), (long)Math.Round(extent.Cy!.Value * scale));
+                }
+                foreach (var extent in drawing.Descendants<A.Extents>())
+                {
+                    (extent.Cx, extent.Cy) = ((long)Math.Round(extent.Cx!.Value * scale), (long)Math.Round(extent.Cy!.Value * scale));
+                }
+            }
+        }
+        return stream.ToArray().ToMemoryFile(ContentTypes.DOCX);
+    }
 
     /// <summary>The text of every header part, in part order.</summary>
     public static string HeaderText(IMemoryFile file)
@@ -249,17 +363,58 @@ internal static class Docx
         return string.Join("\n", doc.MainDocumentPart!.Document!.Body!.Descendants<W.Paragraph>().Select(paragraph => paragraph.InnerText));
     }
 
+    /// <summary>
+    /// The paragraphs of the body, headers and footers that still hold a tag, <c>{{</c> or <c>&lt;{</c>: each read
+    /// without the text boxes inside it, and marked when it sits in an <c>mc:Fallback</c>. Read from the package itself,
+    /// so the copy a backend's own reader passes over is read too.
+    /// </summary>
+    public static IReadOnlyList<string> Leftovers(IMemoryFile file)
+    {
+        using var doc = WordprocessingDocument.Open(new MemoryStream(file.GetBytes()!), false);
+        return Stories(doc)
+            .SelectMany(story => story.Descendants<W.Paragraph>())
+            .Select(paragraph => (Paragraph: paragraph, Text: OwnText(paragraph)))
+            .Where(paragraph => paragraph.Text.Contains("{{") || paragraph.Text.Contains("<{"))
+            .Select(paragraph => paragraph.Paragraph.Ancestors<AlternateContentFallback>().Any() ? $"{paragraph.Text} (mc:Fallback)" : paragraph.Text)
+            .ToList();
+    }
+
+    /// <summary>
+    /// Every text box the body, headers and footers hold in two copies, DrawingML in <c>mc:Choice</c> and VML in
+    /// <c>mc:Fallback</c>: the text of each copy, a paragraph a line.
+    /// </summary>
+    public static IReadOnlyList<(string Choice, string Fallback)> TextBoxCopies(IMemoryFile file)
+    {
+        using var doc = WordprocessingDocument.Open(new MemoryStream(file.GetBytes()!), false);
+        return Stories(doc)
+            .SelectMany(story => story.Descendants<AlternateContent>())
+            .Select(alternate => (Choice: alternate.GetFirstChild<AlternateContentChoice>(), Fallback: alternate.GetFirstChild<AlternateContentFallback>()))
+            .Where(copies => copies.Choice?.Descendants<W.TextBoxContent>().Any() == true && copies.Fallback != null)
+            .Select(copies => (TextBoxText(copies.Choice!), TextBoxText(copies.Fallback!)))
+            .ToList();
+
+        static string TextBoxText(OpenXmlElement copy)
+            => string.Join("\n", copy.Descendants<W.TextBoxContent>().SelectMany(box => box.Descendants<W.Paragraph>()).Select(OwnText));
+    }
+
+    private static IEnumerable<OpenXmlElement> Stories(WordprocessingDocument doc)
+    {
+        var main = doc.MainDocumentPart!;
+        OpenXmlElement?[] stories = [main.Document?.Body, .. main.HeaderParts.Select(part => part.Header), .. main.FooterParts.Select(part => part.Footer)];
+        return stories.OfType<OpenXmlElement>();
+    }
+
+    /// <summary>The paragraph's text, without that of a text box inside it.</summary>
+    private static string OwnText(W.Paragraph paragraph)
+        => string.Concat(paragraph.Descendants<W.Text>()
+            .Where(text => text.Ancestors<W.Paragraph>().First() == paragraph)
+            .Select(text => text.Text));
+
     /// <summary>The number of <typeparamref name="TElement"/> elements in the body.</summary>
     public static int Count<TElement>(IMemoryFile file)
         where TElement : OpenXmlElement
     {
         using var doc = WordprocessingDocument.Open(new MemoryStream(file.GetBytes()!), false);
         return doc.MainDocumentPart!.Document!.Body!.Descendants<TElement>().Count();
-    }
-
-    public static int TableCount(IMemoryFile file)
-    {
-        using var doc = WordprocessingDocument.Open(new MemoryStream(file.GetBytes()!), false);
-        return doc.MainDocumentPart!.Document!.Body!.Descendants<W.Table>().Count();
     }
 }

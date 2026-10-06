@@ -1,6 +1,4 @@
-using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
-using NUnit.Framework.Legacy;
 using Office.Word.testing.Abstractions;
 using Regira.IO.Extensions;
 using Regira.Office.MimeTypes;
@@ -11,79 +9,22 @@ using W = DocumentFormat.OpenXml.Wordprocessing;
 namespace Office.Word.testing;
 
 /// <summary>
-/// Shared scenarios come from <see cref="WordTestsBase"/>. MiniWord implements only
-/// <c>IWordCreator</c>, <c>IWordTextExtractor</c> and <c>IWordImageExtractor</c>, so the fixture
-/// declares the handful of scenarios that reach those and covers the rest of its behaviour below.
+/// Word.Mini runs the shared scenarios in <see cref="WordTestsBase"/> that its features reach; below is what MiniWord
+/// does differently.
 /// </summary>
-[TestFixture]
+[WordFixture]
+[LeavesOut(WordFeature.Converting | WordFeature.Merging | WordFeature.PageImages | WordFeature.OtherFormats, "MiniWord has no layout engine")]
+[LeavesOut(WordFeature.NestedDocuments | WordFeature.HeadersAndFooters | WordFeature.InputOptions, "MiniWord has no API for them: Create throws NotSupportedException")]
+[LeavesOut(WordFeature.TitledTables | WordFeature.AltTextPictures, "MiniWord fills a {{Items.Name}} row and a {{logo}} tag instead")]
+[LeavesOut(WordFeature.Bookmarks, "MiniWord reads .docx only, and the scenario's template is a .dot")]
+[LeavesOut(WordFeature.HtmlParameters, "MiniWord writes an html_ value as text")]
+[LeavesOut(WordFeature.DocumentBuilder, "Word.Mini has no DocumentBuilder")]
 public class MiniTests() : WordTestsBase(new WordService(), "Mini")
 {
     private WordService Mini => (WordService)Backend;
 
-
-    // MiniWord reads .docx only, so the .dot/.doc/.odt cases the other backends run are absent.
-    [TestCase("multipage.docx")]
-    public override Task From_File(string filename) => base.From_File(filename);
-
-    [Test]
-    public override Task Replace_Parameters() => base.Replace_Parameters();
-
-    [Test]
-    public override Task GetImages() => base.GetImages();
-
-    [Test]
-    public override Task GetText() => base.GetText();
-
-    [TestCase(true)]
-    [TestCase(false)]
-    public override Task A_Conditional_Block_Keeps_The_Branch_That_Holds(bool isPaid) => base.A_Conditional_Block_Keeps_The_Branch_That_Holds(isPaid);
-
-    [Test]
-    public override Task A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value() => base.A_Condition_Is_False_For_A_Missing_Key_And_An_Empty_Value();
-
-    [Test]
-    public override Task A_Parameter_Value_Holding_A_Marker_Is_Written_As_Text() => base.A_Parameter_Value_Holding_A_Marker_Is_Written_As_Text();
-    [Test]
-    public override Task Conditional_Blocks_Nest() => base.Conditional_Blocks_Nest();
-
-    [Test]
-    public override Task A_Conditional_Block_Drops_A_Table_Or_A_Cells_Content() => base.A_Conditional_Block_Drops_A_Table_Or_A_Cells_Content();
-
-    [Test]
-    public override Task A_Conditional_Block_In_A_Header_Is_Resolved() => base.A_Conditional_Block_In_A_Header_Is_Resolved();
-
-    [Test]
-    public override Task A_Malformed_Conditional_Block_Fails() => base.A_Malformed_Conditional_Block_Fails();
-
-    [Test]
-    public override Task Markers_In_Deleted_Revisions_And_Field_Codes_Do_Not_Count() => base.Markers_In_Deleted_Revisions_And_Field_Codes_Do_Not_Count();
-
-    [Test]
-    public override Task A_Marker_Edited_Under_Track_Changes_Reads_As_Edited() => base.A_Marker_Edited_Under_Track_Changes_Reads_As_Edited();
-
-    [Test]
-    public override Task Marker_Text_In_A_Document_Without_Blocks_Stays_As_It_Is() => base.Marker_Text_In_A_Document_Without_Blocks_Stays_As_It_Is();
-
-    [Test]
-    public override Task A_Conditional_Block_In_A_Text_Box_Or_Content_Control_Leaves_A_Paragraph() => base.A_Conditional_Block_In_A_Text_Box_Or_Content_Control_Leaves_A_Paragraph();
-
-    [Test]
-    public override Task A_Conditional_Block_In_A_Grouped_Text_Box_Is_Resolved() => base.A_Conditional_Block_In_A_Grouped_Text_Box_Is_Resolved();
-
-    [Test]
-    public override Task A_Conditional_Block_In_A_Grouped_Text_Box_In_A_Header_Is_Resolved() => base.A_Conditional_Block_In_A_Grouped_Text_Box_In_A_Header_Is_Resolved();
-
-    [Test]
-    public override Task A_Conditional_Block_In_A_Grouped_Text_Box_Reads_Its_Markers_In_Any_Case() => base.A_Conditional_Block_In_A_Grouped_Text_Box_Reads_Its_Markers_In_Any_Case();
-
-    [Test]
-    public override Task A_Deletion_Inside_The_Braces_Stays_Deleted() => base.A_Deletion_Inside_The_Braces_Stays_Deleted();
-
-    [Test]
-    public override Task A_Marker_Paragraph_Ending_A_Section_Leaves_Only_The_Break() => base.A_Marker_Paragraph_Ending_A_Section_Leaves_Only_The_Break();
-
-    [Test]
-    public override Task A_Block_In_A_Footnote_Stays_As_Text() => base.A_Block_In_A_Footnote_Stays_As_Text();
+    // MiniWord reads .docx only
+    public static IEnumerable<string> SourceFiles => ["multipage.docx"];
 
 
     [Test]
@@ -175,6 +116,7 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
         Assert.That(ex!.Message, Does.Contain(nameof(WordTemplateInput.Options)));
     }
 
+    /// <summary>A default-initialised <see cref="WordTemplateInput"/> does not trip the unsupported-input guard.</summary>
     [Test]
     public async Task Create_Accepts_Default_Options()
     {
@@ -182,9 +124,9 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
         input.Options = new InputOptions();
 
         using var output = await Mini.Create(input);
+        var facts = await ReadDocx(output);
 
-        // A default-initialised WordTemplateInput must not trip the unsupported-input guard.
-        Assert.That(output.GetLength(), Is.GreaterThan(0));
+        Assert.That(facts.BodyText, Does.Contain("Parameters"));
     }
 
     [Test]
@@ -205,10 +147,17 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
         Assert.That(ex!.Message, Does.Contain("logo"));
     }
 
+    /// <summary>
+    /// <c>{{ title }}</c> split over two runs the way Word saves an edited tag, and a table row holding
+    /// <c>{{ Items.Name }}</c>.
+    /// </summary>
     [Test]
     public async Task Create_Matches_Spaced_Tags_In_Collection_Rows_And_Across_Runs()
     {
-        var input = new WordTemplateInput { Template = SpacedTagsTemplate().ToBinaryFile(ContentTypes.DOCX) };
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([Docx.SplitParagraph("Title: {{ ", "title }}"), Docx.Table(["{{ Items.Name }}"]), Docx.Paragraph("End")])
+        };
         input.GlobalParameters = new Dictionary<string, object> { ["title"] = "Order 42" };
         input.CollectionParameters!.Add("Items", new List<IDictionary<string, object>>
         {
@@ -216,14 +165,15 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
             new Dictionary<string, object> { ["Name"] = "Ink" }
         });
 
-        var text = await Mini.GetText(input);
+        using var output = await Mini.Create(input);
+        var facts = await ReadDocx(output);
 
         Assert.Multiple(() =>
         {
-            Assert.That(text, Does.Contain("Order 42"));
-            Assert.That(text, Does.Contain("Pen"));
-            Assert.That(text, Does.Contain("Ink"));
-            Assert.That(text, Does.Not.Contain("{{"));
+            Assert.That(facts.BodyText, Does.Contain("Title: Order 42"));
+            Assert.That(facts.TableRows, Is.EqualTo(new[] { 2 }), "a row per item");
+            Assert.That(facts.BodyText, Does.Contain("Pen").And.Contain("Ink"));
+            Assert.That(facts.Leftovers, Is.Empty);
         });
     }
 
@@ -233,9 +183,108 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
         var input = TemplateInput("parameters.docx");
         input.GlobalParameters = new Dictionary<string, object> { [" title "] = "A spaced key" };
 
-        var text = await Mini.GetText(input);
+        using var output = await Mini.Create(input);
+        var facts = await ReadDocx(output);
 
-        Assert.That(text, Does.Contain("A spaced key"));
+        Assert.That(facts.BodyText, Does.Contain("A spaced key"));
+    }
+
+    /// <summary>
+    /// A collection's key and its fields are matched literally too: <c>{{ Line Items.Price (excl. VAT) }}</c> reads the
+    /// field <c>Price (excl. VAT)</c> of the collection <c>Line Items</c>.
+    /// </summary>
+    [Test]
+    public async Task Create_Matches_A_Collection_Key_And_Field_Literally()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([Docx.Table(["{{ Line Items.Price (excl. VAT) }}"], ["{{ Line Items.Name }}"])])
+        };
+        input.CollectionParameters!.Add("Line Items", new List<IDictionary<string, object>>
+        {
+            new Dictionary<string, object> { ["Name"] = "Pen", ["Price (excl. VAT)"] = "1.50" },
+            new Dictionary<string, object> { ["Name"] = "Ink", ["Price (excl. VAT)"] = "2.00" }
+        });
+
+        using var output = await Mini.Create(input);
+        var facts = await ReadDocx(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(facts.BodyText, Does.Contain("Pen").And.Contain("1.50"));
+            Assert.That(facts.BodyText, Does.Contain("Ink").And.Contain("2.00"));
+            Assert.That(facts.Leftovers, Is.Empty);
+        });
+    }
+
+    /// <summary>
+    /// A collection under a key MiniWord cannot take reads as one under a key it can: no rows remove the template row,
+    /// and a field no row supplies is left empty.
+    /// </summary>
+    [TestCase("Items")]
+    [TestCase("Order Lines")]
+    public async Task A_Collection_Reads_The_Same_Under_Any_Key(string key)
+    {
+        WordTemplateInput Input(params IDictionary<string, object>[] rows)
+        {
+            var input = new WordTemplateInput
+            {
+                Template = Docx.Document([Docx.Paragraph("Intro"), Docx.Table([$"{{{{{key}.Name}}}}"], [$"{{{{{key}.Note}}}}"]), Docx.Paragraph("End")])
+            };
+            input.CollectionParameters!.Add(key, rows.ToList());
+            return input;
+        }
+
+        using var empty = await Mini.Create(Input());
+        using var withoutNote = await Mini.Create(Input(new Dictionary<string, object> { ["Name"] = "Pen" }, new Dictionary<string, object> { ["Name"] = "Ink" }));
+        var emptyFacts = await ReadDocx(empty, "-empty");
+        var withoutNoteFacts = await ReadDocx(withoutNote, "-without-note");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(emptyFacts.TableRows.Sum(), Is.Zero, "the template row goes with an empty collection");
+            Assert.That(emptyFacts.Leftovers, Is.Empty);
+            Assert.That(withoutNoteFacts.TableRows.Sum(), Is.EqualTo(2));
+            Assert.That(withoutNoteFacts.BodyText, Does.Contain("Pen").And.Contain("Ink"));
+            Assert.That(withoutNoteFacts.Leftovers, Is.Empty, "a field no row supplies is left empty");
+        });
+    }
+
+    /// <summary>A collection's tag reads its field with spaces around the dot too, whatever the field's key holds.</summary>
+    [TestCase("Name")]
+    [TestCase("Unit Price")]
+    public async Task A_Collection_Tag_Spaced_Around_Its_Dot_Reads_The_Field(string field)
+    {
+        var input = new WordTemplateInput { Template = Docx.Document([Docx.Table([$"{{{{Items . {field}}}}}"])]) };
+        input.CollectionParameters!.Add("Items", new List<IDictionary<string, object>>
+        {
+            new Dictionary<string, object> { [field] = "Pen" },
+            new Dictionary<string, object> { [field] = "Ink" }
+        });
+
+        using var output = await Mini.Create(input);
+        var facts = await ReadDocx(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(facts.TableRows.Sum(), Is.EqualTo(2));
+            Assert.That(facts.BodyText, Does.Contain("Pen").And.Contain("Ink"));
+            Assert.That(facts.Leftovers, Is.Empty);
+        });
+    }
+
+    [Test]
+    public async Task Create_Rejects_A_Key_That_Reads_As_A_Collection_Field()
+    {
+        var input = TemplateInput("parameters.docx");
+        input.GlobalParameters = new Dictionary<string, object> { ["Items.Name"] = "text" };
+        input.CollectionParameters!.Add("Items", new List<IDictionary<string, object>>
+        {
+            new Dictionary<string, object> { ["Name"] = "Pen" }
+        });
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => Mini.Create(input));
+        Assert.That(ex!.Message, Does.Contain("Items.Name"));
     }
 
     /// <summary>
@@ -258,15 +307,14 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
         };
 
         using var output = await Mini.Create(input);
-        using var doc = WordprocessingDocument.Open(new MemoryStream(output.GetBytes()!), false);
-        var body = doc.MainDocumentPart!.Document!.Body!;
+        var facts = await ReadDocx(output);
 
         Assert.Multiple(() =>
         {
-            Assert.That(body.Descendants<W.SectionProperties>().Count(), Is.EqualTo(2), "the break and the final section");
-            Assert.That(body.InnerText, Does.Not.Contain("{{"));
-            Assert.That(body.InnerText, Does.Contain("Intro").And.Contain("Outro"));
-            Assert.That(body.InnerText, isDraft ? Does.Contain("DRAFTTEXT") : Does.Not.Contain("DRAFTTEXT"));
+            Assert.That(facts.Sections, Has.Count.EqualTo(2), "the break and the final section");
+            Assert.That(facts.BodyText, Does.Not.Contain("{{"));
+            Assert.That(facts.BodyText, Does.Contain("Intro").And.Contain("Outro"));
+            Assert.That(facts.BodyText, isDraft ? Does.Contain("DRAFTTEXT") : Does.Not.Contain("DRAFTTEXT"));
         });
     }
 
@@ -305,30 +353,10 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
         };
 
         using var output = await Mini.Create(input);
+        await ReadDocx(output);
         using var doc = WordprocessingDocument.Open(new MemoryStream(output.GetBytes()!), false);
         var body = doc.MainDocumentPart!.Document!.Body!;
 
         Assert.That(body.ChildElements.Last(child => child is not W.SectionProperties), Is.InstanceOf<W.SdtBlock>());
-    }
-
-    /// <summary>
-    /// <c>{{ title }}</c> split over two runs the way Word saves an edited tag, and a table row holding
-    /// <c>{{ Items.Name }}</c>.
-    /// </summary>
-    private static byte[] SpacedTagsTemplate()
-    {
-        using var stream = new MemoryStream();
-        using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
-        {
-            var main = doc.AddMainDocumentPart();
-            var row = new W.TableRow(new W.TableCell(new W.Paragraph(new W.Run(new W.Text("{{ Items.Name }}")))));
-            main.Document = new W.Document(new W.Body(
-                new W.Paragraph(
-                    new W.Run(new W.Text("Title: {{ ") { Space = SpaceProcessingModeValues.Preserve }),
-                    new W.Run(new W.Text("title }}"))),
-                new W.Table(new W.TableProperties(), row),
-                new W.Paragraph(new W.Run(new W.Text("End")))));
-        }
-        return stream.ToArray();
     }
 }

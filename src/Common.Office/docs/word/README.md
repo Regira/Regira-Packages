@@ -74,7 +74,10 @@ The returned file's `ContentType` names the format produced — `application/pdf
 <!-- no-compile -->
 ```csharp
 Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default);
+Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, MergeOptions? options, CancellationToken cancellationToken = default);
 ```
+
+Each input is created, then joined to the previous one: it starts on a new page and keeps its own section breaks. An input with `EnforceEvenAmountOfPages` starts on an odd page, and so does the one after it. Pass `new MergeOptions { FollowOn = true }` to run every input after the first on from the previous one's last page; `null` merges as the first overload does. A backend's `DocumentBuilder` joins the inputs it `Load`s the same way, and takes `MergeOptions` through `WithMerge`. The second overload is a default interface method, so a merger that cannot run an input on from the previous one throws `NotSupportedException` when asked to. `WordClient` is one: the Office API's merge takes no options.
 
 ### IWordTextExtractor / IWordImageExtractor / IWordToImagesService
 
@@ -109,7 +112,13 @@ Composite of all the above. `Word.Spire.WordService`, `Word.Syncfusion.WordServi
 | `InheritFont` | `bool` | `false` | Apply template's Normal style font to inserted content |
 | `HorizontalAlignment` | `HorizontalAlignment?` | `null` | Force text alignment |
 | `RemoveEmptyParagraphs` | `bool` | `false` | Strip blank paragraphs after substitution |
-| `EnforceEvenAmountOfPages` | `bool` | `false` | Insert page break if page count is odd |
+| `EnforceEvenAmountOfPages` | `bool` | `false` | Insert page break if page count is odd, counted in the font `InheritFont` gives; merged, the input starts on an odd page and so does the next one |
+
+### MergeOptions
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `FollowOn` | `bool` | `false` | Run every merged input after the first on from the previous one's last page, rather than on a new page |
 
 ### ConversionOptions
 
@@ -117,14 +126,14 @@ Composite of all the above. `Word.Spire.WordService`, `Word.Syncfusion.WordServi
 |----------|------|---------|-------------|
 | `OutputFormat` | `FileFormat` | `Docx` | Target format |
 | `AutoScaleTables` | `bool` | `true` | Resize tables to fit new page width |
-| `AutoScalePictures` | `bool` | `true` | Resize images to fit new page width |
+| `AutoScalePictures` | `bool` | `true` | Scale pictures by as much as the text width changes, keeping their proportions, up to Word's 22-inch shape limit; a picture already past it is brought to it |
 | `Settings` | `DocumentSettings?` | `null` | Override page size / orientation / margins of every section — a document mixing portrait and landscape sections comes out in one orientation |
 
 ### DocumentSettings
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `PageSize` | `PageSize` | `A4` | Paper format |
+| `PageSize` | `PageSize` | `A4` | Paper format; A0, A1 and A2 pass Word's 22-inch page limit, so a PDF or page images take them but Word misreads a `.docx` written at them |
 | `PageOrientation` | `PageOrientation` | `Portrait` | Orientation |
 | `Margins` | `Margins?` | `null` | Override margins (in points) |
 
@@ -140,8 +149,8 @@ Docx  Doc  Dotx  Dot  Docm  Dotm  Pdf  Html  Rtf  Odt  EPub  Jpeg  Png
 |----------|------|-------------|
 | `Name` | `string` | Matches image placeholder name in the template |
 | `File` | `IMemoryFile?` | Image bytes |
-| `Size` | `ImageSize?` | Override image dimensions |
-| `HorizontalAlignment` | `HorizontalAlignment?` | Optional image alignment |
+| `Size` | `ImageSize?` | Picture size: Word.Mini gives the picture it inserts this size (400 × 400 without one); Word.Spire, Word.Syncfusion and Word.Aspose keep the size of the template picture they replace |
+| `HorizontalAlignment` | `HorizontalAlignment?` | Picture alignment; a replaced template picture keeps its own |
 
 ### WordHeaderFooterInput
 
@@ -333,9 +342,9 @@ When none of the four resolves — a configuration key that is missing, say — 
 
 `Create` renders `GlobalParameters`, `CollectionParameters` and `Images`, and throws `NotSupportedException` for `DocumentParameters`, `Headers`, `Footers` and any non-default `InputOptions`.
 
-> **Template syntax:** MiniWord's, not Word.Spire's. Every value fills a `{{tag}}`: a collection fills a table row whose cells hold `{{Items.Name}}` tags, and the row repeats per item (there is no `{{ row_number }}`); an image replaces a `{{logo}}` tag rather than a picture named by its Alt Text. A template written for the other backends renders its global parameters the same way and leaves its collection tables and pictures as they are. Spaces inside the braces are ignored, and a tag Word split over several runs while it was edited still matches. [Conditional blocks](#conditional-blocks) work as on the other backends, because Word.Mini resolves them before MiniWord renders; use them rather than MiniWord's own `@if` paragraphs, which compare `true`/`false` as text — `@if Flag == true` never holds — and throw on a bare `@if Flag`.
+> **Template syntax:** MiniWord's, not Word.Spire's. Every value fills a `{{tag}}`: a collection fills a table row whose cells hold `{{Items.Name}}` tags, and the row repeats per item (there is no `{{ row_number }}`); an image replaces a `{{logo}}` tag rather than a picture named by its Alt Text. A template written for the other backends renders its global parameters the same way and leaves its collection tables and pictures as they are. Spaces inside the braces are ignored, a tag Word split over several runs while it was edited still matches, and a key is matched literally whatever characters it holds, a collection's key and fields included (`{{ Total (EUR) }}`, `{{ Items.Price (excl. VAT) }}`). [Conditional blocks](#conditional-blocks) work as on the other backends, because Word.Mini resolves them before MiniWord renders; use them rather than MiniWord's own `@if` paragraphs, which compare `true`/`false` as text (`@if Flag == true` never holds), throw on a bare `@if Flag`, and read only keys of letters, digits and `_`.
 
-> **Shared template namespace:** `GlobalParameters`, `Images` and `CollectionParameters` all resolve against the same `{{tag}}` placeholders, so a key may appear in only one of them — a duplicate throws `ArgumentException`.
+> **Shared template namespace:** `GlobalParameters`, `Images` and `CollectionParameters` all resolve against the same `{{tag}}` placeholders, so a key may appear in only one of them, and a global key or image name may not read as a collection's field (`Items.Name`) — a duplicate throws `ArgumentException`.
 
 ### Word.Gotenberg
 
@@ -378,6 +387,16 @@ services.AddGotenbergWord(o =>
 > **Beside `AddOfficeClients`:** the two keep separate clients, so neither's base address or credentials reach the other's server. Both register an `IWordConverter`, and the one registered last is resolved: call `AddGotenbergWord` after `AddOfficeClients` to convert with Gotenberg while the Regira Office API serves the rest — its `IPdfToImageService` included.
 
 > **Timeouts:** the server enforces its own limit per request (`--api-timeout`, 30 seconds by default) and answers `503` when a conversion exceeds it; the exception message says so. Raise it on the server as well as `Timeout` here for large documents.
+
+### Office API
+
+`WordClient`, in `Regira.Office.Clients`, implements `IWordCreator`, `IWordConverter`, `IWordMerger` and `IWordTextExtractor` against a Regira Office API, registered with `AddOfficeClients`.
+
+- **Create.** The whole `WordTemplateInput` travels as JSON: parameters, nested documents, headers, footers, `Options`, and each image with its `Size` and `HorizontalAlignment`.
+- **Convert.** The document is created first, then converted with `OutputFormat`, `Settings.PageSize`, `AutoScaleTables` and `AutoScalePictures`. The API's conversion takes no orientation or margins: it lays every section out in portrait on that page size — A4 when `Settings` is null — and keeps the document's margins, so a landscape document comes back in portrait. `Settings` asking for `Landscape` or for `Margins` throws `NotSupportedException`. `Jpeg` and `Png` come back as one ZIP of page images.
+- **Merge.** Each input is created on its own and the finished documents are merged without their options. So `InheritFont` on a merge input has no document to inherit from, and `EnforceEvenAmountOfPages` on one of several inputs throws `NotSupportedException`: the API starts that input and the next one on a new page, where an in-process merge starts both on an odd page, and the padding page is lost. `Merge(inputs, options)` with `FollowOn` throws too.
+
+Where orientation, margins, font inheritance or page padding across merged documents matter, use an in-process backend, or Word.Gotenberg for PDF output beside `AddOfficeClients`.
 
 ## Overview
 

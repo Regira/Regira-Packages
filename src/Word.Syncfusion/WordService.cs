@@ -8,6 +8,7 @@ using Regira.Media.Drawing.Models;
 using Regira.Media.Drawing.Models.Abstractions;
 using Regira.Office.MimeTypes;
 using Regira.Office.Word.Abstractions;
+using Regira.Office.Word.Layout;
 using Regira.Office.Word.Models;
 using Regira.Office.Word.Syncfusion.Extensions;
 using Regira.Office.Word.Syncfusion.Internal;
@@ -51,9 +52,12 @@ public class WordService : IWordService
         return Task.FromResult(ToMemoryFile(doc));
     }
 
-    public async Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default)
+    public Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default)
+        => Merge(inputs, null, cancellationToken);
+
+    public async Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, MergeOptions? options, CancellationToken cancellationToken = default)
     {
-        using var doc = await MergeDocuments(inputs);
+        using var doc = await MergeDocuments(inputs, options);
         return ToMemoryFile(doc);
     }
 
@@ -119,35 +123,34 @@ public class WordService : IWordService
     protected internal IMemoryFile ToMemoryFile(WordDocument doc, FormatType format = FormatType.Docx)
         => doc.ToStream(format).ToMemoryFile(format == FormatType.Doc ? ContentTypes.DOC : ContentTypes.DOCX);
 
-    protected internal async Task<WordDocument> MergeDocuments(IEnumerable<WordTemplateInput> inputs)
+    protected internal Task<WordDocument> MergeDocuments(IEnumerable<WordTemplateInput> inputs)
+        => MergeDocuments(inputs, null);
+    protected internal Task<WordDocument> MergeDocuments(IEnumerable<WordTemplateInput> inputs, MergeOptions? mergeOptions)
     {
         var doc = new WordDocument();
 
         // the first input stays open as the style reference for the others
         WordDocument? firstDoc = null;
+        var previousIsPadded = false;
         try
         {
             foreach (var input in inputs.AsList())
             {
-                using var newFile = await Create(input);
-                await using var newStream = newFile.GetStream()!;
-
-                var inputDoc = new WordDocument(newStream, FormatType.Docx);
+                // its options processed once, InheritFont taking the first input's font before the padding counts the
+                // pages, so they are counted in the font the input ends up in
+                var inputDoc = CreateDocument(input, null, input.Options?.InheritFont == true ? firstDoc : null);
                 firstDoc ??= inputDoc;
                 try
                 {
-                    if (input.Options != null)
+                    // DocIO imports the input's sections as they are, the first of them starting a new page; only the
+                    // joint between two inputs changes, so an input keeps its own section breaks
+                    if (doc.Sections.Count > 0 && inputDoc.Sections.Count > 0)
                     {
-                        ProcessInputOptions(inputDoc, input.Options, firstDoc);
-                    }
-
-                    foreach (var section in inputDoc.Sections.OfType<WSection>())
-                    {
-                        // without this DocIO starts every imported section on a new page
-                        section.BreakCode = SectionBreakCode.NoBreak;
+                        inputDoc.Sections[0].BreakCode = JointBreak(mergeOptions, previousIsPadded, input.Options?.EnforceEvenAmountOfPages == true);
                     }
 
                     doc.ImportContent(inputDoc, ImportOptions.UseDestinationStyles);
+                    previousIsPadded = input.Options?.EnforceEvenAmountOfPages == true;
                 }
                 finally
                 {
@@ -168,10 +171,24 @@ public class WordService : IWordService
             firstDoc?.Dispose();
         }
 
-        return doc;
+        return Task.FromResult(doc);
     }
 
+    private static SectionBreakCode JointBreak(MergeOptions? options, bool previousIsPadded, bool isPadded)
+        => MergeJoints.Of(options, previousIsPadded, isPadded) switch
+        {
+            MergeJoint.OddPage => SectionBreakCode.Oddpage,
+            MergeJoint.NewPage => SectionBreakCode.NewPage,
+            _ => SectionBreakCode.NoBreak
+        };
+
     protected internal WordDocument CreateDocument(WordTemplateInput input, WordDocument? reference = null)
+        => CreateDocument(input, reference, null);
+    /// <summary>
+    /// Builds the input. Its headers and footers take their font from <paramref name="reference"/>, the input itself from
+    /// <paramref name="fontReference"/> where given: a merge's first input (<see cref="InputOptions.InheritFont"/>).
+    /// </summary>
+    private WordDocument CreateDocument(WordTemplateInput input, WordDocument? reference, WordDocument? fontReference)
     {
         // nested documents, headers and footers all build through here
         using var nesting = NestedDocumentGuard.Enter();
@@ -179,7 +196,7 @@ public class WordService : IWordService
         var doc = LoadDocument(input.Template);
         try
         {
-            return FillDocument(doc, input, reference ?? doc);
+            return FillDocument(doc, input, reference ?? doc, fontReference);
         }
         catch
         {
@@ -189,7 +206,7 @@ public class WordService : IWordService
         }
     }
 
-    private WordDocument FillDocument(WordDocument doc, WordTemplateInput input, WordDocument reference)
+    private WordDocument FillDocument(WordDocument doc, WordTemplateInput input, WordDocument reference, WordDocument? fontReference)
     {
         // first, so a dropped branch's placeholders are never filled or inserted
         ResolveConditions(doc, input);
@@ -235,7 +252,7 @@ public class WordService : IWordService
                 !hadEvenPages && pageSetup.DifferentOddAndEvenPages);
         }
 
-        return ProcessInputOptions(doc, input.Options, reference);
+        return ProcessInputOptions(doc, input.Options, fontReference ?? reference);
     }
 
     /// <summary>
@@ -369,8 +386,17 @@ public class WordService : IWordService
             {
                 foreach (var picture in section.Body.FindAllPictures())
                 {
-                    picture.Width *= scaleFactor;
-                    picture.Height *= scaleFactor;
+                    // DocIO writes a shape past Word's 22-inch limit, which Word cannot hold, so the factor stops there
+                    var factor = PictureScaling.Factor(originalWidth, section.PageSetup.ClientWidth, picture.Width, picture.Height);
+                    if (factor == 1)
+                    {
+                        // left as it is, as on the other backends
+                        continue;
+                    }
+                    // both sizes first: setting the width of a picture that keeps its aspect ratio sets its height too
+                    var (width, height) = PictureScaling.Size(picture.Width, picture.Height, factor);
+                    picture.Width = (float)width;
+                    picture.Height = (float)height;
                 }
             }
         }
@@ -817,7 +843,7 @@ public class WordService : IWordService
     /// </summary>
     protected internal global::Syncfusion.Drawing.SizeF GetPageSize(RegiraPageSize size)
     {
-        var (width, height) = PageSizes.Points(size);
+        var (width, height) = WordPageSizes.Points(size);
         return new global::Syncfusion.Drawing.SizeF((float)width, (float)height);
     }
 

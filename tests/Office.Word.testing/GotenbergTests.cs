@@ -1,11 +1,8 @@
-using Docnet.Core;
-using Docnet.Core.Models;
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
 using Office.Word.testing.Abstractions;
 using Regira.Drawing.SkiaSharp.Services;
 using Regira.IO.Extensions;
-using Regira.Office.MimeTypes;
 using Regira.Office.Models;
 using Regira.Office.PDF.DocNET;
 using Regira.Office.Word.Gotenberg;
@@ -14,16 +11,21 @@ using Regira.Office.Word.Models;
 namespace Office.Word.testing;
 
 /// <summary>
-/// Shared scenarios come from <see cref="WordTestsBase"/>; Gotenberg converts to PDF and renders pages,
-/// so only those scenarios are declared, followed by what this backend adds over the others.
+/// Word.Gotenberg converts to PDF and renders pages, so it runs the shared conversion and page-image scenarios in
+/// <see cref="WordTestsBase"/>; below is what it adds over the other backends.
 /// </summary>
 /// <remarks>
 /// Runs against a real Gotenberg server. <c>GOTENBERG_URL</c> points at one that is already running;
 /// otherwise the fixture starts a container, gated like the other container-backed suites
 /// (<c>REGIRA_PROVIDER_TESTS=containers</c>), and skips rather than fails when Docker is unavailable.
 /// </remarks>
-[TestFixture]
+[WordFixture]
 [Category("Containers")]
+[LeavesOut(WordFeature.Creating | WordFeature.Merging | WordFeature.TextExtraction | WordFeature.ImageExtraction | WordFeature.DocumentBuilder,
+    "Gotenberg converts and renders pages only; a template is rendered by the creator it is given")]
+[LeavesOut(WordFeature.OtherFormats, "Gotenberg converts to PDF only")]
+[LeavesOut(WordFeature.NestedDocuments | WordFeature.HeadersAndFooters | WordFeature.InputOptions | WordFeature.TitledTables | WordFeature.AltTextPictures | WordFeature.Bookmarks | WordFeature.HtmlParameters,
+    "its creator here is Word.Mini, which has none of them")]
 public class GotenbergTests : WordTestsBase
 {
     public const string UrlVariable = "GOTENBERG_URL";
@@ -36,7 +38,6 @@ public class GotenbergTests : WordTestsBase
     private static bool ReuseContainers => Environment.GetEnvironmentVariable("REGIRA_CONTAINER_REUSE") == "1";
 
     private readonly HttpClient _http;
-    private readonly PdfManager _pdf = new(new ImageService());
     private IContainer? _container;
 
     public GotenbergTests() : this(new HttpClient { Timeout = TimeSpan.FromMinutes(3) })
@@ -52,6 +53,8 @@ public class GotenbergTests : WordTestsBase
     }
 
     private WordService Gotenberg => (WordService)Backend;
+
+    public static IEnumerable<TestCaseData> OutputFormats => [Output(FileFormat.Pdf, "application/pdf")];
 
 
     [OneTimeSetUp]
@@ -109,19 +112,6 @@ public class GotenbergTests : WordTestsBase
     }
 
 
-    [TestCase(FileFormat.Pdf, "converted.pdf")]
-    public override Task Convert_To(FileFormat format, string outputName) => base.Convert_To(format, outputName);
-
-    [Test]
-    public override Task From_A3_To_Pdf() => base.From_A3_To_Pdf();
-
-    [Test]
-    public override Task From_A4_To_Pdf_A3() => base.From_A4_To_Pdf_A3();
-
-    [Test]
-    public override Task To_Images() => base.To_Images();
-
-
     [TestCase("template.odt")]
     [TestCase("template.doc")]
     [TestCase("template.dot")]
@@ -129,69 +119,13 @@ public class GotenbergTests : WordTestsBase
     public async Task Converts_Other_Word_Processing_Formats(string filename)
     {
         using var output = await Gotenberg.Convert(TemplateInput(filename), FileFormat.Pdf);
-        await output.SaveAs(OutputPath($"from_{Path.GetExtension(filename).TrimStart('.')}.pdf"));
-
-        Assert.That(System.Text.Encoding.ASCII.GetString(output.GetBytes()!, 0, 5), Is.EqualTo("%PDF-"));
-    }
-
-    [Test]
-    public async Task Convert_Tags_Pdf_ContentType()
-    {
-        using var output = await Gotenberg.Convert(TemplateInput("template.docx"), FileFormat.Pdf);
-
-        Assert.That(output.ContentType, Is.EqualTo(ContentTypes.PDF));
-    }
-
-    [Test]
-    public async Task ToImages_Returns_One_Image_Per_Page()
-    {
-        using var pdf = await Gotenberg.Convert(TemplateInput("multipage.docx"), FileFormat.Pdf);
-        var pageCount = await _pdf.GetPageCount(pdf);
-
-        var images = (await Gotenberg.ToImages(TemplateInput("multipage.docx"))).ToList();
+        var pdf = await ReadPdf(output);
 
         Assert.Multiple(() =>
         {
-            Assert.That(pageCount, Is.GreaterThan(1));
-            Assert.That(images, Has.Count.EqualTo(pageCount));
+            Assert.That(Facts.Sniff(output.GetBytes()!), Is.EqualTo(FileFormat.Pdf));
+            Assert.That(pdf.Pages, Is.GreaterThan(0));
         });
-        images.ForEach(image => image.Dispose());
-    }
-
-    [Test]
-    public async Task A3_Setting_Renders_A3_Pages()
-    {
-        var options = new ConversionOptions
-        {
-            OutputFormat = FileFormat.Pdf,
-            Settings = new DocumentSettings { PageSize = PageSize.A3 }
-        };
-
-        using var pdf = await Gotenberg.Convert(TemplateInput("template.docx"), options);
-        var (width, height) = FirstPageSize(pdf.GetBytes()!);
-
-        // A3 is 297 × 420 mm: 841.9 × 1190.6 pt
-        Assert.Multiple(() =>
-        {
-            Assert.That(width, Is.EqualTo(842).Within(2));
-            Assert.That(height, Is.EqualTo(1191).Within(2));
-        });
-    }
-
-    [Test]
-    public async Task Landscape_Setting_Renders_Landscape_Pages()
-    {
-        var options = new ConversionOptions
-        {
-            OutputFormat = FileFormat.Pdf,
-            Settings = new DocumentSettings { PageOrientation = PageOrientation.Landscape }
-        };
-
-        using var pdf = await Gotenberg.Convert(TemplateInput("template.docx"), options);
-        await pdf.SaveAs(OutputPath("landscape.pdf"));
-        var (width, height) = FirstPageSize(pdf.GetBytes()!);
-
-        Assert.That(width, Is.GreaterThan(height));
     }
 
     [Test]
@@ -201,24 +135,13 @@ public class GotenbergTests : WordTestsBase
         var input = TemplateInput("parameters.docx");
         input.GlobalParameters = new Dictionary<string, object> { ["title"] = title };
 
-        using var pdf = await Gotenberg.Convert(input, FileFormat.Pdf);
-        var text = await _pdf.GetText(pdf);
+        using var output = await Gotenberg.Convert(input, FileFormat.Pdf);
+        var text = string.Join("\n", (await ReadPdf(output)).PageTexts);
 
         Assert.Multiple(() =>
         {
             Assert.That(text, Does.Contain(title));
             Assert.That(text, Does.Not.Contain("{{ title }}"));
         });
-    }
-
-
-    /// <summary>
-    /// The first page's size in points: rendered at scale 1, a PDF page is as many pixels as it is points.
-    /// </summary>
-    private static (int Width, int Height) FirstPageSize(byte[] pdf)
-    {
-        using var reader = DocLib.Instance.GetDocReader(pdf, new PageDimensions(1d));
-        using var page = reader.GetPageReader(0);
-        return (page.GetPageWidth(), page.GetPageHeight());
     }
 }

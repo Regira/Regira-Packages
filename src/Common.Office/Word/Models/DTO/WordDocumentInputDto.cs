@@ -14,4 +14,8 @@ public class WordDocumentInputDto
     public IDictionary<string, WordDocumentInputDto>? DocumentParameters { get; set; }
     public ICollection<WordHeaderFooterModel>? Headers { get; set; }
     public ICollection<WordHeaderFooterModel>? Footers { get; set; }
+    /// <summary>
+    /// Absent, it reads as the defaults a new <see cref="WordTemplateInput"/> starts with
+    /// </summary>
+    public InputOptions? Options { get; set; }
 }

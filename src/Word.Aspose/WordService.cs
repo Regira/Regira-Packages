@@ -14,6 +14,7 @@ using Regira.Office.MimeTypes;
 using Regira.Office.Word.Abstractions;
 using Regira.Office.Word.Aspose.Extensions;
 using Regira.Office.Word.Aspose.Internal;
+using Regira.Office.Word.Layout;
 using Regira.Office.Word.Models;
 using Regira.Office.Word.Templating;
 using Regira.Utilities;
@@ -55,9 +56,12 @@ public class WordService : IWordService
         return Task.FromResult(ToMemoryFile(doc));
     }
 
-    public async Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default)
+    public Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default)
+        => Merge(inputs, null, cancellationToken);
+
+    public async Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, MergeOptions? options, CancellationToken cancellationToken = default)
     {
-        var doc = await MergeDocuments(inputs);
+        var doc = await MergeDocuments(inputs, options);
         return ToMemoryFile(doc);
     }
 
@@ -127,40 +131,60 @@ public class WordService : IWordService
     protected internal IMemoryFile ToMemoryFile(Document doc, SaveFormat format = SaveFormat.Docx)
         => doc.ToStream(format).ToMemoryFile(format == SaveFormat.Doc ? ContentTypes.DOC : ContentTypes.DOCX);
 
-    protected internal async Task<Document> MergeDocuments(IEnumerable<WordTemplateInput> inputs)
+    protected internal Task<Document> MergeDocuments(IEnumerable<WordTemplateInput> inputs)
+        => MergeDocuments(inputs, null);
+    protected internal Task<Document> MergeDocuments(IEnumerable<WordTemplateInput> inputs, MergeOptions? mergeOptions)
     {
         // The first document is the destination, so later ones take on its styles.
         Document? doc = null;
+        var previousIsPadded = false;
 
         foreach (var input in inputs.AsList())
         {
-            using var newFile = await Create(input);
-            using var newStream = newFile.GetStream()!;
-
-            var inputDoc = new Document(newStream);
-            if (input.Options != null)
-            {
-                inputDoc = ProcessInputOptions(inputDoc, input.Options, doc ?? inputDoc);
-            }
+            // its options processed once, InheritFont taking the destination's font before the padding counts the
+            // pages, so they are counted in the font the input ends up in
+            var inputDoc = CreateDocument(input, null, input.Options?.InheritFont == true ? doc : null);
 
             if (doc == null)
             {
                 doc = inputDoc;
+                previousIsPadded = input.Options?.EnforceEvenAmountOfPages == true;
                 continue;
             }
 
-            foreach (var section in inputDoc.Sections.OfType<Section>())
-            {
-                // without this every appended document starts on a new page
-                section.PageSetup.SectionStart = SectionStart.Continuous;
-            }
+            var starts = inputDoc.Sections.OfType<Section>().Select(section => section.PageSetup.SectionStart).ToList();
+            var joint = doc.Sections.Count;
             doc.AppendDocument(inputDoc, ImportFormatMode.UseDestinationStyles);
+
+            // AppendDocument starts an appended section on a new page whatever the source said, so the section starts
+            // are set afterwards: the input's own breaks as it had them, and the joint as the merge asks
+            for (var i = 0; i < starts.Count && joint + i < doc.Sections.Count; i++)
+            {
+                doc.Sections[joint + i].PageSetup.SectionStart = i == 0
+                    ? JointStart(mergeOptions, previousIsPadded, input.Options?.EnforceEvenAmountOfPages == true)
+                    : starts[i];
+            }
+            previousIsPadded = input.Options?.EnforceEvenAmountOfPages == true;
         }
 
-        return doc ?? new Document();
+        return Task.FromResult(doc ?? NewDocument());
     }
 
+    private static SectionStart JointStart(MergeOptions? options, bool previousIsPadded, bool isPadded)
+        => MergeJoints.Of(options, previousIsPadded, isPadded) switch
+        {
+            MergeJoint.OddPage => SectionStart.OddPage,
+            MergeJoint.NewPage => SectionStart.NewPage,
+            _ => SectionStart.Continuous
+        };
+
     protected internal Document CreateDocument(WordTemplateInput input, Document? reference = null)
+        => CreateDocument(input, reference, null);
+    /// <summary>
+    /// Builds the input. Its headers and footers take their font from <paramref name="reference"/>, the input itself from
+    /// <paramref name="fontReference"/> where given: a merge's destination (<see cref="InputOptions.InheritFont"/>).
+    /// </summary>
+    private Document CreateDocument(WordTemplateInput input, Document? reference, Document? fontReference)
     {
         // nested documents, headers and footers all build through here
         using var nesting = NestedDocumentGuard.Enter();
@@ -209,7 +233,7 @@ public class WordService : IWordService
                 !hadEvenPages && pageSetup.OddAndEvenPagesHeaderFooter);
         }
 
-        return ProcessInputOptions(doc, input.Options, reference);
+        return ProcessInputOptions(doc, input.Options, fontReference ?? reference);
     }
 
     /// <summary>
@@ -240,8 +264,7 @@ public class WordService : IWordService
         using var stream = template?.GetStream();
         if (stream == null || stream == Stream.Null)
         {
-            // a blank document: one section with one empty paragraph
-            return new Document();
+            return NewDocument();
         }
 
         // the format, ODT included, is detected from the content
@@ -286,8 +309,7 @@ public class WordService : IWordService
                 section.PageSetup.BottomMargin = settings.Margins.Bottom;
             }
 
-            // a page without text width has nothing to scale against
-            var scaleFactor = originalWidth > 0 ? GetClientWidth(section.PageSetup) / originalWidth : 1;
+            var newWidth = GetClientWidth(section.PageSetup);
 
             if (options.AutoScaleTables)
             {
@@ -306,9 +328,21 @@ public class WordService : IWordService
             {
                 foreach (var picture in section.Body.FindAllPictures().ToArray())
                 {
-                    var (width, height) = (picture.Width, picture.Height);
-                    picture.Width = width * scaleFactor;
-                    picture.Height = height * scaleFactor;
+                    // Aspose throws for a shape past Word's 22-inch limit, so the factor stops there
+                    var factor = PictureScaling.Factor(originalWidth, newWidth, picture.Width, picture.Height);
+                    if (factor == 1)
+                    {
+                        // left as it is: setting even its own size throws for a picture already past the limit
+                        continue;
+                    }
+                    // set with the aspect ratio unlocked: a locked shape recalculates the other side from each, which
+                    // can take the side held at the limit a rounding error past it
+                    var (width, height) = PictureScaling.Size(picture.Width, picture.Height, factor);
+                    var locked = picture.AspectRatioLocked;
+                    picture.AspectRatioLocked = false;
+                    picture.Width = width;
+                    picture.Height = height;
+                    picture.AspectRatioLocked = locked;
                 }
             }
         }
@@ -692,12 +726,23 @@ public class WordService : IWordService
 
 
     /// <summary>
+    /// A blank document: one section with one empty paragraph, on an A4 portrait page like the other Word backends'
+    /// blank documents. Aspose's own blank document is US Letter.
+    /// </summary>
+    protected internal Document NewDocument()
+    {
+        var doc = new Document();
+        SetPageSetup(doc.FirstSection.PageSetup, RegiraPageSize.A4, RegiraPageOrientation.Portrait);
+        return doc;
+    }
+
+    /// <summary>
     /// Sets the page's size and orientation. The size is written as a width and height, because Aspose's
     /// paper-size list stops at A3–A5; every <see cref="RegiraPageSize"/> is honoured.
     /// </summary>
     protected internal void SetPageSetup(PageSetup pageSetup, RegiraPageSize size, RegiraPageOrientation orientation)
     {
-        var (width, height) = PageSizes.Points(size);
+        var (width, height) = WordPageSizes.Points(size);
         var landscape = orientation == RegiraPageOrientation.Landscape;
 
         // orientation first: the explicit width and height below then hold whatever it does to them

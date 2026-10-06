@@ -69,7 +69,7 @@ size or error correction.
 | Namespace | Types |
 |---|---|
 | `Regira.Office.Word.Abstractions` | `IWordService`, `IWordManager`, `IWordCreator`, `IWordConverter`, `IWordMerger`, `IWordTextExtractor`, `IWordImageExtractor`, `IWordToImagesService` |
-| `Regira.Office.Word.Models` | `WordTemplateInput`, `WordHeaderFooterInput`, `WordImage`, `WordTable`, `Paragraph`, `ParagraphStyle`, `DocumentSettings`, `ConversionOptions`, `InputOptions`, `HeaderFooterType`, `HorizontalAlignment` |
+| `Regira.Office.Word.Models` | `WordTemplateInput`, `WordHeaderFooterInput`, `WordImage`, `WordTable`, `Paragraph`, `ParagraphStyle`, `DocumentSettings`, `ConversionOptions`, `InputOptions`, `MergeOptions`, `HeaderFooterType`, `HorizontalAlignment` |
 | `Regira.Office.Word.Drawing` | `WordImageCreator`, `WordToImageLayerOptions` |
 | **Providers** | `Regira.Office.Word.Spire` → `WordService`, `DocumentBuilder`, `WordDocumentSettings`; `Regira.Office.Word.Syncfusion` → `WordService`, `DocumentBuilder`, `WordDocumentSettings`, `SyncfusionWordConfig`; `Regira.Office.Word.Aspose` → `WordService`, `DocumentBuilder`, `WordDocumentSettings`, `AsposeWordConfig`; `Regira.Office.Word.Mini` → `WordService`; `Regira.Office.Word.Gotenberg` → `WordService`, `GotenbergWordConfig`; `Regira.Office.Word.Gotenberg.DependencyInjection` → `ServiceCollectionExtensions` |
 

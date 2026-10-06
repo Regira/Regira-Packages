@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Entities.Validation.FluentValidation</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.5.0</Version>
+    <Version>6.5.1</Version>
     <RegiraLicenseEnforced>true</RegiraLicenseEnforced>
     <Description>FluentValidation integration for Regira entity validation: AbstractValidator rules run in the entity write pipeline. Free tier included — a license key removes the free-tier limits.</Description>
     <PackageTags>regira;entities;validation;fluentvalidation</PackageTags>

@@ -7,6 +7,7 @@ using Regira.Office.MimeTypes;
 using Regira.Office.Word.Abstractions;
 using Regira.Office.Word.Models;
 using Regira.Office.Word.Spire.Extensions;
+using Regira.Office.Word.Layout;
 using Regira.Office.Word.Spire.Internal;
 using Regira.Office.Word.Templating;
 using Regira.TreeList;
@@ -27,7 +28,6 @@ using RegiraParagraph = Regira.Office.Word.Models.Paragraph;
 using SpireFileFormat = Spire.Doc.FileFormat;
 using SpireHorizontalAlignment = Spire.Doc.Documents.HorizontalAlignment;
 using SpirePageOrientation = Spire.Doc.Documents.PageOrientation;
-using SpirePageSize = Spire.Doc.Documents.PageSize;
 using SpireParagraph = Spire.Doc.Documents.Paragraph;
 
 namespace Regira.Office.Word.Spire;
@@ -48,9 +48,11 @@ public class WordService : IWordService
         var file = ToMemoryFile(doc);
         return Task.FromResult(file);
     }
-    public async Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default)
+    public Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default)
+        => Merge(inputs, null, cancellationToken);
+    public async Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, MergeOptions? options, CancellationToken cancellationToken = default)
     {
-        using var doc = await MergeDocuments(inputs);
+        using var doc = await MergeDocuments(inputs, options);
         return ToMemoryFile(doc);
     }
     public Task<IMemoryFile> Convert(WordTemplateInput input, RegiraFileFormat format, CancellationToken cancellationToken = default)
@@ -100,43 +102,76 @@ public class WordService : IWordService
 
     protected internal IMemoryFile ToMemoryFile(Document doc, SpireFileFormat format = SpireFileFormat.Docx)
         => doc.ToStream(format).ToMemoryFile(format == SpireFileFormat.Doc ? ContentTypes.DOC : ContentTypes.DOCX);
-    protected internal async Task<Document> MergeDocuments(IEnumerable<WordTemplateInput> inputs)
+    protected internal Task<Document> MergeDocuments(IEnumerable<WordTemplateInput> inputs)
+        => MergeDocuments(inputs, null);
+    protected internal Task<Document> MergeDocuments(IEnumerable<WordTemplateInput> inputs, MergeOptions? mergeOptions)
     {
         var doc = new Document();
 
-        var inputList = inputs.AsList();
+        // the first input is the one the others take their Normal font from (InheritFont); it stays open to the end
         Document? firstDoc = null;
-        foreach (var input in inputList)
+        var previousIsPadded = false;
+        try
         {
-            using var newFile = await Create(input);
-#if NET8_0_OR_GREATER
-            await using var newStream = newFile.GetStream();
-#else
-            using var newStream = newFile.GetStream();
-#endif
-            var options = input.Options;
-            if (options != null)
+            foreach (var input in inputs.AsList())
             {
-                var inputDoc = new Document(newStream, SpireFileFormat.Auto);
-                firstDoc ??= inputDoc;
-                inputDoc = ProcessInputOptions(inputDoc, options, firstDoc);
+                // InsertTextFromStream appends the input's sections, the first of them starting a new page
+                var joint = doc.Sections.Count;
+                // its options processed once, InheritFont taking the first input's font before the padding counts the
+                // pages, so they are counted in the font the input ends up in
+                var created = CreateDocument(input, null, input.Options?.InheritFont == true ? firstDoc : null);
+                try
+                {
+                    // a save in between keeps the text boxes' fallback copies as they are: saving the merged document
+                    // rewrites them all
+                    using var stream = created.ToStream(synchronizeFallbacks: false);
+                    doc.InsertTextFromStream(stream, SpireFileFormat.Auto);
+                }
+                finally
+                {
+                    if (firstDoc == null)
+                    {
+                        firstDoc = created;
+                    }
+                    else
+                    {
+                        created.Dispose();
+                    }
+                }
 
-#if NET8_0_OR_GREATER
-                await using var processedDocStream = inputDoc.ToStream();
-#else
-                using var processedDocStream = inputDoc.ToStream();
-#endif
-                doc.InsertTextFromStream(processedDocStream, SpireFileFormat.Auto);
-            }
-            else
-            {
-                doc.InsertTextFromStream(newStream, SpireFileFormat.Auto);
+                // only the joint between two inputs changes; an input keeps its own section breaks
+                var isPadded = input.Options?.EnforceEvenAmountOfPages == true;
+                if (joint > 0 && doc.Sections.Count > joint)
+                {
+                    doc.Sections[joint].BreakCode = MergeJoints.Of(mergeOptions, previousIsPadded, isPadded) switch
+                    {
+                        MergeJoint.OddPage => SectionBreakType.Oddpage,
+                        MergeJoint.NewPage => SectionBreakType.NewPage,
+                        _ => SectionBreakType.NoBreak
+                    };
+                }
+                previousIsPadded = isPadded;
             }
         }
+        catch
+        {
+            doc.Dispose();
+            throw;
+        }
+        finally
+        {
+            firstDoc?.Dispose();
+        }
 
-        return doc;
+        return Task.FromResult(doc);
     }
     protected internal Document CreateDocument(WordTemplateInput input, Document? reference = null)
+        => CreateDocument(input, reference, null);
+    /// <summary>
+    /// Builds the input. Its headers and footers take their font from <paramref name="reference"/>, the input itself from
+    /// <paramref name="fontReference"/> where given: a merge's first input (<see cref="InputOptions.InheritFont"/>).
+    /// </summary>
+    private Document CreateDocument(WordTemplateInput input, Document? reference, Document? fontReference)
     {
         // nested documents, headers and footers all build through here
         using var nesting = NestedDocumentGuard.Enter();
@@ -194,7 +229,7 @@ public class WordService : IWordService
                 !hadEvenPages && pageSetup.DifferentOddAndEvenPagesHeaderFooter);
         }
 
-        return ProcessInputOptions(doc, input.Options, reference);
+        return ProcessInputOptions(doc, input.Options, fontReference ?? reference);
     }
 
     /// <summary>
@@ -234,26 +269,13 @@ public class WordService : IWordService
                 var section = (Section)sectionTreeItem.Value;
                 var originalWidth = section.PageSetup.ClientWidth;
 
-                // PageSize
-                var spireSize = GetPageSize(newSize);
-                if (spireSize != section.PageSetup.PageSize)
-                {
-                    section.PageSetup.PageSize = spireSize;
-                }
-                // Margins
+                SetPageSetup(section.PageSetup, newSize, newOrientation);
                 if (newMargins != null)
                 {
                     section.PageSetup.Margins = GetMargins(newMargins);
                 }
-                // Orientation
-                var spireOrientation = GetPageOrientation(newOrientation);
-                if (spireOrientation != section.PageSetup.Orientation)
-                {
-                    section.PageSetup.Orientation = spireOrientation;
-                }
 
                 var newWidth = section.PageSetup.ClientWidth;
-                var scaleFactor = newWidth / originalWidth;
 
                 // adjust tables
                 if (options.AutoScaleTables)
@@ -273,8 +295,21 @@ public class WordService : IWordService
                     var pictures = sectionTreeItem.FindAllPictures();
                     foreach (var picture in pictures)
                     {
-                        picture.Width *= scaleFactor;
-                        picture.Height *= scaleFactor;
+                        // Spire throws for a shape past Word's 22-inch limit, so the factor stops there
+                        var factor = PictureScaling.Factor(originalWidth, newWidth, picture.Width, picture.Height);
+                        if (factor == 1)
+                        {
+                            // left as it is: setting even its own size throws for a picture already past the limit
+                            continue;
+                        }
+                        // both sizes first, set with the aspect ratio unlocked: a locked picture recalculates the other
+                        // side from each, which can take the side held at the limit a rounding error past it
+                        var (width, height) = PictureScaling.Size(picture.Width, picture.Height, factor);
+                        var locked = picture.AspectRatioLocked;
+                        picture.AspectRatioLocked = false;
+                        picture.Width = (float)width;
+                        picture.Height = (float)height;
+                        picture.AspectRatioLocked = locked;
                     }
                 }
             }
@@ -291,7 +326,7 @@ public class WordService : IWordService
                 break;
             case RegiraFileFormat.Png:
             case RegiraFileFormat.Jpeg:
-                throw new Exception("Not supported. Use function ToImages instead");
+                throw new NotSupportedException("Image output is not produced by Convert. Use ToImages instead.");
         }
 
         var spireFormat = (SpireFileFormat)Enum.Parse(typeof(SpireFileFormat), options.OutputFormat.ToString(), true);
@@ -681,19 +716,26 @@ public class WordService : IWordService
             container.ChildObjects.RemoveAt(index);
         }
     }
+    /// <summary>
+    /// The page's portrait width and height in points. Written as a size rather than one of Spire's named sizes, which
+    /// cover only part of the A series, so every <see cref="RegiraPageSize"/> is honoured.
+    /// </summary>
     protected internal SizeF GetPageSize(RegiraPageSize size)
     {
-        switch (size)
-        {
-            case RegiraPageSize.A3:
-                return SpirePageSize.A3;
-            case RegiraPageSize.A5:
-                return SpirePageSize.A5;
-            case RegiraPageSize.A6:
-                return SpirePageSize.A6;
-            default:
-                return SpirePageSize.A4;
-        }
+        var (width, height) = WordPageSizes.Points(size);
+        return new SizeF((float)width, (float)height);
+    }
+
+    /// <summary>
+    /// Sets the page's size and orientation: the orientation first, then the size turned that way. Setting a portrait
+    /// size on a section already in landscape keeps its landscape flag, so a page set in the opposite order came out
+    /// portrait-shaped.
+    /// </summary>
+    protected internal void SetPageSetup(PageSetup pageSetup, RegiraPageSize size, RegiraPageOrientation orientation)
+    {
+        var portrait = GetPageSize(size);
+        pageSetup.Orientation = GetPageOrientation(orientation);
+        pageSetup.PageSize = orientation == RegiraPageOrientation.Landscape ? new SizeF(portrait.Height, portrait.Width) : portrait;
     }
     private MarginsF GetMargins(Margins margins)
     {

@@ -14,6 +14,7 @@ Without a key, calls fall under the rate-limited free tier of the hosted service
 
 - [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/) — the Office modules and the interfaces these clients implement
 - [Licensing](https://regira.github.io/Regira-Packages/licensing.html) — the free-tier limits, registering a key with `UseRegira`, and checking it with `ILicenseStatusClient`
+- [Word through the Office API](https://regira.github.io/Regira-Packages/src/Common.Office/docs/word/#office-api) — what `WordClient` sends, and the page settings the API's conversion does not take: orientation and margins
 - [Word.Gotenberg beside the Office clients](https://regira.github.io/Regira-Packages/src/Common.Office/docs/word/#wordgotenberg) — converting Word documents with a Gotenberg server while the Office API serves the rest
 
 ## License
