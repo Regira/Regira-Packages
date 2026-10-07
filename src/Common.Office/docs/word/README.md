@@ -8,7 +8,7 @@ Regira Office.Word provides Word document creation from templates, conversion, m
 | Project | Package | Backend | Create | Convert | Merge | Extract |
 |---------|---------|---------|--------|---------|-------|---------|
 | `Common.Office` | *(transitive)* | Shared abstractions | — | — | — | — |
-| `Word.Spire` | `Regira.Office.Word.Spire` | FreeSpire.Doc | ✓ | ✓ | ✓ | ✓ |
+| `Word.Spire` | `Regira.Office.Word.Spire` | FreeSpire.Doc, or [Spire.Doc](#commercial-spiredoc) | ✓ | ✓ | ✓ | ✓ |
 | `Word.Syncfusion` | `Regira.Office.Word.Syncfusion` | Syncfusion DocIO | ✓ | ✓ except EPUB | ✓ | ✓ |
 | `Word.Aspose` | `Regira.Office.Word.Aspose` | Aspose.Words | ✓ | ✓ | ✓ | ✓ |
 | `Word.Mini` | `Regira.Office.Word.Mini` | MiniWord | partial | — | — | text, images |
@@ -376,7 +376,29 @@ rows go; a table left without rows goes:
 
 `WordService` implements `IWordService` — the full capability set. Supports HTML parameters (`html_*` prefix in `GlobalParameters` injects raw HTML). Converts to PDF, HTML, RTF, ODT and EPUB, and renders pages as images with `ToImages`. Handles nested document insertion via `DocumentParameters`.
 
-> **Limits:** the FreeSpire.Doc free edition supports documents up to 500 paragraphs or 25 tables, and writes at most three pages of PDF. A document past either cap throws `SpireDocFreeException` when it is read or written — a template whose [loop](#loop-blocks) writes a table per row fails from its 26th row. Converting a longer document to PDF gives its first three pages followed by a notice page — *"Spire Doc. Free version converting word documents to PDF files, you can only get the first 3 page of PDF file."* — and raises no error. `ToImages` and the other formats (HTML, RTF, ODT, EPUB) carry every page. For longer PDFs, use Word.Syncfusion or Word.Aspose (licensed), or Word.Gotenberg (no vendor licence).
+> **Limits:** the FreeSpire.Doc free edition supports documents up to 500 paragraphs or 25 tables, and writes at most three pages of PDF. A document past either cap throws `SpireDocFreeException` when it is read or written — a template whose [loop](#loop-blocks) writes a table per row fails from its 26th row. Converting a longer document to PDF gives its first three pages followed by a notice page — *"Spire Doc. Free version converting word documents to PDF files, you can only get the first 3 page of PDF file."* — and raises no error. `ToImages` and the other formats (HTML, RTF, ODT, EPUB) carry every page. For longer PDFs, run Word.Spire on the [commercial Spire.Doc](#commercial-spiredoc), use Word.Syncfusion or Word.Aspose (licensed), or Word.Gotenberg (no vendor licence).
+
+#### Commercial Spire.Doc
+
+Word.Spire runs unchanged on the commercial [Spire.Doc](https://www.nuget.org/packages/Spire.Doc) package, which has none of the free-edition limits. Both packages ship the same assembly — `Spire.Doc`, signed with the same key — so the app decides which one it loads. Reference Spire.Doc, and keep out the FreeSpire.Doc that Word.Spire depends on by referencing it directly with `ExcludeAssets="all"`:
+
+```xml
+<PackageReference Include="Regira.Office.Word.Spire" Version="6.*" />
+<PackageReference Include="Spire.Doc" Version="14.9.11" />
+<!-- the FreeSpire.Doc version Word.Spire depends on; ExcludeAssets keeps its Spire.Doc.dll out of the build -->
+<PackageReference Include="FreeSpire.Doc" Version="14.4.0" ExcludeAssets="all" />
+```
+
+Set the licence key once at startup, before the first document is processed. Without one, the commercial edition writes an evaluation warning on every page.
+
+<!-- no-compile -->
+```csharp
+Spire.Doc.License.LicenseProvider.SetLicenseKey(licenseKey);
+```
+
+- **Spire.Doc must be at least the FreeSpire.Doc version Word.Spire depends on** (listed under its dependencies on nuget.org). An older one fails on the first call with `FileNotFoundException: Could not load file or assembly 'Spire.Doc, Version=…'`.
+- **Keep the `ExcludeAssets` line.** Without it both packages supply `Spire.Doc.dll`, and the build keeps the one with the higher version without a warning, so a Spire.Doc older than the FreeSpire.Doc dependency leaves the app on the free edition, PDF limit included.
+- **The `ExcludeAssets` line names the version Word.Spire depends on, or a later one.** A lower one fails restore with `NU1605` (package downgrade); raise it when a Word.Spire update moves to a newer FreeSpire.Doc, and check the first rule again.
 
 ### Word.Syncfusion
 
