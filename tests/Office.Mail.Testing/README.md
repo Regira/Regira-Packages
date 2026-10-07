@@ -13,8 +13,10 @@ dotnet test tests/Office.Mail.Testing
 `MailGunTests` and `SendGridTests` are in the `Network` category and read user secrets:
 
 - Mailgun: `Mail:MailGun:Api`, `Mail:MailGun:Key` and `Mail:MailGun:Domain`. If any is missing the tests are
-  skipped; with all three they call Mailgun in test mode, which accepts and logs the message without delivering it.
+  skipped; with all three they call Mailgun in test mode, which accepts and logs the message without delivering it,
+  one of them with quoted display names and a Reply-To header.
 - SendGrid: both tests are always ignored, but the fixture builds its client from `Mail:SendGrid:Key` and fails
   when that secret is absent.
 
-Skip both with `--filter "TestCategory!=Network"`.
+Skip both with `--filter "TestCategory!=Network"`. `SendGridMessageObjectTests` and `MailGunRequestTests` check the
+request each backend builds — addresses, display names, Reply-To, body — offline.

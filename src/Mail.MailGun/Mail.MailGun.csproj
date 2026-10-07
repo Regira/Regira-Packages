@@ -16,6 +16,9 @@
     <PackageTags>regira;office;mail;mailgun;email</PackageTags>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Office.Mail.Testing" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
   </ItemGroup>
   <ItemGroup>

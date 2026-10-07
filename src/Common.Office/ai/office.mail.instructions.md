@@ -157,8 +157,8 @@ Both extension methods register `IMailService` as a transient service.
 ### `MailException`
 
 Thrown by `MailerBase` for an invalid attachment, and by the SendGrid and Mailgun backends for a
-non-success provider response. Log `ResponseContent` — the provider describes the refusal there, and the
-status code on its own usually does not. An unauthorized response throws a plain `Exception` instead.
+non-success provider response, an unauthorized one included. Log `ResponseContent` — the provider describes
+the refusal there, and the status code on its own usually does not.
 
 | Property | Type | Description |
 |---|---|---|
