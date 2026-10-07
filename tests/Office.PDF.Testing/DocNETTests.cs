@@ -103,6 +103,34 @@ Simple PDF File 2
         => PdfTestHelper.Merge_Split_Documents(_pdfService, _pdfService);
 
 
+    [TestCase(new[] { 1 }, new[] { 2, 3, 4, 5, 6, 7, 8, 9 })]
+    [TestCase(new[] { 5 }, new[] { 1, 2, 3, 4, 6, 7, 8, 9 })]
+    [TestCase(new[] { 8 }, new[] { 1, 2, 3, 4, 5, 6, 7, 9 })]
+    [TestCase(new[] { 9 }, new[] { 1, 2, 3, 4, 5, 6, 7, 8 })]
+    [TestCase(new[] { 2, 3 }, new[] { 1, 4, 5, 6, 7, 8, 9 })]
+    [TestCase(new[] { 5, 3, 3 }, new[] { 1, 2, 4, 6, 7, 8, 9 })]
+    public async Task Remove_Pages(int[] pagesToRemove, int[] expectedPages)
+    {
+        var bf = (await FileSystemUtility.Parse(Path.Combine(_inputDir, "lorem-9-pages.pdf")))!;
+        var textsPerPage = await _pdfService.GetTextPerPage(bf);
+
+        using var resultPdf = await _pdfService.RemovePages(bf, pagesToRemove);
+
+        PdfTestHelper.AssertReadableWithoutRewind(resultPdf);
+        var resultTexts = await _pdfService.GetTextPerPage(resultPdf!.ToBinaryFile());
+        Assert.That(resultTexts, Is.EqualTo(expectedPages.Select(page => textsPerPage[page - 1])));
+    }
+
+    [Test]
+    public async Task Remove_Every_Page_Gives_Null()
+    {
+        var bf = (await FileSystemUtility.Parse(Path.Combine(_inputDir, "lorem-9-pages.pdf")))!;
+
+        var resultPdf = await _pdfService.RemovePages(bf, Enumerable.Range(1, 9));
+
+        Assert.That(resultPdf, Is.Null);
+    }
+
     [Test]
     public async Task Remove_Empty_Pages()
     {

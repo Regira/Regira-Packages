@@ -1,19 +1,20 @@
 # Regira Office.PDF
 
-Regira Office.PDF provides a **unified abstraction** for PDF operations — HTML→PDF, images→PDF, PDF→images, text extraction, merge/split, and printing — across multiple underlying libraries.
+Regira Office.PDF provides a **unified abstraction** for PDF operations — HTML→PDF, Office documents→PDF, images→PDF, PDF→images, text extraction, merge/split, and printing — across multiple underlying libraries.
 
 ## Projects
 
-| Project | Package | Backend | HTML→PDF | PDF ops | Print |
-|---------|---------|---------|----------|---------|-------|
-| `Common.Office` | *(transitive)* | Shared abstractions | — | — | — |
-| `PDF.SelectPdf` | `Regira.Office.PDF.SelectPdf` | Select.HtmlToPdf | ✓ full | — | — |
-| `PDF.Puppeteer` | `Regira.Office.PDF.Puppeteer` | PuppeteerSharp | ✓ Letter | — | — |
-| `PDF.Playwright` | `Regira.Office.PDF.MsPlaywright` | Microsoft.Playwright | ✓ A4 | — | — |
-| `PDF.DocNET` | `Regira.Office.PDF.DocNET` | Docnet.Core | — | merge, split, img↔pdf, text | — |
-| `PDF.Spire` | `Regira.Office.PDF.Spire` | FreeSpire.PDF | — | merge, split, pdf→img, text | ✓ |
-| `PDF.PDFtoPrinter` | `Regira.Office.PDF.PDFtoPrinter` | PDFtoPrinter | — | — | ✓ (Win) |
-| `PDF.PockyBum522` | `Regira.Office.PDF.PockyBum522` | SimpleFreePdfPrinter | — | — | ✓ (Win) |
+| Project | Package | Backend | HTML→PDF | Office→PDF | PDF ops | Print |
+|---------|---------|---------|----------|------------|---------|-------|
+| `Common.Office` | *(transitive)* | Shared abstractions | — | — | — | — |
+| `PDF.SelectPdf` | `Regira.Office.PDF.SelectPdf` | Select.HtmlToPdf | ✓ full | — | — | — |
+| `PDF.Puppeteer` | `Regira.Office.PDF.Puppeteer` | PuppeteerSharp | ✓ Letter | — | — | — |
+| `PDF.Playwright` | `Regira.Office.PDF.MsPlaywright` | Microsoft.Playwright | ✓ A4 | — | — | — |
+| `PDF.DocNET` | `Regira.Office.PDF.DocNET` | Docnet.Core | — | — | merge, split, img↔pdf, text | — |
+| `PDF.MiniPdf` | `Regira.Office.PDF.MiniPdf` | MiniPdf | — | ✓ docx, xlsx, pptx | — | — |
+| `PDF.Spire` | `Regira.Office.PDF.Spire` | FreeSpire.PDF | — | — | merge, split, pdf→img, text | ✓ |
+| `PDF.PDFtoPrinter` | `Regira.Office.PDF.PDFtoPrinter` | PDFtoPrinter | — | — | — | ✓ (Win) |
+| `PDF.PockyBum522` | `Regira.Office.PDF.PockyBum522` | SimpleFreePdfPrinter | — | — | — | ✓ (Win) |
 
 ## Installation
 
@@ -24,6 +25,9 @@ Regira Office.PDF provides a **unified abstraction** for PDF operations — HTML
 <!-- HTML→PDF (headless Chromium) -->
 <PackageReference Include="Regira.Office.PDF.Puppeteer" Version="6.*" />
 <PackageReference Include="Regira.Office.PDF.MsPlaywright" Version="6.*" />
+
+<!-- Word, Excel and PowerPoint → PDF (in-process, no licence) -->
+<PackageReference Include="Regira.Office.PDF.MiniPdf" Version="6.*" />
 
 <!-- PDF operations (merge, split, text, images) -->
 <PackageReference Include="Regira.Office.PDF.DocNET" Version="6.*" />
@@ -44,6 +48,14 @@ IMemoryFile file = await pdf.Create(new HtmlInput
     HtmlContent = "<h1>Hello</h1>",
     Format      = PageSize.A4,
     Orientation = PageOrientation.Portrait
+});
+
+// Word, Excel or PowerPoint → PDF (MiniPdf)
+IDocumentToPdfService converter = new Regira.Office.PDF.MiniPdf.PdfService();
+IMemoryFile reportPdf = await converter.Create(new DocumentInput
+{
+    Document = File.ReadAllBytes("report.docx").ToMemoryFile(),
+    Format   = PageSize.A4
 });
 
 // Merge PDFs (DocNET — needs an IImageService for the image-related operations)
@@ -71,6 +83,16 @@ API and yields an empty file with no exception. `GetBytes()` normalises both and
 ```csharp
 Task<IMemoryFile> Create(HtmlInput template, CancellationToken cancellationToken = default);
 ```
+
+### IDocumentToPdfService
+
+<!-- no-compile -->
+```csharp
+Task<IMemoryFile> Create(DocumentInput input, CancellationToken cancellationToken = default);
+```
+
+Converts a Word document, a spreadsheet or a presentation. A source format or a `DocumentInput` setting the
+backend cannot handle throws `NotSupportedException` rather than being ignored.
 
 ### IPdfMerger / IPdfSplitter / IPdfEditor
 
@@ -133,6 +155,17 @@ Composite: `IPdfEditor + IPdfImageService + IPdfTextService`.
 | `Margins` | `Margins` | `10mm` all | Page margins (in points) |
 | `DPI` | `int` | `96` | Render resolution |
 
+### DocumentInput
+
+The page settings override the document's own page setup; each one left `null` keeps what the document says.
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `Document` | `IMemoryFile` | *(required)* | Document to convert |
+| `Format` | `PageSize?` | `null` | Paper size |
+| `Orientation` | `PageOrientation?` | `null` | Portrait / Landscape |
+| `Margins` | `Margins?` | `null` | Page margins (in points) |
+
 ### ImagesInput
 
 Same base properties as `HtmlInput` plus:
@@ -176,6 +209,32 @@ It runs on Windows only: it renders through `System.Drawing.Common`, which throw
 
 Both download Chromium automatically on first use (thread-safe via semaphore). Custom page sizes and margins from `HtmlInput` are not respected: Playwright always renders A4, while Puppeteer uses the PuppeteerSharp default paper size (**Letter**). Use for pixel-perfect rendering of complex CSS.
 
+### MiniPdf — Word, Excel and PowerPoint to PDF
+
+`PdfService` implements `IDocumentToPdfService` with [MiniPdf](https://github.com/mini-software/MiniPdf): it
+converts `.docx`, `.xlsx` and `.pptx` in-process, with no Office installation, server, browser or licence. MiniPdf
+lays documents out itself, so a complex layout comes out less faithful than through LibreOffice or Word; for a Word
+document that must match Word's layout, convert it with a Word backend's `IWordConverter`.
+
+It applies the `DocumentInput` settings per source format:
+
+| Source | Takes | Throws `NotSupportedException` for |
+|--------|-------|-------------------------------------|
+| `.docx` | `Format` (with or without `Orientation`), `Margins` | `Orientation` without `Format` — MiniPdf replaces the page size as a whole |
+| `.xlsx` | `Orientation` | `Format`, `Margins` |
+| `.pptx` | — (a slide keeps the presentation's slide size) | `Format`, `Orientation`, `Margins` |
+
+Any other source — `.doc`, `.xls`, `.odt`, `.rtf`, a PDF — throws `NotSupportedException`. Every visible sheet of
+a workbook is rendered, in order.
+
+Text renders in the host's system fonts. On a host with few — a container — register TrueType fonts once at
+startup; the registration holds for the whole process:
+
+<!-- no-compile -->
+```csharp
+MiniSoftware.MiniPdf.RegisterFont("NotoSans", File.ReadAllBytes("Fonts/NotoSans-Regular.ttf"));
+```
+
 ### DocNET — recommended for PDF operations
 
 Implements `IPdfService` (merge, split, images↔pdf, text extraction, page removal). Requires `IImageService` in the constructor.
@@ -194,4 +253,4 @@ FreeSpire.PDF is the vendor's free edition. Loading or creating a PDF of more th
 ## Overview
 
 1. **[Index](README.md)** — Overview, interfaces, models, and implementation notes
-1. [Examples](examples.md) — HTML→PDF, merge, split, text extraction, printing
+1. [Examples](examples.md) — HTML→PDF, Office documents→PDF, merge, split, text extraction, printing

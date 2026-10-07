@@ -31,12 +31,12 @@ like it has no content accessor at all.
 
 | Namespace | Types |
 |---|---|
-| `Regira.Office.PDF.Abstractions` | `IPdfService`, `IHtmlToPdfService`, `IPdfEditor`, `IPdfMerger`, `IPdfSplitter`, `IPdfTextExtractor`, `IPdfTextService`, `IPdfImageService`, `IImagesToPdfService`, `IPdfToImageService`, `IPdfToImageAsyncService`, `IPdfPrinter`, `PdfInputBase` |
-| `Regira.Office.PDF.Models` | `HtmlInput`, `ImagesInput`, `PdfSplitRange`, `PdfToImagesOptions` |
+| `Regira.Office.PDF.Abstractions` | `IPdfService`, `IHtmlToPdfService`, `IDocumentToPdfService`, `IPdfEditor`, `IPdfMerger`, `IPdfSplitter`, `IPdfTextExtractor`, `IPdfTextService`, `IPdfImageService`, `IImagesToPdfService`, `IPdfToImageService`, `IPdfToImageAsyncService`, `IPdfPrinter`, `PdfInputBase` |
+| `Regira.Office.PDF.Models` | `HtmlInput`, `DocumentInput`, `ImagesInput`, `PdfSplitRange`, `PdfToImagesOptions` |
 | `Regira.Office.PDF.Defaults` | `PdfDefaults` |
 | `Regira.Office.PDF.Drawing` | `PdfImageCreator`, `PdfToImageLayerOptions` |
 | `Regira.Office.PDF.Printer` | `PdfPrinterInput` |
-| **Providers** | `Regira.Office.PDF.SelectPdf` · `…DocNET` · `…Spire` · `…Puppeteer` · `…MsPlaywright` → `PdfManager`; `Regira.Office.PDF.PDFtoPrinter` · `…PockyBum522` → `PdfPrinter` |
+| **Providers** | `Regira.Office.PDF.SelectPdf` · `…DocNET` · `…Spire` · `…Puppeteer` · `…MsPlaywright` → `PdfManager`; `Regira.Office.PDF.MiniPdf` → `PdfService`; `Regira.Office.PDF.PDFtoPrinter` · `…PockyBum522` → `PdfPrinter` |
 
 ## Barcodes & QR
 

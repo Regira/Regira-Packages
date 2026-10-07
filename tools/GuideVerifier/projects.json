@@ -508,6 +508,7 @@
       "projects": [
         "src/Common.Office/Common.Office.csproj",
         "src/PDF.SelectPdf/PDF.SelectPdf.csproj",
+        "src/PDF.MiniPdf/PDF.MiniPdf.csproj",
         "src/PDF.DocNET/PDF.DocNET.csproj",
         "src/PDF.Spire/PDF.Spire.csproj",
         "src/PDF.Puppeteer/PDF.Puppeteer.csproj",

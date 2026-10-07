@@ -458,7 +458,7 @@ When none of the four resolves — a configuration key that is missing, say — 
 
 `WordService` implements `IWordCreator`, `IWordTextExtractor` and `IWordImageExtractor` (`WordCreator` is an `[Obsolete]` alias). Lightweight and Apache-2.0-licensed, with no document size cap. Text and image extraction read the rendered document through the Open XML SDK, which MiniWord already depends on.
 
-`Convert`, `Merge` and `ToImages` are unavailable: MiniWord has no layout engine. Use Word.Spire for those, or pair Word.Mini with Word.Gotenberg for PDF output and page images.
+`Convert`, `Merge` and `ToImages` are unavailable: MiniWord has no layout engine. Use Word.Spire for those, or pair Word.Mini with Word.Gotenberg for PDF output and page images. For PDF output in-process, without a server, hand Word.Mini's `.docx` to [PDF.MiniPdf](../pdf/README.md#minipdf--word-excel-and-powerpoint-to-pdf), whose own layout engine is less faithful to Word than LibreOffice.
 
 `Create` renders `GlobalParameters`, `CollectionParameters` and `Images`, and throws `NotSupportedException` for `DocumentParameters`, `Headers`, `Footers` and any non-default `InputOptions`.
 

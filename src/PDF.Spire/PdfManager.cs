@@ -9,8 +9,8 @@ using Spire.Pdf;
 using Spire.Pdf.Graphics;
 using Spire.Pdf.Texts;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.Text;
+using RegiraImageFormat = Regira.Media.Drawing.Enums.ImageFormat;
 
 namespace Regira.Office.PDF.Spire;
 
@@ -92,6 +92,7 @@ public class PdfManager : IPdfMerger, IPdfSplitter, IPdfToImageService, IPdfText
     }
     public Task<IList<IImageFile>> ToImages(IMemoryFile pdf, PdfToImagesOptions? options = null, CancellationToken cancellationToken = default)
     {
+        var format = (options?.Format ?? RegiraImageFormat.Jpeg).ToGdiImageFormat();
         var images = new List<IImageFile>();
         using var doc = new PdfDocument(pdf.GetStream());
         var pageCount = doc.Pages.Count;
@@ -101,11 +102,11 @@ public class PdfManager : IPdfMerger, IPdfSplitter, IPdfToImageService, IPdfText
             if (options?.Size.HasValue == true)
             {
                 using var resized = GdiUtility.Resize(image, options.Size.Value.ToGdiSize());
-                images.Add(resized.ToImageFile(ImageFormat.Jpeg));
+                images.Add(resized.ToImageFile(format));
             }
             else
             {
-                images.Add(image.ToImageFile(ImageFormat.Jpeg));
+                images.Add(image.ToImageFile(format));
             }
         }
         return Task.FromResult<IList<IImageFile>>(images);

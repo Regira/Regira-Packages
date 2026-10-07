@@ -136,9 +136,31 @@ await printer.Print(new PdfPrinterInput
 
 ---
 
+## Example 8: Spreadsheet → PDF
+
+`IDocumentToPdfService` converts Word documents, spreadsheets and presentations. Register MiniPdf's `PdfService`,
+which has no dependencies, and inject the abstraction.
+
+<!-- no-compile -->
+```csharp
+services.AddSingleton<IDocumentToPdfService, Regira.Office.PDF.MiniPdf.PdfService>();
+
+public class ReportPdfService(IDocumentToPdfService converter)
+{
+    public Task<IMemoryFile> ToPdf(byte[] workbook)
+        => converter.Create(new DocumentInput
+        {
+            Document    = workbook.ToMemoryFile(),
+            Orientation = PageOrientation.Landscape   // an .xlsx takes Orientation; Format or Margins throw
+        });
+}
+```
+
+---
+
 ## Overview
 
 1. [Index](README.md) — Overview, interfaces, models, and implementation notes
-1. **[Examples](examples.md)** — HTML→PDF, merge, split, text extraction, printing
+1. **[Examples](examples.md)** — HTML→PDF, Office documents→PDF, merge, split, text extraction, printing
 
 <!-- {% endraw %} -->

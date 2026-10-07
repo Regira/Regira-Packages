@@ -8,7 +8,7 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 | Namespace | Covers |
 |---|---|
-| `Regira.Office.PDF` | HTML→PDF, PDF operations (merge/split/extract), printing |
+| `Regira.Office.PDF` | HTML→PDF, Office documents (Word, Excel, PowerPoint)→PDF, PDF operations (merge/split/extract), printing |
 
 **Related:**
 - **Media / Drawing** — `IImageService` required by `DocNET.PdfManager`; `IImageFile` ↔ PDF conversion. `get_package(id: "Regira.Media", section: "media.instructions")`, or `media.instructions.md` locally.
@@ -26,6 +26,9 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 <PackageReference Include="Regira.Office.PDF.Puppeteer" Version="6.*" />
 <PackageReference Include="Regira.Office.PDF.MsPlaywright" Version="6.*" />
 
+<!-- Word, Excel and PowerPoint → PDF, in-process, no licence -->
+<PackageReference Include="Regira.Office.PDF.MiniPdf" Version="6.*" />
+
 <!-- PDF operations (merge, split, text, images) — recommended -->
 <PackageReference Include="Regira.Office.PDF.DocNET" Version="6.*" />
 
@@ -41,20 +44,23 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 ## Backend Comparison
 
-| Package | Backend | HTML→PDF | PDF Ops | Print | Runtime footprint |
-|---|---|---|---|---|---|
-| `PDF.SelectPdf` | Select.HtmlToPdf | ✓ full | — | — | Pulls `System.Drawing.Common`, which throws on non-Windows from .NET 6 on — treat as **Windows**. The free Community Edition converts only the first **five pages'** worth of a document and drops the rest without an error or a notice |
-| `PDF.Puppeteer` | PuppeteerSharp | ✓ A4 | — | — | **Downloads Chromium on first use** (`BrowserFetcher().DownloadAsync()`) — needs network + disk at runtime, or a pre-seeded cache |
-| `PDF.MsPlaywright` | Microsoft.Playwright | ✓ A4 | — | — | **Installs its browser on first use** — same constraint; the install is guarded by a process-wide lock, so the first request pays for it |
-| `PDF.DocNET` | Docnet.Core | — | merge, split, img↔pdf, text | — | Managed wrapper over a native library — the RID must be one `Docnet.Core` ships binaries for |
-| `PDF.Spire` | FreeSpire.PDF | — | merge, split, img, text | ✓ | The **free** edition: loading or creating a PDF of more than **ten pages** throws (a merge whose result passes ten included), and `ToImages` renders only the first **three** pages, returning blank images for the rest |
-| `PDF.PDFtoPrinter` | PDFtoPrinter | — | — | ✓ (Win) | Drives an external printing utility |
-| `PDF.PockyBum522` | SimpleFreePdfPrinter | — | — | ✓ (Win) | Targets `net*-windows` — **will not build** on a non-Windows TFM |
+| Package | Backend | HTML→PDF | Office→PDF | PDF Ops | Print | Runtime footprint |
+|---|---|---|---|---|---|---|
+| `PDF.SelectPdf` | Select.HtmlToPdf | ✓ full | — | — | — | Pulls `System.Drawing.Common`, which throws on non-Windows from .NET 6 on — treat as **Windows**. The free Community Edition converts only the first **five pages'** worth of a document and drops the rest without an error or a notice |
+| `PDF.Puppeteer` | PuppeteerSharp | ✓ A4 | — | — | — | **Downloads Chromium on first use** (`BrowserFetcher().DownloadAsync()`) — needs network + disk at runtime, or a pre-seeded cache |
+| `PDF.MsPlaywright` | Microsoft.Playwright | ✓ A4 | — | — | — | **Installs its browser on first use** — same constraint; the install is guarded by a process-wide lock, so the first request pays for it |
+| `PDF.DocNET` | Docnet.Core | — | — | merge, split, img↔pdf, text | — | Managed wrapper over a native library — the RID must be one `Docnet.Core` ships binaries for |
+| `PDF.MiniPdf` | MiniPdf | — | ✓ docx, xlsx, pptx | — | — | Managed and in-process: no Office, server or browser. MiniPdf lays documents out itself, so a complex layout comes out less faithful than through LibreOffice or Word. Text renders in the host's system fonts — on a host with few (a container), register TrueType fonts once at startup with `MiniSoftware.MiniPdf.RegisterFont`, a registration for the whole process |
+| `PDF.Spire` | FreeSpire.PDF | — | — | merge, split, img, text | ✓ | The **free** edition: loading or creating a PDF of more than **ten pages** throws (a merge whose result passes ten included), and `ToImages` renders only the first **three** pages, returning blank images for the rest |
+| `PDF.PDFtoPrinter` | PDFtoPrinter | — | — | — | ✓ (Win) | Drives an external printing utility |
+| `PDF.PockyBum522` | SimpleFreePdfPrinter | — | — | — | ✓ (Win) | Targets `net*-windows` — **will not build** on a non-Windows TFM |
 
 **Recommendations:**
 - HTML → PDF: **SelectPdf** on Windows for documents of up to five pages (full options, nothing to download);
   **Puppeteer**/**Playwright** where the host is Linux, a document runs longer, or the CSS must be pixel-perfect,
   and a first-run browser fetch is acceptable
+- Office documents → PDF: **MiniPdf** — `.docx`, `.xlsx` and `.pptx`, in-process, no licence and no server. For a
+  Word document that must lay out as Word does, convert it with a Word backend (`IWordConverter`) instead
 - PDF operations: **DocNET** (merge, split, images, text extraction) — the only cross-platform ops backend
 - Printing: **Spire** (operations + print) or **PDFtoPrinter** (print-only, Windows)
 
@@ -68,6 +74,16 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 ```csharp
 Task<IMemoryFile> Create(HtmlInput input, CancellationToken cancellationToken = default);
 ```
+
+### `IDocumentToPdfService`
+
+<!-- no-compile -->
+```csharp
+Task<IMemoryFile> Create(DocumentInput input, CancellationToken cancellationToken = default);
+```
+
+Converts a Word document, a spreadsheet or a presentation. A source format or a `DocumentInput` setting the
+backend cannot handle throws `NotSupportedException`; a setting is never ignored silently.
 
 ### `IPdfMerger`
 
@@ -152,6 +168,26 @@ Composite: `IPdfEditor + IPdfImageService + IPdfTextService`. Implemented by `PD
 | `Margins` | `Margins` | `10mm` all | Page margins (in points) |
 | `DPI` | `int` | `96` | Render resolution |
 
+### `DocumentInput`
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `Document` | `IMemoryFile` | *(required)* | Document to convert |
+| `Format` | `PageSize?` | `null` | Paper size; `null` keeps the document's own |
+| `Orientation` | `PageOrientation?` | `null` | Portrait / Landscape; `null` keeps the document's own |
+| `Margins` | `Margins?` | `null` | Page margins in points; `null` keeps the document's own |
+
+MiniPdf applies them per source format:
+
+| Source | Takes | Throws `NotSupportedException` for |
+|---|---|---|
+| `.docx` | `Format` (with or without `Orientation`), `Margins` | `Orientation` without `Format` — MiniPdf replaces the page size as a whole |
+| `.xlsx` | `Orientation` | `Format`, `Margins` |
+| `.pptx` | — (a slide keeps the presentation's slide size) | `Format`, `Orientation`, `Margins` |
+
+Any other source — `.doc`, `.xls`, `.odt`, `.rtf`, a PDF — throws `NotSupportedException`. Every visible sheet of a
+workbook is rendered, in order.
+
 ### `PdfSplitRange`
 
 | Property | Type | Description |
@@ -188,6 +224,14 @@ IMemoryFile file = await pdf.Create(new HtmlInput
     HtmlContent = "<h1>Invoice</h1>",
     Format      = PageSize.A4,
     Orientation = PageOrientation.Portrait
+});
+
+// Word, Excel or PowerPoint → PDF (MiniPdf)
+IDocumentToPdfService converter = new Regira.Office.PDF.MiniPdf.PdfService();
+IMemoryFile reportPdf = await converter.Create(new DocumentInput
+{
+    Document = File.ReadAllBytes("report.docx").ToMemoryFile(),
+    Format   = PageSize.A4
 });
 
 // Merge PDFs (DocNET)
