@@ -41,4 +41,33 @@ public class NpoiMapperTests
     [Test]
     public Task From_Json() => CreateExcelManager()
         .Run_From_Json();
+
+    [Test]
+    public Task Create_Empty_Sheets() => CreateExcelManager()
+        .Run_Create_Empty_Sheets();
+    [Test]
+    public Task Create_Rows_With_Different_Keys() => CreateExcelManager()
+        .Run_Create_Rows_With_Different_Keys();
+    [Test]
+    public Task Create_Mixed_Value_Types() => CreateExcelManager()
+        .Run_Create_Mixed_Value_Types();
+    // no Create_Nested_Object: object rows go to Npoi.Mapper, which leaves out a property holding an object (docs/excel)
+    [Test]
+    public Task Create_Keys_Differing_By_Case() => CreateExcelManager()
+        .Run_Create_Keys_Differing_By_Case();
+    [Test]
+    public Task Create_With_Invalid_Sheet_Names() => CreateExcelManager()
+        .Run_Create_With_Invalid_Sheet_Names();
+    [Test]
+    public Task Read_Empty_Sheet() => CreateExcelManager()
+        .Run_Read_Empty_Sheet();
+    [Test]
+    public Task Read_Blank_And_Repeated_Headers() => CreateExcelManager()
+        .Run_Read_Blank_And_Repeated_Headers();
+    [Test]
+    public Task Read_Selected_Headers() => CreateExcelManager()
+        .Run_Read_Selected_Headers();
+    [Test]
+    public Task Create_Typed_Empty_Sheets() => CreateTypedExcelManager()
+        .Run_Create_Typed_Empty_Sheets();
 }

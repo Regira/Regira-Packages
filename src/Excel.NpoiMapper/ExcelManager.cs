@@ -4,9 +4,9 @@ using NPOI.XSSF.UserModel;
 using Regira.IO.Abstractions;
 using Regira.IO.Extensions;
 using Regira.Office.Excel.Abstractions;
+using Regira.Office.Excel.Internal;
 using Regira.Office.Excel.Models;
 using Regira.Office.MimeTypes;
-using Regira.Utilities;
 
 namespace Regira.Office.Excel.NpoiMapper;
 
@@ -19,43 +19,101 @@ public class ExcelManager(ExcelManager.Options? options = null) : IExcelService
     }
 
 
+    /// <summary>
+    /// Reads every sheet, using its first row as the keys of the rows below it. Rows that were never written are skipped.
+    /// </summary>
+    /// <param name="input">The workbook</param>
+    /// <param name="headers">When supplied, only the columns with these headers are returned (case-insensitive)</param>
+    /// <param name="cancellationToken"></param>
     public Task<IEnumerable<ExcelSheet>> Read(IBinaryFile input, string[]? headers = null, CancellationToken cancellationToken = default)
     {
-        var sheets = ReadCore(input, headers).ToList();
+        using var ms = input.GetStream()
+            ?? throw new ArgumentException("The input file has no content.", nameof(input));
+        var workbook = WorkbookFactory.Create(ms);
+        var sheets = Enumerable.Range(0, workbook.NumberOfSheets)
+            .Select(i => workbook.GetSheetAt(i))
+            .Select(sheet => new ExcelSheet
+            {
+                Name = sheet.SheetName,
+                Data = ReadSheet(sheet, headers, cancellationToken)
+            })
+            .ToList();
         return Task.FromResult<IEnumerable<ExcelSheet>>(sheets);
     }
-    private IEnumerable<ExcelSheet> ReadCore(IBinaryFile input, string[]? headers = null)
+    private static List<object> ReadSheet(ISheet sheet, string[]? headers, CancellationToken cancellationToken)
     {
-        using var ms = input.GetStream();
-        var mapper = new Mapper(ms);
-        var sheetCount = mapper.Workbook.NumberOfSheets;
-        for (var i = 0; i < sheetCount; i++)
+        cancellationToken.ThrowIfCancellationRequested();
+        var data = new List<object>();
+        var rows = Enumerable.Range(1, Math.Max(sheet.LastRowNum, 0))
+            .Select(sheet.GetRow)
+            .Where(row => row != null)
+            .ToList();
+        var headerRow = sheet.GetRow(0);
+        var columnCount = rows.Append(headerRow)
+            .Select(row => (int?)row?.LastCellNum ?? 0)
+            .DefaultIfEmpty()
+            .Max();
+        if (columnCount <= 0)
         {
-            var sheetName = mapper.Workbook.GetSheetName(i);
-            yield return new ExcelSheet
-            {
-                Name = sheetName,
-                Data = mapper.Take<object>(i).Select(r => r.Value).ToList()
-            };
+            return data;
         }
+
+        var columns = SheetHeaders.Keys(Enumerable.Range(0, columnCount).Select(c => GetValue(headerRow?.GetCell(c))).ToList())
+            .Select((key, index) => (Index: index, Key: key))
+            .Where(c => headers?.Contains(c.Key, StringComparer.InvariantCultureIgnoreCase) ?? true)
+            .ToList();
+        foreach (var row in rows)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var item = new Dictionary<string, object?>(columns.Count);
+            foreach (var (index, key) in columns)
+            {
+                item[key] = GetValue(row.GetCell(index));
+            }
+            data.Add(item);
+        }
+        return data;
     }
+    private static object? GetValue(ICell? cell)
+    {
+        if (cell == null)
+        {
+            return null;
+        }
+        var type = cell.CellType == CellType.Formula ? cell.CachedFormulaResultType : cell.CellType;
+        return type switch
+        {
+            CellType.Boolean => cell.BooleanCellValue,
+            CellType.String => cell.StringCellValue,
+            CellType.Numeric => DateUtil.IsCellDateFormatted(cell) ? cell.DateCellValue : cell.NumericCellValue,
+            CellType.Error => FormulaError.ForInt(cell.ErrorCellValue).String,
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// Writes each sheet with a header row. Dictionaries get every key their rows use, in the order they first appear;
+    /// objects are written by Npoi.Mapper.
+    /// </summary>
+    /// <exception cref="ArgumentException">A sheet name breaks Excel's rules or is used more than once</exception>
     public Task<IMemoryFile> Create(IEnumerable<ExcelSheet> sheets, CancellationToken cancellationToken = default)
     {
+        var sheetList = sheets.ToList();
+        var sheetNames = SheetNames.Resolve(sheetList.Select(s => s.Name).ToList());
         var workbook = new XSSFWorkbook();
         var mapper = new Mapper(workbook);
-        var sheetIndex = 0;
-        foreach (var sheet in sheets)
+        for (var i = 0; i < sheetList.Count; i++)
         {
-            var sheetName = sheet.Name ?? $"Sheet-{++sheetIndex}";
-            if (sheet.Data?.FirstOrDefault() is IDictionary<string, object>)
+            cancellationToken.ThrowIfCancellationRequested();
+            var data = sheetList[i].Data;
+            if (data?.FirstOrDefault() is { } and not IDictionary<string, object>)
             {
-                var xlsSheet = workbook.CreateSheet(sheetName);
-                var dicData = sheet.Data.Select(d => DictionaryUtility.ToDictionary(d)).ToList();
-                FillSheet(xlsSheet, dicData);
+                mapper.Put(data, sheetNames[i]);
             }
             else
             {
-                mapper.Put(sheet.Data, sheetName);
+                var xlsSheet = workbook.CreateSheet(sheetNames[i]);
+                FillSheet(xlsSheet, SheetRows.ToDictionaries(data));
             }
         }
 
@@ -72,59 +130,46 @@ public class ExcelManager(ExcelManager.Options? options = null) : IExcelService
             return;
         }
 
-        var keys = data.SelectMany(dic => dic.Keys).Distinct().ToArray();
-        var keysWithType = keys.ToDictionary(key => key, key =>
-        {
-            var firstValidItem = data.FirstOrDefault(d => d.ContainsKey(key) && d[key] != null);
-            return firstValidItem?[key]?.GetType();
-        });
-
+        var keys = SheetRows.Keys(data);
         ICellStyle? dateCellStyle = null;
 
         var headers = sheet.CreateRow(0);
+        for (var c = 0; c < keys.Count; c++)
+        {
+            headers.CreateCell(c).SetCellValue(keys[c]);
+        }
         for (var r = 0; r < data.Count; r++)
         {
             var row = sheet.CreateRow(r + 1);
-            for (var c = 0; c < keys.Length; c++)
+            for (var c = 0; c < keys.Count; c++)
             {
                 var key = keys[c];
-                if (r == 0)
-                {
-                    // headers
-                    var cell = headers.CreateCell(c);
-                    cell.SetCellValue(key);
-                }
-                if (data[r].ContainsKey(key))
+                if (data[r].TryGetValue(key, out var value))
                 {
                     var cell = row.CreateCell(c);
-                    var value = data[r][key];
 
-                    if (value != null)
+                    // each value by its own type: a key can hold a date in one row and text in the next
+                    if (value is DateTime date)
                     {
-                        var propertyType = keysWithType[key];
-                        var simplePropertyType = TypeUtility.GetSimpleType(propertyType!);
-                        if (simplePropertyType == typeof(DateTime))
+                        if (dateCellStyle == null)
                         {
-                            if (dateCellStyle == null)
-                            {
-                                dateCellStyle = sheet.Workbook.CreateCellStyle();
-                                dateCellStyle.DataFormat = sheet.Workbook.CreateDataFormat().GetFormat(_options.DateFormat);
-                            }
-                            cell.CellStyle = dateCellStyle;
-                            cell.SetCellValue((DateTime)value);
+                            dateCellStyle = sheet.Workbook.CreateCellStyle();
+                            dateCellStyle.DataFormat = sheet.Workbook.CreateDataFormat().GetFormat(_options.DateFormat);
                         }
-                        else if (simplePropertyType.IsNumeric())
-                        {
-                            cell.SetCellValue(Convert.ToDouble(value));
-                        }
-                        else if (new[] { typeof(bool) }.Contains(simplePropertyType))
-                        {
-                            cell.SetCellValue((bool)value);
-                        }
-                        else //if (new[] { typeof(string), typeof(char) }.Contains(simplePropertyType))
-                        {
-                            cell.SetCellValue(value.ToString());
-                        }
+                        cell.CellStyle = dateCellStyle;
+                        cell.SetCellValue(date);
+                    }
+                    else if (value is bool boolean)
+                    {
+                        cell.SetCellValue(boolean);
+                    }
+                    else if (value != null && value.GetType().IsNumeric())
+                    {
+                        cell.SetCellValue(Convert.ToDouble(value));
+                    }
+                    else if (value != null)
+                    {
+                        cell.SetCellValue(value.ToString());
                     }
                 }
             }
@@ -137,16 +182,17 @@ public class ExcelManager<T> : IExcelService<T>
 {
     public Task<IEnumerable<ExcelSheet<T>>> Read(IBinaryFile input, string[]? headers = null, CancellationToken cancellationToken = default)
     {
-        var sheets = ReadCore(input, headers).ToList();
+        var sheets = ReadCore(input, headers, cancellationToken).ToList();
         return Task.FromResult<IEnumerable<ExcelSheet<T>>>(sheets);
     }
-    private IEnumerable<ExcelSheet<T>> ReadCore(IBinaryFile input, string[]? headers = null)
+    private IEnumerable<ExcelSheet<T>> ReadCore(IBinaryFile input, string[]? headers, CancellationToken cancellationToken)
     {
         using var ms = input.GetStream();
         var mapper = new Mapper(ms);
         var sheetCount = mapper.Workbook.NumberOfSheets;
         for (var i = 0; i < sheetCount; i++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var sheetName = mapper.Workbook.GetSheetName(i);
             yield return new ExcelSheet<T>
             {
@@ -155,15 +201,20 @@ public class ExcelManager<T> : IExcelService<T>
             };
         }
     }
+    /// <summary>
+    /// Writes each sheet with a header row from the properties of <typeparamref name="T"/>, also when it has no rows.
+    /// </summary>
+    /// <exception cref="ArgumentException">A sheet name breaks Excel's rules or is used more than once</exception>
     public Task<IMemoryFile> Create(IEnumerable<ExcelSheet<T>> sheets, CancellationToken cancellationToken = default)
     {
+        var sheetList = sheets.ToList();
+        var sheetNames = SheetNames.Resolve(sheetList.Select(s => s.Name).ToList());
         var ms = new MemoryStream();
         var mapper = new Mapper();
-        var sheetIndex = 0;
-        foreach (var sheet in sheets)
+        for (var i = 0; i < sheetList.Count; i++)
         {
-            var sheetName = sheet.Name ?? $"Sheet-{++sheetIndex}";
-            mapper.Put(sheet.Data, sheetName);
+            cancellationToken.ThrowIfCancellationRequested();
+            mapper.Put(sheetList[i].Data ?? new List<T>(), sheetNames[i]);
         }
         mapper.Save(ms, true);
         ms.Position = 0;

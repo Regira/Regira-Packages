@@ -18,7 +18,7 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 ## Installation
 
 ```xml
-<!-- MiniExcel — recommended (streaming, generic, lightweight) -->
+<!-- MiniExcel — recommended (generic, low memory) -->
 <PackageReference Include="Regira.Office.Excel.MiniExcel" Version="6.*" />
 
 <!-- ClosedXML -->
@@ -35,14 +35,14 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 ## Backend Comparison
 
-| Package | Backend | Generic `<T>` | Streaming | Notes |
+| Package | Backend | Generic `<T>` | Low memory | Notes |
 |---|---|---|---|---|
 | `Regira.Office.Excel.MiniExcel` | MiniExcel | ✓ | ✓ | Recommended — fast, low memory |
 | `Regira.Office.Excel.ClosedXML` | ClosedXML | — | — | Rich formatting support |
 | `Regira.Office.Excel.EPPlus` | EPPlus v4 | — | — | Free licence (v4) |
 | `Regira.Office.Excel.NpoiMapper` | NPOI + Npoi.Mapper | ✓ | — | Type-mapped via attributes |
 
-**Default recommendation:** Use `MiniExcel` for reading/writing data — supports generics, streaming, and has minimal memory overhead.
+**Default recommendation:** Use `MiniExcel` for reading/writing data — supports generics and reads and writes the sheet XML without a workbook object model. Rows are still collected into `ExcelSheet.Data`; no backend streams rows to the caller.
 
 ---
 
@@ -56,7 +56,7 @@ Task<IEnumerable<ExcelSheet>>    Read(IBinaryFile input, string[]? headers = nul
 Task<IEnumerable<ExcelSheet<T>>> Read(IBinaryFile input, string[]? headers = null, CancellationToken cancellationToken = default);  // generic
 ```
 
-`headers` — when supplied, only those columns are returned (by name).
+`headers` — on MiniExcel, ClosedXML and NpoiMapper, only the named columns are returned (matched case-insensitively against row 1). EPPlus reads row 1 as data and uses the array as the keys, in column order; the typed readers ignore it.
 
 ### `IExcelWriter` / `IExcelWriter<T>`
 
@@ -69,6 +69,13 @@ Task<IMemoryFile> Create(IEnumerable<ExcelSheet<T>> sheets, CancellationToken ca
 ### `IExcelService` / `IExcelService<T>`
 
 Composite: `IExcelReader + IExcelWriter` (and their generic variants).
+
+### Behaviour shared by the backends
+
+- **Read** — row 1 holds the keys: a blank header becomes `Column{n}` (its column number), a repeated one (case-insensitive) `{header}_2`, `{header}_3`, … (skipping a name another header already has). A sheet without rows reads as an empty `Data`.
+- **Create** — the header row holds every key the rows use (case-insensitive, first spelling, first-seen order; within a row, the first of `Id`/`ID` keeps its value); a row without a key gets an empty cell, and each cell keeps its own value's type; a property holding an object is written as its `ToString()` (NpoiMapper's Npoi.Mapper leaves it out). An empty or `null` `Data` writes an empty sheet (a typed writer keeps its header row).
+- **Sheet names** — a missing `Name` becomes `Sheet-{n}` (`Sheet {n}` on EPPlus). A name Excel refuses throws `ArgumentException`: empty, over 31 characters, holding `: \ / ? * [ ]`, starting or ending with `'`, `History`, or used twice (case-insensitive).
+- **`Options.DateFormat`** — the number format of the `DateTime` cells written; they stay dates. Defaults: `null` on ClosedXML and MiniExcel (the library's own date format), `"yyyy/MM/dd"` on EPPlus, `"yyyy-MM-dd hh:mm:ss"` on NpoiMapper. MiniExcel applies it per key across the workbook, only to keys whose values are all `DateTime`s.
 
 ---
 

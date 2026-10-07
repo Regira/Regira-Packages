@@ -28,6 +28,13 @@
     <InternalsVisibleTo Include="Regira.Office.Word.Gotenberg" />
     <InternalsVisibleTo Include="Office.Word.testing" />
   </ItemGroup>
+  <!-- the Excel backends share header keys, row keys and sheet-name rules (Excel/Internal) without making them public API -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Regira.Office.Excel.ClosedXML" />
+    <InternalsVisibleTo Include="Regira.Office.Excel.EPPlus" />
+    <InternalsVisibleTo Include="Regira.Office.Excel.MiniExcel" />
+    <InternalsVisibleTo Include="Regira.Office.Excel.NpoiMapper" />
+  </ItemGroup>
   <!-- MSBuild targets — auto-imported into consuming builds via NuGet buildTransitive -->
   <ItemGroup>
     <None Include="build\Regira.Office.props" Pack="true" PackagePath="buildTransitive\" />
