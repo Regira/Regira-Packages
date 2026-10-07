@@ -8,7 +8,7 @@ Word backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Co
 <PackageReference Include="Regira.Office.Word.Spire" Version="6.*" />
 ```
 
-The FreeSpire.Doc free edition supports documents up to 500 paragraphs or 25 tables and writes at most three pages of PDF, without raising an error; the other output formats and page images carry every page.
+The FreeSpire.Doc free edition supports documents up to 500 paragraphs or 25 tables, and throws `SpireDocFreeException` past either. It writes at most three pages of PDF, without raising an error; the other output formats and page images carry every page.
 
 ## Documentation
 

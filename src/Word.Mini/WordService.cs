@@ -10,6 +10,8 @@ using Regira.Media.Drawing.Dimensions;
 using Regira.Office.MimeTypes;
 using Regira.Office.Word.Abstractions;
 using Regira.Office.Word.Models;
+using Regira.Office.Word.Mini.Internal;
+using Regira.Office.Word.Packaging;
 using Regira.Office.Word.Templating;
 using DrawingML = DocumentFormat.OpenXml.Drawing;
 using W = DocumentFormat.OpenXml.Wordprocessing;
@@ -49,7 +51,7 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
 
         var (values, names, collections) = GetMiniInput(input);
         var ms = new MemoryStream();
-        await ms.SaveAsByTemplateAsync(RewriteTags(ResolveConditions(templateBytes, input), names, collections), values, cancellationToken);
+        await ms.SaveAsByTemplateAsync(RewriteTags(ResolveBlocks(templateBytes, input), names, collections), values, cancellationToken);
         // SaveAsByTemplateAsync leaves the stream at its end; rewind so consumers reading
         // Stream directly (rather than through GetStream()) see the content.
         ms.Position = 0;
@@ -302,11 +304,7 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
             {
                 foreach (var paragraph in root.Descendants<W.Paragraph>())
                 {
-                    // a text box inside the paragraph holds paragraphs of its own, rewritten on their own turn
-                    var texts = paragraph.Descendants<W.Text>()
-                        .Where(text => text.Ancestors<W.Paragraph>().First() == paragraph)
-                        .ToList();
-                    changed |= RewriteTags(texts, names, collections);
+                    changed |= RewriteTags(MiniTemplateWalk.OwnTexts(paragraph).ToList(), names, collections);
                 }
             }
         }
@@ -381,10 +379,13 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
     }
 
     /// <summary>
-    /// Resolves the template's conditional blocks, as <see cref="ConditionalBlocks"/> describes them, before MiniWord sees
-    /// it, so they read the same as on the other backends; MiniWord's own <c>@if</c> is left alone.
+    /// Resolves the template's blocks, as <see cref="TemplateBlocks"/> describes them, and fills the fields of its loops'
+    /// rows before MiniWord sees it, so they read the same as on the other backends; MiniWord's own <c>@if</c> and
+    /// <c>@foreach</c> are left alone. Every tag is joined into one <c>w:t</c> first, as
+    /// <see cref="RewriteTags(byte[], IReadOnlyDictionary{string, string}, IReadOnlyDictionary{string, string})"/>
+    /// writes it, but under the key the template spells, so a row fills its field before MiniWord's names are written.
     /// </summary>
-    internal static byte[] ResolveConditions(byte[] template, WordTemplateInput input)
+    internal static byte[] ResolveBlocks(byte[] template, WordTemplateInput input)
     {
         // read-only first: an editable package is written again when it closes, changed or not
         if (!UsesBlocks(template))
@@ -392,36 +393,20 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
             return template;
         }
 
+        var keys = new Dictionary<string, string>();
         using var stream = new MemoryStream();
         stream.Write(template, 0, template.Length);
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
-            var containers = ContentRoots(doc.MainDocumentPart)
-                .SelectMany(content => content.Root.Descendants<W.Paragraph>())
-                .Where(paragraph => ConditionalBlocks.ContainsMarker(GetOwnText(paragraph)))
-                .Select(paragraph => paragraph.Parent)
-                .OfType<OpenXmlElement>()
-                .Distinct()
-                .ToArray();
-
-            foreach (var container in containers)
+            var roots = ContentRoots(doc.MainDocumentPart).Select(content => content.Root).ToArray();
+            foreach (var paragraph in roots.SelectMany(root => root.Descendants<W.Paragraph>()))
             {
-                var lastBlock = LastBlock(container);
-                foreach (var segment in Segments(container))
-                {
-                    var texts = segment.Select(child => child is W.Paragraph paragraph ? GetOwnText(paragraph) : null).ToArray();
-                    foreach (var index in ConditionalBlocks.Resolve(texts, input))
-                    {
-                        Remove(segment[index]);
-                    }
-                }
-                // a container that ends as the template wrote it is left as it is
-                if (LastBlock(container) != lastBlock)
-                {
-                    EndWithParagraph(container);
-                }
+                RewriteTags(MiniTemplateWalk.OwnTexts(paragraph).ToList(), keys, keys);
             }
+            new MiniTemplateWalk(doc, roots).Run(input);
         }
+        // a copy's VML shapes — a text box's fallback, an embedded object — keep their original's ids
+        VmlShapeIds.MakeUnique(stream);
 
         // disposing an editable document writes it back to the stream
         return stream.ToArray();
@@ -432,93 +417,8 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
         using var doc = WordprocessingDocument.Open(new MemoryStream(template, false), false);
         return ContentRoots(doc.MainDocumentPart)
             .SelectMany(content => content.Root.Descendants<W.Paragraph>())
-            .Any(paragraph => ConditionalBlocks.OpensBlock(GetOwnText(paragraph)));
+            .Any(paragraph => TemplateBlocks.OpensBlock(MiniTemplateWalk.GetOwnText(paragraph)));
     }
-
-    /// <summary>
-    /// The container's block content — paragraphs, tables, content controls — cut into sections: a paragraph carrying
-    /// section properties ends its section, and so does a content control holding one. A block cannot span a section
-    /// break, as on the other backends, where each section has a body of its own. Everything else among the children
-    /// (cell properties, bookmark ends, the final section properties) is never part of a block and stays.
-    /// </summary>
-    private static IEnumerable<List<OpenXmlElement>> Segments(OpenXmlElement container)
-    {
-        var segment = new List<OpenXmlElement>();
-        foreach (var child in container.ChildElements)
-        {
-            if (child is not (W.Paragraph or W.Table or W.SdtBlock))
-            {
-                continue;
-            }
-            segment.Add(child);
-            if (child is W.Paragraph { ParagraphProperties.SectionProperties: not null }
-                || child is W.SdtBlock control && control.Descendants<W.SectionProperties>().Any())
-            {
-                yield return segment;
-                segment = [];
-            }
-        }
-        yield return segment;
-    }
-
-    private static OpenXmlElement? LastBlock(OpenXmlElement container)
-        => container.ChildElements.LastOrDefault(child => child is W.Paragraph or W.Table or W.SdtBlock);
-
-    /// <summary>
-    /// Removes a block's child. A paragraph carrying section properties keeps them and nothing else, so the section
-    /// break stays and none of the paragraph's own formatting — numbering, a page break before it — is left behind
-    /// on an empty line.
-    /// </summary>
-    private static void Remove(OpenXmlElement child)
-    {
-        if (child is W.Paragraph { ParagraphProperties: { SectionProperties: not null } properties } sectionEnd)
-        {
-            foreach (var content in sectionEnd.ChildElements.Where(c => c != properties).ToArray())
-            {
-                content.Remove();
-            }
-            foreach (var property in properties.ChildElements.Where(c => c is not W.SectionProperties).ToArray())
-            {
-                property.Remove();
-            }
-            return;
-        }
-        child.Remove();
-    }
-
-    /// <summary>
-    /// Whatever holds paragraphs ends with one — a body, cell, header, footer, text box or content control; Word
-    /// refuses a cell or text box without one — so one is added when the resolved blocks leave the container empty or
-    /// ending in a table or a content control.
-    /// </summary>
-    private static void EndWithParagraph(OpenXmlElement container)
-    {
-        var last = LastBlock(container);
-        if (last is W.Paragraph)
-        {
-            return;
-        }
-        if (last != null)
-        {
-            last.InsertAfterSelf(new W.Paragraph());
-        }
-        else if (container.GetFirstChild<W.SectionProperties>() is { } sectionProperties)
-        {
-            sectionProperties.InsertBeforeSelf(new W.Paragraph());
-        }
-        else
-        {
-            container.AppendChild(new W.Paragraph());
-        }
-    }
-
-    /// <summary>
-    /// The paragraph's text, without that of a text box inside it, whose paragraphs are read on their own.
-    /// </summary>
-    private static string GetOwnText(W.Paragraph paragraph)
-        => string.Concat(paragraph.Descendants<W.Text>()
-            .Where(text => text.Ancestors<W.Paragraph>().First() == paragraph)
-            .Select(text => text.Text));
 
     /// <summary>
     /// Rejects the parts of <see cref="WordTemplateInput"/> MiniWord cannot honour, rather than

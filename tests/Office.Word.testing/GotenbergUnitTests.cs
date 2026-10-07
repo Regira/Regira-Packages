@@ -171,21 +171,22 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     }
 
     /// <summary>
-    /// A condition on a key the input does not give is false, so a template holding a block needs rendering even
-    /// without a single parameter.
+    /// A condition on a key the input does not give is false, and a loop over one has no rows, so a template holding a
+    /// block needs rendering even without a single parameter.
     /// </summary>
-    [Test]
-    public async Task A_Template_With_Conditional_Blocks_Needs_A_Creator()
+    [TestCase("Intro", "{{#if IsDraft}}", "DRAFT", "{{/if}}")]
+    [TestCase("Intro", "{{#each Lines}}", "{{Description}}", "{{/each}}")]
+    public async Task A_Template_With_Blocks_Needs_A_Creator(params string[] paragraphs)
     {
         var handler = new StubHandler();
         var service = new WordService(handler.CreateClient());
-        var input = new WordTemplateInput { Template = Docx.Document("Intro", "{{#if IsDraft}}", "DRAFT", "{{/if}}") };
+        var input = new WordTemplateInput { Template = Docx.Document(paragraphs) };
 
         var ex = await Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(input, FileFormat.Pdf));
 
         Assert.Multiple(() =>
         {
-            Assert.That(ex!.Message, Does.Contain("conditional blocks"));
+            Assert.That(ex!.Message, Does.Contain("template blocks"));
             Assert.That(handler.Requests, Is.Empty);
         });
     }
@@ -201,8 +202,8 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
 
         Assert.Multiple(() =>
         {
-            Assert.That(ConditionalMarkers.Any(template), Is.True, "within the limit");
-            Assert.That(ConditionalMarkers.Any(template, maxBytes: 1_000), Is.False, "beyond it");
+            Assert.That(TemplateMarkers.Any(template), Is.True, "within the limit");
+            Assert.That(TemplateMarkers.Any(template, maxBytes: 1_000), Is.False, "beyond it");
         });
     }
 
@@ -218,8 +219,8 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
 
         Assert.Multiple(() =>
         {
-            Assert.That(ConditionalMarkers.Any(bodyOnly, maxBytes: 10_000), Is.True, "the body fits the limit");
-            Assert.That(ConditionalMarkers.Any(template, maxBytes: 10_000), Is.False, "the body and its header do not");
+            Assert.That(TemplateMarkers.Any(bodyOnly, maxBytes: 10_000), Is.True, "the body fits the limit");
+            Assert.That(TemplateMarkers.Any(template, maxBytes: 10_000), Is.False, "the body and its header do not");
         });
     }
 
@@ -235,8 +236,8 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
 
         Assert.Multiple(() =>
         {
-            Assert.That(ConditionalMarkers.Any(smallFootnote, maxBytes: 10_000), Is.True, "the document fits the limit");
-            Assert.That(ConditionalMarkers.Any(largeFootnote, maxBytes: 10_000), Is.False, "its footnotes do not");
+            Assert.That(TemplateMarkers.Any(smallFootnote, maxBytes: 10_000), Is.True, "the document fits the limit");
+            Assert.That(TemplateMarkers.Any(largeFootnote, maxBytes: 10_000), Is.False, "its footnotes do not");
         });
     }
 
@@ -254,7 +255,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
             + $" Target=\"https://example.com/{new string('a', 16 * 1024 * 1024)}\" TargetMode=\"External\"/></Relationships>"));
 
         var allocated = GC.GetAllocatedBytesForCurrentThread();
-        var opensBlock = ConditionalMarkers.Any(bomb, maxBytes: 1024 * 1024);
+        var opensBlock = TemplateMarkers.Any(bomb, maxBytes: 1024 * 1024);
         allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
 
         Assert.Multiple(() =>
@@ -277,12 +278,12 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         var forged = DeclareSize(template, "word/document.xml", 10_000);
 
         var allocated = GC.GetAllocatedBytesForCurrentThread();
-        var opensBlock = ConditionalMarkers.Any(forged, maxBytes: 1024 * 1024);
+        var opensBlock = TemplateMarkers.Any(forged, maxBytes: 1024 * 1024);
         allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
 
         Assert.Multiple(() =>
         {
-            Assert.That(ConditionalMarkers.Any(template, maxBytes: 1024 * 1024), Is.False, "declared as it is, it exceeds the limit");
+            Assert.That(TemplateMarkers.Any(template, maxBytes: 1024 * 1024), Is.False, "declared as it is, it exceeds the limit");
             Assert.That(opensBlock, Is.False);
             Assert.That(allocated, Is.LessThan(1024 * 1024), "no more than the declared size was read");
         });
@@ -303,7 +304,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
             using (var zip = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Update, true))
             {
                 // empty, unreferenced XML parts: the package would open with them, and its block be found
-                for (var i = 0; i < ConditionalMarkers.MaxParts; i++)
+                for (var i = 0; i < TemplateMarkers.MaxParts; i++)
                 {
                     zip.CreateEntry($"extra/part{i}.xml");
                 }
@@ -313,8 +314,8 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
 
         Assert.Multiple(() =>
         {
-            Assert.That(ConditionalMarkers.Any(template), Is.True, "the document");
-            Assert.That(ConditionalMarkers.Any(crowded), Is.False, "the document among a thousand empty parts");
+            Assert.That(TemplateMarkers.Any(template), Is.True, "the document");
+            Assert.That(TemplateMarkers.Any(crowded), Is.False, "the document among a thousand empty parts");
         });
     }
 
@@ -406,7 +407,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
             writer.Write(xml);
         }
 
-        Assert.That(ConditionalMarkers.Any(stream.ToArray()), Is.False);
+        Assert.That(TemplateMarkers.Any(stream.ToArray()), Is.False);
     }
 
     /// <summary>
@@ -422,9 +423,9 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
 
         Assert.Multiple(() =>
         {
-            Assert.That(ConditionalMarkers.Any(inHeader.GetBytes()!), Is.True, "in a header");
-            Assert.That(ConditionalMarkers.Any(inTextBox.GetBytes()!), Is.True, "in a text box");
-            Assert.That(ConditionalMarkers.Any(afterEmpty.GetBytes()!), Is.True, "after an empty paragraph");
+            Assert.That(TemplateMarkers.Any(inHeader.GetBytes()!), Is.True, "in a header");
+            Assert.That(TemplateMarkers.Any(inTextBox.GetBytes()!), Is.True, "in a text box");
+            Assert.That(TemplateMarkers.Any(afterEmpty.GetBytes()!), Is.True, "after an empty paragraph");
         });
     }
 
@@ -472,7 +473,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     /// tags on lines of their own, a stray <c>{{/if}}</c>.
     /// </summary>
     [TestCase("Intro", "Wrap optional text in {{#if Key}} and {{/if}}.")]
-    [TestCase("A Handlebars sample:", "{{#each items}}", "{{name}}", "{{else}}", "No items.", "{{/each}}")]
+    [TestCase("A Go template sample:", "{{range .Items}}", "{{.Name}}", "{{else}}", "No items.", "{{end}}")]
     [TestCase("A block closes with", "{{/if}}")]
     public async Task A_Document_That_Opens_No_Block_Needs_No_Creator(params string[] paragraphs)
     {

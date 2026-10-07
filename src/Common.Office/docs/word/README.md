@@ -98,7 +98,7 @@ Composite of all the above. `Word.Spire.WordService`, `Word.Syncfusion.WordServi
 |----------|------|-------------|
 | `Template` | `IMemoryFile` | Source .docx template |
 | `GlobalParameters` | `IDictionary<string, object>?` | Simple `{{Key}}` replacements; also decide `{{#if Key}}` [conditional blocks](#conditional-blocks) |
-| `CollectionParameters` | `IDictionary<string, ICollection<IDictionary<string, object>>>?` | Table rows — the key is the Alt Text title of the [table they fill](#collection-tables); `{{#if Key}}` holds when it has rows |
+| `CollectionParameters` | `IDictionary<string, ICollection<IDictionary<string, object>>>?` | Rows — the key is the Alt Text title of the [table they fill](#collection-tables) or the key a [`{{#each Key}}` loop](#loop-blocks) runs over; `{{#if Key}}` holds when it has rows |
 | `Images` | `ICollection<WordImage>?` | Image replacements (matched by name) |
 | `DocumentParameters` | `IDictionary<string, WordTemplateInput>?` | Nested documents, each inserted in place of a `<{ key }>` placeholder paragraph |
 | `Headers` | `ICollection<WordHeaderFooterInput>?` | Page headers |
@@ -206,6 +206,8 @@ IMemoryFile doc = await word.Create(new WordTemplateInput
   [conditional block](#conditional-blocks) to drop it together with its heading.
 - Word.Mini fills collections in [MiniWord's own syntax](#wordmini) instead; Word.Gotenberg fills them through its
   `IWordCreator`.
+- For several rows per item, rows that depend on the item, or content other than one table row, [loop over the
+  collection](#loop-blocks) instead, with marker rows: a loop runs on Word.Mini too, and needs no Alt Text title.
 
 ## Conditional blocks
 
@@ -254,23 +256,119 @@ IMemoryFile doc = await word.Create(new WordTemplateInput
   paragraph stays. Blocks are resolved before anything is filled, so a dropped branch's parameters, images and
   nested documents are never processed.
 - There is no comparison syntax: compute the flag in code (`["IsOverdue"] = dueDate < DateTime.Today`).
-- A block inside a collection table's template row is decided once, for every row.
+- A block inside a collection table's template row is decided once, for every row; one inside a
+  [loop](#loop-blocks) reads the loop's row first.
 - A block in a `WordHeaderFooterInput`'s template reads that `Template`'s parameters, not the main input's.
 - A block opens and closes in the same body, table cell, text box, content control, header or footer, and within
   one section — a content control around whole paragraphs is a container of its own, so a block cannot open outside
-  one and close inside it. Footnotes, endnotes and comments are not read for markers.
-- A document uses blocks when one of its paragraphs is `{{#if Key}}` or `{{#if !Key}}` and nothing else, and only
-  then are its blocks resolved. Everything else in a document that uses none stays as it is — marker text among
-  other text, a stray `{{else}}` or `{{/if}}` — so a finished document that writes about templates converts and
-  reads unchanged.
+  one and close inside it. A table row whose only text is a single marker makes the table's rows the container
+  ([marker rows](#marker-rows)). Footnotes, endnotes and comments are not read for markers.
+- A document uses blocks when one of its paragraphs is `{{#if Key}}`, `{{#if !Key}}` or `{{#each Key}}` and nothing
+  else, and only then are its blocks resolved. Everything else in a document that uses none stays as it is — marker
+  text among other text, a stray `{{else}}`, `{{/if}}` or `{{/each}}` — so a finished document that writes about
+  templates converts and reads unchanged.
 - The document `Create` fills is read as a template by any later call. A parameter value that fills a paragraph
   with nothing but a marker — `{{#if X}}` typed into a form — makes that output use blocks: a later `GetText`,
   `Convert` or `ToImages` of it throws, or drops everything between two such values. Keep user-entered values out
   of paragraphs of their own, or produce the final format in the call that fills the template, rather than
   converting the stored output later.
 - In a document that uses blocks, these throw `FormatException`: a block that does not open and close in one
-  container and section, a `{{/if}}` or `{{else}}` without its `{{#if}}`, a second `{{else}}`, a marker sharing its
-  paragraph with other text, and a marker this syntax does not know, such as `{{#unless X}}` or `{{else if X}}`.
+  container and section, a closer or `{{else}}` without its opener, a `{{/if}}` closing a loop or a `{{/each}}` a
+  condition, a second `{{else}}`, a marker sharing its paragraph with other text, and a marker this syntax does not
+  know, such as `{{#unless X}}`, `{{else if X}}` or `{{#each !X}}`.
+
+## Loop blocks
+
+Word.Spire, Word.Syncfusion, Word.Aspose and Word.Mini write a stretch of a template once per row of a collection.
+The markers follow the rules of [conditional blocks](#conditional-blocks) — each stands alone in its own paragraph,
+within one container and section — and loops and conditions nest in each other:
+
+```text
+{{#each Orders}}
+Order {{Number}} of {{Date}}
+{{#if Note}}
+{{Note}}
+{{/if}}
+{{#each Lines}}
+{{row_number}}. {{Description}}: {{Price}}
+{{/each}}
+{{else}}
+There are no orders this month.
+{{/each}}
+```
+
+```csharp
+IWordService word = new Regira.Office.Word.Spire.WordService();
+
+byte[] templateBytes = await File.ReadAllBytesAsync("orders.docx");
+
+IMemoryFile doc = await word.Create(new WordTemplateInput
+{
+    Template             = templateBytes.ToMemoryFile(),
+    CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
+    {
+        ["Orders"] =
+        [
+            new Dictionary<string, object>
+            {
+                ["Number"] = "A-1",
+                ["Date"]   = new DateTime(2026, 10, 1).ToString("d"),
+                ["Note"]   = "Fragile",
+                ["Lines"]  = new[] { new { Description = "Pen", Price = "€ 5,00" }, new { Description = "Ink", Price = "€ 15,00" } }
+            },
+            new Dictionary<string, object> { ["Number"] = "A-2", ["Date"] = new DateTime(2026, 10, 3).ToString("d") }
+        ]
+    }
+});
+```
+
+- `{{#each Key}}` runs over `CollectionParameters[Key]`, matched regardless of case, an exact match first. Inside a
+  loop, the key can also name a field of the current row, or of a row around it, that holds a list of rows —
+  dictionaries, objects read one level deep, or a JSON array — so `{{#each Lines}}` above runs over each order's lines. A key that names
+  no list of rows — a missing key, a `GlobalParameters` entry, a field holding one value — gives no rows, and the
+  optional `{{else}}` part is written instead.
+- Inside a loop, `{{Field}}` reads the current row, then the rows of the loops around it, innermost first, regardless
+  of case. A field none of them has is left for `GlobalParameters`, so `{{Currency}}` still reaches a global value.
+  `{{ row_number }}` is the current row's position, from 1.
+- `{{#if Key}}` inside a loop reads the same rows first, then the input, so it decides per row.
+- A row's value is written as text, with `ToString()`, a line ending becoming a line break, as a global one is; an
+  `html_` key in a row is text too. Format numbers,
+  amounts and dates in code. A value is never read as a marker or as another field of its row: a row whose `Number`
+  is `{{/each}}` writes that text. Rows are filled before `GlobalParameters` and nested documents, though, as a
+  collection table's are: a row value
+  holding a `{{Key}}` or `<{ key }>` tag of theirs is filled too, and on Word.Mini any tag in it is rewritten as
+  MiniWord reads tags (`{{ Code }}` comes out as `{{Code}}`). Keep user-entered text that may hold one out of row
+  fields.
+- Everything between the markers is copied per row — paragraphs, tables, text boxes, pictures, a page break for a
+  page per row (a section break cannot be inside a block). A copy keeps no bookmark, which stays with the first copy,
+  and takes drawing, shape and content-control ids of its own. A loop holding a footnote, endnote or comment
+  reference throws `FormatException`.
+- A [collection table](#collection-tables) found by its Alt Text title, or a MiniWord `{{Items.Name}}` row, reads the
+  top-level `CollectionParameters` entry even inside a loop, and only the first table with the title is filled:
+  inside a loop, use marker rows. One key can feed a titled table and a loop alike.
+- `Images` are matched by name across the whole document, and `html_` keys are read from `GlobalParameters` only: a
+  row's fields are text.
+- On the FreeSpire.Doc free edition, every copied paragraph and table counts towards its caps (see
+  [Word.Spire](#wordspire-recommended)).
+
+### Marker rows
+
+A table row whose only text is a single marker, in any one of its cells — in a content control there or not; a text
+box's text is its own — opens, divides or closes a block over the table's rows. A row-level content control, a repeating section, is a container of
+rows of its own, as a content control around paragraphs is: a block around it keeps or copies its rows together, and
+marker rows inside it open and close their block there. The rows between are written once per item, a condition keeps or drops rows per item, and the marker
+rows go; a table left without rows goes:
+
+```text
+| Description     | Qty     | Price     |
+| {{#each Lines}} |         |           |
+| {{Description}} | {{Qty}} | {{Price}} |
+| {{#if Note}}    |         |           |
+| {{Note}}                              |
+| {{/if}}         |         |           |
+| {{/each}}       |         |           |
+| Total           |         | {{Total}} |
+```
 
 ## Implementation notes
 
@@ -278,7 +376,7 @@ IMemoryFile doc = await word.Create(new WordTemplateInput
 
 `WordService` implements `IWordService` — the full capability set. Supports HTML parameters (`html_*` prefix in `GlobalParameters` injects raw HTML). Converts to PDF, HTML, RTF, ODT and EPUB, and renders pages as images with `ToImages`. Handles nested document insertion via `DocumentParameters`.
 
-> **Limits:** the FreeSpire.Doc free edition supports documents up to 500 paragraphs or 25 tables, and writes at most three pages of PDF. Converting a longer document to PDF gives its first three pages followed by a notice page — *"Spire Doc. Free version converting word documents to PDF files, you can only get the first 3 page of PDF file."* — and raises no error. `ToImages` and the other formats (HTML, RTF, ODT, EPUB) carry every page. For longer PDFs, use Word.Syncfusion or Word.Aspose (licensed), or Word.Gotenberg (no vendor licence).
+> **Limits:** the FreeSpire.Doc free edition supports documents up to 500 paragraphs or 25 tables, and writes at most three pages of PDF. A document past either cap throws `SpireDocFreeException` when it is read or written — a template whose [loop](#loop-blocks) writes a table per row fails from its 26th row. Converting a longer document to PDF gives its first three pages followed by a notice page — *"Spire Doc. Free version converting word documents to PDF files, you can only get the first 3 page of PDF file."* — and raises no error. `ToImages` and the other formats (HTML, RTF, ODT, EPUB) carry every page. For longer PDFs, use Word.Syncfusion or Word.Aspose (licensed), or Word.Gotenberg (no vendor licence).
 
 ### Word.Syncfusion
 
@@ -342,7 +440,7 @@ When none of the four resolves — a configuration key that is missing, say — 
 
 `Create` renders `GlobalParameters`, `CollectionParameters` and `Images`, and throws `NotSupportedException` for `DocumentParameters`, `Headers`, `Footers` and any non-default `InputOptions`.
 
-> **Template syntax:** MiniWord's, not Word.Spire's. Every value fills a `{{tag}}`: a collection fills a table row whose cells hold `{{Items.Name}}` tags, and the row repeats per item (there is no `{{ row_number }}`); an image replaces a `{{logo}}` tag rather than a picture named by its Alt Text. A template written for the other backends renders its global parameters the same way and leaves its collection tables and pictures as they are. Spaces inside the braces are ignored, a tag Word split over several runs while it was edited still matches, and a key is matched literally whatever characters it holds, a collection's key and fields included (`{{ Total (EUR) }}`, `{{ Items.Price (excl. VAT) }}`). [Conditional blocks](#conditional-blocks) work as on the other backends, because Word.Mini resolves them before MiniWord renders; use them rather than MiniWord's own `@if` paragraphs, which compare `true`/`false` as text (`@if Flag == true` never holds), throw on a bare `@if Flag`, and read only keys of letters, digits and `_`.
+> **Template syntax:** MiniWord's, not Word.Spire's. Every value fills a `{{tag}}`: a collection fills a table row whose cells hold `{{Items.Name}}` tags, and the row repeats per item (there is no `{{ row_number }}`); an image replaces a `{{logo}}` tag rather than a picture named by its Alt Text. A template written for the other backends renders its global parameters the same way and leaves its collection tables and pictures as they are. Spaces inside the braces are ignored, a tag Word split over several runs while it was edited still matches, and a key is matched literally whatever characters it holds, a collection's key and fields included (`{{ Total (EUR) }}`, `{{ Items.Price (excl. VAT) }}`). [Conditional blocks](#conditional-blocks) and [loops](#loop-blocks) work as on the other backends, `{{ row_number }}` included, because Word.Mini resolves them before MiniWord renders; use them rather than MiniWord's own `@if` paragraphs, which compare `true`/`false` as text (`@if Flag == true` never holds), throw on a bare `@if Flag`, and read only keys of letters, digits and `_`.
 
 > **Shared template namespace:** `GlobalParameters`, `Images` and `CollectionParameters` all resolve against the same `{{tag}}` placeholders, so a key may appear in only one of them, and a global key or image name may not read as a collection's field (`Items.Name`) — a duplicate throws `ArgumentException`.
 
@@ -351,7 +449,7 @@ When none of the four resolves — a configuration key that is missing, say — 
 `WordService` implements `IWordConverter` and `IWordToImagesService`, through the LibreOffice route of a [Gotenberg](https://gotenberg.dev) server (MIT, a Docker image bundling LibreOffice and Chromium). It is the route to PDF output and page images without a vendor licence.
 
 - **PDF only.** `Convert` produces PDF; every other `FileFormat` throws `NotSupportedException`. Sources can be Word (`.doc`, `.dot`, `.docx`, `.dotx`, `.docm`, `.dotm`), OpenDocument (`.odt`, `.ott`), `.rtf`, `.txt`, `.html`/`.htm` or `.epub` — the format is read from the file name when the template is a named file, otherwise from its content.
-- **Templates.** Gotenberg converts finished documents. An input carrying `GlobalParameters`, `CollectionParameters`, `Images`, `DocumentParameters`, `Headers`, `Footers` or non-default `InputOptions` is rendered first by the `IWordCreator` the service was given, and throws `NotSupportedException` without one. So is an OOXML template holding a [conditional block](#conditional-blocks), even without parameters, since a key the input does not give is false. Word.Mini renders the first three, in its own template syntax; headers, footers, nested documents and input options need a creator with a document model — Word.Spire, Word.Syncfusion or Word.Aspose — since Word.Mini refuses them. An OOXML source converted without parameters is scanned for such a block in-process, and one whose parts hold more than 32 MiB together, uncompressed and images included, or that has more than 1,000 parts, is not opened: it is uploaded as it is, its blocks unresolved, as is one the scan cannot read.
+- **Templates.** Gotenberg converts finished documents. An input carrying `GlobalParameters`, `CollectionParameters`, `Images`, `DocumentParameters`, `Headers`, `Footers` or non-default `InputOptions` is rendered first by the `IWordCreator` the service was given, and throws `NotSupportedException` without one. So is an OOXML template holding a [conditional block](#conditional-blocks) or a [loop](#loop-blocks), even without parameters, since a key the input does not give is false and gives no rows. Word.Mini renders the first three, in its own template syntax; headers, footers, nested documents and input options need a creator with a document model — Word.Spire, Word.Syncfusion or Word.Aspose — since Word.Mini refuses them. An OOXML source converted without parameters is scanned for such a block in-process, and one whose parts hold more than 32 MiB together, uncompressed and images included, or that has more than 1,000 parts, is not opened: it is uploaded as it is, its blocks unresolved, as is one the scan cannot read.
 - **Page settings.** The LibreOffice route has no page-size or margin fields, so `ConversionOptions.Settings` is written into the document's section properties before upload, together with the table and picture scaling. That needs an OOXML source (`.docx`, `.dotx`, `.docm`, `.dotm`), and honours every `PageSize`.
 - **Page images.** Gotenberg has no route that rasterises a PDF. `ToImages` converts to PDF and hands the result to the `IPdfToImageService` the service was given — `Regira.Office.PDF.DocNET`, for example — which returns one image per page.
 - **Layout.** LibreOffice lays a document out differently from Word. A font missing from the Gotenberg image is substituted, which moves line and page breaks, so page images and page counts can differ from what Word shows. Install the fonts your documents use in the image.

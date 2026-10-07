@@ -106,7 +106,7 @@ public class WordService(
     /// <summary>
     /// The bytes to upload and the extension to upload them under. An input that needs template
     /// processing is rendered by the <see cref="IWordCreator"/> first, which produces <c>.docx</c> — and so is an
-    /// OOXML template holding conditional blocks, which need resolving even when the input gives no parameters.
+    /// OOXML template holding template blocks, which need resolving even when the input gives no parameters.
     /// </summary>
     private async Task<(byte[] Bytes, string Extension)> GetSource(WordTemplateInput input, CancellationToken cancellationToken)
     {
@@ -116,11 +116,11 @@ public class WordService(
             var template = input.Template ?? throw new ArgumentException("Template is required.", nameof(input));
             var bytes = template.GetBytes() ?? throw new ArgumentException("Template has no content.", nameof(input));
             var extension = SourceFormat.Resolve(template, bytes);
-            if (!SourceFormat.IsOpenXml(extension) || !ConditionalMarkers.Any(bytes))
+            if (!SourceFormat.IsOpenXml(extension) || !TemplateMarkers.Any(bytes))
             {
                 return (bytes, extension);
             }
-            templateFeatures.Add("conditional blocks");
+            templateFeatures.Add("template blocks");
         }
 
         if (creator == null)

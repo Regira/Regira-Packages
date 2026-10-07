@@ -23,8 +23,9 @@ Tests for the Word backends [Word.Aspose](../../src/Word.Aspose/README.md),
   was read for beside it as `{file}.facts.json`, and attached to the test result. `OutputSetUp` empties
   `Assets/Output` at the start of a run. Diff two runs' facts to see what a vendor upgrade or a change moved.
 
-`DtoExtensionsTests` round-trips the `WordTemplateInput` an Office client sends as JSON. `ConditionalBlocksTests`
-covers the block syntax every backend shares, and `PictureScalingTests` the rule every backend scales a picture by.
+`DtoExtensionsTests` round-trips the `WordTemplateInput` an Office client sends as JSON. `TemplateBlocksTests`
+covers the block syntax every backend shares, conditions and loops, and `PictureScalingTests` the rule every
+backend scales a picture by.
 `TextBoxFallbacksTests` covers Word.Spire's rewrite of a text box's fallback copy.
 
 ## Running

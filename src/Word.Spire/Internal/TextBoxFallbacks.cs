@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Xml;
 using System.Xml.Linq;
+using Regira.Office.Word.Packaging;
 using Spire.Doc;
 
 namespace Regira.Office.Word.Spire.Internal;
@@ -27,8 +28,9 @@ internal static class TextBoxFallbacks
             or FileFormat.Dotm or FileFormat.Dotm2010 or FileFormat.Dotm2013 or FileFormat.Dotm2016 or FileFormat.Dotm2019;
 
     /// <summary>
-    /// Rewrites the fallback copy of every text box in the package's stories from its DrawingML copy. A part without
-    /// such a text box, or whose copies already match, is left as it is.
+    /// Rewrites the fallback copy of every text box in the package's stories from its DrawingML copy, and gives each
+    /// VML shape an id of its own (<see cref="VmlShapeIds"/>): Spire writes a copied shape — a template loop's — under
+    /// its original's. A part whose copies already match and whose ids are unique is left as it is.
     /// </summary>
     /// <param name="package">The package as Spire wrote it; rewritten in place</param>
     public static void Synchronize(Stream package)
@@ -37,7 +39,8 @@ internal static class TextBoxFallbacks
         package.Position = 0;
         using (var zip = new ZipArchive(package, ZipArchiveMode.Read, leaveOpen: true))
         {
-            var stories = Stories(zip);
+            // no other part's copies can differ
+            var stories = WordPackageStories.Of(zip);
             foreach (var entry in zip.Entries.Where(entry => stories.Contains(entry.FullName)))
             {
                 string xml;
@@ -45,13 +48,17 @@ internal static class TextBoxFallbacks
                 {
                     xml = reader.ReadToEnd();
                 }
-                if (!xml.Contains("txbxContent") || !xml.Contains("AlternateContent"))
+                var hasFallbacks = xml.Contains("txbxContent") && xml.Contains("AlternateContent");
+                var repeatsVml = VmlShapeIds.HasRepeated(xml);
+                if (!hasFallbacks && !repeatsVml)
                 {
                     continue;
                 }
 
                 var part = XDocument.Parse(xml, LoadOptions.PreserveWhitespace);
-                if (Synchronize(part))
+                // the fallbacks first: a rewritten one holds what its DrawingML copy does, ids included
+                var synchronized = hasFallbacks && Synchronize(part);
+                if (VmlShapeIds.MakeUnique(part) | synchronized)
                 {
                     rewritten[entry.FullName] = part;
                 }
@@ -64,59 +71,10 @@ internal static class TextBoxFallbacks
             using var zip = new ZipArchive(package, ZipArchiveMode.Update, leaveOpen: true);
             foreach (var (name, part) in rewritten)
             {
-                using var stream = zip.GetEntry(name)!.Open();
-                stream.SetLength(0);
-                // a carriage return in the part's text is a character reference, which only Entitize writes back as one:
-                // Replace writes a line feed, and None a bare carriage return, which a reader takes for one
-                using var writer = XmlWriter.Create(stream, new XmlWriterSettings { Encoding = new UTF8Encoding(false), NewLineHandling = NewLineHandling.Entitize });
-                part.Save(writer);
+                WordPackageStories.Save(zip.GetEntry(name)!, part);
             }
         }
         package.Position = 0;
-    }
-
-    /// <summary>
-    /// The entry names of the parts a template's parameters, blocks and nested documents reach: the main document, the
-    /// headers and the footers, found by their content types. No other part's copies can differ.
-    /// </summary>
-    private static HashSet<string> Stories(ZipArchive zip)
-    {
-        var stories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        using var stream = zip.GetEntry("[Content_Types].xml")?.Open();
-        if (stream == null)
-        {
-            return stories;
-        }
-
-        // a part's content type is its Override's, or else the Default of its extension
-        var overrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var defaults = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var type in XDocument.Load(stream).Root!.Elements())
-        {
-            var contentType = (string?)type.Attribute("ContentType") ?? "";
-            switch (type.Name.LocalName)
-            {
-                case "Override":
-                    overrides.TryAdd(((string?)type.Attribute("PartName") ?? "").TrimStart('/'), contentType);
-                    break;
-                case "Default":
-                    defaults.TryAdd((string?)type.Attribute("Extension") ?? "", contentType);
-                    break;
-            }
-        }
-
-        foreach (var entry in zip.Entries)
-        {
-            var contentType = overrides.TryGetValue(entry.FullName, out var overridden) ? overridden
-                : defaults.GetValueOrDefault(Path.GetExtension(entry.FullName).TrimStart('.')) ?? "";
-            if (contentType.EndsWith(".main+xml", StringComparison.Ordinal)
-                || contentType.EndsWith("wordprocessingml.header+xml", StringComparison.Ordinal)
-                || contentType.EndsWith("wordprocessingml.footer+xml", StringComparison.Ordinal))
-            {
-                stories.Add(entry.FullName);
-            }
-        }
-        return stories;
     }
 
     private static bool Synchronize(XDocument part)

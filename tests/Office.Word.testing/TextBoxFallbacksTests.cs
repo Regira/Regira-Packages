@@ -36,6 +36,25 @@ public class TextBoxFallbacksTests
         });
     }
 
+    /// <summary>
+    /// A VML shape written twice under one id, as Spire writes a template loop's copy, takes an id of its own — in a
+    /// part without a text box too — and the embedded object beside it names it by that id.
+    /// </summary>
+    [Test]
+    public void A_Repeated_Shape_Id_Is_Made_Unique_With_What_Names_It()
+    {
+        using var package = Package(Docx.Document([Docx.EmbeddedObject(), Docx.EmbeddedObject()]).GetBytes()!, xml => xml);
+
+        TextBoxFallbacks.Synchronize(package);
+
+        var objects = Docx.EmbeddedObjects(package.ToArray().ToMemoryFile(Regira.Office.MimeTypes.ContentTypes.DOCX));
+        Assert.Multiple(() =>
+        {
+            Assert.That(objects.Select(embedded => embedded.ShapeId), Is.Unique);
+            Assert.That(objects, Has.All.Matches<(string ShapeId, string ShapeIdReferenced)>(embedded => embedded.ShapeIdReferenced == embedded.ShapeId));
+        });
+    }
+
     private static MemoryStream Package(byte[] docx, Func<string, string> edit)
     {
         var package = new MemoryStream();

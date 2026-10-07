@@ -193,7 +193,7 @@ public class WordService : IWordService
         reference ??= doc;
 
         // first, so a dropped branch's placeholders are never filled or inserted
-        ResolveConditions(doc, input);
+        ResolveBlocks(doc, input);
 
         if (input.DocumentParameters?.Any() == true)
         {
@@ -458,78 +458,15 @@ public class WordService : IWordService
         }
     }
 
-    /// <summary>Resolves the document's conditional blocks, as <see cref="ConditionalBlocks"/> describes them.</summary>
-    protected internal void ResolveConditions(Document doc, WordTemplateInput input)
-    {
-        var paragraphs = doc.FindAllParagraphs()
-            // a footnote, endnote or comment is not part of a template's blocks, as on the other backends
-            .Where(paragraph => paragraph.GetAncestor(NodeType.Footnote) == null
-                && paragraph.GetAncestor(NodeType.Comment) == null)
-            .Select(paragraph => (Paragraph: paragraph, Text: GetVisibleText(paragraph)))
-            .ToArray();
-        if (!paragraphs.Any(paragraph => ConditionalBlocks.OpensBlock(paragraph.Text)))
-        {
-            return;
-        }
-
-        var containers = paragraphs
-            .Where(paragraph => ConditionalBlocks.ContainsMarker(paragraph.Text))
-            .Select(paragraph => paragraph.Paragraph.ParentNode)
-            .OfType<CompositeNode>()
-            .Distinct()
-            .ToArray();
-
-        foreach (var container in containers)
-        {
-            var children = container.ToArray();
-            var texts = children
-                .Select(child => child is AsposeParagraph paragraph ? GetVisibleText(paragraph) : null)
-                .ToArray();
-
-            foreach (var index in ConditionalBlocks.Resolve(texts, input))
-            {
-                children[index].Remove();
-            }
-
-            if (container.LastChild is null or Table)
-            {
-                // whatever holds paragraphs ends with one: a body, cell, header, footer, text box or content control
-                container.AppendChild(new AsposeParagraph(doc));
-            }
-        }
-    }
-
     /// <summary>
-    /// The paragraph's text without its field codes and deleted revisions, which <see cref="Node.GetText"/> holds,
-    /// and without that of a text box inside it, whose paragraphs are read on their own.
+    /// Resolves the document's template blocks, as <see cref="TemplateBlocks"/> describes them, and fills the fields of
+    /// its loops' rows.
     /// </summary>
-    private static string GetVisibleText(AsposeParagraph paragraph)
-    {
-        var text = new VisibleText();
-        foreach (Node node in paragraph.GetChildNodes(NodeType.Any, true))
-        {
-            if (node.GetAncestor(NodeType.Paragraph) != paragraph)
-            {
-                continue;
-            }
-            switch (node)
-            {
-                case FieldStart:
-                    text.FieldStart();
-                    break;
-                case FieldSeparator:
-                    text.FieldSeparator();
-                    break;
-                case FieldEnd:
-                    text.FieldEnd();
-                    break;
-                case Run run:
-                    text.Append(run.Text, run.IsDeleteRevision);
-                    break;
-            }
-        }
-        return text.ToString();
-    }
+    protected internal void ResolveBlocks(Document doc, WordTemplateInput input)
+        => new AsposeTemplateWalk(doc).Run(input);
+    [Obsolete("Use ResolveBlocks, which resolves loop blocks as well.", false)]
+    protected internal void ResolveConditions(Document doc, WordTemplateInput input)
+        => ResolveBlocks(doc, input);
 
     protected internal void ReplaceGlobalParameters(Document doc, IDictionary<string, object> parameters)
     {
@@ -755,7 +692,7 @@ public class WordService : IWordService
     /// Escapes a replacement text for <c>Range.Replace</c>, which reads <c>&amp;p</c>, <c>&amp;l</c>,
     /// <c>&amp;m</c> and <c>&amp;b</c> as breaks even when the pattern is a regular expression.
     /// </summary>
-    private static string Literal(string replacement)
+    internal static string Literal(string replacement)
         => replacement.Replace("&", "&&");
 
     private static double GetClientWidth(PageSetup pageSetup)

@@ -8,10 +8,11 @@ using Regira.Office.Word.Templating;
 namespace Regira.Office.Word.Gotenberg.Internal;
 
 /// <summary>
-/// Finds the conditional blocks of an OOXML template. A template holding one needs an <c>IWordCreator</c> even
-/// without a single parameter: a condition on a key the input does not give is false, and its block has to go.
+/// Finds the template blocks of an OOXML template. A template holding one needs an <c>IWordCreator</c> even
+/// without a single parameter: a condition on a key the input does not give is false, a loop over one has no rows,
+/// and the block has to go.
 /// </summary>
-internal static class ConditionalMarkers
+internal static class TemplateMarkers
 {
     /// <summary>
     /// The most a document's parts may hold together, uncompressed, in bytes. An OOXML conversion without parameters is
@@ -116,7 +117,7 @@ internal static class ConditionalMarkers
                 {
                     paragraphs.Push(new StringBuilder());
                 }
-                else if (reader.IsEndElement && paragraphs.Pop() is { } text && ConditionalBlocks.OpensBlock(text.ToString()))
+                else if (reader.IsEndElement && paragraphs.Pop() is { } text && TemplateBlocks.OpensBlock(text.ToString()))
                 {
                     return true;
                 }

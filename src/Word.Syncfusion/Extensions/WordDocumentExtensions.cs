@@ -1,3 +1,4 @@
+using Regira.Office.Word.Syncfusion.Internal;
 using Syncfusion.DocIO;
 using Syncfusion.DocIO.DLS;
 using HeaderFooterType = Regira.Office.Word.Models.HeaderFooterType;
@@ -10,7 +11,8 @@ internal static class WordDocumentExtensions
     {
         var ms = new MemoryStream();
         doc.Save(ms, format);
-        ms.Position = 0;
+        // DocIO writes a copied content control or grouped shape under its original's id
+        PackageIds.MakeUnique(ms);
         return ms;
     }
 

@@ -1087,8 +1087,8 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         {
             (Docx.Document("Intro", "Wrap optional text in {{#if Key}} and {{/if}}."),
                 ["Wrap optional text in {{#if Key}} and {{/if}}."]),
-            (Docx.Document("A Handlebars sample:", "{{#each items}}", "{{name}}", "{{else}}", "No items.", "{{/each}}"),
-                ["{{#each items}}", "{{else}}", "No items.", "{{/each}}"]),
+            (Docx.Document("A Go template sample:", "{{range .Items}}", "{{.Name}}", "{{else}}", "No items.", "{{end}}"),
+                ["{{range .Items}}", "{{else}}", "No items.", "{{end}}"]),
             (Docx.Document("A block closes with", "{{/if}}"),
                 ["{{/if}}"])
         };
@@ -1333,9 +1333,643 @@ public abstract class WordTestsBase : WordAssetsTestsBase
             Assert.That(unopened.Message, Does.Contain("{{/if}}"));
             Assert.That(twoElses.Message, Does.Contain("{{else}}"));
             Assert.That(amongText.Message, Does.Contain("stands alone"));
-            Assert.That(unknown.Message, Does.Contain("{{#unless IsPaid}}").And.Contain("not a conditional marker"));
+            Assert.That(unknown.Message, Does.Contain("{{#unless IsPaid}}").And.Contain("not a template marker"));
             Assert.That(acrossSections.Message, Does.Contain("{{#if IsPaid}}").And.Contain("section"));
             Assert.That(intoContentControl.Message, Does.Contain("content control"));
+        });
+    }
+
+
+    // ---- loop blocks ----
+
+    /// <summary>
+    /// A loop writes its paragraphs once per row. A field reads the row, then the global parameters, and a condition
+    /// inside the loop reads the row; without rows, the loop's else is written instead. A row's line ending becomes a
+    /// line break, as a global parameter's does.
+    /// </summary>
+    [TestCase(true)]
+    [TestCase(false)]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task A_Loop_Writes_Its_Paragraphs_Once_Per_Row(bool hasOrders)
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document(
+                "Intro",
+                "{{#each Orders}}",
+                "Order {{Number}} for {{ Customer }}",
+                "{{#if Note}}", "Note: {{Note}}", "{{/if}}",
+                "{{else}}",
+                "No orders this month.",
+                "{{/each}}",
+                "Outro {{Customer}}"),
+            GlobalParameters = new Dictionary<string, object> { ["Customer"] = "Alice" },
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
+            {
+                ["Orders"] = hasOrders ? LoopOrders() : []
+            }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+        var expected = hasOrders
+            ? new[] { "Intro", "Order A-1 for Alice", "Note: FragileKeep upright", "Order A-2 for Alice", "Order A-3 for Alice", "Outro Alice" }
+            : new[] { "Intro", "No orders this month.", "Outro Alice" };
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(facts.Leftovers, Is.Empty);
+            Assert.That(Texts(facts), Is.EqualTo(expected));
+            Assert.That(Docx.Count<W.Break>(output), Is.EqualTo(hasOrders ? 1 : 0), "the note's line ending");
+        });
+    }
+
+    /// <summary>
+    /// A condition inside a loop writes each row's branch in the row's place, whichever branch an earlier row took.
+    /// </summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task A_Condition_In_A_Loop_Keeps_Its_Rows_In_Order()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document("{{#each Orders}}", "{{#if Note}}", "Note on {{Number}}", "{{else}}", "No note on {{Number}}", "{{/if}}", "{{/each}}"),
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
+            {
+                ["Orders"] =
+                [
+                    new Dictionary<string, object> { ["Number"] = "A-1" },
+                    new Dictionary<string, object> { ["Number"] = "A-2", ["Note"] = "Fragile" },
+                    new Dictionary<string, object> { ["Number"] = "A-3" },
+                    new Dictionary<string, object> { ["Number"] = "A-4", ["Note"] = "Fragile" }
+                ]
+            }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+
+        Assert.That(Texts(facts), Is.EqualTo(new[] { "No note on A-1", "Note on A-2", "No note on A-3", "Note on A-4" }));
+    }
+
+    /// <summary>
+    /// A row whose branch is written as a copy, the original going, keeps what the original held: a bookmark among it,
+    /// once in the document.
+    /// </summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task A_Branch_Written_Out_Of_Order_Keeps_Its_Bookmark()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Paragraph("{{#each Orders}}"),
+                Docx.Paragraph("{{#if Note}}"),
+                Docx.Bookmarked("Note on {{Number}}", "NoteMark"),
+                Docx.Paragraph("{{else}}"),
+                Docx.Paragraph("No note on {{Number}}"),
+                Docx.Paragraph("{{/if}}"),
+                Docx.Paragraph("{{/each}}")
+            ]),
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
+            {
+                ["Orders"] =
+                [
+                    new Dictionary<string, object> { ["Number"] = "A-1" },
+                    new Dictionary<string, object> { ["Number"] = "A-2", ["Note"] = "Fragile" },
+                    new Dictionary<string, object> { ["Number"] = "A-3", ["Note"] = "Fragile" }
+                ]
+            }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Texts(facts), Is.EqualTo(new[] { "No note on A-1", "Note on A-2", "Note on A-3" }));
+            Assert.That(Docx.BookmarkNames(output), Is.EqualTo(new[] { "NoteMark" }), "the bookmark, once");
+        });
+    }
+
+    /// <summary>A loop around a group of text boxes fills each copy's boxes from its row.</summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task A_Loop_Fills_A_Grouped_Text_Box()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Paragraph("{{#each Orders}}"),
+                Docx.GroupedTextBoxes(["Box {{Number}}"], ["OTHERBOX"]),
+                Docx.Paragraph("{{/each}}")
+            ]),
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>> { ["Orders"] = LoopOrders() }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(facts.Leftovers, Is.Empty);
+            Assert.That(Order(facts.BodyText, "Box A-1", "Box A-2", "Box A-3"), Is.Ordered.And.All.GreaterThanOrEqualTo(0));
+            Assert.That(Docx.ValidationErrors(output).Where(error => error.Contains("unique value", StringComparison.Ordinal)), Is.Empty);
+        });
+    }
+
+    /// <summary>A loop's copies of an embedded object each show their own shape, which their object names.</summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task A_Loops_Copies_Of_An_Embedded_Object_Name_Their_Own_Shapes()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.WithEmbeddedDocuments(Docx.Document([Docx.Paragraph("{{#each Orders}}"), Docx.EmbeddedObject(), Docx.Paragraph("{{/each}}")])),
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>> { ["Orders"] = LoopOrders() }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        await ReadDocx(output);
+        var objects = Docx.EmbeddedObjects(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(objects, Has.Count.EqualTo(3));
+            Assert.That(objects.Select(embedded => embedded.ShapeId), Is.Unique);
+            Assert.That(objects, Has.All.Matches<(string ShapeId, string ShapeIdReferenced)>(embedded => embedded.ShapeIdReferenced == embedded.ShapeId));
+        });
+    }
+
+    /// <summary>
+    /// A marker row's text may sit in a content control in its cell, as a plain-text control holds it; the row is a
+    /// marker row still.
+    /// </summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task A_Marker_Row_Whose_Marker_Sits_In_A_Content_Control_Is_A_Marker_Row()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.TableOf(Docx.Row("Description"), Docx.ControlledRow("{{#each Lines}}"), Docx.Row("{{Description}}"), Docx.ControlledRow("{{/each}}"))
+            ]),
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>> { ["Lines"] = LoopLines() }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(facts.Leftovers, Is.Empty);
+            Assert.That(Texts(facts), Is.EqualTo(new[] { "Description", "Pen", "Ink", "Paper" }));
+        });
+    }
+
+    /// <summary>
+    /// Rows a row-level content control holds — a repeating section, as Word writes one — are one child of the table:
+    /// a marker-row loop copies them together, and drops them together without items.
+    /// </summary>
+    [TestCase(true)]
+    [TestCase(false)]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task Rows_In_A_Row_Content_Control_Repeat_Together(bool hasLines)
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.TableOf(
+                    Docx.Row("Description"),
+                    Docx.Row("{{#each Lines}}"),
+                    Docx.RowControl(200, Docx.Row("{{Description}}"), Docx.Row("Qty {{Qty}}")),
+                    Docx.Row("{{/each}}"),
+                    Docx.Row("Total")),
+                Docx.Paragraph("")
+            ]),
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>> { ["Lines"] = hasLines ? LoopLines() : [] }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(facts.Leftovers, Is.Empty);
+            Assert.That(Texts(facts), Is.EqualTo(hasLines
+                ? new[] { "Description", "Pen", "Qty 2", "Ink", "Qty 1", "Paper", "Qty 4", "Total" }
+                : new[] { "Description", "Total" }));
+        });
+    }
+
+    /// <summary>
+    /// A grouped text box in a dropped branch goes unread, as any other content there: marker text in it fails nothing.
+    /// </summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task A_Grouped_Text_Box_In_A_Dropped_Branch_Is_Not_Read()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Paragraph("{{#if Show}}"),
+                Docx.GroupedTextBoxes(["Write {{#if Key}} like this"], ["OTHERBOX"]),
+                Docx.Paragraph("{{/if}}"),
+                Docx.Paragraph("Outro")
+            ]),
+            GlobalParameters = new Dictionary<string, object> { ["Show"] = false }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+
+        Assert.That(Texts(facts), Is.EqualTo(new[] { "Outro" }));
+    }
+
+    /// <summary>
+    /// A row-level content control — a repeating section — is a container of rows of its own, as a content control around
+    /// paragraphs is: marker rows inside it open and close their block there.
+    /// </summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task Marker_Rows_Inside_A_Row_Content_Control_Resolve_There()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.TableOf(
+                    Docx.Row("Description"),
+                    Docx.RowControl(200, Docx.Row("{{#each Lines}}"), Docx.Row("{{Description}}"), Docx.Row("{{/each}}")),
+                    Docx.Row("Total")),
+                Docx.Paragraph("")
+            ]),
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>> { ["Lines"] = LoopLines() }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(facts.Leftovers, Is.Empty);
+            Assert.That(Texts(facts), Is.EqualTo(new[] { "Description", "Pen", "Ink", "Paper", "Total" }));
+        });
+    }
+
+    /// <summary>A row's value is written as it is, a tag of another field of the row in it included.</summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task A_Row_Value_Holding_Another_Fields_Tag_Is_Written_As_It_Is()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document("{{#each Lines}}", "{{Description}}: {{Code}}", "{{/each}}"),
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
+            {
+                ["Lines"] = [new Dictionary<string, object> { ["Description"] = "Type {{Code}} here", ["Code"] = "X-1" }]
+            }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+
+        Assert.That(Texts(facts), Is.EqualTo(new[] { "Type {{Code}} here: X-1" }));
+    }
+
+    /// <summary>
+    /// A row's value written into a text box is not read again when the paragraph holding the text box is filled.
+    /// </summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task A_Row_Value_In_A_Text_Box_Is_Written_As_It_Is()
+    {
+        var holder = Docx.TextBox("{{Description}}");
+        holder.PrependChild(new W.Run(new W.Text("{{Code}} ") { Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve }));
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([Docx.Paragraph("{{#each Lines}}"), holder, Docx.Paragraph("{{/each}}")]),
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
+            {
+                ["Lines"] = [new Dictionary<string, object> { ["Description"] = "Type {{Code}} here", ["Code"] = "X-1" }]
+            }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+
+        Assert.That(facts.BodyText, Does.Contain("Type {{Code}} here").And.Contain("X-1"));
+    }
+
+    /// <summary>
+    /// A marker row's marker is its cells' own text: a marker in a text box in the row belongs to the text box, and a
+    /// lone one there is a block that does not close.
+    /// </summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task A_Marker_In_A_Text_Box_In_A_Row_Is_The_Text_Boxes()
+    {
+        static W.TableRow BoxRow(string text) => new(new W.TableCell(
+            new W.TableCellProperties(new W.TableCellWidth { Width = "3000", Type = W.TableWidthUnitValues.Dxa }),
+            Docx.TextBoxWithFallback(text)));
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([Docx.TableOf(Docx.Row("Head"), BoxRow("{{#each Lines}}"), Docx.Row("{{Description}}"), BoxRow("{{/each}}")), Docx.Paragraph("")]),
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>> { ["Lines"] = LoopLines() }
+        };
+
+        var ex = await Assert.ThrowsAsync<FormatException>(() => RequireCreator().Create(input));
+
+        Assert.That(ex!.Message, Does.Contain("{{#each Lines}}").And.Contain("{{/each}}"));
+    }
+
+    /// <summary>A loop around a table writes a table per row, its cells reading the row.</summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task A_Loop_Writes_A_Table_Per_Row()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Paragraph("{{#each Orders}}"),
+                Docx.Paragraph("Order {{Number}}"),
+                Docx.Table(["{{row_number}}"], ["{{Number}}"]),
+                Docx.Paragraph("{{/each}}")
+            ]),
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>> { ["Orders"] = LoopOrders() }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(facts.Leftovers, Is.Empty);
+            Assert.That(facts.TableRows, Is.EqualTo(new[] { 1, 1, 1 }), "a table per row");
+            Assert.That(Texts(facts), Is.EqualTo(new[] { "Order A-1", "1", "A-1", "Order A-2", "2", "A-2", "Order A-3", "3", "A-3" }));
+            Assert.That(Docx.TextBodiesEndWithParagraphs(output), Is.True);
+        });
+    }
+
+    /// <summary>
+    /// A loop inside a loop runs over the list its row holds, objects or a JSON array as an API delivers it, and its
+    /// fields read the row, then the rows around it; <c>{{row_number}}</c> is the inner row's.
+    /// </summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task A_Loop_Runs_Over_The_Rows_Its_Row_Holds()
+    {
+        const string json = """
+            [
+              { "Number": "A-1", "Lines": [ { "Product": "Pen" }, { "Product": "Ink" } ] },
+              { "Number": "A-2", "Lines": [] }
+            ]
+            """;
+        var orders = JsonSerializer.Deserialize<List<IDictionary<string, object>>>(json)!;
+        orders.Add(new Dictionary<string, object> { ["Number"] = "A-3", ["Lines"] = new[] { new { Product = "Paper" } } });
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document(
+                "{{#each Orders}}",
+                "Order {{Number}}",
+                "{{#each Lines}}", "{{row_number}}. {{Product}} on {{Number}}", "{{else}}", "No lines.", "{{/each}}",
+                "{{/each}}"),
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>> { ["Orders"] = orders }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(facts.Leftovers, Is.Empty);
+            Assert.That(Texts(facts), Is.EqualTo(new[]
+            {
+                "Order A-1", "1. Pen on A-1", "2. Ink on A-1",
+                "Order A-2", "No lines.",
+                "Order A-3", "1. Paper on A-3"
+            }));
+        });
+    }
+
+    /// <summary>
+    /// A loop resolves in a table cell and in a header as in the body: a cell holding the loop's markers among other
+    /// paragraphs is a container of its own, not a marker row.
+    /// </summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task A_Loop_In_A_Cell_Or_A_Header_Is_Resolved()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document(
+                [Docx.Table(["{{#each Orders}}", "Cell {{Number}}", "{{/each}}"], ["KEPTCELL"])],
+                header: Docx.Paragraphs("{{#each Orders}}", "Header {{Number}}", "{{/each}}")),
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>> { ["Orders"] = LoopOrders() }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+        var header = string.Join("\n", facts.Headers.Select(story => story.Text));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(facts.Leftovers, Is.Empty);
+            Assert.That(facts.TableRows, Is.EqualTo(new[] { 1 }), "one row: the loop is the cell's");
+            Assert.That(Texts(facts), Is.EqualTo(new[] { "Cell A-1", "Cell A-2", "Cell A-3", "KEPTCELL" }));
+            Assert.That(Order(header, "Header A-1", "Header A-2", "Header A-3"), Is.Ordered.And.All.GreaterThanOrEqualTo(0));
+            Assert.That(Docx.CellsEndWithParagraphs(output), Is.True);
+        });
+    }
+
+    /// <summary>
+    /// A loop in a text box and a text box in a loop: Word writes a text box twice, and each copy, DrawingML and VML,
+    /// holds the same rows.
+    /// </summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task A_Loop_And_A_Text_Box_Fill_Both_Of_Its_Copies()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.TextBoxWithFallback("{{#each Orders}}", "Box {{Number}}", "{{/each}}"),
+                Docx.Paragraph("{{#each Orders}}"),
+                Docx.TextBoxWithFallback("Copy {{Number}}"),
+                Docx.Paragraph("{{/each}}")
+            ]),
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>> { ["Orders"] = LoopOrders() }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+        var copies = Docx.TextBoxCopies(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(facts.Leftovers, Is.Empty);
+            Assert.That(copies.Select(copy => copy.Choice).Where(text => !VendorNotices.Any(notice => text.StartsWith(notice, StringComparison.Ordinal))),
+                Is.EqualTo(new[] { "Box A-1\nBox A-2\nBox A-3", "Copy A-1", "Copy A-2", "Copy A-3" }));
+            Assert.That(copies, Has.All.Matches<(string Choice, string Fallback)>(copy => copy.Fallback == copy.Choice),
+                "the fallback copy reads as the DrawingML copy");
+        });
+    }
+
+    /// <summary>
+    /// Every marker is read before a row's field is written, so a value holding marker text is written as text: it opens
+    /// no block, and fails none.
+    /// </summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task A_Row_Value_Holding_A_Marker_Is_Written_As_Text()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document("{{#each Orders}}", "{{Number}}", "{{/each}}", "Outro"),
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
+            {
+                ["Orders"] =
+                [
+                    new Dictionary<string, object> { ["Number"] = "{{/each}}" },
+                    new Dictionary<string, object> { ["Number"] = "{{#if IsPaid}}" }
+                ]
+            }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+
+        Assert.That(Texts(facts), Is.EqualTo(new[] { "{{/each}}", "{{#if IsPaid}}", "Outro" }));
+    }
+
+    /// <summary>
+    /// A loop's copies leave the document as Word needs it: the bookmark stays in the first copy only, and every copy
+    /// of a drawing — a text box's VML copy included — or a content control has an id of its own. The validator's
+    /// other errors are the vendors' own, in parts a loop does not touch.
+    /// </summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task A_Loops_Copies_Keep_Ids_Unique()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Paragraph("{{#each Orders}}"),
+                Docx.Bookmarked("Marked {{Number}}", "OrderMark"),
+                Docx.TextBoxWithFallback("Box {{Number}}"),
+                Docx.ContentControl("Control {{Number}}"),
+                Docx.Paragraph("{{/each}}")
+            ]),
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>> { ["Orders"] = LoopOrders() }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(facts.Leftovers, Is.Empty);
+            Assert.That(facts.BodyText, Does.Contain("Marked A-3").And.Contain("Box A-3").And.Contain("Control A-3"));
+            Assert.That(Docx.DuplicateIds(output), Is.Empty);
+            Assert.That(Docx.ValidationErrors(output).Where(error => error.Contains("unique value", StringComparison.Ordinal)), Is.Empty);
+        });
+    }
+
+    /// <summary>A loop is checked as a condition is, and a loop cannot copy a footnote, an endnote or a comment.</summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task A_Malformed_Loop_Fails()
+    {
+        var creator = RequireCreator();
+        async Task<FormatException> Fails(IMemoryFile template)
+            => (await Assert.ThrowsAsync<FormatException>(() => creator.Create(new WordTemplateInput { Template = template })))!;
+
+        var otherCloser = await Fails(Docx.Document("{{#each Orders}}", "Order", "{{/if}}"));
+        var unclosed = await Fails(Docx.Document("{{#each Orders}}", "Order"));
+        var acrossSections = await Fails(Docx.Document([Docx.Paragraph("{{#each Orders}}"), Docx.SectionBreak("Order"), Docx.Paragraph("{{/each}}")]));
+        var footnote = await Fails(Docx.Document(
+            [Docx.Paragraph("{{#each Orders}}"), Docx.FootnoteReference("Order"), Docx.Paragraph("{{/each}}")],
+            footnote: Docx.Paragraphs("A footnote.")));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(otherCloser.Message, Does.Contain("{{/if}}").And.Contain("{{#each Orders}}").And.Contain("{{/each}}"));
+            Assert.That(unclosed.Message, Does.Contain("{{#each Orders}}").And.Contain("{{/each}}"));
+            Assert.That(acrossSections.Message, Does.Contain("{{#each Orders}}").And.Contain("section"));
+            Assert.That(footnote.Message, Does.Contain("{{#each Orders}}").And.Contain("footnote"));
+        });
+    }
+
+    /// <summary>
+    /// A table row whose only text is a single marker opens or closes a block over the table's rows: the rows between
+    /// are written once per item, a condition keeps or drops rows per item, and the marker rows go. Without items, a
+    /// table left without rows goes.
+    /// </summary>
+    [TestCase(true)]
+    [TestCase(false)]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task Marker_Rows_Repeat_Table_Rows_Per_Item(bool hasLines)
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.TableOf(
+                    Docx.Row("Description", "Qty", "Price"),
+                    Docx.Row("{{#each Lines}}", "", ""),
+                    Docx.Row("{{Description}}", "{{Qty}}", "{{Price}}"),
+                    Docx.Row("", "{{#if Note}}", ""),
+                    Docx.Row("{{Note}}", "", ""),
+                    Docx.Row("{{/if}}", "", ""),
+                    Docx.Row("{{/each}}", "", ""),
+                    Docx.Row("Total", "", "{{Total}}")),
+                // two tables without a paragraph between them are one table to Word
+                Docx.Paragraph(""),
+                Docx.TableOf(Docx.Row("{{#each Lines}}"), Docx.Row("Only {{Description}}"), Docx.Row("{{/each}}"))
+            ]),
+            GlobalParameters = new Dictionary<string, object> { ["Total"] = "45.00" },
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>> { ["Lines"] = hasLines ? LoopLines() : [] }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+        var expected = hasLines
+            ? new[] { "Description", "Qty", "Price", "Pen", "2", "5.00", "Gift wrapped", "Ink", "1", "15.00", "Paper", "4", "25.00", "Total", "45.00", "Only Pen", "Only Ink", "Only Paper" }
+            : new[] { "Description", "Qty", "Price", "Total", "45.00" };
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(facts.Leftovers, Is.Empty);
+            Assert.That(facts.TableRows, Is.EqualTo(hasLines ? new[] { 6, 3 } : new[] { 2 }), "the table without items goes");
+            Assert.That(Texts(facts), Is.EqualTo(expected));
+            Assert.That(Docx.TextBodiesEndWithParagraphs(output), Is.True);
+        });
+    }
+
+    /// <summary>
+    /// One collection feeds a loop and a titled collection table alike: each writes the same rows, the table under its
+    /// own rules.
+    /// </summary>
+    [Test]
+    [Needs(WordFeature.Creating | WordFeature.TitledTables)]
+    public virtual async Task A_Loop_And_A_Titled_Table_Read_The_Same_Collection()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Titled(Docx.TableOf(Docx.Row("Description"), Docx.Row("{{Description}}")), "Lines"),
+                Docx.Paragraph(""),
+                Docx.TableOf(Docx.Row("{{#each Lines}}"), Docx.Row("Loop {{Description}}"), Docx.Row("{{/each}}"))
+            ]),
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>> { ["Lines"] = LoopLines() }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(facts.Leftovers, Is.Empty);
+            Assert.That(facts.TableRows, Is.EqualTo(new[] { 4, 3 }));
+            Assert.That(Texts(facts), Is.EqualTo(new[] { "Description", "Pen", "Ink", "Paper", "Loop Pen", "Loop Ink", "Loop Paper" }));
         });
     }
 
@@ -1909,6 +2543,32 @@ public abstract class WordTestsBase : WordAssetsTestsBase
 
     private static bool WithinTwoPoints((int Width, int Height) actual, (int Width, int Height) expected)
         => Math.Abs(actual.Width - expected.Width) <= 2 && Math.Abs(actual.Height - expected.Height) <= 2;
+
+    /// <summary>
+    /// The body's paragraphs that hold text, in order, a cell's and a text box's among them; the notice an unlicensed
+    /// Syncfusion or Aspose writes around the content left out.
+    /// </summary>
+    private static string[] Texts(DocxFacts facts)
+        => facts.Paragraphs.Select(paragraph => paragraph.Text)
+            .Where(text => !string.IsNullOrWhiteSpace(text) && !VendorNotices.Any(notice => text.StartsWith(notice, StringComparison.Ordinal)))
+            .ToArray();
+
+    private static readonly string[] VendorNotices = ["Created with a trial version of Syncfusion", "Created with an evaluation copy of Aspose.Words"];
+
+    // the loop scenarios' rows: a note on the first, none on the second, an empty one on the third
+    private static ICollection<IDictionary<string, object>> LoopOrders() =>
+    [
+        new Dictionary<string, object> { ["Number"] = "A-1", ["Note"] = "Fragile\nKeep upright" },
+        new Dictionary<string, object> { ["Number"] = "A-2" },
+        new Dictionary<string, object> { ["Number"] = "A-3", ["Note"] = "" }
+    ];
+
+    private static ICollection<IDictionary<string, object>> LoopLines() =>
+    [
+        DictionaryUtility.ToDictionary(new { Description = "Pen", Qty = 2, Price = "5.00", Note = "Gift wrapped" })!,
+        DictionaryUtility.ToDictionary(new { Description = "Ink", Qty = 1, Price = "15.00" })!,
+        DictionaryUtility.ToDictionary(new { Description = "Paper", Qty = 4, Price = "25.00" })!
+    ];
 
     private static ICollection<IDictionary<string, object>> TemplateRows() =>
     [

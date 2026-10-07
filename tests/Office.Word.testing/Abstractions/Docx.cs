@@ -142,6 +142,104 @@ internal static class Docx
         </w:drawing>
         """;
 
+    /// <summary>A table row, each cell holding one paragraph of its text.</summary>
+    public static W.TableRow Row(params string[] cells)
+        => new(cells.Select(text => new W.TableCell(
+            new W.TableCellProperties(new W.TableCellWidth { Width = "3000", Type = W.TableWidthUnitValues.Dxa }),
+            Paragraph(text))));
+
+    /// <summary>A table row whose cells each hold their paragraph inside a content control, as a plain-text control does.</summary>
+    public static W.TableRow ControlledRow(params string[] cells)
+        => new(cells.Select((text, i) => new W.TableCell(
+            new W.TableCellProperties(new W.TableCellWidth { Width = "3000", Type = W.TableWidthUnitValues.Dxa }),
+            new W.SdtBlock(new W.SdtProperties(new W.SdtId { Val = 100 + i }), new W.SdtContentBlock(Paragraph(text))))));
+
+    /// <summary>Rows inside a row-level content control, as Word wraps a repeating section.</summary>
+    public static W.SdtRow RowControl(int id, params W.TableRow[] rows)
+        => new(new W.SdtProperties(new W.SdtId { Val = id }), new W.SdtContentRow(rows));
+
+    /// <summary>A table of the given rows and row-level content controls, as many columns wide as its widest row.</summary>
+    public static W.Table TableOf(params OpenXmlElement[] rows)
+    {
+        var columns = rows.SelectMany(row => row is W.TableRow own ? [own] : row.Descendants<W.TableRow>())
+            .Max(row => row.Elements<W.TableCell>().Count());
+        var table = new W.Table(
+            new W.TableProperties(new W.TableBorders(new W.InsideHorizontalBorder { Val = W.BorderValues.Single, Size = 4 })),
+            new W.TableGrid(Enumerable.Range(0, columns).Select(_ => new W.GridColumn { Width = "3000" })));
+        table.Append(rows);
+        return table;
+    }
+
+    /// <summary>The table with the given Alt Text title: the title a collection table is found by.</summary>
+    public static W.Table Titled(W.Table table, string title)
+    {
+        table.GetFirstChild<W.TableProperties>()!.AppendChild(new W.TableCaption { Val = title });
+        return table;
+    }
+
+    /// <summary>
+    /// A paragraph holding an embedded object as Word writes one: a VML shape that shows it, and an <c>o:OLEObject</c>
+    /// naming that shape by its id. The object's own part is left out: only the markup that ties the two is read.
+    /// </summary>
+    public static W.Paragraph EmbeddedObject(string shapeId = "_x0000_i1025")
+        => new(new W.Run(new W.EmbeddedObject($"""
+            <w:object xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                      xmlns:v="urn:schemas-microsoft-com:vml"
+                      xmlns:o="urn:schemas-microsoft-com:office:office">
+              <v:shape id="{shapeId}" o:spid="_x0000_s1030" style="width:60pt;height:40pt" o:ole=""/>
+              <o:OLEObject Type="Embed" ProgID="Package" ShapeID="{shapeId}" DrawAspect="Icon" ObjectID="_1700000000"/>
+            </w:object>
+            """)));
+
+    /// <summary>
+    /// The document with each <see cref="EmbeddedObject"/> made whole, as Word writes one: an embedded <c>.docx</c> part
+    /// for the object, and a picture part for the shape that shows it.
+    /// </summary>
+    public static IMemoryFile WithEmbeddedDocuments(IMemoryFile file)
+    {
+        // a 1×1 transparent PNG
+        var preview = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==");
+        const string relationships = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        using var stream = new MemoryStream();
+        stream.Write(file.GetBytes()!);
+        using (var doc = WordprocessingDocument.Open(stream, true))
+        {
+            var main = doc.MainDocumentPart!;
+            foreach (var embedded in main.Document!.Body!.Descendants<W.EmbeddedObject>())
+            {
+                var package = main.AddEmbeddedPackagePart(EmbeddedPackagePartType.Docx);
+                using (var content = new MemoryStream(Document("Embedded").GetBytes()!))
+                {
+                    package.FeedData(content);
+                }
+                var image = main.AddImagePart(ImagePartType.Png);
+                using (var content = new MemoryStream(preview))
+                {
+                    image.FeedData(content);
+                }
+
+                var shape = embedded.Descendants().First(element => element.LocalName == "shape");
+                shape.AppendChild(new OpenXmlUnknownElement("v", "imagedata", "urn:schemas-microsoft-com:vml"))
+                    .SetAttribute(new OpenXmlAttribute("r", "id", relationships, main.GetIdOfPart(image)));
+                var ole = embedded.Descendants().First(element => element.LocalName == "OLEObject");
+                ole.SetAttribute(new OpenXmlAttribute("", "ProgID", "", "Word.Document.12"));
+                ole.SetAttribute(new OpenXmlAttribute("r", "id", relationships, main.GetIdOfPart(package)));
+            }
+        }
+        return stream.ToArray().ToMemoryFile(ContentTypes.DOCX);
+    }
+
+    /// <summary>Every embedded object's <c>o:OLEObject/@ShapeID</c> with the id of the VML shape beside it.</summary>
+    public static IReadOnlyList<(string ShapeId, string ShapeIdReferenced)> EmbeddedObjects(IMemoryFile file)
+    {
+        using var doc = WordprocessingDocument.Open(new MemoryStream(file.GetBytes()!), false);
+        return doc.MainDocumentPart!.Document!.Body!.Descendants<W.EmbeddedObject>()
+            .Select(embedded => (
+                embedded.Descendants().First(element => element.LocalName == "shape").GetAttributes().First(attribute => attribute.LocalName == "id").Value ?? "",
+                embedded.Descendants().First(element => element.LocalName == "OLEObject").GetAttributes().First(attribute => attribute.LocalName == "ShapeID").Value ?? ""))
+            .ToList();
+    }
+
     /// <summary>A paragraph holding an inline group of text boxes (<c>wpg:wgp</c>), one per array of paragraphs.</summary>
     public static W.Paragraph GroupedTextBoxes(params string[][] boxes)
     {
@@ -204,6 +302,51 @@ internal static class Docx
             new W.TableGrid(cells.Select(_ => new W.GridColumn { Width = "3000" })));
         table.AppendChild(row);
         return table;
+    }
+
+    /// <summary>A paragraph of the given text inside a bookmark of the given name.</summary>
+    public static W.Paragraph Bookmarked(string text, string name, int id = 1)
+        => new(new W.BookmarkStart { Name = name, Id = id.ToString() }, new W.Run(new W.Text(text)), new W.BookmarkEnd { Id = id.ToString() });
+
+    /// <summary>
+    /// The ids and names the document holds more than once, though Word needs them unique: drawing ids
+    /// (<c>wp:docPr</c>, a text box's <c>mc:Fallback</c> copy left out, since it repeats its <c>mc:Choice</c> copy's
+    /// on purpose), bookmark names and content-control ids, in the body, headers and footers.
+    /// </summary>
+    public static IReadOnlyList<string> DuplicateIds(IMemoryFile file)
+    {
+        using var doc = WordprocessingDocument.Open(new MemoryStream(file.GetBytes()!), false);
+        var stories = Stories(doc).ToArray();
+        var drawings = stories.SelectMany(story => story.Descendants<DW.DocProperties>())
+            .Where(properties => !properties.Ancestors<AlternateContentFallback>().Any())
+            .Select(properties => $"wp:docPr {properties.Id?.Value}");
+        var bookmarks = stories.SelectMany(story => story.Descendants<W.BookmarkStart>()).Select(bookmark => $"bookmark {bookmark.Name?.Value}");
+        var controls = stories.SelectMany(story => story.Descendants<W.SdtId>()).Select(control => $"w:sdt {control.Val?.Value}");
+        return drawings.Concat(bookmarks).Concat(controls)
+            .GroupBy(id => id)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToList();
+    }
+
+    /// <summary>The names of the bookmarks in the body, in order.</summary>
+    public static IReadOnlyList<string> BookmarkNames(IMemoryFile file)
+    {
+        using var doc = WordprocessingDocument.Open(new MemoryStream(file.GetBytes()!), false);
+        return doc.MainDocumentPart!.Document!.Body!.Descendants<W.BookmarkStart>()
+            .Select(bookmark => bookmark.Name?.Value ?? "")
+            .Where(name => !name.StartsWith('_'))
+            .ToList();
+    }
+
+    /// <summary>The Open XML SDK validator's errors for the document, as Office 2019 reads it.</summary>
+    public static IReadOnlyList<string> ValidationErrors(IMemoryFile file)
+    {
+        using var doc = WordprocessingDocument.Open(new MemoryStream(file.GetBytes()!), false);
+        return new DocumentFormat.OpenXml.Validation.OpenXmlValidator(FileFormatVersions.Office2019)
+            .Validate(doc)
+            .Select(error => $"{error.Part?.Uri} {error.Path?.XPath}: {error.Description}")
+            .ToList();
     }
 
     /// <summary>A paragraph of the given text that references footnote 1.</summary>
