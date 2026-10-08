@@ -83,8 +83,8 @@ size or error correction.
 | `Regira.Office.Mail.Exceptions` | `MailException`, `EmailFormatException` |
 | `Regira.Office.Mail.Web` | `MailInput`, `Address`, `Recipient`, `Attachment` — DTOs for an HTTP endpoint |
 | `Regira.Office.Mail.Services` | `DummyMailer` |
-| **Providers** | `Regira.Office.Mail.SendGrid` → `SendGridMailer`, `SendGridConfig`; `Regira.Office.Mail.MailGun` → `MailGunMailer`, `MailgunConfig`; `Regira.Office.Mail.MSGReader` → `MsgParser`, `EmlParser` |
-| **DI** | `Regira.Office.Mail.SendGrid.DependencyInjection` · `Regira.Office.Mail.MailGun.DependencyInjection` → `ServiceCollectionExtensions` |
+| **Providers** | `Regira.Office.Mail.SendGrid` → `SendGridMailer`, `SendGridConfig`; `Regira.Office.Mail.MailGun` → `MailGunMailer`, `MailgunConfig`; `Regira.Office.Mail.MailKit` → `MailKitMailer`, `MailKitConfig` (its `Security` takes `MailKit.Security.SecureSocketOptions`); `Regira.Office.Mail.MSGReader` → `MsgParser`, `EmlParser` |
+| **DI** | `Regira.Office.Mail.SendGrid.DependencyInjection` · `Regira.Office.Mail.MailGun.DependencyInjection` · `Regira.Office.Mail.MailKit.DependencyInjection` → `ServiceCollectionExtensions` |
 
 ## CSV · OCR · vCards · Printing
 

@@ -594,6 +594,7 @@
         "src/Common.Office/Common.Office.csproj",
         "src/Mail.SendGrid/Mail.SendGrid.csproj",
         "src/Mail.MailGun/Mail.MailGun.csproj",
+        "src/Mail.MailKit/Mail.MailKit.csproj",
         "src/Mail.MSGReader/Mail.MSGReader.csproj",
         "src/Mail.Web/Mail.Web.csproj",
         "src/Security.Authentication.Web/Security.Authentication.Web.csproj"
@@ -613,6 +614,8 @@
         "Regira.Office.Mail.Services",
         "Regira.Office.Mail.SendGrid.DependencyInjection",
         "Regira.Office.Mail.MailGun.DependencyInjection",
+        "Regira.Office.Mail.MailKit.DependencyInjection",
+        "MailKit.Security",
         "Regira.Security.Authentication.Web.Mail"
       ],
       "frameworkReferences": ["Microsoft.AspNetCore.App"]

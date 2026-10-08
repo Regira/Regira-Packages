@@ -86,6 +86,7 @@
   </Folder>
   <Folder Name="/src/Office/Mail/">
     <Project Path="src/Mail.MailGun/Mail.MailGun.csproj" />
+    <Project Path="src/Mail.MailKit/Mail.MailKit.csproj" />
     <Project Path="src/Mail.MSGReader/Mail.MSGReader.csproj" />
     <Project Path="src/Mail.SendGrid/Mail.SendGrid.csproj" />
     <Project Path="src/Mail.Web/Mail.Web.csproj" />

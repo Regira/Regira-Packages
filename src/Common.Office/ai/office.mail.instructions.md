@@ -24,6 +24,9 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 <!-- Mailgun -->
 <PackageReference Include="Regira.Office.Mail.MailGun" Version="6.*" />
 
+<!-- MailKit — any SMTP server -->
+<PackageReference Include="Regira.Office.Mail.MailKit" Version="6.*" />
+
 <!-- Mail.Web — HTTP request DTOs for mail endpoints -->
 <PackageReference Include="Regira.Office.Mail.Web" Version="6.*" />
 
@@ -35,7 +38,7 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 ## `IMailService`
 
-Both backends implement this interface.
+Every sending backend implements this interface.
 
 <!-- no-compile -->
 ```csharp
@@ -58,8 +61,8 @@ Task<IMailResponse> Send(IMessageObject message, CancellationToken cancellationT
 | Property | Type | Description |
 |---|---|---|
 | `Success` | `bool` | `true` when the provider accepted the message |
-| `Status` | `string?` | HTTP status code or provider status text |
-| `Content` | `string?` | Raw response body |
+| `Status` | `string?` | HTTP status code or provider status text; `OK` for SMTP |
+| `Content` | `string?` | Raw response body; for SMTP the server's reply, with its queue id (`2.0.0 Ok: queued as …`) |
 | `Exception` | `Exception?` | Set when sending fails |
 
 ---
@@ -129,6 +132,30 @@ var bcc = new MailRecipient { Email = "carol@example.com", RecipientType = Recip
 > counts and charges may still apply. The response is indistinguishable from a real send, so a test asserting
 > on `response.Success` keeps working. Use it for suites and staging hosts that send to real addresses.
 
+### `MailKitConfig`
+
+| Property | Type | Default | Description |
+|---|---|---|---|
+| `Host` | `string` | — | SMTP server host name |
+| `Port` | `int` | `587` | SMTP port |
+| `Security` | `SecureSocketOptions` (`MailKit.Security`) | `StartTls` | TLS mode; binds from configuration by name (`"SslOnConnect"`) |
+| `UserName` | `string?` | `null` | SMTP AUTH user; leave empty for a server that takes mail without AUTH |
+| `Password` | `string?` | `null` | SMTP AUTH password |
+| `Timeout` | `int` | `120000` | Per SMTP command, in milliseconds |
+
+| Server | `Port` | `Security` |
+|---|---|---|
+| Submission with STARTTLS — Microsoft 365, Gmail (app password), Amazon SES, most providers | `587` | `StartTls` |
+| Implicit TLS | `465` | `SslOnConnect` |
+| Local test server without TLS — Mailpit, smtp4dev | `1025` / `25` | `None` |
+
+> **Keep `StartTls` for a remote server.** It fails the send when the server offers no TLS. MailKit's `Auto`
+> falls back to an unencrypted connection on such a server and then sends the password in clear text.
+
+Each send opens its own connection — connect, authenticate, send, quit — which suits transactional mail. A
+bulk send pays one TCP, TLS and AUTH handshake per message. OAuth2 sign-in (for tenants with basic SMTP AUTH
+disabled) is not supported.
+
 ---
 
 ## DI Registration
@@ -146,9 +173,18 @@ services.AddMailGun(cfg =>
     cfg.Domain = configuration["Mail:MailGun:Domain"]!;
     cfg.TestMode = !environment.IsProduction();  // accepted and logged, never delivered
 });
+
+// MailKit (SMTP)
+services.AddMailKit(cfg =>
+{
+    cfg.Host     = configuration["Mail:Smtp:Host"]!;
+    cfg.Port     = int.Parse(configuration["Mail:Smtp:Port"] ?? "587");
+    cfg.UserName = configuration["Mail:Smtp:UserName"];
+    cfg.Password = configuration["Mail:Smtp:Password"];
+});
 ```
 
-Both extension methods register `IMailService` as a transient service.
+Each extension method registers `IMailService` as a transient service.
 
 ---
 
@@ -156,9 +192,19 @@ Both extension methods register `IMailService` as a transient service.
 
 ### `MailException`
 
-Thrown by `MailerBase` for an invalid attachment, and by the SendGrid and Mailgun backends for a
-non-success provider response, an unauthorized one included. Log `ResponseContent` — the provider describes
+Thrown by `MailerBase` for an invalid attachment, by the SendGrid and Mailgun backends for a
+non-success provider response, an unauthorized one included, and by the MailKit backend when the SMTP server
+refuses the credentials, the sender, a recipient or the message. Log `ResponseContent` — the provider describes
 the refusal there, and the status code on its own usually does not.
+
+MailKit specifics:
+
+- A message without a sender or recipients throws `MailException` before a connection is opened.
+- **One refused recipient aborts the whole message** — nothing is delivered, not even to the accepted
+  recipients — and `ResponseContent` names the refused address.
+- A connection fault is not a refusal and passes through unwrapped: `SocketException` (no server),
+  `SslHandshakeException`, `NotSupportedException` (`StartTls` against a server without STARTTLS),
+  `TimeoutException`, `OperationCanceledException`.
 
 | Property | Type | Description |
 |---|---|---|
