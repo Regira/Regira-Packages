@@ -20,6 +20,70 @@ internal static class Docx
 
     public static IEnumerable<W.Paragraph> Paragraphs(params string[] texts) => texts.Select(Paragraph);
 
+    /// <summary>A paragraph formatted as <paramref name="format"/> says, a run per span, each formatted as its span says.</summary>
+    public static W.Paragraph Formatted(ParagraphFormat format, params Span[] spans)
+    {
+        var paragraph = new W.Paragraph(Properties(format));
+        paragraph.Append(spans.Select(span => new W.Run(Properties(span.Format), new W.Text(span.Text) { Space = SpaceProcessingModeValues.Preserve })));
+        return paragraph;
+    }
+
+    // the children in the order the schema gives them
+    private static W.ParagraphProperties Properties(ParagraphFormat format)
+    {
+        var properties = new W.ParagraphProperties();
+        if (format.Style != null) properties.AppendChild(new W.ParagraphStyleId { Val = format.Style });
+        if (format.Shading != null) properties.AppendChild(new W.Shading { Val = W.ShadingPatternValues.Clear, Fill = format.Shading });
+        // an attribute set to null is still written, empty, and a reader takes an empty measure for 0: set only those given
+        if (format.SpacingBefore != null || format.SpacingAfter != null || format.LineSpacing != null)
+        {
+            var spacing = properties.AppendChild(new W.SpacingBetweenLines());
+            if (format.SpacingBefore != null) spacing.Before = format.SpacingBefore.ToString();
+            if (format.SpacingAfter != null) spacing.After = format.SpacingAfter.ToString();
+            if (format.LineSpacing != null) (spacing.Line, spacing.LineRule) = (format.LineSpacing.ToString(), W.LineSpacingRuleValues.Auto);
+        }
+        if (format.IndentLeft != null || format.IndentFirstLine != null)
+        {
+            var indentation = properties.AppendChild(new W.Indentation());
+            if (format.IndentLeft != null) indentation.Left = format.IndentLeft.ToString();
+            if (format.IndentFirstLine != null) indentation.FirstLine = format.IndentFirstLine.ToString();
+        }
+        if (format.Alignment != null) properties.AppendChild(new W.Justification { Val = new W.JustificationValues(format.Alignment) });
+        return properties;
+    }
+
+    // the children in the order the schema gives them
+    private static W.RunProperties Properties(RunFormat format)
+    {
+        var properties = new W.RunProperties();
+        if (format.Style != null) properties.AppendChild(new W.RunStyle { Val = format.Style });
+        if (format.Font != null) properties.AppendChild(new W.RunFonts { Ascii = format.Font, HighAnsi = format.Font });
+        if (format.Bold) properties.AppendChild(new W.Bold());
+        if (format.Italic) properties.AppendChild(new W.Italic());
+        if (format.Strike) properties.AppendChild(new W.Strike());
+        if (format.Color != null) properties.AppendChild(new W.Color { Val = format.Color });
+        if (format.Size != null) properties.AppendChild(new W.FontSize { Val = format.Size.ToString() });
+        if (format.Highlight != null) properties.AppendChild(new W.Highlight { Val = new W.HighlightColorValues(format.Highlight) });
+        if (format.Underline != null) properties.AppendChild(new W.Underline { Val = new W.UnderlineValues(format.Underline) });
+        return properties;
+    }
+
+    /// <summary>
+    /// A style of the given type, for <see cref="Document(IEnumerable{OpenXmlElement}, IEnumerable{OpenXmlElement}?, IEnumerable{OpenXmlElement}?, bool, int?, IEnumerable{W.Style}?)"/>
+    /// to define: a paragraph style spaces its paragraphs, a character style makes its text bold.
+    /// </summary>
+    public static W.Style Style(string id, W.StyleValues type)
+        => new(
+            new W.StyleName { Val = id },
+            type == W.StyleValues.Paragraph
+                ? new W.StyleParagraphProperties(new W.SpacingBetweenLines { Before = "120", After = "120" })
+                : new W.StyleRunProperties(new W.Bold()))
+        {
+            Type = type,
+            StyleId = id,
+            CustomStyle = true
+        };
+
     /// <summary>A paragraph without a run, as Word stores an empty line.</summary>
     public static W.Paragraph EmptyParagraph() => new();
 
@@ -85,22 +149,26 @@ internal static class Docx
 
     /// <summary>A paragraph holding an inline text box of the given paragraphs, written as DrawingML only.</summary>
     public static W.Paragraph TextBox(params string[] texts)
-        => new(new W.Run(new W.Drawing(TextBoxDrawing(texts))));
+        => new(new W.Run(new W.Drawing(TextBoxDrawing(TextBoxContent(Paragraphs(texts))))));
 
     /// <summary>
     /// A paragraph holding an inline text box of the given paragraphs, the way Word writes one: an
     /// <c>mc:AlternateContent</c> with the DrawingML box as its <c>mc:Choice</c>, and a VML <c>v:textbox</c> holding
     /// the same paragraphs as its <c>mc:Fallback</c>, for readers that do not know DrawingML shapes.
     /// </summary>
-    public static W.Paragraph TextBoxWithFallback(params string[] texts)
+    public static W.Paragraph TextBoxWithFallback(params string[] texts) => TextBoxWithFallback(Paragraphs(texts).ToArray());
+
+    /// <inheritdoc cref="TextBoxWithFallback(string[])"/>
+    public static W.Paragraph TextBoxWithFallback(params W.Paragraph[] paragraphs)
     {
+        var content = TextBoxContent(paragraphs);
         var alternateContent = $"""
             <mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
                                  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
                                  xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
                                  xmlns:v="urn:schemas-microsoft-com:vml"
                                  xmlns:o="urn:schemas-microsoft-com:office:office">
-              <mc:Choice Requires="wps">{TextBoxDrawing(texts)}</mc:Choice>
+              <mc:Choice Requires="wps">{TextBoxDrawing(content)}</mc:Choice>
               <mc:Fallback>
                 <w:pict>
                   <v:shapetype id="_x0000_t202" coordsize="21600,21600" o:spt="202" path="m,l,21600r21600,l21600,xe">
@@ -108,7 +176,7 @@ internal static class Docx
                     <v:path gradientshapeok="t" o:connecttype="rect"/>
                   </v:shapetype>
                   <v:shape id="Text Box 1" o:spid="_x0000_s1026" type="#_x0000_t202" style="width:200pt;height:60pt">
-                    <v:textbox>{new W.TextBoxContent(Paragraphs(texts)).OuterXml}</v:textbox>
+                    <v:textbox>{content}</v:textbox>
                   </v:shape>
                 </w:pict>
               </mc:Fallback>
@@ -117,7 +185,10 @@ internal static class Docx
         return new W.Paragraph(new W.Run(new AlternateContent(alternateContent)));
     }
 
-    private static string TextBoxDrawing(string[] texts) => $"""
+    // a text box's w:txbxContent, as markup: each copy of the box is parsed from it, so none shares an element
+    private static string TextBoxContent(IEnumerable<W.Paragraph> paragraphs) => new W.TextBoxContent(paragraphs).OuterXml;
+
+    private static string TextBoxDrawing(string content) => $"""
         <w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
                    xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
                    xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -133,7 +204,7 @@ internal static class Docx
                     <a:xfrm><a:off x="0" y="0"/><a:ext cx="2540000" cy="762000"/></a:xfrm>
                     <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
                   </wps:spPr>
-                  <wps:txbx>{new W.TextBoxContent(Paragraphs(texts)).OuterXml}</wps:txbx>
+                  <wps:txbx>{content}</wps:txbx>
                   <wps:bodyPr/>
                 </wps:wsp>
               </a:graphicData>
@@ -153,6 +224,26 @@ internal static class Docx
         => new(cells.Select((text, i) => new W.TableCell(
             new W.TableCellProperties(new W.TableCellWidth { Width = "3000", Type = W.TableWidthUnitValues.Dxa }),
             new W.SdtBlock(new W.SdtProperties(new W.SdtId { Val = 100 + i }), new W.SdtContentBlock(Paragraph(text))))));
+
+    /// <summary>A table row formatted as <paramref name="format"/> says, a cell per paragraph.</summary>
+    public static W.TableRow Row(RowFormat format, params W.Paragraph[] cells)
+    {
+        var row = new W.TableRow();
+        if (format.Height != null)
+        {
+            row.AppendChild(new W.TableRowProperties(new W.TableRowHeight { Val = (uint)format.Height }));
+        }
+        row.Append(cells.Select((paragraph, i) =>
+        {
+            var properties = new W.TableCellProperties(new W.TableCellWidth { Width = "3000", Type = W.TableWidthUnitValues.Dxa });
+            if (format.Shadings.ElementAtOrDefault(i) is { } fill)
+            {
+                properties.AppendChild(new W.Shading { Val = W.ShadingPatternValues.Clear, Fill = fill });
+            }
+            return new W.TableCell(properties, paragraph);
+        }));
+        return row;
+    }
 
     /// <summary>Rows inside a row-level content control, as Word wraps a repeating section.</summary>
     public static W.SdtRow RowControl(int id, params W.TableRow[] rows)
@@ -251,7 +342,7 @@ internal static class Docx
                 <a:xfrm><a:off x="0" y="{i * 800000}"/><a:ext cx="2540000" cy="762000"/></a:xfrm>
                 <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
               </wps:spPr>
-              <wps:txbx>{new W.TextBoxContent(Paragraphs(texts)).OuterXml}</wps:txbx>
+              <wps:txbx>{TextBoxContent(Paragraphs(texts))}</wps:txbx>
               <wps:bodyPr/>
             </wps:wsp>
             """));
@@ -357,25 +448,32 @@ internal static class Docx
     /// A document of the given body content, with the given content as its default header and as footnote 1, which
     /// <see cref="FootnoteReference"/> refers to, on A4 pages — turned to landscape when asked. Given a
     /// <paramref name="normalFontSize"/>, in half-points, its Normal style sets that size and no space between paragraphs.
+    /// Given <paramref name="styles"/>, its styles part defines them too.
     /// </summary>
     public static IMemoryFile Document(IEnumerable<OpenXmlElement> body, IEnumerable<OpenXmlElement>? header = null, IEnumerable<OpenXmlElement>? footnote = null,
-        bool landscape = false, int? normalFontSize = null)
+        bool landscape = false, int? normalFontSize = null, IEnumerable<W.Style>? styles = null)
     {
         using var stream = new MemoryStream();
         using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
         {
             var main = doc.AddMainDocumentPart();
-            if (normalFontSize is { } fontSize)
+            if (normalFontSize != null || styles != null)
             {
-                main.AddNewPart<StyleDefinitionsPart>().Styles = new W.Styles(new W.Style(
-                    new W.StyleName { Val = "Normal" },
-                    new W.StyleParagraphProperties(new W.SpacingBetweenLines { After = "0", Line = "240", LineRule = W.LineSpacingRuleValues.Auto }),
-                    new W.StyleRunProperties(new W.FontSize { Val = fontSize.ToString() }))
+                var definitions = new W.Styles();
+                if (normalFontSize is { } fontSize)
                 {
-                    Type = W.StyleValues.Paragraph,
-                    StyleId = "Normal",
-                    Default = true
-                });
+                    definitions.AppendChild(new W.Style(
+                        new W.StyleName { Val = "Normal" },
+                        new W.StyleParagraphProperties(new W.SpacingBetweenLines { After = "0", Line = "240", LineRule = W.LineSpacingRuleValues.Auto }),
+                        new W.StyleRunProperties(new W.FontSize { Val = fontSize.ToString() }))
+                    {
+                        Type = W.StyleValues.Paragraph,
+                        StyleId = "Normal",
+                        Default = true
+                    });
+                }
+                definitions.Append(styles ?? []);
+                main.AddNewPart<StyleDefinitionsPart>().Styles = definitions;
             }
             var sectionProperties = new W.SectionProperties();
             if (header != null)

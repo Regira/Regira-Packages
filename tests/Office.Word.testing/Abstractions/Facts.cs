@@ -42,6 +42,8 @@ public sealed record DocxFacts
     public required IReadOnlyList<string> Leftovers { get; init; }
     /// <summary>The rows of each body table that is not nested in another table, in document order.</summary>
     public required IReadOnlyList<int> TableRows { get; init; }
+    /// <summary>The formatting of the rows <see cref="TableRows"/> counts, in document order.</summary>
+    public required IReadOnlyList<RowFormat> RowFormats { get; init; }
     /// <summary>The pictures the body shows, in document order.</summary>
     public required IReadOnlyList<PictureFact> Pictures { get; init; }
     public required IReadOnlyList<SectionFact> Sections { get; init; }
@@ -66,6 +68,11 @@ public sealed record DocxFacts
             TableRows = body.Descendants<W.Table>()
                 .Where(table => !table.Ancestors<W.Table>().Any())
                 .Select(table => table.Elements<W.TableRow>().Count())
+                .ToList(),
+            RowFormats = body.Descendants<W.Table>()
+                .Where(table => !table.Ancestors<W.Table>().Any())
+                .SelectMany(table => table.Elements<W.TableRow>())
+                .Select(RowFormat.Of)
                 .ToList(),
             // DrawingML pictures, and VML ones, which a converted .doc and a VML fallback copy hold; a picture in both copies counts once
             Pictures = body.Descendants()
@@ -129,20 +136,122 @@ public sealed record DocxFacts
 }
 
 /// <param name="Text">The visible text: deleted text and field codes left out, a text box's text included</param>
-/// <param name="Alignment">The paragraph's own <c>w:jc</c>, null when it sets none</param>
 /// <param name="RunSizes">The font size each of its runs sets, in half-points; a run that sets none is left out</param>
-public sealed record ParagraphFact(string Text, string? Alignment, IReadOnlyList<int> RunSizes)
+/// <param name="Format">The paragraph's own formatting</param>
+/// <param name="Spans">The paragraph's own text, without a text box's, in spans of one run formatting each</param>
+public sealed record ParagraphFact(string Text, IReadOnlyList<int> RunSizes, ParagraphFormat Format, IReadOnlyList<Span> Spans)
 {
+    /// <summary>The paragraph's own <c>w:jc</c>, null when it sets none.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? Alignment => Format.Alignment;
+
     public static ParagraphFact Of(W.Paragraph paragraph)
-        => new(
+    {
+        var runs = paragraph.Descendants<W.Run>().Where(run => run.Ancestors<W.Paragraph>().First() == paragraph).ToList();
+        return new(
             string.Concat(paragraph.Descendants<W.Text>().Select(text => text.Text)),
-            paragraph.ParagraphProperties?.Justification?.Val?.InnerText,
-            paragraph.Descendants<W.Run>()
-                .Where(run => run.Ancestors<W.Paragraph>().First() == paragraph)
-                .Select(run => run.RunProperties?.FontSize?.Val?.Value)
+            runs.Select(run => run.RunProperties?.FontSize?.Val?.Value)
                 .OfType<string>()
                 .Select(int.Parse)
-                .ToList());
+                .ToList(),
+            ParagraphFormat.Of(paragraph.ParagraphProperties),
+            Span.Of(runs));
+    }
+}
+
+/// <summary>
+/// A paragraph's own formatting, as its <c>w:pPr</c> sets it: null where it sets nothing, so what a style gives is
+/// not read.
+/// </summary>
+/// <param name="Style">The <c>w:pStyle</c> id</param>
+/// <param name="Alignment">The <c>w:jc</c></param>
+/// <param name="SpacingBefore">In twips</param>
+/// <param name="SpacingAfter">In twips</param>
+/// <param name="LineSpacing">In 240ths of a line when automatic, in twips otherwise</param>
+/// <param name="IndentLeft">In twips</param>
+/// <param name="IndentFirstLine">In twips</param>
+/// <param name="Shading">The fill colour, hexadecimal</param>
+public sealed record ParagraphFormat(string? Style = null, string? Alignment = null, int? SpacingBefore = null, int? SpacingAfter = null,
+    int? LineSpacing = null, int? IndentLeft = null, int? IndentFirstLine = null, string? Shading = null)
+{
+    public static ParagraphFormat Of(W.ParagraphProperties? properties)
+        => properties == null
+            ? new ParagraphFormat()
+            : new ParagraphFormat(
+                properties.ParagraphStyleId?.Val?.Value,
+                properties.Justification?.Val?.InnerText,
+                Facts.Number(properties.SpacingBetweenLines?.Before?.Value),
+                Facts.Number(properties.SpacingBetweenLines?.After?.Value),
+                Facts.Number(properties.SpacingBetweenLines?.Line?.Value),
+                Facts.Number(properties.Indentation?.Left?.Value ?? properties.Indentation?.Start?.Value),
+                Facts.Number(properties.Indentation?.FirstLine?.Value),
+                Facts.Colour(properties.Shading?.Fill?.Value));
+}
+
+/// <summary>A run's own formatting, as its <c>w:rPr</c> sets it: null or false where it sets nothing.</summary>
+/// <param name="Style">The <c>w:rStyle</c> id</param>
+/// <param name="Font">The <c>w:rFonts</c> font for ASCII text</param>
+/// <param name="Size">In half-points</param>
+/// <param name="Color">Hexadecimal</param>
+/// <param name="Underline">The <c>w:u</c> kind; null for none</param>
+/// <param name="Highlight">The <c>w:highlight</c> colour name</param>
+public sealed record RunFormat(string? Style = null, string? Font = null, bool Bold = false, bool Italic = false, bool Strike = false,
+    string? Color = null, int? Size = null, string? Highlight = null, string? Underline = null)
+{
+    public static RunFormat Of(W.RunProperties? properties)
+        => properties == null
+            ? new RunFormat()
+            : new RunFormat(
+                properties.RunStyle?.Val?.Value,
+                properties.RunFonts?.Ascii?.Value ?? properties.RunFonts?.HighAnsi?.Value,
+                IsOn(properties.Bold),
+                IsOn(properties.Italic),
+                IsOn(properties.Strike),
+                Facts.Colour(properties.Color?.Val?.Value),
+                Facts.Number(properties.FontSize?.Val?.Value),
+                properties.Highlight?.Val?.InnerText is { } highlight and not "none" ? highlight : null,
+                properties.Underline?.Val?.InnerText is { } underline and not "none" ? underline : null);
+
+    // <w:b/> and <w:b w:val="true"/> are on, <w:b w:val="0"/> is off
+    private static bool IsOn(W.OnOffType? toggle) => toggle != null && (toggle.Val?.Value ?? true);
+}
+
+/// <summary>Text written in one run formatting: the text of neighbouring runs formatted alike, however a backend splits them.</summary>
+public sealed record Span(string Text, RunFormat Format)
+{
+    public static IReadOnlyList<Span> Of(IEnumerable<W.Run> runs)
+    {
+        var spans = new List<Span>();
+        foreach (var run in runs)
+        {
+            var text = string.Concat(run.Elements<W.Text>().Select(element => element.Text));
+            if (text.Length == 0)
+            {
+                continue;
+            }
+            var format = RunFormat.Of(run.RunProperties);
+            if (spans.Count > 0 && spans[^1].Format == format)
+            {
+                spans[^1] = spans[^1] with { Text = spans[^1].Text + text };
+            }
+            else
+            {
+                spans.Add(new Span(text, format));
+            }
+        }
+        return spans;
+    }
+}
+
+/// <summary>A table row's own formatting.</summary>
+/// <param name="Height">The <c>w:trHeight</c>, in twips</param>
+/// <param name="Shadings">Each cell's fill colour, hexadecimal; null for a cell without one</param>
+public sealed record RowFormat(int? Height, IReadOnlyList<string?> Shadings)
+{
+    public static RowFormat Of(W.TableRow row)
+        => new(
+            (int?)row.TableRowProperties?.GetFirstChild<W.TableRowHeight>()?.Val?.Value,
+            row.Elements<W.TableCell>().Select(cell => Facts.Colour(cell.TableCellProperties?.Shading?.Fill?.Value)).ToList());
 }
 
 /// <param name="Width">In pixels</param>
@@ -191,10 +300,14 @@ public sealed record SectionFact(int? PageWidth, int? PageHeight, bool TitlePage
 
 /// <param name="Type"><c>default</c>, <c>first</c> or <c>even</c></param>
 /// <param name="Text">The story's text, a paragraph a line</param>
-public sealed record StoryFact(string Type, string Text)
+/// <param name="Paragraphs">The story's paragraphs in document order, those in tables and text boxes included</param>
+public sealed record StoryFact(string Type, string Text, IReadOnlyList<ParagraphFact> Paragraphs)
 {
     public static StoryFact Of(string? type, OpenXmlElement? story)
-        => new(type ?? "default", string.Join("\n", story?.Descendants<W.Paragraph>().Select(paragraph => paragraph.InnerText) ?? []));
+    {
+        var paragraphs = story?.Descendants<W.Paragraph>().ToList() ?? [];
+        return new(type ?? "default", string.Join("\n", paragraphs.Select(paragraph => paragraph.InnerText)), paragraphs.Select(ParagraphFact.Of).ToList());
+    }
 }
 
 /// <summary>What a produced PDF holds, read with Docnet at scale 1, so a page measures in points.</summary>
@@ -252,6 +365,14 @@ internal static class Facts
     public static readonly (int Width, int Height) A4Twips = (11906, 16838);
 
     public static string Sha1(byte[] bytes) => Convert.ToHexString(SHA1.HashData(bytes));
+
+    /// <summary>A measure an Open XML attribute writes as text, null when it is absent or not a whole number.</summary>
+    public static int? Number(string? value)
+        => int.TryParse(value, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var number) ? number : null;
+
+    /// <summary>A hexadecimal colour in capitals, as backends write it in either case; <c>auto</c> and absent are null.</summary>
+    public static string? Colour(string? value)
+        => value is null || value.Equals("auto", StringComparison.OrdinalIgnoreCase) ? null : value.ToUpperInvariant();
 
     /// <summary>
     /// The format a file's content is in, read from its first bytes and, for a package, from the content type of its

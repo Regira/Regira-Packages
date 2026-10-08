@@ -7,16 +7,18 @@ Tests for the Word backends [Word.Aspose](../../src/Word.Aspose/README.md),
 ## How the suite is built
 
 - **Shared scenarios.** `Abstractions/WordTestsBase` holds the scenarios every backend runs: templating, conditional
-  blocks, headers and footers, merging, input options, conversion, page images, extraction and the document builder.
-  A backend fixture is marked `[WordFixture]` and gets all of them, apart from those that `[Needs]` a feature it
-  `[LeavesOut]` — Word.Mini leaves out converting, for one, with the reason beside it. A left-out scenario does not
-  appear in the results. A fixture overrides a scenario only where its backend behaves differently, and declares the
-  case lists that differ per backend (`SourceFiles`, `OutputFormats`).
+  and loop blocks and the formatting they keep, headers and footers, merging, input options, conversion, page images,
+  extraction and the document builder. A backend fixture is marked `[WordFixture]` and gets all of them, apart from
+  those that `[Needs]` a feature it `[LeavesOut]` — Word.Mini leaves out converting, for one, with the reason beside
+  it. A left-out scenario does not appear in the results. A fixture overrides a scenario only where its backend behaves
+  differently, and declares the case lists that differ per backend (`SourceFiles`, `OutputFormats`).
 - **Measured results.** A scenario reads what it produced with `DocxFacts`, `PdfFacts` or `ImageFacts`
   (`Abstractions/Facts`): the Open XML SDK, Docnet and SkiaSharp, never the backend under test, whose own reader renders
-  its input as a template again. It asserts on text, leftover tags (every story, VML fallback copies included), table
-  rows, picture hashes and sizes, page and section breaks, page counts and sizes, and how much of a rendered page is
-  inked.
+  its input as a template again. It asserts on text, leftover tags (every story, VML fallback copies included),
+  formatting (each paragraph's own style, alignment, spacing, indents and shading, its text in spans of one run
+  formatting — in the body, both copies of a text box and headers — and each table row's height and cell shading),
+  table rows, picture hashes and sizes, page and section breaks, page counts and sizes, and how much of a rendered page
+  is inked.
 - **Templates in code.** `Abstractions/Docx` builds the small templates a scenario needs beside its assertions; the
   binary assets in `Assets/Input` are for what code cannot easily build.
 - **Outputs.** Every file a scenario produces is saved as `Assets/Output/{Backend}/{test name}`, with the facts it

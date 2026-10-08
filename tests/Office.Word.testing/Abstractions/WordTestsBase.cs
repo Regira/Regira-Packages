@@ -1974,6 +1974,247 @@ public abstract class WordTestsBase : WordAssetsTestsBase
     }
 
 
+    // ---- formatting in blocks ----
+
+    /// <summary>
+    /// What a condition keeps is written as the template formats it: each paragraph's style, alignment, spacing, indents
+    /// and shading, and each run's style, font, size, colour, emphasis, underline and highlight, a value taking its tag's.
+    /// The marker paragraphs go with their formatting, which no paragraph takes over.
+    /// </summary>
+    [TestCase(true)]
+    [TestCase(false)]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task A_Conditional_Block_Keeps_The_Formatting_Of_What_It_Writes(bool isPaid)
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Formatted(TitleParagraph, new Span("Invoice", StrongRun)),
+                Marker("{{#if IsPaid}}"),
+                Docx.Formatted(NoteParagraph, new Span("Thank you, ", PlainRun), new Span("{{Customer}}", ValueRun), new Span(".", PlainRun)),
+                Marker("{{else}}"),
+                Docx.Formatted(BodyParagraph, new Span("Please pay, ", StrongRun), new Span("{{Customer}}", ValueRun), new Span(", by Friday.", PlainRun)),
+                Marker("{{/if}}"),
+                Docx.Formatted(BodyParagraph, new Span("Outro", PlainRun))
+            ], styles: FormattingStyles()),
+            GlobalParameters = new Dictionary<string, object> { ["IsPaid"] = isPaid, ["Customer"] = "Alice" }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+        var branch = isPaid
+            ? (NoteParagraph, new[] { new Span("Thank you, ", PlainRun), new Span("Alice", ValueRun), new Span(".", PlainRun) })
+            : (BodyParagraph, new[] { new Span("Please pay, ", StrongRun), new Span("Alice", ValueRun), new Span(", by Friday.", PlainRun) });
+
+        Assert.That(Formatting(facts), Is.EqualTo(new[]
+        {
+            (TitleParagraph, new[] { new Span("Invoice", StrongRun) }),
+            branch,
+            (BodyParagraph, new[] { new Span("Outro", PlainRun) })
+        }));
+    }
+
+    /// <summary>
+    /// Every copy a loop writes is formatted as the template formats what lies between its markers, as is the branch a
+    /// condition inside it keeps, and the loop's else; each value takes its tag's formatting, a line ending in it too.
+    /// </summary>
+    [TestCase(true)]
+    [TestCase(false)]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task A_Loop_Keeps_The_Formatting_Of_Every_Copy(bool hasOrders)
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Formatted(TitleParagraph, new Span("Orders", StrongRun)),
+                Marker("{{#each Orders}}"),
+                Docx.Formatted(NoteParagraph, new Span("Order ", StrongRun), new Span("{{Number}}", ValueRun), new Span(" for ", PlainRun), new Span("{{Customer}}", ValueRun)),
+                Marker("{{#if Note}}"),
+                Docx.Formatted(BodyParagraph, new Span("Note: ", PlainRun), new Span("{{Note}}", ValueRun)),
+                Marker("{{/if}}"),
+                Marker("{{else}}"),
+                Docx.Formatted(BodyParagraph, new Span("No orders this month.", StrongRun)),
+                Marker("{{/each}}"),
+                Docx.Formatted(BodyParagraph, new Span("Outro", PlainRun))
+            ], styles: FormattingStyles()),
+            GlobalParameters = new Dictionary<string, object> { ["Customer"] = "Alice" },
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
+            {
+                ["Orders"] = hasOrders ? LoopOrders() : []
+            }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+        (ParagraphFormat, Span[]) Order(string number)
+            => (NoteParagraph, [new Span("Order ", StrongRun), new Span(number, ValueRun), new Span(" for ", PlainRun), new Span("Alice", ValueRun)]);
+        var written = hasOrders
+            ? new[]
+            {
+                Order("A-1"),
+                (BodyParagraph, [new Span("Note: ", PlainRun), new Span("FragileKeep upright", ValueRun)]),
+                Order("A-2"),
+                Order("A-3")
+            }
+            : [(BodyParagraph, [new Span("No orders this month.", StrongRun)])];
+
+        Assert.That(Formatting(facts), Is.EqualTo(written
+            .Prepend((TitleParagraph, [new Span("Orders", StrongRun)]))
+            .Append((BodyParagraph, [new Span("Outro", PlainRun)]))));
+    }
+
+    /// <summary>
+    /// Every row a marker-row loop writes keeps the height and cell shading of the row it copies, and its cells'
+    /// paragraph and run formatting; the marker rows go with theirs.
+    /// </summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task Marker_Rows_Keep_The_Formatting_Of_The_Rows_They_Repeat()
+    {
+        RowFormat header = new(400, ["1F4E79", "1F4E79"]), line = new(300, ["DDEBF7", null]), total = new(500, [null, "FFF2CC"]), marker = new(900, ["FF0000", "FF0000"]);
+        ParagraphFormat left = new(SpacingBefore: 60, SpacingAfter: 60), right = left with { Alignment = "right" };
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.TableOf(
+                    Docx.Row(header, Docx.Formatted(left, new Span("Description", StrongRun)), Docx.Formatted(right, new Span("Qty", StrongRun))),
+                    Docx.Row(marker, Marker("{{#each Lines}}"), Docx.Formatted(MarkerParagraph)),
+                    Docx.Row(line, Docx.Formatted(left, new Span("{{Description}}", ValueRun)), Docx.Formatted(right, new Span("{{Qty}}", PlainRun), new Span(" pcs", StrongRun))),
+                    Docx.Row(marker, Marker("{{/each}}"), Docx.Formatted(MarkerParagraph)),
+                    Docx.Row(total, Docx.Formatted(left, new Span("Total", StrongRun)), Docx.Formatted(right, new Span("{{Total}}", ValueRun)))),
+                Docx.Formatted(BodyParagraph, new Span("Outro", PlainRun))
+            ], styles: FormattingStyles()),
+            GlobalParameters = new Dictionary<string, object> { ["Total"] = "7" },
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>> { ["Lines"] = LoopLines() }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+        (ParagraphFormat, Span[])[] Line(string description, string qty)
+            => [(left, [new Span(description, ValueRun)]), (right, [new Span(qty, PlainRun), new Span(" pcs", StrongRun)])];
+        (ParagraphFormat, Span[])[] written =
+        [
+            (left, [new Span("Description", StrongRun)]), (right, [new Span("Qty", StrongRun)]),
+            .. Line("Pen", "2"), .. Line("Ink", "1"), .. Line("Paper", "4"),
+            (left, [new Span("Total", StrongRun)]), (right, [new Span("7", ValueRun)]),
+            (BodyParagraph, [new Span("Outro", PlainRun)])
+        ];
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(facts.RowFormats.Select(row => (row.Height, row.Shadings.ToArray())),
+                Is.EqualTo(new[] { header, line, line, line, total }.Select(row => (row.Height, row.Shadings.ToArray()))));
+            Assert.That(Formatting(facts), Is.EqualTo(written));
+        });
+    }
+
+    /// <summary>
+    /// A header's blocks keep the formatting of what they write as the body's do, and leave none of their markers'.
+    /// </summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task Blocks_In_A_Header_Keep_The_Formatting_Of_What_They_Write()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([Docx.Paragraph("BODYTEXT")], header: FormattedBlocks(), styles: FormattingStyles()),
+            GlobalParameters = new Dictionary<string, object> { ["IsPaid"] = false, ["DueDate"] = "31-10-2026" },
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>> { ["Orders"] = LoopOrders() }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+
+        Assert.That(Formatting(facts.Headers.SelectMany(header => header.Paragraphs)), Is.EqualTo(FormattedBlocksWritten()));
+    }
+
+    /// <summary>
+    /// A text box's blocks keep the formatting of what they write as the body's do, in both of the box's copies — the
+    /// DrawingML one, and the VML fallback that holds the same paragraphs — and leave none of their markers'.
+    /// </summary>
+    [Test]
+    [Needs(WordFeature.Creating)]
+    public virtual async Task Blocks_In_A_Text_Box_Keep_The_Formatting_Of_What_They_Write_In_Both_Copies()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document([
+                Docx.Formatted(BodyParagraph, new Span("Intro", PlainRun)),
+                Docx.TextBoxWithFallback(FormattedBlocks()),
+                Docx.Formatted(BodyParagraph, new Span("Outro", PlainRun))
+            ], styles: FormattingStyles()),
+            GlobalParameters = new Dictionary<string, object> { ["IsPaid"] = false, ["DueDate"] = "31-10-2026" },
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>> { ["Orders"] = LoopOrders() }
+        };
+
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+        (ParagraphFormat, Span[])[] written =
+        [
+            (BodyParagraph, [new Span("Intro", PlainRun)]),
+            // the paragraph holding the box, which has no text of its own, then the box's two copies
+            (new ParagraphFormat(), []),
+            .. FormattedBlocksWritten(),
+            .. FormattedBlocksWritten(),
+            (BodyParagraph, [new Span("Outro", PlainRun)])
+        ];
+
+        Assert.That(Formatting(facts), Is.EqualTo(written));
+    }
+
+    /// <summary>
+    /// A condition and a loop, each paragraph formatted its own way, for a story other than the body to hold: built
+    /// fresh for every template.
+    /// </summary>
+    private static W.Paragraph[] FormattedBlocks() =>
+    [
+        Docx.Formatted(TitleParagraph, new Span("Invoice", StrongRun)),
+        Marker("{{#if IsPaid}}"),
+        Docx.Formatted(NoteParagraph, new Span("Paid", StrongRun)),
+        Marker("{{else}}"),
+        Docx.Formatted(BodyParagraph, new Span("Due by ", PlainRun), new Span("{{DueDate}}", ValueRun)),
+        Marker("{{/if}}"),
+        Marker("{{#each Orders}}"),
+        Docx.Formatted(NoteParagraph, new Span("Order ", StrongRun), new Span("{{Number}}", ValueRun)),
+        Marker("{{/each}}")
+    ];
+
+    /// <summary>What <see cref="FormattedBlocks"/> writes when <c>IsPaid</c> is false, over <see cref="LoopOrders"/>.</summary>
+    private static (ParagraphFormat, Span[])[] FormattedBlocksWritten() =>
+    [
+        (TitleParagraph, [new Span("Invoice", StrongRun)]),
+        (BodyParagraph, [new Span("Due by ", PlainRun), new Span("31-10-2026", ValueRun)]),
+        .. new[] { "A-1", "A-2", "A-3" }.Select(number => (NoteParagraph, new[] { new Span("Order ", StrongRun), new Span(number, ValueRun) }))
+    ];
+
+    // the formatting scenarios' formats: the text's, and the markers' own, which nothing written may take over
+    private static readonly ParagraphFormat TitleParagraph = new(Style: "Note", Alignment: "center", SpacingAfter: 240);
+    private static readonly ParagraphFormat NoteParagraph = new(Style: "Note", Alignment: "right", SpacingBefore: 240, SpacingAfter: 60, LineSpacing: 360, IndentLeft: 720, IndentFirstLine: 360, Shading: "FFF2CC");
+    private static readonly ParagraphFormat BodyParagraph = new(Alignment: "both", SpacingAfter: 120, IndentLeft: 360);
+    private static readonly ParagraphFormat MarkerParagraph = new(Alignment: "center", SpacingBefore: 480, SpacingAfter: 480, Shading: "FF0000");
+    private static readonly RunFormat PlainRun = new(Font: "Arial", Size: 22);
+    private static readonly RunFormat StrongRun = new(Style: "Emphasis", Font: "Arial", Bold: true, Color: "1F4E79", Size: 24);
+    private static readonly RunFormat ValueRun = new(Font: "Courier New", Italic: true, Color: "C00000", Size: 20, Highlight: "yellow", Underline: "single");
+    private static readonly RunFormat MarkerRun = new(Font: "Times New Roman", Bold: true, Strike: true, Color: "FF0000", Size: 36);
+
+    private static W.Paragraph Marker(string marker) => Docx.Formatted(MarkerParagraph, new Span(marker, MarkerRun));
+
+    // the styles TitleParagraph, NoteParagraph and StrongRun name
+    private static W.Style[] FormattingStyles() => [Docx.Style("Note", W.StyleValues.Paragraph), Docx.Style("Emphasis", W.StyleValues.Character)];
+
+    /// <summary>
+    /// The formatting of the body's paragraphs, in order, a cell's and a text box's among them, empty ones too; the
+    /// notice an unlicensed Syncfusion or Aspose writes left out.
+    /// </summary>
+    private static (ParagraphFormat Format, Span[] Spans)[] Formatting(DocxFacts facts) => Formatting(facts.Paragraphs);
+
+    private static (ParagraphFormat Format, Span[] Spans)[] Formatting(IEnumerable<ParagraphFact> paragraphs)
+        => paragraphs
+            .Where(paragraph => !VendorNotices.Any(notice => paragraph.Text.StartsWith(notice, StringComparison.Ordinal)))
+            .Select(paragraph => (paragraph.Format, paragraph.Spans.ToArray()))
+            .ToArray();
+
+
     // ---- text boxes ----
 
     /// <summary>
