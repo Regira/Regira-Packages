@@ -3,7 +3,7 @@
 
 As of 2026-10-05. Sources: the `Regira-Packages` repository, branch `wip` at `e8b54a0`; the nuget.org pages of DocumentFormat.OpenXml, HtmlToOpenXml.dll and Clippit, read on 2026-10-05; and a throwaway spike against DocumentFormat.OpenXml 3.5.1 (see *The importer*). Vendor behaviour that the spike did not touch is taken from the vendors' own pages and was not measured here. Nothing on this page has been built.
 
-**Status: proposal, not scheduled. Five decisions are open (see *Decisions*). The design assumes [word-loop-blocks.md](word-loop-blocks.md) lands first.**
+**Status: proposal, not scheduled. Five decisions are open (see *Decisions*). The design assumes the Word loop blocks (`{{#each}}`, built in `ec0af61`) are in place.**
 
 ## Recommendation
 
@@ -244,7 +244,7 @@ The spike, against DocumentFormat.OpenXml 3.5.1:
 - **Fidelity next to Word.Spire.** The destination's styles and `w:docDefaults` win, so imported text can look different from the same merge on Word.Spire. Word.Spire's own behaviour on clashing styles is not measured here. Comparing the `Merge` and `Nested_Documents` outputs of both backends side by side in step 4 would show the difference.
 - **Blank pages in Gotenberg's PDF.** LibreOffice's PDF export has an option to leave out automatically inserted blank pages, the ones an odd-page section start creates. Check that Word.Gotenberg's route keeps them before decision 2's option 1 relies on them.
 - **HTML in a header.** HtmlToOpenXml adds a picture's or list's part to the part it is given. Check that an `html_` tag in a header gets its parts on the header's part.
-- **A fifth creating backend.** Every template feature is then written for one more document model. [word-loop-blocks.md](word-loop-blocks.md) changes the block walk on "the four creating backends", and Word.OpenXml would be a fifth. This proposal assumes the loop lands first, and ports the finished top-down walk from Word.Mini, not the current one. Decision 5's option 2 keeps the count of Open XML walks at one.
+- **A fifth creating backend.** Every template feature is then written for one more document model. The loop blocks (`ec0af61`) changed the block walk on "the four creating backends", and Word.OpenXml would be a fifth. This proposal ports the finished top-down walk from Word.Mini. Decision 5's option 2 keeps the count of Open XML walks at one.
 - **The internal binding.** Word.OpenXml binds to `Regira.Office` internals like the other Word backends, so it publishes on the family's aligned number (`ai/learnings.md`, 2026-09-30).
 
 <!-- {% endraw %} -->
