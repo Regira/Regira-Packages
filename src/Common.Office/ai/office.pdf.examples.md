@@ -39,7 +39,7 @@ public async Task<IMemoryFile> MergeMonthlyInvoices(int year, int month)
         if (bytes != null) pdfs.Add(bytes.ToBinaryFile());
     }
 
-    IPdfMerger merger = new Regira.Office.PDF.DocNET.PdfManager(_imageService);
+    IPdfMerger merger = new Regira.Office.PDF.PdfPig.PdfService(_imageService);
     return (await merger.Merge(pdfs))!;
 }
 ```
@@ -51,7 +51,7 @@ public async Task<IMemoryFile> MergeMonthlyInvoices(int year, int month)
 public async Task IndexInvoice(string identifier)
 {
     var bytes = await _fileService.GetBytes(identifier) ?? [];
-    IPdfTextExtractor extractor = new Regira.Office.PDF.DocNET.PdfManager(_imageService);
+    IPdfTextExtractor extractor = new Regira.Office.PDF.PdfPig.PdfService(_imageService);
     string text = await extractor.GetText(bytes.ToBinaryFile());
     await _searchIndex.Index(identifier, text);
 }

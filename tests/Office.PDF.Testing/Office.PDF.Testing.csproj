@@ -29,6 +29,7 @@
     <ProjectReference Include="..\..\src\Drawing.SkiaSharp\Drawing.SkiaSharp.csproj" />
     <ProjectReference Include="..\..\src\PDF.DocNET\PDF.DocNET.csproj" />
     <ProjectReference Include="..\..\src\PDF.MiniPdf\PDF.MiniPdf.csproj" />
+    <ProjectReference Include="..\..\src\PDF.PdfPig\PDF.PdfPig.csproj" />
     <ProjectReference Include="..\..\src\PDF.Playwright\PDF.Playwright.csproj" />
     <ProjectReference Include="..\..\src\PDF.Puppeteer\PDF.Puppeteer.csproj" />
     <ProjectReference Include="..\..\src\PDF.SelectPdf\PDF.SelectPdf.csproj" />

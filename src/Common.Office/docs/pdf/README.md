@@ -10,7 +10,8 @@ Regira Office.PDF provides a **unified abstraction** for PDF operations — HTML
 | `PDF.SelectPdf` | `Regira.Office.PDF.SelectPdf` | Select.HtmlToPdf | ✓ full | — | — | — |
 | `PDF.Puppeteer` | `Regira.Office.PDF.Puppeteer` | PuppeteerSharp | ✓ Letter | — | — | — |
 | `PDF.Playwright` | `Regira.Office.PDF.MsPlaywright` | Microsoft.Playwright | ✓ A4 | — | — | — |
-| `PDF.DocNET` | `Regira.Office.PDF.DocNET` | Docnet.Core | — | — | merge, split, img↔pdf, text | — |
+| `PDF.PdfPig` | `Regira.Office.PDF.PdfPig` | PdfPig + PDFtoImage | — | — | merge, split, img↔pdf, text | — |
+| `PDF.DocNET` | `Regira.Office.PDF.DocNET` | Docnet.Core (deprecated) | — | — | merge, split, img↔pdf, text | — |
 | `PDF.MiniPdf` | `Regira.Office.PDF.MiniPdf` | MiniPdf | — | ✓ docx, xlsx, pptx | — | — |
 | `PDF.Spire` | `Regira.Office.PDF.Spire` | FreeSpire.PDF | — | — | merge, split, pdf→img, text | ✓ |
 | `PDF.PDFtoPrinter` | `Regira.Office.PDF.PDFtoPrinter` | PDFtoPrinter | — | — | — | ✓ (Win) |
@@ -30,8 +31,11 @@ Regira Office.PDF provides a **unified abstraction** for PDF operations — HTML
 <PackageReference Include="Regira.Office.PDF.MiniPdf" Version="6.*" />
 
 <!-- PDF operations (merge, split, text, images) -->
-<PackageReference Include="Regira.Office.PDF.DocNET" Version="6.*" />
+<PackageReference Include="Regira.Office.PDF.PdfPig" Version="6.*" />
 <PackageReference Include="Regira.Office.PDF.Spire" Version="6.*" />
+
+<!-- PDF operations on Docnet.Core (deprecated) -->
+<PackageReference Include="Regira.Office.PDF.DocNET" Version="6.*" />
 
 <!-- Print (Windows) -->
 <PackageReference Include="Regira.Office.PDF.PDFtoPrinter" Version="6.*" />
@@ -58,12 +62,12 @@ IMemoryFile reportPdf = await converter.Create(new DocumentInput
     Format   = PageSize.A4
 });
 
-// Merge PDFs (DocNET — needs an IImageService for the image-related operations)
+// Merge PDFs (PdfPig — needs an IImageService for the image-related operations)
 IMemoryFile pdf1 = File.ReadAllBytes("1.pdf").ToMemoryFile();
 IMemoryFile pdf2 = File.ReadAllBytes("2.pdf").ToMemoryFile();
 IMemoryFile pdf3 = File.ReadAllBytes("3.pdf").ToMemoryFile();
 IImageService imageService = new Regira.Drawing.SkiaSharp.Services.ImageService();
-IPdfMerger merger = new Regira.Office.PDF.DocNET.PdfManager(imageService);
+IPdfMerger merger = new Regira.Office.PDF.PdfPig.PdfService(imageService);
 IMemoryFile merged = (await merger.Merge([pdf1, pdf2, pdf3]))!;
 
 // Reading a result — GetBytes() (Regira.IO.Extensions), not .Bytes
@@ -72,7 +76,7 @@ byte[] bytes = merged.GetBytes()!;
 
 `IMemoryFile` extends both `IMemoryBytesFile` (`Bytes`) and `IMemoryStreamFile` (`Stream`), and a producer
 fills exactly one. Which one varies per method rather than per backend — DocNET's `Split` returns
-byte-backed files while the `Merge` above returns a stream-backed one — so `.Bytes` reads `null` for half the
+byte-backed files while its `Merge` returns a stream-backed one — so `.Bytes` reads `null` for half the
 API and yields an empty file with no exception. `GetBytes()` normalises both and is correct everywhere.
 
 ## Interfaces
@@ -137,7 +141,7 @@ Task                Print(PdfPrinterInput input, CancellationToken cancellationT
 
 ### IPdfService
 
-Composite: `IPdfEditor + IPdfImageService + IPdfTextService`.
+Composite: `IPdfEditor + IPdfImageService + IPdfTextService`. Implemented by PdfPig's `PdfService` (and the deprecated DocNET `PdfManager`).
 
 ## Input / Output Models
 
@@ -235,14 +239,39 @@ startup; the registration holds for the whole process:
 MiniSoftware.MiniPdf.RegisterFont("NotoSans", File.ReadAllBytes("Fonts/NotoSans-Regular.ttf"));
 ```
 
-### DocNET — recommended for PDF operations
+### PdfPig — recommended for PDF operations
 
-Implements `IPdfService` (merge, split, images↔pdf, text extraction, page removal). Requires `IImageService` in the constructor.
+`PdfService` implements `IPdfService`: merge, split, page removal, text extraction, and images↔PDF. Merging,
+splitting, text and images→PDF run on [PdfPig](https://github.com/UglyToad/PdfPig), which is fully managed; page
+images render through [PDFtoImage](https://github.com/sungaila/PDFtoImage) over PDFium, which ships native binaries
+for Windows, Linux and macOS (x64 and arm64). Both are free for commercial use (Apache-2.0 and MIT). The constructor
+takes an `IImageService`, which reads the images going into a PDF and produces the page images coming out of one.
 
 ```csharp
 IImageService imageService = new Regira.Drawing.SkiaSharp.Services.ImageService();
-var pdf = new Regira.Office.PDF.DocNET.PdfManager(imageService);
+var pdf = new Regira.Office.PDF.PdfPig.PdfService(imageService);
 ```
+
+- **Images → PDF.** Each image gets a page of its own, of the input's `Format` and `Orientation` (A4 portrait by
+  default). The image is centred horizontally between the `Margins` and starts at the top margin, at one pixel per
+  `DPI` unit, scaled down when it does not fit — never up. JPEG and PNG are embedded as they are, any other format as PNG. An input without images gives
+  `null`.
+- **PDF → images.** Each page is fitted to `PdfToImagesOptions.Size` either way round — the page's shorter side to
+  the smaller dimension, its longer side to the larger — keeping its aspect ratio, so the default `1080 × 1920` gives
+  a portrait A4 page 1080 pixels wide and a landscape one 1080 pixels high. Annotations and filled-in form fields
+  are drawn, as a PDF viewer shows them.
+- **Linux.** The package carries SkiaSharp's dependency-free Linux native library, at the SkiaSharp version
+  Regira.Drawing.SkiaSharp uses, so nothing needs installing. An application that adds `SkiaSharp.NativeAssets.Linux`
+  itself, as Regira.Drawing.SkiaSharp describes, gets that library instead, which needs `libfontconfig1` on the host.
+- **Text.** `GetText` and `GetTextPerPage` read the text in the order the PDF draws it. A scanned page holds images
+  and no text, so `RemoveEmptyPages` removes it.
+
+### DocNET — deprecated
+
+Implements `IPdfService` on [Docnet.Core](https://www.nuget.org/packages/Docnet.Core), which has had no release since
+2.6.0 (2023) and bundles a PDFium build from 2022. PDFium parses every PDF it is given, so an outdated build is a risk
+for uploaded files; use PdfPig. `ImagesToPdf` makes each page the size of its image and ignores the page format and
+margins. Requires `IImageService` in the constructor.
 
 ### Spire — PDF operations + printing
 

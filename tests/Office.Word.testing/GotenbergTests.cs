@@ -4,7 +4,7 @@ using Office.Word.testing.Abstractions;
 using Regira.Drawing.SkiaSharp.Services;
 using Regira.IO.Extensions;
 using Regira.Office.Models;
-using Regira.Office.PDF.DocNET;
+using Regira.Office.PDF.PdfPig;
 using Regira.Office.Word.Gotenberg;
 using Regira.Office.Word.Models;
 
@@ -47,7 +47,7 @@ public class GotenbergTests : WordTestsBase
     // The server's address is only known once the container runs; HttpClient accepts a BaseAddress
     // up to its first request, so the service is built now and pointed at the server in OneTimeSetUp.
     private GotenbergTests(HttpClient http)
-        : base(new WordService(http, pdfToImages: new PdfManager(new ImageService()), creator: new Regira.Office.Word.Mini.WordService()), "Gotenberg")
+        : base(new WordService(http, pdfToImages: new PdfService(new ImageService()), creator: new Regira.Office.Word.Mini.WordService()), "Gotenberg")
     {
         _http = http;
     }

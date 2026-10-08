@@ -36,7 +36,7 @@ like it has no content accessor at all.
 | `Regira.Office.PDF.Defaults` | `PdfDefaults` |
 | `Regira.Office.PDF.Drawing` | `PdfImageCreator`, `PdfToImageLayerOptions` |
 | `Regira.Office.PDF.Printer` | `PdfPrinterInput` |
-| **Providers** | `Regira.Office.PDF.SelectPdf` · `…DocNET` · `…Spire` · `…Puppeteer` · `…MsPlaywright` → `PdfManager`; `Regira.Office.PDF.MiniPdf` → `PdfService`; `Regira.Office.PDF.PDFtoPrinter` · `…PockyBum522` → `PdfPrinter` |
+| **Providers** | `Regira.Office.PDF.SelectPdf` · `…DocNET` · `…Spire` · `…Puppeteer` · `…MsPlaywright` → `PdfManager`; `Regira.Office.PDF.MiniPdf` · `…PdfPig` → `PdfService`; `Regira.Office.PDF.PDFtoPrinter` · `…PockyBum522` → `PdfPrinter` |
 
 ## Barcodes & QR
 
@@ -142,7 +142,7 @@ Regira.Office.Barcodes.ZXing                   → QRCodeService       (registra
 Regira.Office.PDF.Abstractions   → IPdfMerger, IPdfSplitter, IPdfTextExtractor, IPdfEditor
 Regira.Office.PDF.Models         → PdfSplitRange
 Regira.IO.Abstractions           → IMemoryFile
-Regira.Office.PDF.DocNET         → PdfManager           (registration only)
+Regira.Office.PDF.PdfPig         → PdfService           (registration only)
 ```
 
 ### Generate a Word document from a template

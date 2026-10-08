@@ -23,7 +23,7 @@ namespace Regira.Office.Word.Gotenberg;
 /// <item>an <see cref="IWordCreator"/> (<c>Regira.Office.Word.Mini</c>, for example) renders an input
 /// that carries template substitutions before it is converted — without one, such an input throws
 /// <see cref="NotSupportedException"/>;</item>
-/// <item>an <see cref="IPdfToImageService"/> (<c>Regira.Office.PDF.DocNET</c>, for example)
+/// <item>an <see cref="IPdfToImageService"/> (<c>Regira.Office.PDF.PdfPig</c>, for example)
 /// rasterises the PDF for <see cref="ToImages"/>, since Gotenberg has no route that does.</item>
 /// </list>
 /// <para>
@@ -79,7 +79,7 @@ public class WordService(
         {
             throw new InvalidOperationException(
                 "ToImages rasterises the PDF Gotenberg returns, which needs an IPdfToImageService " +
-                "(Regira.Office.PDF.DocNET, for example). Register one, or pass it to the constructor.");
+                "(Regira.Office.PDF.PdfPig, for example). Register one, or pass it to the constructor.");
         }
 
         using var pdf = await Convert(input, RegiraFileFormat.Pdf, cancellationToken);

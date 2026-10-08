@@ -146,7 +146,7 @@ using Regira.Office.PDF.Abstractions;
 using Regira.Office.Word.Gotenberg.DependencyInjection;
 
 services.AddSingleton<IImageService, Regira.Drawing.SkiaSharp.Services.ImageService>();
-services.AddSingleton<IPdfToImageService, Regira.Office.PDF.DocNET.PdfManager>();
+services.AddSingleton<IPdfToImageService, Regira.Office.PDF.PdfPig.PdfService>();
 services.AddSingleton<IWordCreator, Regira.Office.Word.Mini.WordService>();
 services.AddGotenbergWord(o => o.BaseUrl = configuration["Gotenberg:BaseUrl"]!);
 ```

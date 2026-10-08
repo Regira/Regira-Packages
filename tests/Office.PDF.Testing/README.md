@@ -1,7 +1,7 @@
 # Office.PDF.Testing
 
-Tests for the PDF backends: [PDF.DocNET](../../src/PDF.DocNET/README.md) (text, merge, split, page images,
-images to PDF, empty-page removal), [PDF.Spire](../../src/PDF.Spire/README.md) (split, merge, page images),
+Tests for the PDF backends: [PDF.PdfPig](../../src/PDF.PdfPig/README.md) and [PDF.DocNET](../../src/PDF.DocNET/README.md)
+(text, merge, split, page removal, page images, images to PDF, empty-page removal), [PDF.Spire](../../src/PDF.Spire/README.md) (split, merge, page images),
 [PDF.MiniPdf](../../src/PDF.MiniPdf/README.md) (Word, Excel and PowerPoint to PDF, read back with DocNET), and
 HTML to PDF through [PDF.SelectPdf](../../src/PDF.SelectPdf/README.md),
 [PDF.Playwright](../../src/PDF.Playwright/README.md) and [PDF.Puppeteer](../../src/PDF.Puppeteer/README.md). NUnit.

@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Office.PDF.PdfPig</RootNamespace>
+    <PackageId>Regira.Office.PDF.PdfPig</PackageId>
+    <AssemblyName>Regira.Office.PDF.PdfPig</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- CA1416: PDFtoImage marks its API for each platform PDFium ships binaries for (Windows, Linux, macOS, ...) -->
+    <NoWarn>1701;1702;1591;CA1416</NoWarn>
+    <Version>6.5.1</Version>
+    <Description>PDF operations for Regira Office: merge, split, page removal, text extraction and images to PDF using PdfPig, and page images using PDFtoImage (PDFium).</Description>
+    <PackageTags>regira;office;pdf;pdfpig;pdfium</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="PdfPig" Version="0.1.16" />
+    <PackageReference Include="PDFtoImage" Version="5.4.0" />
+    <!-- SkiaSharp at the version Regira.Drawing.SkiaSharp uses: PDFtoImage brings the Linux native library at its own,
+         lower floor, and SkiaSharp refuses a native library older than the managed one. Keep both in step with Drawing.SkiaSharp -->
+    <PackageReference Include="SkiaSharp" Version="4.153.1" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="4.153.1" />
+  </ItemGroup>
+</Project>

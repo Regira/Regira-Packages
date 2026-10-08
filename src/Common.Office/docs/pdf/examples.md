@@ -52,7 +52,7 @@ public class InvoicePdfService(IHtmlParser html, IHtmlToPdfService pdf)
 
 <!-- no-compile -->
 ```csharp
-IPdfMerger merger = new Regira.Office.PDF.DocNET.PdfManager(imageService);
+IPdfMerger merger = new Regira.Office.PDF.PdfPig.PdfService(imageService);
 
 var pages = new List<IMemoryFile>
 {
@@ -70,7 +70,7 @@ IMemoryFile merged = (await merger.Merge(pages))!;
 
 <!-- no-compile -->
 ```csharp
-IPdfSplitter splitter = new Regira.Office.PDF.DocNET.PdfManager(imageService);
+IPdfSplitter splitter = new Regira.Office.PDF.PdfPig.PdfService(imageService);
 
 int total  = await splitter.GetPageCount(pdf);
 var ranges = Enumerable.Range(1, total)
@@ -85,7 +85,7 @@ IEnumerable<IMemoryFile> pages = await splitter.Split(pdf, ranges);
 
 <!-- no-compile -->
 ```csharp
-IPdfToImageService converter = new Regira.Office.PDF.Spire.PdfManager();
+IPdfToImageService converter = new Regira.Office.PDF.PdfPig.PdfService(imageService);
 
 var images = await converter.ToImages(pdf, new PdfToImagesOptions
 {
@@ -104,12 +104,12 @@ foreach (var img in images)
 
 <!-- no-compile -->
 ```csharp
-IPdfTextService extractor = new Regira.Office.PDF.DocNET.PdfManager(imageService);
+IPdfTextService extractor = new Regira.Office.PDF.PdfPig.PdfService(imageService);
 
 string fullText        = await extractor.GetText(pdf);
 IList<string> byPage   = await extractor.GetTextPerPage(pdf);
 
-// Remove pages that contain no text (e.g. blank separator pages)
+// Remove pages that contain no text (blank separator pages, and scanned pages too)
 IMemoryFile cleaned = (await extractor.RemoveEmptyPages(pdf))!;
 ```
 

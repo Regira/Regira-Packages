@@ -473,7 +473,7 @@ When none of the four resolves — a configuration key that is missing, say — 
 - **PDF only.** `Convert` produces PDF; every other `FileFormat` throws `NotSupportedException`. Sources can be Word (`.doc`, `.dot`, `.docx`, `.dotx`, `.docm`, `.dotm`), OpenDocument (`.odt`, `.ott`), `.rtf`, `.txt`, `.html`/`.htm` or `.epub` — the format is read from the file name when the template is a named file, otherwise from its content.
 - **Templates.** Gotenberg converts finished documents. An input carrying `GlobalParameters`, `CollectionParameters`, `Images`, `DocumentParameters`, `Headers`, `Footers` or non-default `InputOptions` is rendered first by the `IWordCreator` the service was given, and throws `NotSupportedException` without one. So is an OOXML template holding a [conditional block](#conditional-blocks) or a [loop](#loop-blocks), even without parameters, since a key the input does not give is false and gives no rows. Word.Mini renders the first three, in its own template syntax; headers, footers, nested documents and input options need a creator with a document model — Word.Spire, Word.Syncfusion or Word.Aspose — since Word.Mini refuses them. An OOXML source converted without parameters is scanned for such a block in-process, and one whose parts hold more than 32 MiB together, uncompressed and images included, or that has more than 1,000 parts, is not opened: it is uploaded as it is, its blocks unresolved, as is one the scan cannot read.
 - **Page settings.** The LibreOffice route has no page-size or margin fields, so `ConversionOptions.Settings` is written into the document's section properties before upload, together with the table and picture scaling. That needs an OOXML source (`.docx`, `.dotx`, `.docm`, `.dotm`), and honours every `PageSize`.
-- **Page images.** Gotenberg has no route that rasterises a PDF. `ToImages` converts to PDF and hands the result to the `IPdfToImageService` the service was given — `Regira.Office.PDF.DocNET`, for example — which returns one image per page.
+- **Page images.** Gotenberg has no route that rasterises a PDF. `ToImages` converts to PDF and hands the result to the `IPdfToImageService` the service was given — `Regira.Office.PDF.PdfPig`, for example — which returns one image per page.
 - **Layout.** LibreOffice lays a document out differently from Word. A font missing from the Gotenberg image is substituted, which moves line and page breaks, so page images and page counts can differ from what Word shows. Install the fonts your documents use in the image.
 
 Start a server and register the service:
@@ -492,7 +492,7 @@ IConfiguration configuration = new ConfigurationBuilder().Build();
 
 // optional collaborators, taken from the container when present
 services.AddSingleton<IImageService, Regira.Drawing.SkiaSharp.Services.ImageService>();
-services.AddSingleton<IPdfToImageService, Regira.Office.PDF.DocNET.PdfManager>();  // for ToImages
+services.AddSingleton<IPdfToImageService, Regira.Office.PDF.PdfPig.PdfService>();  // for ToImages
 services.AddSingleton<IWordCreator, Regira.Office.Word.Mini.WordService>();         // for template input
 
 services.AddGotenbergWord(o =>

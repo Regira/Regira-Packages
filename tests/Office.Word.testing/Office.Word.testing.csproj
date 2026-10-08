@@ -33,6 +33,7 @@
     <ProjectReference Include="..\..\src\Common.Office.Clients\Common.Office.Clients.csproj" />
     <ProjectReference Include="..\..\src\Drawing.SkiaSharp\Drawing.SkiaSharp.csproj" />
     <ProjectReference Include="..\..\src\PDF.DocNET\PDF.DocNET.csproj" />
+    <ProjectReference Include="..\..\src\PDF.PdfPig\PDF.PdfPig.csproj" />
     <ProjectReference Include="..\..\src\Word.Aspose\Word.Aspose.csproj" />
     <ProjectReference Include="..\..\src\Word.Gotenberg\Word.Gotenberg.csproj" />
     <ProjectReference Include="..\..\src\Word.Mini\Word.Mini.csproj" />

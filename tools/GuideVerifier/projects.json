@@ -510,6 +510,7 @@
         "src/PDF.SelectPdf/PDF.SelectPdf.csproj",
         "src/PDF.MiniPdf/PDF.MiniPdf.csproj",
         "src/PDF.DocNET/PDF.DocNET.csproj",
+        "src/PDF.PdfPig/PDF.PdfPig.csproj",
         "src/PDF.Spire/PDF.Spire.csproj",
         "src/PDF.Puppeteer/PDF.Puppeteer.csproj",
         "src/PDF.Playwright/PDF.Playwright.csproj",
@@ -566,7 +567,7 @@
         "src/Word.Mini/Word.Mini.csproj",
         "src/Word.Spire/Word.Spire.csproj",
         "src/Word.Syncfusion/Word.Syncfusion.csproj",
-        "src/PDF.DocNET/PDF.DocNET.csproj",
+        "src/PDF.PdfPig/PDF.PdfPig.csproj",
         "src/Drawing.SkiaSharp/Drawing.SkiaSharp.csproj"
       ],
       "guideFiles": [
