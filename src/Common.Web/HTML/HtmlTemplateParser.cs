@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using System.Text.RegularExpressions;
 using Regira.Serializing.Abstractions;
 using Regira.Utilities;
@@ -9,6 +10,12 @@ public class HtmlTemplateParser : IHtmlParser
 {
     private readonly ISerializer _serializer;
     public Func<string, object?, string> ValueConverter { get; set; }
+    /// <summary>
+    /// HTML-encodes every text value inserted into a <c>{key}</c> token, at the top level and in blocks;
+    /// <c>{key:raw}</c> writes a value unencoded. Numbers stay as they are, so a format such as <c>{price:0.00}</c> still applies.
+    /// Off by default: values are inserted as they are.
+    /// </summary>
+    public bool HtmlEncode { get; set; }
 
     public HtmlTemplateParser(ISerializer serializer, Func<string, object?, string>? valueConverter = null)
     {
@@ -59,7 +66,7 @@ public class HtmlTemplateParser : IHtmlParser
                 {
                     item["rowNr"] = i + 1;
                 }
-                var parameterContent = blockContent.Inject(item);
+                var parameterContent = Inject(blockContent, item);
                 result += parameterContent;
             }
             htmlContent = htmlContent.Replace(blockMatch.ToString()!, result);
@@ -67,6 +74,22 @@ public class HtmlTemplateParser : IHtmlParser
         }
         var paramsDic = parameters.ToDictionary(k => k.Key, v => ValueConverter(v.Key, v.Value));
 
-        return htmlContent.Inject(paramsDic)!;
+        return Inject(htmlContent, paramsDic);
+    }
+
+    private string Inject<TValue>(string content, IDictionary<string, TValue> values)
+    {
+        if (!HtmlEncode)
+        {
+            return content.Inject(values)!;
+        }
+
+        // {key:raw} takes the value as it is; every other token takes it encoded
+        foreach (var (key, value) in values)
+        {
+            content = content.Replace("{" + key + ":raw}", value?.ToString());
+        }
+        var encodedValues = values.ToDictionary(x => x.Key, x => x.Value is IFormattable ? x.Value : (object)HtmlEncoder.Default.Encode(x.Value?.ToString() ?? string.Empty));
+        return content.Inject(encodedValues)!;
     }
 }

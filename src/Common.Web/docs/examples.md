@@ -3,14 +3,12 @@
 
 ## Example 1: Render a Razor invoice template
 
-Use `RazorLight` with a template key so the compiled template is cached across requests.
+The parser compiles `Invoice.cshtml` on the first request and renders the cached template on every request after it.
 
 <!-- no-compile -->
 ```csharp
 public class InvoiceService(IHtmlParser html, IHtmlToPdfService pdf)
 {
-    private const string TemplateKey = "invoice-v1";
-
     public async Task<IMemoryFile> GeneratePdf(InvoiceDto invoice)
     {
         string template = await File.ReadAllTextAsync("Templates/Invoice.cshtml");
@@ -21,8 +19,7 @@ public class InvoiceService(IHtmlParser html, IHtmlToPdfService pdf)
 }
 
 // Registration
-services.AddSingleton<IHtmlParser>(
-    new Regira.Web.HTML.RazorLight.RazorTemplateParser(new() { TemplateKey = TemplateKey }));
+services.AddSingleton<IHtmlParser>(new Regira.Web.HTML.RazorLight.RazorTemplateParser());
 ```
 
 `Templates/Invoice.cshtml`:
@@ -45,11 +42,11 @@ services.AddSingleton<IHtmlParser>(
 
 ## Example 2: Simple token-replacement template
 
-For templates without Razor syntax — use `HtmlTemplateParser` and `{{Token}}` placeholders.
+For templates without Razor syntax — use `HtmlTemplateParser` and `{token}` placeholders.
 
 <!-- no-compile -->
 ```csharp
-var parser   = new HtmlTemplateParser(jsonSerializer);
+var parser   = new HtmlTemplateParser(jsonSerializer) { HtmlEncode = true };
 var template = await File.ReadAllTextAsync("Templates/Welcome.html");
 
 string html = await parser.Parse(template, new
@@ -63,14 +60,12 @@ string html = await parser.Parse(template, new
 `Templates/Welcome.html`:
 
 ```html
-<p>Hi {{Name}},</p>
-<p>Your account at <strong>{{CompanyName}}</strong> is ready.</p>
-<!--{{LoginUrl}}-->
-<a href="{{LoginUrl}}">Log in now</a>
-<!--{{/LoginUrl}}-->
+<p>Hi {name},</p>
+<p>Your account at <strong>{companyName}</strong> is ready.</p>
+<a href="{loginUrl}">Log in now</a>
 ```
 
-The `<!--{{LoginUrl}}-->` block is only rendered when `LoginUrl` is truthy.
+The keys are the JSON serializer's camel-cased property names. `HtmlEncode` encodes each value, so a name holding `<` stays text.
 
 ---
 

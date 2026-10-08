@@ -31,5 +31,6 @@
   <ItemGroup>
 	<ProjectReference Include="..\..\src\Web.HTML.RazorEngineCore\Web.HTML.RazorEngineCore.csproj" />
 	<ProjectReference Include="..\..\src\Web.HTML.RazorLight\Web.HTML.RazorLight.csproj" />
+	<ProjectReference Include="..\..\src\Serializing.Newtonsoft\Serializing.Newtonsoft.csproj" />
   </ItemGroup>
 </Project>

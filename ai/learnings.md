@@ -214,6 +214,9 @@ Lessons that keep coming back; the entries below lean on them instead of restati
   - A scanner behind a copied Chrome string is caught by its target instead. `BotDetector.IsProbe(path, queryString)` flags known sweep paths, dot-directories and paths that climb out of the site root. Only add rules that no real page can match: `/wp-admin` is safe, `/admin` never is.
 
   *(2026-09-05)*
+- **A runtime-compiled template is an assembly that is never unloaded, so cache it by what determines the compile.** Both Razor parsers key a process-wide cache on the template text (RazorEngineCore also on `HtmlEncode`). A per-call key (a GUID) or a per-instance cache leaks one assembly per call, about 50 ms and 0.1–0.2 MB each. A RazorLight key is a cache key and nothing more: a fixed key given another text renders the first template. Test it by counting `AppDomain.CurrentDomain.GetAssemblies()` in a `NonParallelizable` fixture.
+
+  *(2026-10-08)*
 
 ## Open framework asks
 

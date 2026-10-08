@@ -72,4 +72,22 @@ public class RazorTemplateTests
 
         await File.WriteAllTextAsync(Path.Combine(_assetsDir, "Output", "razor-order.html"), parsedHtml);
     }
+
+    [Test]
+    public async Task Model_Values_Are_Html_Encoded()
+    {
+        var model = new Order { Title = "Order <b>#1</b>" };
+        var parsedHtml = await _parser.Parse("<p>@Model.Title</p>", model);
+
+        Assert.That(parsedHtml, Is.EqualTo("<p>Order &lt;b&gt;#1&lt;/b&gt;</p>"));
+    }
+
+    [Test]
+    public async Task Raw_Writes_Markup()
+    {
+        var model = new Order { Title = "Order <b>#1</b>" };
+        var parsedHtml = await _parser.Parse("<p>@Raw(Model.Title)</p>", model);
+
+        Assert.That(parsedHtml, Is.EqualTo("<p>Order <b>#1</b></p>"));
+    }
 }

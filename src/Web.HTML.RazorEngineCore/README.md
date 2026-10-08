@@ -1,6 +1,6 @@
 # Regira.Web.HTML.RazorEngineCore
 
-Razor template engine for [Regira Web](https://regira.github.io/Regira-Packages/src/Common.Web/), built on [RazorEngineCore](https://www.nuget.org/packages/RazorEngineCore). `RazorTemplateParser` implements `IHtmlParser` and renders a Razor template string with a model to HTML. The engine has no layout support: `@model` directives and `Layout = null` blocks are stripped before compiling, so it suits simple templates without layout inheritance.
+Razor template engine for [Regira Web](https://regira.github.io/Regira-Packages/src/Common.Web/), built on [RazorEngineCore](https://www.nuget.org/packages/RazorEngineCore). `RazorTemplateParser` implements `IHtmlParser` and renders a Razor template string with a model to HTML. The engine has no layout support: `@model` directives and `Layout = null` blocks are stripped before compiling, so it suits simple templates without layout inheritance. Compiled templates are cached by their text, so each distinct template compiles once per process. Model values are written as they are unless `RazorTemplateParser.Options.HtmlEncode` is set, which HTML-encodes every value a template writes with `@`, as RazorLight does; `@Raw(value)` then writes a value unencoded.
 
 ## Installation
 
@@ -10,7 +10,7 @@ Razor template engine for [Regira Web](https://regira.github.io/Regira-Packages/
 
 ## Documentation
 
-- [HTML Template Parsing](https://regira.github.io/Regira-Packages/src/Common.Web/#html-template-parsing) — the shared `IHtmlParser` contract and how the three template engines differ
+- [HTML Template Parsing](https://regira.github.io/Regira-Packages/src/Common.Web/#html-template-parsing) — the shared `IHtmlParser` contract, how the three template engines differ and template caching
 - [Examples](https://regira.github.io/Regira-Packages/src/Common.Web/docs/examples.html) — a Razor invoice template rendered through `IHtmlParser`, and HTML-to-PDF
 
 ## License

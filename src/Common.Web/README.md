@@ -49,49 +49,63 @@ All three implementations share this interface.
 
 ### HtmlTemplateParser (simple placeholder engine)
 
-Replaces `{{PropertyName}}` tokens with property values serialized via `ISerializer`. Supports comment-based conditional blocks:
+Replaces `{key}` tokens with the model's values. The model goes through the `ISerializer` first, so a key is the serialized name: Regira's JSON serializer camel-cases property names (`Name` → `{name}`, `Customer.Name` → `{customer.name}`) and keeps dictionary keys as written. A token with no value — a missing key, or a null the serializer leaves out — stays in the output as written.
+
+A comment-marked block repeats its content once for each item of a collection, with that item's keys and a 1-based `{rowNr}`. Its name is letters only and starts lowercase. A block is not a condition: a `true` flag renders nothing. `{key:format}` formats a number inside a block; the optional `valueConverter` turns each top-level value into text (`ToString()` by default) and never sees block values.
 
 ```html
-<p>Hello {{Name}}!</p>
-<!--{{showAddress}}-->
-<p>{{Address}}</p>
-<!--{{/showAddress}}-->
+<h1>{title}</h1>
+<ul>
+<!--{{orderLines}}-->
+<li>{rowNr}. {title}: {price:0.00}</li>
+<!--{{/orderLines}}-->
+</ul>
 ```
+
+By default values are inserted as they are, so a value holding `<b>` comes out as markup. `HtmlEncode = true` encodes every text value, at the top level and in blocks; set it whenever the model carries user-supplied text. `{key:raw}` then writes a value unencoded.
 
 ```csharp
 ISerializer jsonSerializer = new JsonSerializer();
-string template = "<p>Hello {{Name}}!</p>";
+string template = "<p>Hello {name}!</p>";
 
-var parser = new HtmlTemplateParser(jsonSerializer);
-string html = await parser.Parse(template, new { Name = "Alice", Address = "123 Main St", showAddress = true });
+var parser = new HtmlTemplateParser(jsonSerializer) { HtmlEncode = true };
+string html = await parser.Parse(template, new { Name = "Alice" });
 ```
 
 ### RazorEngineCore
 
 Full Razor syntax. Strips `@model` directives and `Layout` blocks (not supported by the engine). Best for simple templates without layout inheritance.
 
+By default it writes model values as they are, so a value holding `<b>` comes out as markup. `HtmlEncode = true` encodes every value a template writes with `@`, in text and in attribute values, the way RazorLight does; set it whenever the model carries user-supplied text. `@Raw(value)` then writes a value unencoded.
+
 ```csharp
 string razorTemplate = "<p>Hello @Model.Name</p>";
 var model = new { Name = "Alice" };
 
-IHtmlParser parser = new Regira.Web.HTML.RazorEngineCore.RazorTemplateParser();
+IHtmlParser parser = new Regira.Web.HTML.RazorEngineCore.RazorTemplateParser(new()
+{
+    HtmlEncode = true
+});
 string html = await parser.Parse(razorTemplate, model);
 ```
 
 ### RazorLight
 
-Lighter alternative with memory caching. Supports a `TemplateKey` option for cache reuse.
+Full Razor syntax, with the `@model` directive compiled as written. Encodes every value a template writes with `@`; `@Raw(value)` writes a value unencoded.
 
 ```csharp
 string razorTemplate = "<p>Hello @Model.Name</p>";
 var model = new { Name = "Alice" };
 
-IHtmlParser parser = new Regira.Web.HTML.RazorLight.RazorTemplateParser(new()
-{
-    TemplateKey = "invoice-template"   // reuse compiled template across calls
-});
+IHtmlParser parser = new Regira.Web.HTML.RazorLight.RazorTemplateParser();
 string html = await parser.Parse(razorTemplate, model);
 ```
+
+### Compiled Razor templates
+
+Both Razor parsers compile a template into an assembly that stays loaded until the process exits, and cache it by the template text for the whole process: each distinct template compiles once, whichever parser instance renders it, and later calls only render. Keep the template text fixed and pass the data as the model. Data concatenated into the text makes a new template on every call, which compiles every time and grows memory without bound.
+
+RazorLight's `Options.TemplateKey` replaces the text with a fixed key, cached per parser instance. The parser renders the first template it compiled on every later call, even when it is passed a different template, and each new instance compiles again. Leave it unset; a parser that does set one must get a single template and be registered as a singleton.
 
 ---
 

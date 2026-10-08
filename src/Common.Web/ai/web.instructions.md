@@ -50,21 +50,34 @@ All three implementations share this interface.
 
 ---
 
-### `HtmlTemplateParser` — simple `{{token}}` placeholders
+### `HtmlTemplateParser` — simple `{token}` placeholders
 
-Replaces `{{PropertyName}}` tokens with property values. Supports conditional blocks:
+Replaces `{key}` tokens with the model's values. The model goes through the `ISerializer` first, so a key is the
+serialized name: Regira's JSON serializer camel-cases property names (`Name` → `{name}`, `Customer.Name` →
+`{customer.name}`) and keeps dictionary keys as written. A token with no value — a missing key, or a null the serializer leaves out — stays in the output as written.
+
+A block repeats its content once for each item of a collection, with that item's keys and a 1-based `{rowNr}`. Its
+name is letters only and starts lowercase. A block is not a condition: a `true` flag renders nothing.
+`{key:format}` formats a number inside a block; the optional `valueConverter` turns each top-level value into text
+(`ToString()` by default) and never sees block values.
 
 ```html
-<p>Hello {{Name}}!</p>
-<!--{{showAddress}}-->
-<p>{{Address}}</p>
-<!--{{/showAddress}}-->
+<h1>{title}</h1>
+<ul>
+<!--{{orderLines}}-->
+<li>{rowNr}. {title}: {price:0.00}</li>
+<!--{{/orderLines}}-->
+</ul>
 ```
+
+By default values are inserted as they are, so a value holding `<b>` comes out as markup. `HtmlEncode = true`
+encodes every text value, at the top level and in blocks; set it whenever the model carries user-supplied text.
+`{key:raw}` then writes a value unencoded.
 
 <!-- no-compile -->
 ```csharp
-var parser = new HtmlTemplateParser(jsonSerializer);
-string html = await parser.Parse(template, new { Name = "Alice", Address = "123 Main St", showAddress = true });
+var parser = new HtmlTemplateParser(jsonSerializer) { HtmlEncode = true };
+string html = await parser.Parse(template, order);
 ```
 
 ---
@@ -73,36 +86,49 @@ string html = await parser.Parse(template, new { Name = "Alice", Address = "123 
 
 Best for simple templates without layout inheritance. Strips `@model` directives and `Layout` blocks.
 
-<!-- no-compile -->
-```csharp
-IHtmlParser parser = new Regira.Web.HTML.RazorEngineCore.RazorTemplateParser();
-string html = await parser.Parse(razorTemplate, model);
-```
-
----
-
-### `RazorLight.RazorTemplateParser` — Razor with caching
-
-Lighter alternative with memory caching. Use `TemplateKey` to reuse compiled templates across calls.
+By default it writes model values as they are, so a value holding `<b>` comes out as markup. `HtmlEncode = true`
+encodes every value a template writes with `@`, in text and in attribute values, the way RazorLight does; set it
+whenever the model carries user-supplied text. `@Raw(value)` then writes a value unencoded.
 
 <!-- no-compile -->
 ```csharp
-IHtmlParser parser = new Regira.Web.HTML.RazorLight.RazorTemplateParser(new()
+IHtmlParser parser = new Regira.Web.HTML.RazorEngineCore.RazorTemplateParser(new()
 {
-    TemplateKey = "invoice-template"
+    HtmlEncode = true
 });
 string html = await parser.Parse(razorTemplate, model);
 ```
 
 ---
 
+### `RazorLight.RazorTemplateParser` — full Razor syntax
+
+Compiles the `@model` directive as written. Encodes every value a template writes with `@`; `@Raw(value)` writes a
+value unencoded.
+
+<!-- no-compile -->
+```csharp
+IHtmlParser parser = new Regira.Web.HTML.RazorLight.RazorTemplateParser();
+string html = await parser.Parse(razorTemplate, model);
+```
+
+---
+
+### Compiled Razor templates
+
+Both Razor parsers compile a template into an assembly that stays loaded until the process exits, and cache it by the template text for the whole process: each distinct template compiles once, whichever parser instance renders it, and later calls only render. Keep the template text fixed and pass the data as the model. Data concatenated into the text makes a new template on every call, which compiles every time and grows memory without bound.
+
+RazorLight's `Options.TemplateKey` replaces the text with a fixed key, cached per parser instance. The parser renders the first template it compiled on every later call, even when it is passed a different template, and each new instance compiles again. Leave it unset; a parser that does set one must get a single template and be registered as a singleton.
+
+---
+
 ## Template Engine Comparison
 
-| Engine | Class | When to use |
-|---|---|---|
-| `HtmlTemplateParser` | `Regira.Web.HTML` | Simple token replacement, no Razor |
-| `RazorEngineCore` | `Regira.Web.HTML.RazorEngineCore` | Full Razor, no layout support |
-| `RazorLight` | `Regira.Web.HTML.RazorLight` | Full Razor, repeated parsing (cached) |
+| Engine | Class | When to use | HTML-encodes model values |
+|---|---|---|---|
+| `HtmlTemplateParser` | `Regira.Web.HTML` | Simple token replacement, no Razor | Only with `HtmlEncode = true`; `{key:raw}` writes markup |
+| `RazorEngineCore` | `Regira.Web.HTML.RazorEngineCore` | Full Razor, no layout support | Only with `HtmlEncode = true`; `@Raw(value)` writes markup |
+| `RazorLight` | `Regira.Web.HTML.RazorLight` | Full Razor, keeps `@model` | Yes; `@Raw(value)` writes markup |
 
 ---
 
