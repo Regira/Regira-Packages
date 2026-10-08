@@ -8,8 +8,8 @@ Regira Office.PDF provides a **unified abstraction** for PDF operations — HTML
 |---------|---------|---------|----------|------------|---------|-------|
 | `Common.Office` | *(transitive)* | Shared abstractions | — | — | — | — |
 | `PDF.SelectPdf` | `Regira.Office.PDF.SelectPdf` | Select.HtmlToPdf | ✓ full | — | — | — |
-| `PDF.Puppeteer` | `Regira.Office.PDF.Puppeteer` | PuppeteerSharp | ✓ Letter | — | — | — |
-| `PDF.Playwright` | `Regira.Office.PDF.MsPlaywright` | Microsoft.Playwright | ✓ A4 | — | — | — |
+| `PDF.Puppeteer` | `Regira.Office.PDF.Puppeteer` | PuppeteerSharp | ✓ full | — | — | — |
+| `PDF.Playwright` | `Regira.Office.PDF.MsPlaywright` | Microsoft.Playwright | ✓ full | — | — | — |
 | `PDF.PdfPig` | `Regira.Office.PDF.PdfPig` | PdfPig + PDFtoImage | — | — | merge, split, img↔pdf, text | — |
 | `PDF.DocNET` | `Regira.Office.PDF.DocNET` | Docnet.Core (deprecated) | — | — | merge, split, img↔pdf, text | — |
 | `PDF.MiniPdf` | `Regira.Office.PDF.MiniPdf` | MiniPdf | — | ✓ docx, xlsx, pptx | — | — |
@@ -20,12 +20,12 @@ Regira Office.PDF provides a **unified abstraction** for PDF operations — HTML
 ## Installation
 
 ```xml
-<!-- HTML→PDF (full options support; Windows, up to five pages) -->
-<PackageReference Include="Regira.Office.PDF.SelectPdf" Version="6.*" />
-
-<!-- HTML→PDF (headless Chromium) -->
-<PackageReference Include="Regira.Office.PDF.Puppeteer" Version="6.*" />
+<!-- HTML→PDF (recommended — headless Chromium, any OS) -->
 <PackageReference Include="Regira.Office.PDF.MsPlaywright" Version="6.*" />
+<PackageReference Include="Regira.Office.PDF.Puppeteer" Version="6.*" />
+
+<!-- HTML→PDF (Windows, up to five pages, nothing to download) -->
+<PackageReference Include="Regira.Office.PDF.SelectPdf" Version="6.*" />
 
 <!-- Word, Excel and PowerPoint → PDF (in-process, no licence) -->
 <PackageReference Include="Regira.Office.PDF.MiniPdf" Version="6.*" />
@@ -45,8 +45,8 @@ Regira Office.PDF provides a **unified abstraction** for PDF operations — HTML
 ## Quick Start
 
 ```csharp
-// HTML → PDF (SelectPdf)
-IHtmlToPdfService pdf = new Regira.Office.PDF.SelectPdf.PdfManager();
+// HTML → PDF (Playwright)
+IHtmlToPdfService pdf = new Regira.Office.PDF.MsPlaywright.PdfManager();
 IMemoryFile file = await pdf.Create(new HtmlInput
 {
     HtmlContent = "<h1>Hello</h1>",
@@ -152,12 +152,12 @@ Composite: `IPdfEditor + IPdfImageService + IPdfTextService`. Implemented by Pdf
 | `HtmlContent` | `string?` | `null` | HTML to convert |
 | `HeaderHtmlContent` | `string?` | `null` | Repeating page header |
 | `FooterHtmlContent` | `string?` | `null` | Repeating page footer |
-| `HeaderHeight` | `int?` | `null` | Header height in mm |
-| `FooterHeight` | `int?` | `null` | Footer height in mm |
+| `HeaderHeight` | `int?` | `null` | Header height in mm; `null` is 45 pt |
+| `FooterHeight` | `int?` | `null` | Footer height in mm; `null` is 35 pt |
 | `Format` | `PageSize` | `A4` | Paper size |
 | `Orientation` | `PageOrientation` | `Portrait` | Portrait / Landscape |
-| `Margins` | `Margins` | `10mm` all | Page margins (in points) |
-| `DPI` | `int` | `96` | Render resolution |
+| `Margins` | `Margins` | `10mm` all | Page margins, in units of `DPI`; `Margins.ModifyDpi` measures them at another |
+| `DPI` | `int` | `96` | Units per inch of `Margins` |
 
 ### DocumentInput
 
@@ -203,15 +203,37 @@ Same base properties as `HtmlInput` plus:
 
 ## Implementation notes
 
+### Playwright / Puppeteer — headless Chromium, recommended for HTML→PDF
+
+Both render in headless Chromium and apply every `HtmlInput` setting, on Windows, Linux and macOS, with no page limit;
+Playwright is the recommended one. Chromium is installed (Playwright) or downloaded (Puppeteer) on first use, guarded
+by a process-wide lock, so the first conversion needs network access and writable disk, or a browser installed in
+advance. Each conversion starts a browser of its own, which takes one to three seconds.
+
+- **Page.** `Format` and `Orientation` set the paper, A0 to A10; the CSS `@page` size is not used.
+- **Header and footer.** The header takes a band of `HeaderHeight` below the top margin and the footer a band of
+  `FooterHeight` above the bottom margin, both between the left and right margins; the body starts below the header's
+  band and ends above the footer's. Chromium renders each on its own: the page's stylesheets do not reach it and it
+  loads nothing by URL, so give it inline styles and images as `data:` URIs. Its text starts at 16px. An element with
+  the class `pageNumber` or `totalPages` gets the page number or the page count:
+
+  ```html
+  <div style="text-align:center">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>
+  ```
+- **Backgrounds.** Chromium prints as a printer would: CSS background colours and images are left out.
+
 ### SelectPdf — HTML→PDF on Windows, up to five pages
 
-Full support for all `HtmlInput` properties: page size, orientation, margins, headers, footers. Does not require a browser installation.
+Applies every `HtmlInput` property: page size, orientation, margins, headers, footers. Does not require a browser
+installation.
 
-It runs on Windows only: it renders through `System.Drawing.Common`, which throws on other platforms. The free Community Edition of Select.HtmlToPdf converts only the first five pages' worth of a document, and leaves the rest out of the PDF without an error or a notice. For longer documents, use the vendor's paid edition or Puppeteer/Playwright.
+It runs on Windows only: it renders through `System.Drawing.Common`, which throws on other platforms. The free
+Community Edition of Select.HtmlToPdf converts only the first five pages' worth of a document, and leaves the rest out
+of the PDF without an error or a notice. For longer documents, use the vendor's paid edition or Playwright.
 
-### Puppeteer / Playwright — headless Chromium
-
-Both download Chromium automatically on first use (thread-safe via semaphore). Custom page sizes and margins from `HtmlInput` are not respected: Playwright always renders A4, while Puppeteer uses the PuppeteerSharp default paper size (**Letter**). Use for pixel-perfect rendering of complex CSS.
+It renders a header or footer as a page of its own, with the browser's default 8px around its body, and shows no page
+numbers in it. Every page holds the whole document, clipped to its own part, so text extracted from one page is the
+whole document's.
 
 ### MiniPdf — Word, Excel and PowerPoint to PDF
 

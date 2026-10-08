@@ -19,12 +19,12 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 ## Installation
 
 ```xml
-<!-- HTML→PDF (recommended — full options support) -->
-<PackageReference Include="Regira.Office.PDF.SelectPdf" Version="6.*" />
-
-<!-- HTML→PDF (headless Chromium) -->
-<PackageReference Include="Regira.Office.PDF.Puppeteer" Version="6.*" />
+<!-- HTML→PDF (recommended — headless Chromium, any OS) -->
 <PackageReference Include="Regira.Office.PDF.MsPlaywright" Version="6.*" />
+<PackageReference Include="Regira.Office.PDF.Puppeteer" Version="6.*" />
+
+<!-- HTML→PDF (Windows, up to five pages, nothing to download) -->
+<PackageReference Include="Regira.Office.PDF.SelectPdf" Version="6.*" />
 
 <!-- Word, Excel and PowerPoint → PDF, in-process, no licence -->
 <PackageReference Include="Regira.Office.PDF.MiniPdf" Version="6.*" />
@@ -50,8 +50,8 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 | Package | Backend | HTML→PDF | Office→PDF | PDF Ops | Print | Runtime footprint |
 |---|---|---|---|---|---|---|
 | `PDF.SelectPdf` | Select.HtmlToPdf | ✓ full | — | — | — | Pulls `System.Drawing.Common`, which throws on non-Windows from .NET 6 on — treat as **Windows**. The free Community Edition converts only the first **five pages'** worth of a document and drops the rest without an error or a notice |
-| `PDF.Puppeteer` | PuppeteerSharp | ✓ A4 | — | — | — | **Downloads Chromium on first use** (`BrowserFetcher().DownloadAsync()`) — needs network + disk at runtime, or a pre-seeded cache |
-| `PDF.MsPlaywright` | Microsoft.Playwright | ✓ A4 | — | — | — | **Installs its browser on first use** — same constraint; the install is guarded by a process-wide lock, so the first request pays for it |
+| `PDF.Puppeteer` | PuppeteerSharp | ✓ full | — | — | — | **Downloads Chromium on first use** (`BrowserFetcher().DownloadAsync()`) — needs network + disk at runtime, or a pre-seeded cache |
+| `PDF.MsPlaywright` | Microsoft.Playwright | ✓ full | — | — | — | **Installs its browser on first use** — same constraint; the install is guarded by a process-wide lock, so the first request pays for it |
 | `PDF.PdfPig` | PdfPig + PDFtoImage | — | — | merge, split, img↔pdf, text | — | PdfPig is fully managed; page images render through PDFtoImage over PDFium, which ships native binaries for Windows, Linux and macOS (x64 and arm64). On Linux it carries SkiaSharp's dependency-free native library; an application that adds `SkiaSharp.NativeAssets.Linux` itself gets that one instead, which needs `libfontconfig1` |
 | `PDF.DocNET` | Docnet.Core | — | — | merge, split, img↔pdf, text | — | **Deprecated.** Docnet.Core has had no release since 2.6.0 (2023) and bundles a PDFium build from 2022, which parses every PDF it is given — a risk for uploaded files. Managed wrapper over a native library — the RID must be one `Docnet.Core` ships binaries for |
 | `PDF.MiniPdf` | MiniPdf | — | ✓ docx, xlsx, pptx | — | — | Managed and in-process: no Office, server or browser. MiniPdf lays documents out itself, so a complex layout comes out less faithful than through LibreOffice or Word. Text renders in the host's system fonts — on a host with few (a container), register TrueType fonts once at startup with `MiniSoftware.MiniPdf.RegisterFont`, a registration for the whole process |
@@ -60,13 +60,26 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 | `PDF.PockyBum522` | SimpleFreePdfPrinter | — | — | — | ✓ (Win) | Targets `net*-windows` — **will not build** on a non-Windows TFM |
 
 **Recommendations:**
-- HTML → PDF: **SelectPdf** on Windows for documents of up to five pages (full options, nothing to download);
-  **Puppeteer**/**Playwright** where the host is Linux, a document runs longer, or the CSS must be pixel-perfect,
-  and a first-run browser fetch is acceptable
+- HTML → PDF: **Playwright** — headless Chromium on any OS, every `HtmlInput` setting, no page limit; the browser is
+  installed on first use (or in advance). **Puppeteer** behaves alike. **SelectPdf** only where nothing may be
+  downloaded and the host is Windows: it drops everything past page five
 - Office documents → PDF: **MiniPdf** — `.docx`, `.xlsx` and `.pptx`, in-process, no licence and no server. For a
   Word document that must lay out as Word does, convert it with a Word backend (`IWordConverter`) instead
 - PDF operations: **PdfPig** (merge, split, page removal, images, text extraction) — cross-platform, no licence
 - Printing: **Spire** (operations + print) or **PDFtoPrinter** (print-only, Windows)
+
+**Chromium behaviour** (`PDF.MsPlaywright` and `PDF.Puppeteer`):
+- `Format` and `Orientation` set the paper (A0–A10); the CSS `@page` size is not used. `Margins` are in units of `DPI`.
+- The header takes a band of `HeaderHeight` mm below the top margin and the footer `FooterHeight` mm above the bottom
+  margin (45 pt and 35 pt when `null`), between the left and right margins; the body stays clear of both bands.
+- A header or footer is rendered on its own: the page's stylesheets do not reach it and it loads nothing by URL —
+  inline styles, images as `data:` URIs. `<span class="pageNumber"></span>` and `<span class="totalPages"></span>`
+  are filled with the page number and count.
+- CSS background colours and images are left out, as a printer would.
+- Each `Create` starts its own browser: one to three seconds per PDF.
+
+**SelectPdf behaviour:** a header or footer is rendered as a page of its own, with the default 8px around its body —
+reset it (`body{margin:0}`) to fill the band — and shows no page numbers.
 
 **PdfPig behaviour** (`Regira.Office.PDF.PdfPig.PdfService`, constructed with an `IImageService`):
 - `ImagesToPdf` puts each image on a page of its own, of the input's `Format` and `Orientation` (A4 portrait by
@@ -175,12 +188,12 @@ Composite: `IPdfEditor + IPdfImageService + IPdfTextService`. Implemented by `PD
 | `HtmlContent` | `string?` | `null` | HTML to convert |
 | `HeaderHtmlContent` | `string?` | `null` | Repeating page header |
 | `FooterHtmlContent` | `string?` | `null` | Repeating page footer |
-| `HeaderHeight` | `int?` | `null` | Header height in mm |
-| `FooterHeight` | `int?` | `null` | Footer height in mm |
+| `HeaderHeight` | `int?` | `null` | Header height in mm; `null` is 45 pt |
+| `FooterHeight` | `int?` | `null` | Footer height in mm; `null` is 35 pt |
 | `Format` | `PageSize` | `A4` | Paper size |
 | `Orientation` | `PageOrientation` | `Portrait` | Portrait / Landscape |
-| `Margins` | `Margins` | `10mm` all | Page margins (in points) |
-| `DPI` | `int` | `96` | Render resolution |
+| `Margins` | `Margins` | `10mm` all | Page margins, in units of `DPI`; `Margins.ModifyDpi(srcDpi, targetDpi)` measures them at another |
+| `DPI` | `int` | `96` | Units per inch of `Margins` |
 
 ### `DocumentInput`
 
@@ -231,8 +244,8 @@ workbook is rendered, in order.
 
 <!-- no-compile -->
 ```csharp
-// HTML → PDF (SelectPdf)
-IHtmlToPdfService pdf = new Regira.Office.PDF.SelectPdf.PdfManager();
+// HTML → PDF (Playwright)
+IHtmlToPdfService pdf = new Regira.Office.PDF.MsPlaywright.PdfManager();
 IMemoryFile file = await pdf.Create(new HtmlInput
 {
     HtmlContent = "<h1>Invoice</h1>",

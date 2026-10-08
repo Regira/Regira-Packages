@@ -2,6 +2,7 @@ using NUnit.Framework.Legacy;
 using Office.PDF.Testing.Abstractions;
 using Regira.IO.Extensions;
 using Regira.IO.Utilities;
+using Regira.Office.PDF.Abstractions;
 using Regira.Office.PDF.Models;
 using Regira.Office.PDF.SelectPdf;
 using Regira.Serializing.Newtonsoft.Json;
@@ -11,9 +12,11 @@ using Regira.Web.HTML;
 namespace Office.PDF.Testing;
 
 [TestFixture]
-[Parallelizable(ParallelScope.All)]
-public class SelectPdfTests
+public class SelectPdfTests : HtmlToPdfSettingsTestsBase
 {
+    protected override IHtmlToPdfService Backend { get; } = new PdfManager();
+    protected override string OutputFolder => "SelectPdf";
+
     private readonly string _tableContent;
     private readonly string _loremIpsumContent;
     private readonly string _regiraLogoPath;

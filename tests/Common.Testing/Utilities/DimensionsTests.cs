@@ -107,4 +107,14 @@ public class DimensionsTests
         var expected = ((Size2D)size.Pt300).Round();
         Assert.That(DimensionsUtility.ModifyDpi(size.Pt72, 72, 300).Round(), Is.EqualTo(expected));
     }
+
+    [TestCase(37.795277f, 96, 72, 28.346457f)]   // 10 mm
+    [TestCase(28.346457f, 72, 96, 37.795277f)]
+    [TestCase(72f, 72, 300, 300f)]
+    public void Modify_DPI_Of_A_Length(float points, int srcDpi, int targetDpi, float expected)
+    {
+        Assert.That(DimensionsUtility.ModifyDpi(points, srcDpi, targetDpi), Is.EqualTo(expected).Within(0.0001));
+        Assert.That(DimensionsUtility.ModifyDpi(points, srcDpi, targetDpi),
+            Is.EqualTo(DimensionsUtility.ModifyDpi(new Size2D(points, points), srcDpi, targetDpi).Width).Within(0.0001));
+    }
 }

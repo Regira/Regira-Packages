@@ -2,6 +2,7 @@ using NUnit.Framework.Legacy;
 using Office.PDF.Testing.Abstractions;
 using Regira.IO.Extensions;
 using Regira.IO.Utilities;
+using Regira.Office.PDF.Abstractions;
 using Regira.Office.PDF.Models;
 using Regira.Office.PDF.MsPlaywright;
 using Regira.Serializing.Newtonsoft.Json;
@@ -11,9 +12,11 @@ using Regira.Web.HTML;
 namespace Office.PDF.Testing;
 
 [TestFixture]
-[Parallelizable(ParallelScope.All)]
-public class PlaywrightTests
+public class PlaywrightTests : HtmlToPdfSettingsTestsBase
 {
+    protected override IHtmlToPdfService Backend { get; } = new PdfManager();
+    protected override string OutputFolder => "Playwright";
+
     private readonly string _tableContent;
     private readonly string _loremIpsumContent;
     private readonly string _regiraLogoPath;

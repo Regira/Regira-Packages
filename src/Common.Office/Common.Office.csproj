@@ -35,6 +35,11 @@
     <InternalsVisibleTo Include="Regira.Office.Excel.MiniExcel" />
     <InternalsVisibleTo Include="Regira.Office.Excel.NpoiMapper" />
   </ItemGroup>
+  <!-- the headless-Chromium PDF backends share how HtmlInput's page settings reach Chromium (PDF/Internal) without making it public API -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Regira.Office.PDF.MsPlaywright" />
+    <InternalsVisibleTo Include="Regira.Office.PDF.Puppeteer" />
+  </ItemGroup>
   <!-- MSBuild targets — auto-imported into consuming builds via NuGet buildTransitive -->
   <ItemGroup>
     <None Include="build\Regira.Office.props" Pack="true" PackagePath="buildTransitive\" />

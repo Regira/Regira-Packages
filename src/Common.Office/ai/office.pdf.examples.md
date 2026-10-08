@@ -2,16 +2,17 @@
 
 > Context: A billing service converts HTML invoices to PDF, merges monthly invoices into one archive PDF, and extracts text for full-text search indexing.
 
-## HTML → PDF (SelectPdf)
+## HTML → PDF (Playwright)
 
 <!-- no-compile -->
 ```csharp
-IHtmlToPdfService pdf = new Regira.Office.PDF.SelectPdf.PdfManager();
+IHtmlToPdfService pdf = new Regira.Office.PDF.MsPlaywright.PdfManager();
 
 IMemoryFile invoicePdf = await pdf.Create(new HtmlInput
 {
     HtmlContent       = await _htmlParser.Parse(invoiceTemplate, invoice),
-    FooterHtmlContent = "<p style='text-align:center;font-size:9pt'>Page [page] of [topage]</p>",
+    // Chromium fills the pageNumber and totalPages classes
+    FooterHtmlContent = "<p style='text-align:center;font-size:9pt'>Page <span class='pageNumber'></span> of <span class='totalPages'></span></p>",
     FooterHeight      = 15,
     Format            = PageSize.A4,
     Margins           = new Margins { Top = 20, Bottom = 20, Left = 15, Right = 15 }

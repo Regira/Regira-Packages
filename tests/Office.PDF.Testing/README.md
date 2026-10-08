@@ -4,7 +4,9 @@ Tests for the PDF backends: [PDF.PdfPig](../../src/PDF.PdfPig/README.md) and [PD
 (text, merge, split, page removal, page images, images to PDF, empty-page removal), [PDF.Spire](../../src/PDF.Spire/README.md) (split, merge, page images),
 [PDF.MiniPdf](../../src/PDF.MiniPdf/README.md) (Word, Excel and PowerPoint to PDF, read back with DocNET), and
 HTML to PDF through [PDF.SelectPdf](../../src/PDF.SelectPdf/README.md),
-[PDF.Playwright](../../src/PDF.Playwright/README.md) and [PDF.Puppeteer](../../src/PDF.Puppeteer/README.md). NUnit.
+[PDF.Playwright](../../src/PDF.Playwright/README.md) and [PDF.Puppeteer](../../src/PDF.Puppeteer/README.md); the three
+HTML fixtures share `HtmlToPdfSettingsTestsBase`, which reads page size, margins and header and footer placement back
+with the PdfPig library. NUnit.
 
 ## Running
 

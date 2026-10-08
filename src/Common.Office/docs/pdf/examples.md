@@ -5,18 +5,19 @@
 
 <!-- no-compile -->
 ```csharp
-IHtmlToPdfService pdf = new Regira.Office.PDF.SelectPdf.PdfManager();
+IHtmlToPdfService pdf = new Regira.Office.PDF.MsPlaywright.PdfManager();
 
 IMemoryFile result = await pdf.Create(new HtmlInput
 {
     HtmlContent         = reportHtml,
     HeaderHtmlContent   = "<div style='text-align:right;font-size:10px'>Confidential</div>",
     HeaderHeight        = 15,
-    FooterHtmlContent   = "<div style='text-align:center;font-size:10px'>Page {{page}} of {{pages}}</div>",
+    // Chromium fills the pageNumber and totalPages classes
+    FooterHtmlContent   = "<div style='text-align:center;font-size:10px'>Page <span class='pageNumber'></span> of <span class='totalPages'></span></div>",
     FooterHeight        = 15,
     Format              = PageSize.A4,
     Orientation         = PageOrientation.Portrait,
-    Margins             = new float[] { 20, 20, 20, 20 }   // top, right, bottom, left (points)
+    Margins             = new float[] { 20, 20, 20, 20 }   // top, right, bottom, left, in units of DPI (96 per inch)
 });
 
 await fileService.Save("reports/output.pdf", result.GetBytes()!);

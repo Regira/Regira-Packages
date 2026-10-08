@@ -124,7 +124,7 @@ Regira.Office.PDF.Models         → HtmlInput
 Regira.Office.Models             → PageSize, PageOrientation, Margins
 Regira.IO.Abstractions           → IMemoryFile          (the return type)
 Regira.IO.Extensions             → GetBytes(), GetStream()
-Regira.Office.PDF.SelectPdf      → PdfManager           (registration only)
+Regira.Office.PDF.MsPlaywright   → PdfManager           (registration only)
 ```
 
 ### QR code / barcode image
