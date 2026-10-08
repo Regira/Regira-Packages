@@ -14,6 +14,7 @@ public class EntityAttachmentPrepper<TContext, TEntityAttachment, TEntityAttachm
     public override Task Prepare(TEntityAttachment item, TEntityAttachment? original, CancellationToken token = default)
     {
         item.Attachment ??= original?.Attachment;
+        EntityAttachmentContent.CreateFromNewContent(item);
 
         if (item.Attachment?.IsNew() == true)
         {

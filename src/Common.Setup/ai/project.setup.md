@@ -585,6 +585,7 @@ Standard ASP.NET Core API hosted on IIS, Azure, or Docker. No authentication. Su
 
 <!-- no-compile -->
 ```csharp
+using System.Text.Json.Serialization;
 using Scalar.AspNetCore;
 using Serilog;
 

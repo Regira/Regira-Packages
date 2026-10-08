@@ -233,7 +233,7 @@ The signature is `Related(navigationExpression, prepareFunc, configure)`, where 
 - **`prepareFunc`** — a parent-level prepare callback, invoked with the parent entity.
 - **`configure`** — a `RelatedEntityBuilder` callback for shaping the child collection. Use `builder.Related(...)` to synchronize a nested sub-collection (recursively, to any depth) and `builder.Prepare(...)` to run a per-item prepare on each child.
 
-For an `int`-keyed child, the single-type-argument `Related<TRelated>` of every `int`-keyed builder also takes `configure` in second position, so `e.Related(x => x.Lines, r => r.ServerOwned(x => x.UnitPrice))` needs no parameter name. The two-type-argument form below always reads its second argument as `prepareFunc`, so it names `configure:`.
+For an `int`-keyed child, every builder infers the type argument, whatever the parent's key, and takes `configure` in second position too, so `e.Related(x => x.Lines, r => r.ServerOwned(x => x.UnitPrice))` needs no parameter name. A child with another key type takes the two-type-argument form below, which always reads its second argument as `prepareFunc`, so it names `configure:`.
 
 <!-- no-compile -->
 ```csharp

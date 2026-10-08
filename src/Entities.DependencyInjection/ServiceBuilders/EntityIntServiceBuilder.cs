@@ -250,21 +250,24 @@ public class EntityIntServiceBuilder<TContext, TEntity>(EntityServiceCollectionO
 
         return this;
     }
-    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Related{TRelated,TRelatedKey}" />
-    public EntityIntServiceBuilder<TContext, TEntity> Related<TRelated>(
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Related{TRelated}(Expression{Func{TEntity,ICollection{TRelated}}},Action{TEntity},Action{RelatedEntityBuilder{TContext,TRelated,int}})" />
+    public new EntityIntServiceBuilder<TContext, TEntity> Related<TRelated>(
+        Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression,
+        Action<TEntity>? prepareFunc = null,
+        Action<RelatedEntityBuilder<TContext, TRelated, int>>? configure = null)
+        where TRelated : class, IEntity<int>
+    {
+        Related<TRelated, int>(navigationExpression, prepareFunc, configure);
+
+        return this;
+    }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Related{TRelated}(Expression{Func{TEntity,ICollection{TRelated}}},Action{RelatedEntityBuilder{TContext,TRelated,int}})" />
+    public new EntityIntServiceBuilder<TContext, TEntity> Related<TRelated>(
         Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression,
         Action<RelatedEntityBuilder<TContext, TRelated, int>> configure)
         where TRelated : class, IEntity<int>
     {
-        EntityRegistrationLog.TrackRelated(Services, typeof(TContext), typeof(TEntity), typeof(TRelated));
-        Services.AddPrepper(p =>
-        {
-            var relatedBuilder = new RelatedEntityBuilder<TContext, TRelated, int>();
-            configure(relatedBuilder);
-            var nestedPreppers = relatedBuilder.PrepperFactories.Select(f => f(p));
-            return new RelatedCollectionPrepper<TContext, TEntity, TRelated, int, int>(
-                p.GetRequiredService<TContext>(), navigationExpression, NestedPreppers.WithServerOwned(nestedPreppers));
-        });
+        Related<TRelated, int>(navigationExpression, null, configure);
 
         return this;
     }

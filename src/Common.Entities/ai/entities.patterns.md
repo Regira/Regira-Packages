@@ -85,8 +85,8 @@ foreach (var product in products)
 await links.SaveChanges();   // one flush; pipeline writes files, fills Path/Length, assigns AttachmentId
 ```
 
-- The bytes→file step runs only inside this pipeline, **not** during an owner-graph cascade. Set the nested `Attachment` on the link, don't nest under `owner.Attachments` and save the owner.
-- The `New*` fields (`NewBytes`/`NewFileName`) **replace** an existing attachment's content — they don't create one. Setting them without a nested `Attachment` leaves `AttachmentId` at `0` and fails the FK. The content type follows the file name: `NewContentType` is obsolete and ignored.
+- A new link takes its file either as a nested `Attachment` (`FileName` + `Bytes`) or as `NewFileName` + `NewBytes`, through the link service or inside the owner's `Attachments` — on an owner created with it, or updated with it added. An owner update syncs that collection whole, so a link it leaves out is deleted: for an owner that already has files, add through the link service.
+- On a kept link, `NewFileName` renames and `NewBytes` replaces its file. The content type follows the file name: `NewContentType` is obsolete and ignored.
 
 ## In-code recipes (how_to)
 
@@ -116,10 +116,11 @@ await links.Add(new ProductAttachment
 await links.SaveChanges(); // pipeline writes the file, fills Path/Length, assigns AttachmentId
 ```
 
-- The bytes→file step runs only inside this pipeline, **not** during an owner-graph cascade.
-- `New*` fields (`NewBytes`/`NewFileName`) **replace** an existing
-  attachment's content — they don't create one. Without a nested `Attachment`, `AttachmentId`
-  stays `0` and the FK fails. The content type follows the file name (`NewContentType` is ignored).
+- `NewFileName` + `NewBytes` in place of the nested `Attachment` work too, and so does saving the
+  link inside the owner's `Attachments` — but an owner update syncs that collection whole, so a
+  link it leaves out is deleted.
+- On a kept link, `NewFileName` renames and `NewBytes` replaces its file. The content type follows
+  the file name (`NewContentType` is ignored).
 
 **See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "Bulk insert / update")`
 and `get_package(id: "Regira.Entities", section: "examples", heading: "Attachments")`.

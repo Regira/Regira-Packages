@@ -682,10 +682,10 @@ and whether typed `Includes` is available. Match the controller base and any man
 
 | `For<>()` overload | Builder type | Tier | `SortBy` lambda | Typed `Includes` | `Process` / `Related` |
 |---|---|---|---|---|---|
-| `For<TEntity>()` | `EntityIntServiceBuilder` | Simple | `query => …` (1-arg) | — | `Process` ✓ · `Related<TRelated>` ✓ |
-| `For<TEntity, TKey>()` | `EntityServiceBuilder` | Simple | `query => …` (1-arg) | — | `Process` ✓ · `Related<TRelated, TRelatedKey>` (2-arg for non-int key) |
+| `For<TEntity>()` | `EntityIntServiceBuilder` | Simple | `query => …` (1-arg) | — | `Process` ✓ · `Related` ✓ |
+| `For<TEntity, TKey>()` | `EntityServiceBuilder` | Simple | `query => …` (1-arg) | — | `Process` ✓ · `Related` ✓ |
 | `For<TEntity, TKey, TSearchObject>()` | `EntitySearchObjectServiceBuilder` | Simple | `query => …` (1-arg) | — | `Process` ✓ · `Related` ✓ |
-| `For<TEntity, TSearchObject, TSortBy, TIncludes>()` | `ComplexEntityIntServiceBuilder` | **Complex** | `(query, sortBy) => …` (2-arg) | ✓ | `Process` ✓ · `Related<TRelated>` ✓ |
+| `For<TEntity, TSearchObject, TSortBy, TIncludes>()` | `ComplexEntityIntServiceBuilder` | **Complex** | `(query, sortBy) => …` (2-arg) | ✓ | `Process` ✓ · `Related` ✓ |
 | `For<TEntity, TKey, TSearchObject, TSortBy, TIncludes>()` | `ComplexEntityServiceBuilder` | **Complex** | `(query, sortBy) => …` (2-arg) | ✓ | `Process` ✓ · `Related` ✓ |
 
 > Using the 2-arg `SortBy((query, sortBy) => …)` on a **simple** builder is **CS1593** — simple
@@ -693,12 +693,11 @@ and whether typed `Includes` is available. Match the controller base and any man
 > `[Flags]` `TIncludes`) exists only on the two **complex** builders — but every builder, **simple ones
 > included**, inherits the **untyped** `e.Includes((query, EntityIncludes?) => query.Include(...))`
 > overload (the "Typed `Includes`" column below tracks only the typed form), so simple registrations can
-> still eager-load navigations. The single-arg `e.Related<TRelated>(…)` shortcut works on every int-key
-> builder (incl. the simple `For<TEntity, int, TSearchObject>()`), and on each of them a lambda in second
-> position may be either the parent `prepareFunc` or the `RelatedEntityBuilder` callback —
-> `e.Related(x => x.Lines, r => r.ServerOwned(x => x.UnitPrice))`. A non-int related key needs the
-> 2-arg `e.Related<TRelated, TRelatedKey>(…)`, where the second position is always `prepareFunc`: name the
-> callback, `configure: r => …`.
+> still eager-load navigations. Every builder takes `e.Related(…)` for an `int`-keyed child without type
+> arguments, whatever the parent's key, and a lambda in second position may be either the parent
+> `prepareFunc` or the `RelatedEntityBuilder` callback — `e.Related(x => x.Lines, r => r.ServerOwned(x => x.UnitPrice))`.
+> A non-int related key needs the 2-arg `e.Related<TRelated, TRelatedKey>(…)`, where the second position is
+> always `prepareFunc`: name the callback, `configure: r => …`.
 >
 > `HasAttachments` is an extension on the **base** `EntityServiceBuilder` (`Regira.Entities.DependencyInjection.Attachments`),
 > so it applies on **every** tier — a **complex** owner chains `.HasAttachments(...)` exactly like a simple one.
@@ -1191,6 +1190,19 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
         Action<RelatedEntityBuilder<TContext, TRelated, TRelatedKey>>? configure = null)
         where TRelated : class, IEntity<TRelatedKey>;
 
+    // int-keyed child, whatever TKey: the type argument is inferred from the navigation
+    EntityServiceBuilder<TContext, TEntity, TKey> Related<TRelated>(
+        Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression,
+        Action<TEntity>? prepareFunc = null,
+        Action<RelatedEntityBuilder<TContext, TRelated, int>>? configure = null)
+        where TRelated : class, IEntity<int>;
+
+    // a lone second lambda that configures the child, not the parent
+    EntityServiceBuilder<TContext, TEntity, TKey> Related<TRelated>(
+        Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression,
+        Action<RelatedEntityBuilder<TContext, TRelated, int>> configure)
+        where TRelated : class, IEntity<int>;
+
     void Build();
 }
 ```
@@ -1265,15 +1277,8 @@ public partial class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, T
         Func<IQueryable<TEntity>, TSearchObject?, IQueryable<TEntity>> filterFunc);
 
     // Re-declared to keep the builder type through a chain, here and on the complex builders:
-    // Validate(...) and React(...) — every overload — AddValidator<T>(), AddReactor<T>() and ServerOwned(...)
-
-    // NEW: single-type-arg Related shortcut for int-keyed children (related key is int,
-    // independent of the parent TKey). Use the inherited Related<TRelated, TRelatedKey> for non-int related keys.
-    EntitySearchObjectServiceBuilder<...> Related<TRelated>(
-        Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression,
-        Action<TEntity>? prepareFunc = null,
-        Action<RelatedEntityBuilder<TContext, TRelated, int>>? configure = null)
-        where TRelated : class, IEntity<int>;
+    // Validate(...) and React(...) — every overload — AddValidator<T>(), AddReactor<T>(), ServerOwned(...)
+    // and the two int-child Related<TRelated>(...) overloads
 
     void Build();
 }
@@ -1311,22 +1316,11 @@ public partial class EntityIntServiceBuilder<TContext, TEntity>
         where TValidator : class, IEntityValidator<TEntity>;
     // React(...) — every overload — and AddReactor<TReactor>() likewise return EntityIntServiceBuilder<TContext, TEntity>
 
-    // Re-declared to keep the builder type through a chain — without it the next call falls back to
-    // the base Related<TRelated, TRelatedKey>, whose key argument cannot be inferred (CS0411).
+    // Re-declared to keep the builder type through a chain: ServerOwned(...) and the int-child
+    // Related<TRelated>(...) overloads (sync only, with prepareFunc/configure, or with configure alone)
     EntityIntServiceBuilder<TContext, TEntity> ServerOwned<TProp>(
         Expression<Func<TEntity, TProp>> selector,
         Func<TEntity, TProp>? mintOnCreate = null);
-
-    // Int-key shortcuts: sync only, or with a configure callback. For a parent-level prepare use
-    // the inherited Related<TRelated, int>(nav, prepareFunc) or a separate e.Prepare(...).
-    EntityIntServiceBuilder<TContext, TEntity> Related<TRelated>(
-        Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression)
-        where TRelated : class, IEntity<int>;
-
-    EntityIntServiceBuilder<TContext, TEntity> Related<TRelated>(
-        Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression,
-        Action<RelatedEntityBuilder<TContext, TRelated, int>> configure)
-        where TRelated : class, IEntity<int>;
 
     void Build();
 }
@@ -1407,23 +1401,8 @@ public partial class ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearc
 ### ComplexEntityIntServiceBuilder
 
 Returned by `.For<TEntity, TSearchObject, TSortBy, TIncludes>()`.
-Inherits all `ComplexEntityServiceBuilder` methods. Only addition vs parent:
-
-<!-- no-compile -->
-```csharp
-public partial class ComplexEntityIntServiceBuilder<TContext, TEntity, TSearchObject, TSortBy, TIncludes>
-    : ComplexEntityServiceBuilder<TContext, TEntity, int, TSearchObject, TSortBy, TIncludes>
-{
-    // Int-key shortcut — no TRelatedKey type parameter needed
-    ComplexEntityIntServiceBuilder<...> Related<TRelated>(
-        Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression,
-        Action<TEntity>? prepareFunc = null,
-        Action<RelatedEntityBuilder<TContext, TRelated, int>>? configure = null)
-        where TRelated : class, IEntity<int>;
-
-    void Build();
-}
-```
+Inherits all `ComplexEntityServiceBuilder` methods; the builder-type-keeping re-declarations (`Related<TRelated>`
+included) return `ComplexEntityIntServiceBuilder<...>`.
 
 ---
 

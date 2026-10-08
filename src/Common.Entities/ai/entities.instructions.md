@@ -517,11 +517,12 @@ Two shapes, and the choice is forced by whether you need the stored row:
 
 What a prepper works with: `modified` is the mapped incoming entity — the instance EF tracks and saves, so a value a prepper sets on it (or on one of its incoming owned rows, before or after the sync) is what gets written. `original` is a **no-tracking** copy of the stored row, loaded like `Details` (every include flag). The `Related()` sync never rewrites `original`'s collection: it holds the stored rows when your `Includes` loads that navigation and `null` otherwise — on either side of the sync. The sync only sets EF states: incoming rows become `Added`/`Modified`, stored rows missing from the payload `Deleted`, and a `null` collection is left untouched (a prepper registered before `Related()` that sets it to `null` keeps the rows from changing on that save). A primer sees the entity *after* every prepper has finished with it. **No prepper runs on `DELETE`**; validators do, with `ctx.Operation == EntityWriteOperation.Remove` — the place for a rule that forbids deleting a row in some state (§Validators below). Primers see `Deleted` entries. Only stages 5 and 6 run for a writer that bypasses `IEntityService` and saves through the raw `DbContext` — the reason a field a workflow service legitimately writes belongs in a prepper, never a primer ([`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update).
 
-`e.Related()` takes an optional parent-level `prepareFunc` followed by an optional `configure` callback — signature `Related<TRelated, TRelatedKey>(x => x.Collection, prepareFunc?, configure?)`:
-- Sync only: `e.Related<TRelated, TRelatedKey>(x => x.Collection, prepareFunc?)` — syncs the collection, optional per-entity prepare.
-- Nested: `e.Related<TRelated, TRelatedKey>(x => x.Collection, configure: builder => { ... })` — use `RelatedEntityBuilder` to nest sub-collections (`builder.Related(...)`) or add item-level prepare logic (`builder.Prepare(...)`). Pass `prepareFunc` before `configure` to combine both. Worked two-level example (party relationships carrying their own contact data): [`entities.blueprints.md`](./entities.blueprints.md) — Stakeholders (§Registration).
+`e.Related(x => x.Collection, prepareFunc?, configure?)` syncs an owned collection: `prepareFunc` runs on the parent, and `configure` takes a `RelatedEntityBuilder` to nest sub-collections (`builder.Related(...)`) or add item-level prepare logic (`builder.Prepare(...)`). A lone second lambda binds by its body — one that calls the builder is `configure`, one that touches the parent is `prepareFunc` — and passing both, `prepareFunc` first, combines them. Worked two-level example (party relationships carrying their own contact data): [`entities.blueprints.md`](./entities.blueprints.md) — Stakeholders (§Registration).
 
-> **Single-arg shortcut for int-keyed children:** when the related entity has an `int` key, drop the second type argument — `e.Related<TRelated>(x => x.Collection, …)`. This shortcut is available on **all** int-key builders, including the simple `For<TEntity, int, TSearchObject>()` registration. The two-arg form `e.Related<TRelated, TRelatedKey>(…)` is only required for non-`int` related keys (type inference can't deduce `TRelatedKey` from a navigation expression alone — **CS0411** if both args are omitted with a non-int key).
+> **Type arguments:** an `int`-keyed child needs none, on every builder and whatever the parent's key —
+> `e.Related(x => x.Lines, lines => lines.Related(x => x.Notes))`. A non-`int` child key needs both,
+> `e.Related<TRelated, TRelatedKey>(…)`: type inference cannot read `TRelatedKey` from the navigation (**CS0411**). On
+> that form the second position is always `prepareFunc`, so name the callback: `configure: r => …`.
 
 **How the sync classifies an incoming row** — three cases, and the first is what the front end sends:
 
@@ -1316,7 +1317,8 @@ in the Development environment by default. It catches, with actionable messages:
 - **Unwired interceptors** — primers/normalizers/reactors registered in DI while the `DbContext` options lack
   the matching interceptor (they would silently never run). Only applies to setups without `UseDefaults()`
   (which auto-wires the interceptors) that also skipped `e.WireDbContext(...)`.
-- **Ignored `?q=`** (warning) — entities without `IHasNormalizedContent` and without a custom filter.
+- **Ignored `?q=`** (warning) — entities without `IHasNormalizedContent` and without a custom filter. Any custom
+  filter counts as handling `q`, so one that never reads `so.Q` gets no warning: handle it there (`FilterQ`).
 - **Two write paths** (warning) — an entity synced by a parent's `Related()` that also has its own `.For<>()`.
   Supported when the parent's input DTO omits the collection; the validator can't see DTO shapes, so it always
   reports the pairing. Detects top-level `Related()` calls, not ones nested inside a `configure` builder.
@@ -1579,10 +1581,10 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 7. *(web apps)* Call `options.UseAttachmentUris()` (before registering entities, on the **same** `UseEntities` options instance) and register `AddHttpContextAccessor()` so attachment DTOs resolve a `Uri` linking to the attachment controller's `GetFile` action.
 
 > ⚠️ **A link rule belongs in the owner's validator too.** Validators scoped to the link entity run for the
-> attachment endpoints — upload, replace, update and delete. A `PUT` of the owner whose input carries `Attachments`
-> (step 3) syncs the links itself: it adds one for each new entry with `NewBytes`, renames and replaces a kept link's
-> file from its `NewFileName` and `NewBytes`, and deletes the ones the array leaves out, and only the owner's
-> validators run. A kept link keeps its attachment, whatever `attachmentId` the entry sends, and a new one may point
+> attachment endpoints — upload, replace, update and delete. A `POST` or `PUT` of the owner whose input carries
+> `Attachments` (step 3) syncs the links itself: it adds one for each new entry with `NewBytes`, and on a `PUT` renames
+> and replaces a kept link's file from its `NewFileName` and `NewBytes` and deletes the ones the array leaves out, and
+> only the owner's validators run. A kept link keeps its attachment, whatever `attachmentId` the entry sends, and a new one may point
 > only at an attachment the owner already links: one naming another owner's is cleared, and without `NewBytes` of its
 > own the save answers 409.
 > The upload route always creates a link, whatever `Id` its form sends. Repeat a link rule — allowed file types, a file that must not be deleted — in the owner's validator (keys like

@@ -635,4 +635,26 @@ public class EntityServiceBuilder<TContext, TEntity, TKey>(EntityServiceCollecti
 
         return this;
     }
+    /// <summary>
+    /// Single-type-argument shortcut for <see cref="Related{TRelated,TRelatedKey}" /> for related entities with an
+    /// <see cref="int"/> key. The related key is independent of the parent <typeparamref name="TKey"/>, so a
+    /// <c>Guid</c>-keyed parent uses it too.
+    /// </summary>
+    /// <inheritdoc cref="Related{TRelated,TRelatedKey}" />
+    public EntityServiceBuilder<TContext, TEntity, TKey> Related<TRelated>(
+        Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression,
+        Action<TEntity>? prepareFunc = null,
+        Action<RelatedEntityBuilder<TContext, TRelated, int>>? configure = null)
+        where TRelated : class, IEntity<int>
+        => Related<TRelated, int>(navigationExpression, prepareFunc, configure);
+    /// <summary>
+    /// Configures the owned child without a parent prepare function — <c>Related(x =&gt; x.Lines, r =&gt; r.ServerOwned(x =&gt; x.UnitPrice))</c>.
+    /// Without this overload the second lambda binds to <c>prepareFunc</c>, typed as the parent.
+    /// </summary>
+    /// <inheritdoc cref="Related{TRelated,TRelatedKey}" />
+    public EntityServiceBuilder<TContext, TEntity, TKey> Related<TRelated>(
+        Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression,
+        Action<RelatedEntityBuilder<TContext, TRelated, int>> configure)
+        where TRelated : class, IEntity<int>
+        => Related<TRelated, int>(navigationExpression, null, configure);
 }
