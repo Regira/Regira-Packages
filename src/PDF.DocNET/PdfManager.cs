@@ -9,6 +9,7 @@ using Regira.Media.Drawing.Services.Abstractions;
 using Regira.Office.MimeTypes;
 using Regira.Office.PDF.Abstractions;
 using Regira.Office.PDF.Defaults;
+using Regira.Office.PDF.Internal;
 using Regira.Office.PDF.Models;
 using ImageFormat = Regira.Media.Drawing.Enums.ImageFormat;
 
@@ -25,11 +26,11 @@ public class PdfManager(IImageService imageService) : IPdfService
 
     public async Task<IEnumerable<IMemoryFile>> Split(IMemoryFile pdf, IEnumerable<PdfSplitRange> ranges, CancellationToken cancellationToken = default)
     {
+        var pageRanges = PdfSplitRanges.Resolve(ranges, await GetPageCount(pdf, cancellationToken));
         var result = new List<IMemoryFile>();
-        foreach (var range in ranges)
+        foreach (var (start, end) in pageRanges)
         {
-            var pageCount = await GetPageCount(pdf, cancellationToken);
-            var splitBytes = DocLib.Instance.Split(pdf.GetBytes(), range.Start - 1, (range.End ?? pageCount) - 1);
+            var splitBytes = DocLib.Instance.Split(pdf.GetBytes(), start - 1, end - 1);
             var file = splitBytes.ToMemoryFile(ContentTypes.PDF);
             result.Add(file);
         }
@@ -149,6 +150,10 @@ public class PdfManager(IImageService imageService) : IPdfService
         {
             throw new NullReferenceException($"{nameof(IImageService)} is not initialized");
         }
+        if (input.Images.Count == 0)
+        {
+            return null;
+        }
 
         var maxDim = new[]
         {
@@ -175,10 +180,10 @@ public class PdfManager(IImageService imageService) : IPdfService
     }
     public async Task<IList<IImageFile>> ToImages(IMemoryFile pdf, PdfToImagesOptions? options = null, CancellationToken cancellationToken = default)
     {
-        var pageDimensions = new PageDimensions(
-            options?.Size?.Width ?? PdfDefaults.ImageSize.Width,
-            options?.Size?.Height ?? PdfDefaults.ImageSize.Height
-        );
+        // Docnet fits a page's shorter side to the first dimension and its longer side to the second, and refuses a
+        // first that is larger, so the size fits either way round
+        var size = options?.Size ?? PdfDefaults.ImageSize;
+        var pageDimensions = new PageDimensions(Math.Min(size.Width, size.Height), Math.Max(size.Width, size.Height));
 
         using var docReader = DocLib.Instance.GetDocReader(pdf.GetBytes(), pageDimensions);
         var pageCount = docReader.GetPageCount();

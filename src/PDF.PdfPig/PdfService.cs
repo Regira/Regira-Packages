@@ -7,6 +7,7 @@ using Regira.Media.Drawing.Services.Abstractions;
 using Regira.Office.MimeTypes;
 using Regira.Office.PDF.Abstractions;
 using Regira.Office.PDF.Defaults;
+using Regira.Office.PDF.Internal;
 using Regira.Office.PDF.Models;
 using SkiaSharp;
 using UglyToad.PdfPig;
@@ -37,13 +38,12 @@ public class PdfService(IImageService imageService) : IPdfService
     public async Task<IEnumerable<IMemoryFile>> Split(IMemoryFile pdf, IEnumerable<PdfSplitRange> ranges, CancellationToken cancellationToken = default)
     {
         var bytes = GetBytes(pdf);
-        var pageCount = await GetPageCount(pdf, cancellationToken);
+        var pageRanges = PdfSplitRanges.Resolve(ranges, await GetPageCount(pdf, cancellationToken));
         var result = new List<IMemoryFile>();
-        foreach (var range in ranges)
+        foreach (var (start, end) in pageRanges)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var pages = Enumerable.Range(range.Start, (range.End ?? pageCount) - range.Start + 1).ToArray();
-            result.Add(CopyPages(bytes, pages));
+            result.Add(CopyPages(bytes, Enumerable.Range(start, end - start + 1).ToArray()));
         }
         return result;
     }

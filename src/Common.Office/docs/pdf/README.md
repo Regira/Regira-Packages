@@ -113,6 +113,13 @@ Task<int>                       GetPageCount(IMemoryFile pdf, CancellationToken 
 Task<IMemoryFile?>              RemovePages(IMemoryFile pdf, IEnumerable<int> pages, CancellationToken cancellationToken = default);
 ```
 
+Every backend treats the edges alike:
+
+- `Merge` of no files returns `null`.
+- `Split` returns one PDF per range, in order. A range that starts before page 1, ends after the document's last page
+  or starts after its end throws `ArgumentOutOfRangeException`, before anything is split.
+- `RemovePages` ignores a page number the document does not have; removing every page returns `null`.
+
 ### IPdfToImageService / IImagesToPdfService
 
 <!-- no-compile -->
@@ -120,6 +127,11 @@ Task<IMemoryFile?>              RemovePages(IMemoryFile pdf, IEnumerable<int> pa
 Task<IList<IImageFile>>  ToImages(IMemoryFile pdf, PdfToImagesOptions? options = null, CancellationToken cancellationToken = default);
 Task<IMemoryFile?>       ImagesToPdf(ImagesInput input, CancellationToken cancellationToken = default);
 ```
+
+`ToImages` returns an image per page, fitted to `PdfToImagesOptions.Size` either way round — the page's shorter side
+to the smaller dimension, its longer side to the larger — keeping the page's aspect ratio, so the default
+`1080 × 1920` gives a portrait A4 page 1080 pixels wide and a landscape one 1080 pixels high. Without options it takes
+`PdfDefaults.ImageSize` and `PdfDefaults.ImageFormat` (JPEG). `ImagesToPdf` without images returns `null`.
 
 ### IPdfTextExtractor / IPdfTextService
 
@@ -182,7 +194,7 @@ Same base properties as `HtmlInput` plus:
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `Size` | `ImageSize?` | `1080 × 1920` | Output image dimensions |
+| `Size` | `ImageSize?` | `1080 × 1920` | The box each page image fits, either way round |
 | `Format` | `ImageFormat` | `Jpeg` | Output image format |
 
 ### PdfSplitRange
@@ -190,7 +202,7 @@ Same base properties as `HtmlInput` plus:
 | Property | Type | Description |
 |----------|------|-------------|
 | `Start` | `int` | First page (1-indexed) |
-| `End` | `int?` | Last page (`null` = last page of document) |
+| `End` | `int?` | Last page, included (`null` = last page of document) |
 
 ### PdfPrinterInput
 
@@ -276,12 +288,9 @@ var pdf = new Regira.Office.PDF.PdfPig.PdfService(imageService);
 
 - **Images → PDF.** Each image gets a page of its own, of the input's `Format` and `Orientation` (A4 portrait by
   default). The image is centred horizontally between the `Margins` and starts at the top margin, at one pixel per
-  `DPI` unit, scaled down when it does not fit — never up. JPEG and PNG are embedded as they are, any other format as PNG. An input without images gives
-  `null`.
-- **PDF → images.** Each page is fitted to `PdfToImagesOptions.Size` either way round — the page's shorter side to
-  the smaller dimension, its longer side to the larger — keeping its aspect ratio, so the default `1080 × 1920` gives
-  a portrait A4 page 1080 pixels wide and a landscape one 1080 pixels high. Annotations and filled-in form fields
-  are drawn, as a PDF viewer shows them.
+  `DPI` unit, scaled down when it does not fit — never up. JPEG and PNG are embedded as they are, any other format as
+  PNG.
+- **PDF → images.** Annotations and filled-in form fields are drawn, as a PDF viewer shows them.
 - **Linux.** The package carries SkiaSharp's dependency-free Linux native library, at the SkiaSharp version
   Regira.Drawing.SkiaSharp uses, so nothing needs installing. An application that adds `SkiaSharp.NativeAssets.Linux`
   itself, as Regira.Drawing.SkiaSharp describes, gets that library instead, which needs `libfontconfig1` on the host.
@@ -292,8 +301,9 @@ var pdf = new Regira.Office.PDF.PdfPig.PdfService(imageService);
 
 Implements `IPdfService` on [Docnet.Core](https://www.nuget.org/packages/Docnet.Core), which has had no release since
 2.6.0 (2023) and bundles a PDFium build from 2022. PDFium parses every PDF it is given, so an outdated build is a risk
-for uploaded files; use PdfPig. `ImagesToPdf` makes each page the size of its image and ignores the page format and
-margins. Requires `IImageService` in the constructor.
+for uploaded files; use PdfPig. `ImagesToPdf` makes each page the size of its image: the image is scaled down to fit
+the format's page less its margins, measured in units of `DPI`, and the page takes that many points. Requires
+`IImageService` in the constructor.
 
 ### Spire — PDF operations + printing
 

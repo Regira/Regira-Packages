@@ -79,17 +79,21 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 - Each `Create` starts its own browser: one to three seconds per PDF.
 
 **SelectPdf behaviour:** a header or footer is rendered as a page of its own, with the default 8px around its body —
-reset it (`body{margin:0}`) to fill the band — and shows no page numbers.
+reset it (`body{margin:0}`) to fill the band — and shows no page numbers. Every page holds the whole document, clipped
+to its own part, so text read per page from a SelectPdf PDF (`GetTextPerPage`, `RemoveEmptyPages`) is the whole
+document's on every page.
 
 **PdfPig behaviour** (`Regira.Office.PDF.PdfPig.PdfService`, constructed with an `IImageService`):
 - `ImagesToPdf` puts each image on a page of its own, of the input's `Format` and `Orientation` (A4 portrait by
   default), centred horizontally between the `Margins` and starting at the top margin, at one pixel per `DPI` unit and
   scaled down when it does not fit — never up.
-  JPEG and PNG are embedded as they are, any other format as PNG. No images gives `null`.
-- `ToImages` fits each page to `PdfToImagesOptions.Size` either way round — the page's shorter side to the smaller
-  dimension, its longer side to the larger — keeping the aspect ratio. Annotations and filled-in form fields are drawn.
+  JPEG and PNG are embedded as they are, any other format as PNG.
+- `ToImages` draws annotations and filled-in form fields.
 - `GetText` reads the text in the order the PDF draws it. A scanned page holds no text, so `RemoveEmptyPages`
   removes it.
+
+**DocNET behaviour:** `ImagesToPdf` makes each page the size of its image: the image is scaled down to fit the
+format's page less its margins, measured in units of `DPI`, and the page takes that many points.
 
 ---
 
@@ -119,6 +123,8 @@ backend cannot handle throws `NotSupportedException`; a setting is never ignored
 Task<IMemoryFile?>             Merge(IEnumerable<IMemoryFile> items, CancellationToken cancellationToken = default);
 ```
 
+Merging no files returns `null`.
+
 ### `IPdfSplitter`
 
 <!-- no-compile -->
@@ -127,12 +133,17 @@ Task<IEnumerable<IMemoryFile>>  Split(IMemoryFile pdf, IEnumerable<PdfSplitRange
 Task<int>                       GetPageCount(IMemoryFile pdf, CancellationToken cancellationToken = default);
 ```
 
+`Split` returns one PDF per range, in order. A range that starts before page 1, ends after the document's last page or
+starts after its end throws `ArgumentOutOfRangeException`, before anything is split.
+
 ### `IPdfEditor` (extends `IPdfMerger` + `IPdfSplitter`)
 
 <!-- no-compile -->
 ```csharp
 Task<IMemoryFile?>  RemovePages(IMemoryFile pdf, IEnumerable<int> pages, CancellationToken cancellationToken = default);
 ```
+
+A page number the document does not have is ignored; removing every page returns `null`.
 
 ### `IPdfToImageService` / `IImagesToPdfService`
 
@@ -141,6 +152,11 @@ Task<IMemoryFile?>  RemovePages(IMemoryFile pdf, IEnumerable<int> pages, Cancell
 Task<IList<IImageFile>>  ToImages(IMemoryFile pdf, PdfToImagesOptions? options = null, CancellationToken cancellationToken = default);
 Task<IMemoryFile?>       ImagesToPdf(ImagesInput input, CancellationToken cancellationToken = default);
 ```
+
+`ToImages` returns an image per page, fitted to `PdfToImagesOptions.Size` either way round — the page's shorter side
+to the smaller dimension, its longer side to the larger — keeping the page's aspect ratio; without options it takes
+`PdfDefaults.ImageSize` (1080 × 1920) and `PdfDefaults.ImageFormat` (JPEG). `ImagesToPdf` without images returns
+`null`.
 
 ### `IPdfToImageAsyncService`
 
@@ -220,13 +236,13 @@ workbook is rendered, in order.
 | Property | Type | Description |
 |---|---|---|
 | `Start` | `int` | First page (1-indexed) |
-| `End` | `int?` | Last page (`null` = last page of document) |
+| `End` | `int?` | Last page, included (`null` = last page of document) |
 
 ### `PdfToImagesOptions`
 
 | Property | Type | Default | Description |
 |---|---|---|---|
-| `Size` | `ImageSize?` | `1080 × 1920` | Output image dimensions |
+| `Size` | `ImageSize?` | `1080 × 1920` | The box each page image fits, either way round |
 | `Format` | `ImageFormat` | `Jpeg` | Output image format |
 
 ### `PdfPrinterInput`

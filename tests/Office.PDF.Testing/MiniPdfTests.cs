@@ -1,43 +1,33 @@
-using Docnet.Core;
-using Docnet.Core.Models;
-using Regira.IO.Abstractions;
-using Regira.IO.Extensions;
+using Office.PDF.Testing.Abstractions;
 using Regira.Office.Models;
-using Regira.Office.PDF.Models;
 using Regira.Office.PDF.MiniPdf;
-using Regira.Utilities;
-using DocNetPdfManager = Regira.Office.PDF.DocNET.PdfManager;
+using Regira.Office.PDF.Models;
 
 namespace Office.PDF.Testing;
 
+/// <summary>
+/// PDF.MiniPdf, the only <c>IDocumentToPdfService</c>: Word, Excel and PowerPoint to PDF, read back with
+/// <see cref="PdfFacts"/>.
+/// </summary>
 [TestFixture]
-[Parallelizable(ParallelScope.All)]
-public class MiniPdfTests
+public class MiniPdfTests() : PdfAssetsTestsBase("MiniPdf")
 {
-    private readonly PdfService _pdfService = new();
-    // reads the output back independently of the backend that wrote it
-    private readonly DocNetPdfManager _reader = new(null!);
-    private readonly string _inputDir;
-    private readonly string _outputDir;
+    // A5 is 148 × 210 mm
+    private const double A5Short = 419.53;
+    private const double A5Long = 595.28;
 
-    public MiniPdfTests()
-    {
-        var assetsDir = Path.Combine(AssemblyUtility.GetAssemblyDirectory()!, "../../../", "Assets");
-        _inputDir = Path.Combine(assetsDir, "Input");
-        _outputDir = Path.Combine(assetsDir, "Output/MiniPdf");
-        Directory.CreateDirectory(_outputDir);
-    }
+    private readonly PdfService _pdfService = new();
 
     [TestCase("lorem-ipsum.docx", "Lorem ipsum")]
     [TestCase("lorem-ipsum.xlsx", "Ipsum")]
     [TestCase("lorem-ipsum.pptx", "Dolor sit amet")]
     public async Task Converts_To_Pdf(string fileName, string expectedText)
     {
-        using var pdf = await Convert(new DocumentInput { Document = Read(fileName) }, $"{fileName}.pdf");
+        using var pdf = await _pdfService.Create(new DocumentInput { Document = ReadAsset(fileName) });
 
+        var facts = await ReadPdf(pdf);
         Assert.That(pdf.ContentType, Is.EqualTo("application/pdf"));
-        Assert.That(pdf.GetBytes()![..5], Is.EqualTo("%PDF-"u8.ToArray()));
-        Assert.That(await _reader.GetText(pdf), Does.Contain(expectedText));
+        Assert.That(string.Join(" ", facts.PageTexts), Does.Contain(expectedText));
     }
 
     // lorem-ipsum.xlsx binds SpreadsheetML to a prefix (<x:workbook>), as the Open XML SDK, ClosedXML and MiniExcel
@@ -48,9 +38,9 @@ public class MiniPdfTests
     [TestCase("lorem-ipsum-mixed-namespace.xlsx")]
     public async Task Xlsx_Renders_Every_Sheet(string fileName)
     {
-        using var pdf = await Convert(new DocumentInput { Document = Read(fileName) }, $"every-sheet-{fileName}.pdf");
+        using var pdf = await _pdfService.Create(new DocumentInput { Document = ReadAsset(fileName) });
 
-        var text = await _reader.GetText(pdf);
+        var text = string.Join(" ", (await ReadPdf(pdf)).PageTexts);
         Assert.That(text, Does.Contain("Lorem"));
         Assert.That(text, Does.Contain("Sit amet consectetur"));
     }
@@ -60,34 +50,42 @@ public class MiniPdfTests
     {
         var input = new DocumentInput
         {
-            Document = Read("lorem-ipsum.docx"),
+            Document = ReadAsset("lorem-ipsum.docx"),
             Format = PageSize.A5,
             Orientation = PageOrientation.Landscape
         };
 
-        using var pdf = await Convert(input, "a5-landscape.pdf");
+        using var pdf = await _pdfService.Create(input);
 
-        // A5 is 148 x 210 mm: 419.53 x 595.28 pt, which Docnet truncates
-        Assert.That(PageSizes(pdf), Is.All.EqualTo((595, 419)));
+        var facts = await ReadPdf(pdf);
+        Assert.That(facts.Pages.Select(page => page.Width), Is.All.EqualTo(A5Long).Within(1));
+        Assert.That(facts.Pages.Select(page => page.Height), Is.All.EqualTo(A5Short).Within(1));
     }
 
     [Test]
     public async Task Docx_Takes_Margins()
     {
-        using var defaultPdf = await Convert(new DocumentInput { Document = Read("lorem-ipsum.docx") }, "default-margins.pdf");
-        using var widePdf = await Convert(new DocumentInput { Document = Read("lorem-ipsum.docx"), Margins = 150f }, "wide-margins.pdf");
+        using var defaultPdf = await _pdfService.Create(new DocumentInput { Document = ReadAsset("lorem-ipsum.docx") });
+        using var widePdf = await _pdfService.Create(new DocumentInput { Document = ReadAsset("lorem-ipsum.docx"), Margins = 150f });
 
-        Assert.That(await _reader.GetPageCount(widePdf), Is.GreaterThan(await _reader.GetPageCount(defaultPdf)));
+        var defaultFacts = await ReadPdf(defaultPdf, "-default");
+        var wideFacts = await ReadPdf(widePdf, "-wide");
+        Assert.That(wideFacts.PageCount, Is.GreaterThan(defaultFacts.PageCount));
+        // the body starts 150 pt from the page's left and top edges; the document's header sits above it
+        var body = wideFacts.Pages[0].Word("Lorem").Box;
+        Assert.That(body.Left, Is.EqualTo(150).Within(1));
+        Assert.That(body.Top, Is.GreaterThanOrEqualTo(150));
     }
 
     [Test]
     public async Task Xlsx_Takes_Orientation()
     {
-        var input = new DocumentInput { Document = Read("lorem-ipsum.xlsx"), Orientation = PageOrientation.Landscape };
+        var input = new DocumentInput { Document = ReadAsset("lorem-ipsum.xlsx"), Orientation = PageOrientation.Landscape };
 
-        using var pdf = await Convert(input, "xlsx-landscape.pdf");
+        using var pdf = await _pdfService.Create(input);
 
-        Assert.That(PageSizes(pdf).Select(size => size.Width > size.Height), Is.All.True);
+        var facts = await ReadPdf(pdf);
+        Assert.That(facts.Pages.Select(page => page.Width > page.Height), Is.All.True);
     }
 
     [TestCase("lorem-ipsum.docx", null, PageOrientation.Landscape, false)]
@@ -100,7 +98,7 @@ public class MiniPdfTests
     {
         var input = new DocumentInput
         {
-            Document = Read(fileName),
+            Document = ReadAsset(fileName),
             Format = format,
             Orientation = orientation,
             Margins = margins ? (Margins)20f : null
@@ -113,32 +111,6 @@ public class MiniPdfTests
     [TestCase("lorem-ipsum.html")]
     public async Task Refuses_A_Document_That_Is_Not_Office_Open_Xml(string fileName)
     {
-        await Assert.ThrowsAsync<NotSupportedException>(() => _pdfService.Create(new DocumentInput { Document = Read(fileName) }));
-    }
-
-
-    private IMemoryFile Read(string fileName)
-        => File.ReadAllBytes(Path.Combine(_inputDir, fileName)).ToMemoryFile();
-
-    private async Task<IMemoryFile> Convert(DocumentInput input, string outputFileName)
-    {
-        var pdf = await _pdfService.Create(input);
-        await File.WriteAllBytesAsync(Path.Combine(_outputDir, outputFileName), pdf.GetBytes()!);
-        return pdf;
-    }
-
-    /// <summary>
-    /// The size of every page in whole points.
-    /// </summary>
-    private static IList<(int Width, int Height)> PageSizes(IMemoryFile pdf)
-    {
-        using var reader = DocLib.Instance.GetDocReader(pdf.GetBytes()!, new PageDimensions(1d));
-        return Enumerable.Range(0, reader.GetPageCount())
-            .Select(i =>
-            {
-                using var page = reader.GetPageReader(i);
-                return (page.GetPageWidth(), page.GetPageHeight());
-            })
-            .ToList();
+        await Assert.ThrowsAsync<NotSupportedException>(() => _pdfService.Create(new DocumentInput { Document = ReadAsset(fileName) }));
     }
 }
