@@ -8,7 +8,7 @@ Regira Office.Excel provides a **unified abstraction** for reading and writing E
 |---------|---------|---------|--------------|-----------|
 | `Common.Office` | *(transitive)* | Shared abstractions and models | — | — |
 | `Excel.ClosedXML` | `Regira.Office.Excel.ClosedXML` | ClosedXML | — | — |
-| `Excel.EPPlus` | `Regira.Office.Excel.EPPlus` | EPPlus v4 | — | — |
+| `Excel.EPPlus` | `Regira.Office.Excel.EPPlus` | EPPlus v4 (deprecated) | — | — |
 | `Excel.MiniExcel` | `Regira.Office.Excel.MiniExcel` | MiniExcel | ✓ | ✓ |
 | `Excel.NpoiMapper` | `Regira.Office.Excel.NpoiMapper` | NPOI + Npoi.Mapper | ✓ | — |
 
@@ -18,7 +18,7 @@ Regira Office.Excel provides a **unified abstraction** for reading and writing E
 <!-- ClosedXML -->
 <PackageReference Include="Regira.Office.Excel.ClosedXML" Version="6.*" />
 
-<!-- EPPlus (v4 — free licence) -->
+<!-- EPPlus (v4 — deprecated) -->
 <PackageReference Include="Regira.Office.Excel.EPPlus" Version="6.*" />
 
 <!-- MiniExcel (low memory, generic) -->
@@ -127,7 +127,7 @@ Simple and stable. Returns rows as `Dictionary<string, object?>`. No generic sup
 
 ### EPPlus
 
-Locked at EPPlus **v4** (free licence; v5+ is commercial). Supports `DataSet` directly and a `TransformData` callback for per-cell value transformation. Best pick when you need raw dictionary access plus cell-level control.
+**Deprecated.** Locked at EPPlus **4.5.3.3**, the last release under a free licence (v5+ is commercial). nuget.org marks that release as legacy and it receives no fixes; it depends on `System.Drawing.Common`, which throws on non-Windows from .NET 6 on, so treat the backend as Windows-only. It is the only backend that writes a `DataSet` directly and takes a `TransformData` callback for per-cell value transformation — use it for those alone, and MiniExcel or ClosedXML otherwise.
 
 ```csharp
 // Write from a DataSet
@@ -152,6 +152,8 @@ var products = sheets.First().Data!;            // ICollection<Product>
 
 Uses Npoi.Mapper for property-to-column binding. Also has a generic `ExcelManager<T>`. Good for scenarios where column names match property names (or are annotated).
 
+NPOI is pinned to exactly **2.7.1**. From 2.8.0 its binaries on nuget.org carry an Open Source Maintenance Fee agreement that requires a paid subscription from organisations with annual revenue of US$10,000 or more. Keep NPOI out of your own package references: a direct reference to 2.8 or later overrides the pin with only a restore warning (NU1608), and brings the application under that agreement.
+
 <!-- no-compile -->
 ```csharp
 IExcelService<Order> excel = new Regira.Office.Excel.NpoiMapper.ExcelManager<Order>();
@@ -161,7 +163,7 @@ IExcelService<Order> excel = new Regira.Office.Excel.NpoiMapper.ExcelManager<Ord
 
 | Feature | ClosedXML | EPPlus | MiniExcel | NpoiMapper |
 |---------|-----------|--------|-----------|------------|
-| **Recommended for** | Simple R/W | Callbacks & DataSet | Large files / typed | Type mapping |
+| **Recommended for** | Simple R/W | Callbacks & DataSet (deprecated) | Large files / typed | Type mapping |
 | **Generic `<T>`** | — | — | ✓ | ✓ |
 | **Low memory** | — | — | ✓ | — |
 | **DataSet support** | — | ✓ | — | — |
