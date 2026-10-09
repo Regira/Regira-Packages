@@ -514,6 +514,7 @@
         "src/PDF.Spire/PDF.Spire.csproj",
         "src/PDF.Puppeteer/PDF.Puppeteer.csproj",
         "src/PDF.Playwright/PDF.Playwright.csproj",
+        "src/PDF.Gotenberg/PDF.Gotenberg.csproj",
         "src/PDF.PDFtoPrinter/PDF.PDFtoPrinter.csproj",
         "src/Drawing.SkiaSharp/Drawing.SkiaSharp.csproj"
       ],

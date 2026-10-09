@@ -36,7 +36,7 @@ like it has no content accessor at all.
 | `Regira.Office.PDF.Defaults` | `PdfDefaults` |
 | `Regira.Office.PDF.Drawing` | `PdfImageCreator`, `PdfToImageLayerOptions` |
 | `Regira.Office.PDF.Printer` | `PdfPrinterInput` |
-| **Providers** | `Regira.Office.PDF.SelectPdf` · `…DocNET` · `…Spire` · `…Puppeteer` · `…MsPlaywright` → `PdfManager`; `Regira.Office.PDF.MiniPdf` · `…PdfPig` → `PdfService`; `Regira.Office.PDF.PDFtoPrinter` · `…PockyBum522` → `PdfPrinter` |
+| **Providers** | `Regira.Office.PDF.SelectPdf` · `…DocNET` · `…Spire` · `…Puppeteer` · `…MsPlaywright` → `PdfManager`; `Regira.Office.PDF.MiniPdf` · `…PdfPig` · `…Gotenberg` → `PdfService`, and `Regira.Office.PDF.Gotenberg.DependencyInjection` → `ServiceCollectionExtensions` (`AddGotenbergPdf`); `Regira.Office.PDF.PDFtoPrinter` · `…PockyBum522` → `PdfPrinter` |
 
 ## Barcodes & QR
 
@@ -125,6 +125,7 @@ Regira.Office.Models             → PageSize, PageOrientation, Margins
 Regira.IO.Abstractions           → IMemoryFile          (the return type)
 Regira.IO.Extensions             → GetBytes(), GetStream()
 Regira.Office.PDF.MsPlaywright   → PdfManager           (registration only)
+Regira.Office.PDF.Gotenberg.DependencyInjection → ServiceCollectionExtensions  (AddGotenbergPdf, through a Gotenberg server)
 ```
 
 ### QR code / barcode image

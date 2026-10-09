@@ -10,6 +10,7 @@ Regira Office.PDF provides a **unified abstraction** for PDF operations — HTML
 | `PDF.SelectPdf` | `Regira.Office.PDF.SelectPdf` | Select.HtmlToPdf | ✓ full | — | — | — |
 | `PDF.Puppeteer` | `Regira.Office.PDF.Puppeteer` | PuppeteerSharp | ✓ full | — | — | — |
 | `PDF.Playwright` | `Regira.Office.PDF.MsPlaywright` | Microsoft.Playwright | ✓ full | — | — | — |
+| `PDF.Gotenberg` | `Regira.Office.PDF.Gotenberg` | Gotenberg server (Chromium) | ✓ full | — | — | — |
 | `PDF.PdfPig` | `Regira.Office.PDF.PdfPig` | PdfPig + PDFtoImage | — | — | merge, split, img↔pdf, text | — |
 | `PDF.DocNET` | `Regira.Office.PDF.DocNET` | Docnet.Core (deprecated) | — | — | merge, split, img↔pdf, text | — |
 | `PDF.MiniPdf` | `Regira.Office.PDF.MiniPdf` | MiniPdf | — | ✓ docx, xlsx, pptx | — | — |
@@ -23,6 +24,9 @@ Regira Office.PDF provides a **unified abstraction** for PDF operations — HTML
 <!-- HTML→PDF (recommended — headless Chromium, any OS) -->
 <PackageReference Include="Regira.Office.PDF.MsPlaywright" Version="6.*" />
 <PackageReference Include="Regira.Office.PDF.Puppeteer" Version="6.*" />
+
+<!-- HTML→PDF through a Gotenberg server (Chromium in a container of its own, none in the application) -->
+<PackageReference Include="Regira.Office.PDF.Gotenberg" Version="6.*" />
 
 <!-- HTML→PDF (Windows, up to five pages, nothing to download) -->
 <PackageReference Include="Regira.Office.PDF.SelectPdf" Version="6.*" />
@@ -233,6 +237,50 @@ advance. Each conversion starts a browser of its own, which takes one to three s
   <div style="text-align:center">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>
   ```
 - **Backgrounds.** Chromium prints as a printer would: CSS background colours and images are left out.
+
+### Gotenberg — HTML→PDF without a browser in the application
+
+`PdfService` posts the HTML to the Chromium route of a [Gotenberg](https://gotenberg.dev) server (MIT, a Docker image
+bundling Chromium and LibreOffice). It applies every `HtmlInput` setting as Playwright does: page, margins, header and
+footer bands and page numbers are those described above, and backgrounds are left out. Nothing runs or downloads in
+the application, and Chromium stays running in the container, so a one-page PDF takes about a tenth of a second once
+the server is warm. Pick it for container setups: an application image that must stay slim or may download nothing at
+run time, or a deployment that already runs Gotenberg for Word.Gotenberg.
+
+- **Fonts.** Text renders in the fonts installed in the Gotenberg image, not the host's, so a page laid out through
+  Playwright on Windows can wrap differently. Web fonts by URL or `data:` URI render alike on every backend.
+- **URLs.** An absolute URL in the HTML is fetched from the container, where `localhost` is the container itself. HTML
+  built from user input can make the server request internal addresses: restrict them with Gotenberg's outbound URL
+  filtering, which answers `403` for a refused URL.
+- **Errors.** A refused request throws `HttpRequestException` carrying the status code and Gotenberg's message: `400`
+  for settings Chromium refuses (margins that leave no room for content), `503` for a conversion past the server's
+  `--api-timeout` (30 seconds by default). Raise that on the server as well as `Timeout` here for large documents: the
+  whole HTML, `data:` images included, goes over HTTP on every call.
+
+Start a server and register the service:
+
+```bash
+docker run --rm -p 3000:3000 gotenberg/gotenberg:8
+```
+
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+using Regira.Office.PDF.Gotenberg.DependencyInjection;
+
+IServiceCollection services = new ServiceCollection();
+
+services.AddGotenbergPdf(o =>
+{
+    o.BaseUrl = "http://localhost:3000";
+    o.Timeout = TimeSpan.FromMinutes(2);
+});
+```
+
+`AddGotenbergPdf` registers `IHtmlToPdfService` on an `HttpClient` named `ServiceCollectionExtensions.HttpClientName`
+— add handlers or resilience through `services.AddHttpClient(ServiceCollectionExtensions.HttpClientName)` — which
+keeps its own base address and credentials beside Word.Gotenberg's, even when both point at one server. `Username` and
+`Password` send basic authentication, for a server started with `--api-enable-basic-auth`. Without DI, construct
+`PdfService` with an `HttpClient` whose `BaseAddress` points at the server.
 
 ### SelectPdf — HTML→PDF on Windows, up to five pages
 

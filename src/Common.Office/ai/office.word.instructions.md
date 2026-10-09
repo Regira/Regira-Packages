@@ -438,4 +438,7 @@ Office API serves the rest, its `IPdfToImageService` included. For template inpu
 or nested documents, register a backend with a document model as the `IWordCreator` —
 `builder.Services.AddTransient<IWordCreator, Regira.Office.Word.Aspose.WordService>()` beside its config.
 
+The same server converts HTML to PDF through its Chromium route: `Regira.Office.PDF.Gotenberg` registers
+`IHtmlToPdfService` with `AddGotenbergPdf`, on a client of its own (see `office.pdf.instructions`).
+
 <!-- {% endraw %} -->

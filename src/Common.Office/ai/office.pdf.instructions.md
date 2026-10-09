@@ -23,6 +23,9 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 <PackageReference Include="Regira.Office.PDF.MsPlaywright" Version="6.*" />
 <PackageReference Include="Regira.Office.PDF.Puppeteer" Version="6.*" />
 
+<!-- HTML→PDF through a Gotenberg server (Chromium in a container of its own, none in the application) -->
+<PackageReference Include="Regira.Office.PDF.Gotenberg" Version="6.*" />
+
 <!-- HTML→PDF (Windows, up to five pages, nothing to download) -->
 <PackageReference Include="Regira.Office.PDF.SelectPdf" Version="6.*" />
 
@@ -52,6 +55,7 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 | `PDF.SelectPdf` | Select.HtmlToPdf | ✓ full | — | — | — | Pulls `System.Drawing.Common`, which throws on non-Windows from .NET 6 on — treat as **Windows**. The free Community Edition converts only the first **five pages'** worth of a document and drops the rest without an error or a notice |
 | `PDF.Puppeteer` | PuppeteerSharp | ✓ full | — | — | — | **Downloads Chromium on first use** (`BrowserFetcher().DownloadAsync()`) — needs network + disk at runtime, or a pre-seeded cache |
 | `PDF.MsPlaywright` | Microsoft.Playwright | ✓ full | — | — | — | **Installs its browser on first use** — same constraint; the install is guarded by a process-wide lock, so the first request pays for it |
+| `PDF.Gotenberg` | Gotenberg server (Chromium) | ✓ full | — | — | — | **Needs a running Gotenberg server** (`gotenberg/gotenberg:8`); no browser in the application and nothing downloaded at run time |
 | `PDF.PdfPig` | PdfPig + PDFtoImage | — | — | merge, split, img↔pdf, text | — | PdfPig is fully managed; page images render through PDFtoImage over PDFium, which ships native binaries for Windows, Linux and macOS (x64 and arm64). On Linux it carries SkiaSharp's dependency-free native library; an application that adds `SkiaSharp.NativeAssets.Linux` itself gets that one instead, which needs `libfontconfig1` |
 | `PDF.DocNET` | Docnet.Core | — | — | merge, split, img↔pdf, text | — | **Deprecated.** Docnet.Core has had no release since 2.6.0 (2023) and bundles a PDFium build from 2022, which parses every PDF it is given — a risk for uploaded files. Managed wrapper over a native library — the RID must be one `Docnet.Core` ships binaries for |
 | `PDF.MiniPdf` | MiniPdf | — | ✓ docx, xlsx, pptx | — | — | Managed and in-process: no Office, server or browser. MiniPdf lays documents out itself, so a complex layout comes out less faithful than through LibreOffice or Word. Text renders in the host's system fonts — on a host with few (a container), register TrueType fonts once at startup with `MiniSoftware.MiniPdf.RegisterFont`, a registration for the whole process |
@@ -61,14 +65,16 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 **Recommendations:**
 - HTML → PDF: **Playwright** — headless Chromium on any OS, every `HtmlInput` setting, no page limit; the browser is
-  installed on first use (or in advance). **Puppeteer** behaves alike. **SelectPdf** only where nothing may be
-  downloaded and the host is Windows: it drops everything past page five
+  installed on first use (or in advance). **Puppeteer** behaves alike. **Gotenberg** for container setups: an
+  application image that must stay slim or may download nothing at run time, or a deployment that already runs
+  Gotenberg for Word.Gotenberg. **SelectPdf** only where nothing may be downloaded and the host is Windows: it drops
+  everything past page five
 - Office documents → PDF: **MiniPdf** — `.docx`, `.xlsx` and `.pptx`, in-process, no licence and no server. For a
   Word document that must lay out as Word does, convert it with a Word backend (`IWordConverter`) instead
 - PDF operations: **PdfPig** (merge, split, page removal, images, text extraction) — cross-platform, no licence
 - Printing: **Spire** (operations + print) or **PDFtoPrinter** (print-only, Windows)
 
-**Chromium behaviour** (`PDF.MsPlaywright` and `PDF.Puppeteer`):
+**Chromium behaviour** (`PDF.MsPlaywright`, `PDF.Puppeteer` and `PDF.Gotenberg`):
 - `Format` and `Orientation` set the paper (A0–A10); the CSS `@page` size is not used. `Margins` are in units of `DPI`.
 - The header takes a band of `HeaderHeight` mm below the top margin and the footer `FooterHeight` mm above the bottom
   margin (45 pt and 35 pt when `null`), between the left and right margins; the body stays clear of both bands.
@@ -76,7 +82,25 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
   inline styles, images as `data:` URIs. `<span class="pageNumber"></span>` and `<span class="totalPages"></span>`
   are filled with the page number and count.
 - CSS background colours and images are left out, as a printer would.
-- Each `Create` starts its own browser: one to three seconds per PDF.
+- Playwright and Puppeteer start a browser for each `Create`: one to three seconds per PDF. Gotenberg keeps Chromium
+  running in its container: a one-page PDF takes about a tenth of a second once the server is warm.
+
+**Gotenberg behaviour** (`Regira.Office.PDF.Gotenberg.PdfService`, registered with `AddGotenbergPdf`):
+- Text renders in the fonts installed in the Gotenberg image, not the host's, so a page laid out through Playwright on
+  Windows can wrap differently. Web fonts by URL or `data:` URI render alike on every backend.
+- An absolute URL in the HTML is fetched from the container, where `localhost` is the container itself. HTML built
+  from user input can make the server request internal addresses: restrict them with Gotenberg's outbound URL
+  filtering, which answers `403` for a refused URL.
+- A refused request throws `HttpRequestException` carrying the status code and Gotenberg's message: `400` for
+  settings Chromium refuses (margins that leave no room for content), `503` for a conversion past the server's
+  `--api-timeout` (30 s by default).
+- The whole HTML, `data:` images included, goes over HTTP on every call.
+- `AddGotenbergPdf` registers `IHtmlToPdfService` on an `HttpClient` named
+  `Regira.Office.PDF.Gotenberg.DependencyInjection.ServiceCollectionExtensions.HttpClientName` (add handlers or
+  resilience through `services.AddHttpClient(HttpClientName)`), its own beside Word.Gotenberg's even when both point
+  at one server. `Username` and `Password` send basic authentication, for a server started with
+  `--api-enable-basic-auth`. Without DI, construct `PdfService` with an `HttpClient` whose `BaseAddress` points at the
+  server.
 
 **SelectPdf behaviour:** a header or footer is rendered as a page of its own, with the default 8px around its body —
 reset it (`body{margin:0}`) to fill the band — and shows no page numbers. Every page holds the whole document, clipped
@@ -267,6 +291,13 @@ IMemoryFile file = await pdf.Create(new HtmlInput
     HtmlContent = "<h1>Invoice</h1>",
     Format      = PageSize.A4,
     Orientation = PageOrientation.Portrait
+});
+
+// HTML → PDF through a Gotenberg server, for DI (Regira.Office.PDF.Gotenberg.DependencyInjection)
+services.AddGotenbergPdf(o =>
+{
+    o.BaseUrl = builder.Configuration["Gotenberg:BaseUrl"]!;   // e.g. http://gotenberg:3000
+    o.Timeout = TimeSpan.FromMinutes(2);                       // raise --api-timeout on the server too
 });
 
 // Word, Excel or PowerPoint → PDF (MiniPdf)

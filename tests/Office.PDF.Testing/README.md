@@ -3,8 +3,8 @@
 Tests for the PDF backends: [PDF.PdfPig](../../src/PDF.PdfPig/README.md), [PDF.DocNET](../../src/PDF.DocNET/README.md)
 and [PDF.Spire](../../src/PDF.Spire/README.md) for PDF operations, [PDF.MiniPdf](../../src/PDF.MiniPdf/README.md) for
 Word, Excel and PowerPoint to PDF, and [PDF.SelectPdf](../../src/PDF.SelectPdf/README.md),
-[PDF.Playwright](../../src/PDF.Playwright/README.md) and [PDF.Puppeteer](../../src/PDF.Puppeteer/README.md) for HTML to
-PDF. NUnit.
+[PDF.Playwright](../../src/PDF.Playwright/README.md), [PDF.Puppeteer](../../src/PDF.Puppeteer/README.md) and
+[PDF.Gotenberg](../../src/PDF.Gotenberg/README.md) for HTML to PDF. NUnit.
 
 ## How the suite is built
 
@@ -26,7 +26,9 @@ PDF. NUnit.
   the start of a run. Diff two runs' facts to see what a vendor upgrade or a change moved.
 
 `SpireTests` pins the limits of FreeSpire.PDF's free edition — ten pages to a PDF, three rendered — so an upgrade
-that moves them fails there. `MiniPdfTests` covers the only `IDocumentToPdfService`.
+that moves them fails there. `MiniPdfTests` covers the only `IDocumentToPdfService`. `GotenbergTests` adds what only
+a server backend meets: HTML without a charset declaration reads as UTF-8, and a refused request surfaces as
+`HttpRequestException` with its status code.
 
 ## Running
 
@@ -36,6 +38,11 @@ dotnet test tests/Office.PDF.Testing
 
 - `Browser`: `PlaywrightTests` and `PuppeteerTests` download Chromium the first time they run, so that run needs
   network access; each PDF takes one to three seconds. Skip them with `--filter "TestCategory!=Browser"`.
+- `Containers`: `GotenbergTests` runs against a real Gotenberg server. `GOTENBERG_URL` points it at a running one;
+  otherwise it starts a `gotenberg/gotenberg:8` container in Docker when `REGIRA_PROVIDER_TESTS=containers` (set by
+  `Regira.runsettings`), and skips when neither applies or Docker is unavailable. `REGIRA_CONTAINER_REUSE=1` keeps
+  the container between runs (see [CONTRIBUTING.md](../../CONTRIBUTING.md)). Skip it with
+  `--filter "TestCategory!=Containers"`.
 - `SpireTests` and `SelectPdfTests` need Windows: both render through GDI+. The fixtures have no platform guard.
 
 No secrets. Inputs are in `Assets/Input`.

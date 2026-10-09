@@ -97,6 +97,7 @@
   </Folder>
   <Folder Name="/src/Office/PDF/">
     <Project Path="src/PDF.DocNET/PDF.DocNET.csproj" />
+    <Project Path="src/PDF.Gotenberg/PDF.Gotenberg.csproj" />
     <Project Path="src/PDF.MiniPdf/PDF.MiniPdf.csproj" />
     <Project Path="src/PDF.PdfPig/PDF.PdfPig.csproj" />
     <Project Path="src/PDF.PDFtoPrinter/PDF.PDFtoPrinter.csproj" />

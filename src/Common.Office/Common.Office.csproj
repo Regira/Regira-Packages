@@ -39,6 +39,7 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Regira.Office.PDF.MsPlaywright" />
     <InternalsVisibleTo Include="Regira.Office.PDF.Puppeteer" />
+    <InternalsVisibleTo Include="Regira.Office.PDF.Gotenberg" />
   </ItemGroup>
   <!-- the PDF operation backends check split ranges alike (PDF/Internal) without making the check public API -->
   <ItemGroup>

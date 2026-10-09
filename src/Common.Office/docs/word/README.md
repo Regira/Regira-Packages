@@ -508,6 +508,8 @@ services.AddGotenbergWord(o =>
 
 > **Timeouts:** the server enforces its own limit per request (`--api-timeout`, 30 seconds by default) and answers `503` when a conversion exceeds it; the exception message says so. Raise it on the server as well as `Timeout` here for large documents.
 
+> **HTML to PDF:** the same server converts HTML through its Chromium route. `Regira.Office.PDF.Gotenberg` registers `IHtmlToPdfService` with `AddGotenbergPdf`, on a client of its own — see [Gotenberg](../pdf/README.md#gotenberg--htmlpdf-without-a-browser-in-the-application) in the PDF notes.
+
 ### Office API
 
 `WordClient`, in `Regira.Office.Clients`, implements `IWordCreator`, `IWordConverter`, `IWordMerger` and `IWordTextExtractor` against a Regira Office API, registered with `AddOfficeClients`.

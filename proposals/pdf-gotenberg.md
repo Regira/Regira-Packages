@@ -4,9 +4,9 @@ As of 2026-10-08. Sources: the `Regira-Packages` repository, branch `wip` at `ad
 PDF.Puppeteer and PDF.SelectPdf apply every `HtmlInput` setting through the shared `ChromiumPdfLayout`; Gotenberg's
 documentation of the route, [Convert HTML to PDF](https://gotenberg.dev/docs/convert-with-chromium/convert-html-to-pdf),
 read on 2026-10-08; and a throwaway spike against a local `gotenberg/gotenberg:8` container, which reported version
-8.37.0, read back with the PdfPig library (see *What the spike showed*). Nothing on this page has been built.
+8.37.0, read back with the PdfPig library (see *What the spike showed*).
 
-**Status: proposal. Four decisions are open (see *Decisions*).**
+**Status: built on 2026-10-09 for 6.5.1, uncommitted. All four decisions were built as recommended; *Outcome* records where the build differs from the design.**
 
 ## Recommendation
 
@@ -179,3 +179,25 @@ Regira-Website's `packages.json` picks the package up from `src/` the next time 
   Gotenberg's outbound URL filtering (`403`) is the guard, and the guide should say so.
 - **Request size and time.** The whole HTML, including `data:` images, goes over HTTP on every call. A large document
   meets Gotenberg's `--api-timeout` (30 s by default), which the 503 hint names.
+
+## Outcome
+
+Built as designed, with these differences:
+
+- **Centimetres everywhere in the layout.** `ChromiumPdfLayout` writes its page size, its margins and the CSS
+  lengths inside the header and footer bands in centimetres, to four decimals, which keeps the millimetres'
+  thousandths. Playwright and Puppeteer pass the settings tests unchanged.
+- **The header and footer go as Chromium gives them.** `ChromiumPdfLayout` fills the missing one with an empty
+  template when only one is set, so both `header.html` and `footer.html` are sent whenever either is. The empty
+  footer adds nothing to the page.
+- **The shared header scenario sets `line-height:1`.** Gotenberg rendered `Header_And_Footer_Sit_On_Every_Page…`
+  2 pt lower than Playwright, failing by 0.14 pt. The image has no Arial, so a 12px span in the 16px band took Noto
+  Sans's taller `normal` line height. The scenario's header and footer now set `line-height:1`, as its body probe
+  already did, so the test measures band placement and not fonts. This is the *Fonts* risk, documented in the guides.
+- **Two fixture cases, not one.** The `400` case asks for margins that leave no room for content, which Chromium
+  refuses (*Chromium does not handle the provided settings*). A second case checks that HTML without a charset
+  declaration, which Gotenberg reads from a file, still reads as UTF-8.
+- **`Regira.runsettings`** names the Gotenberg fixtures among the container suites it opts in.
+
+Tests: all 146 in `Office.PDF.Testing` pass, `GotenbergTests` (12) included, against a server through `GOTENBERG_URL`
+and against a container the fixture started. GuideVerifier compiles the `office-pdf` and `office-word` snippets.

@@ -14,6 +14,7 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageReference Include="NUnit" Version="5.0.0" />
     <PackageReference Include="NUnit3TestAdapter" Version="6.3.0" />
+    <PackageReference Include="Testcontainers" Version="4.15.0" />
     <PackageReference Include="NUnit.Analyzers" Version="4.15.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -28,6 +29,7 @@
     <ProjectReference Include="..\..\src\Common.Web\Common.Web.csproj" />
     <ProjectReference Include="..\..\src\Drawing.SkiaSharp\Drawing.SkiaSharp.csproj" />
     <ProjectReference Include="..\..\src\PDF.DocNET\PDF.DocNET.csproj" />
+    <ProjectReference Include="..\..\src\PDF.Gotenberg\PDF.Gotenberg.csproj" />
     <ProjectReference Include="..\..\src\PDF.MiniPdf\PDF.MiniPdf.csproj" />
     <ProjectReference Include="..\..\src\PDF.PdfPig\PDF.PdfPig.csproj" />
     <ProjectReference Include="..\..\src\PDF.Playwright\PDF.Playwright.csproj" />

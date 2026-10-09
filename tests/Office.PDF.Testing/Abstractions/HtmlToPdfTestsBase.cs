@@ -78,9 +78,10 @@ public abstract class HtmlToPdfTestsBase(IHtmlToPdfService backend, string outpu
         {
             HtmlContent = ResetBody + string.Join("", Enumerable.Range(1, 3)
                 .Select(i => $"<div style=\"{(i > 1 ? "page-break-before:always;" : "")}font-size:20px;line-height:1\">Body{i}</div>")),
-            HeaderHtmlContent = ResetBody + "<span style=\"font-size:12px\">HeaderText</span>",
+            // line-height:1, so the words' place does not depend on the fonts the backend has
+            HeaderHtmlContent = ResetBody + "<div style=\"font-size:12px;line-height:1\">HeaderText</div>",
             HeaderHeight = headerHeight,
-            FooterHtmlContent = ResetBody + "<span style=\"font-size:12px\">FooterText</span>",
+            FooterHtmlContent = ResetBody + "<div style=\"font-size:12px;line-height:1\">FooterText</div>",
             FooterHeight = footerHeight,
             Margins = DimensionsUtility.MmToPt(margin)
         };
