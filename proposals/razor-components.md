@@ -2,7 +2,16 @@
 
 As of 2026-10-08. Sources: the `Regira-Packages` repository, branch `wip` at `378431c`; Microsoft Learn, [Render Razor components outside of ASP.NET Core](https://learn.microsoft.com/aspnet/core/blazor/components/render-components-outside-of-aspnetcore), read on 2026-10-08; the nuget.org metadata of Microsoft.AspNetCore.Components.Web (10.0.12), Microsoft.AspNetCore.Razor.Language (last release 6.0.36, published 2024-11-12), Microsoft.CodeAnalysis.Razor.Compiler (one preview, 10.0.0-preview.25277.114), RazorLight 2.3.1 (published 2023-01-16) and RazorEngineCore 2026.1.1 (published 2026-01-17), read on 2026-10-08; and a throwaway spike on .NET 8.0.30 and 10.0.11 (see *What the spike showed*). Nothing on this page has been built.
 
-**Status: proposal, not built. Five decisions are open (see *Decisions*).**
+**Status: built on `wip` on 2026-10-09, uncommitted, with each decision taken as recommended (see *Outcome*).**
+
+## Outcome
+
+Built on 2026-10-09 as designed, with the five recommended choices: `IHtmlComponentRenderer` and its extensions in Common.Web, `RazorComponentRenderer` in `Regira.Web.HTML.RazorComponents` with a new `HtmlRenderer` per call, and the `Render<TComponent, TModel>(model)` convenience setting `Model`.
+
+- **Tests.** `tests/Web.HTML.Testing` moved to `Microsoft.NET.Sdk.Razor`; `RazorComponentTests` (10 tests) covers the two mirrored templates, child and generic components, encoding, `MarkupString`, an async lifecycle method, `@inject` with and without a provider, an unknown parameter and a template's own exception. The project's 47 tests pass.
+- **The Razor SDK and `.cshtml` files.** On SDK 10.0.400 the template files did not fail the build, as the spike found: the SDK warns `RAZORSDK1004`, and with `AddRazorSupportForMvc` it compiles them into the assembly as views. `EnableDefaultRazorGenerateItems=false` stays, so they remain template text, and the guides give that reason rather than a build failure.
+- **Docs.** The new example in `docs/examples.md` is Example 6, appended, so the `#example-5-…` anchor that System.Hosting's README links to keeps working.
+- **Versions.** `Regira.Web` gains a public type at the in-flight 6.5.1, which the rule would make a minor bump.
 
 ## Recommendation
 

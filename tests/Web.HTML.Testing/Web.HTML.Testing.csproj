@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
 	<TargetFramework>net10.0</TargetFramework>
 	<ImplicitUsings>enable</ImplicitUsings>
@@ -14,6 +14,8 @@
 	<!-- Prevent error "Can't load metadata reference from the entry assembly" -->
 	<PreserveCompilationContext>true</PreserveCompilationContext>
 	<PreserveCompilationReferences>true</PreserveCompilationReferences>
+	<!-- The .cshtml files in Assets/Input are template text for RazorLight and RazorEngineCore, not MVC views -->
+	<EnableDefaultRazorGenerateItems>false</EnableDefaultRazorGenerateItems>
   </PropertyGroup>
   <ItemGroup>
 	<PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
@@ -29,6 +31,7 @@
 	</PackageReference>
   </ItemGroup>
   <ItemGroup>
+	<ProjectReference Include="..\..\src\Web.HTML.RazorComponents\Web.HTML.RazorComponents.csproj" />
 	<ProjectReference Include="..\..\src\Web.HTML.RazorEngineCore\Web.HTML.RazorEngineCore.csproj" />
 	<ProjectReference Include="..\..\src\Web.HTML.RazorLight\Web.HTML.RazorLight.csproj" />
 	<ProjectReference Include="..\..\src\Serializing.Newtonsoft\Serializing.Newtonsoft.csproj" />

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Web.HTML.RazorComponents</RootNamespace>
+    <PackageId>Regira.Web.HTML.RazorComponents</PackageId>
+    <AssemblyName>Regira.Web.HTML.RazorComponents</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.5.1</Version>
+    <Description>Renders compiled Razor components to HTML with ASP.NET Core's HtmlRenderer for Regira.</Description>
+    <PackageTags>regira;web;html;razor;razor-components;templates</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common.Web\Common.Web.csproj" />
+  </ItemGroup>
+</Project>

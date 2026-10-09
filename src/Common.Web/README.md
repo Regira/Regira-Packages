@@ -10,6 +10,7 @@ Regira Web provides Razor-based HTML template rendering plus common web utilitie
 | `Common.Web` | `Regira.Web` | Core web utilities, middleware, exception handling |
 | `Web.Analytics` | `Regira.Web.Analytics` | Abstract visitor analytics — pluggable capture, enrichment, and storage hooks |
 | `Web.Analytics.GeoIP2` | `Regira.Web.Analytics.GeoIP2` | Country/city enrichment from a local MaxMind GeoIP2/GeoLite2 database |
+| `Web.HTML.RazorComponents` | `Regira.Web.HTML.RazorComponents` | Razor components (`.razor`) compiled with the app, rendered via ASP.NET Core's `HtmlRenderer` |
 | `Web.HTML.RazorEngineCore` | `Regira.Web.HTML.RazorEngineCore` | Razor templates via RazorEngineCore |
 | `Web.HTML.RazorLight` | `Regira.Web.HTML.RazorLight` | Razor templates via RazorLight |
 | `Web.Swagger` | `Regira.Web.Swagger` | Swagger/OpenAPI JWT & API Key support |
@@ -29,6 +30,9 @@ Host configuration (`WebHostOptions`), background task queues and the Windows Se
 <!-- Razor templates (pick one) -->
 <PackageReference Include="Regira.Web.HTML.RazorEngineCore" Version="6.*" />
 <PackageReference Include="Regira.Web.HTML.RazorLight" Version="6.*" />
+
+<!-- Razor components compiled with the app -->
+<PackageReference Include="Regira.Web.HTML.RazorComponents" Version="6.*" />
 
 <!-- Swagger -->
 <PackageReference Include="Regira.Web.Swagger" Version="6.*" />
@@ -106,6 +110,70 @@ string html = await parser.Parse(razorTemplate, model);
 Both Razor parsers compile a template into an assembly that stays loaded until the process exits, and cache it by the template text for the whole process: each distinct template compiles once, whichever parser instance renders it, and later calls only render. Keep the template text fixed and pass the data as the model. Data concatenated into the text makes a new template on every call, which compiles every time and grows memory without bound.
 
 RazorLight's `Options.TemplateKey` replaces the text with a fixed key, cached per parser instance. The parser renders the first template it compiled on every later call, even when it is passed a different template, and each new instance compiles again. Leave it unset; a parser that does set one must get a single template and be registered as a singleton.
+
+---
+
+## Razor Components
+
+`Regira.Web.HTML.RazorComponents` renders a Razor component — a `.razor` file compiled with the application — to HTML with ASP.NET Core's `HtmlRenderer`. It takes a component type rather than template text, so `RazorComponentRenderer` implements `IHtmlComponentRenderer` rather than `IHtmlParser`. A template is checked at build time, nothing compiles at runtime, and the package has no third-party dependency. Templates that change without a rebuild — stored in a database, edited by users, deployed as files — need RazorLight instead.
+
+### IHtmlComponentRenderer
+
+<!-- no-compile -->
+```csharp
+Task<string> Render(Type componentType, IDictionary<string, object?>? parameters = null);
+
+// Extensions
+Task<string> Render<TComponent>(IDictionary<string, object?>? parameters = null);
+Task<string> Render<TComponent, TModel>(TModel model);   // sets the component's Model parameter
+```
+
+Each dictionary entry sets the component parameter of that name; the `Type` form serves a template picked at runtime.
+
+### Registration
+
+```csharp
+using Regira.Web.HTML.RazorComponents;
+
+var services = new ServiceCollection();
+services.AddTransient<IHtmlComponentRenderer, RazorComponentRenderer>();
+```
+
+Register it transient: the renderer takes the provider that resolves it, so `@inject` resolves from the request's scope. As a singleton it would hold the root provider, and a scoped service such as a `DbContext` fails. Without DI, `new RazorComponentRenderer()` renders any component that injects nothing.
+
+### A template
+
+The model is a parameter named `Model`, which `Render<TComponent, TModel>` sets:
+
+```razor
+<h1>Invoice #@Model.Number</h1>
+<p>Customer: @Model.CustomerName</p>
+
+@code {
+    [Parameter, EditorRequired] public InvoiceDto Model { get; set; } = null!;
+}
+```
+
+<!-- no-compile -->
+```csharp
+string html = await renderer.Render<InvoiceTemplate, InvoiceDto>(invoice);
+```
+
+A `.cshtml` template ports by replacing `@model InvoiceDto` with the `[Parameter]` property and `@Raw(value)` with `@((MarkupString)value)`.
+
+The `.razor` files compile in the consuming project, which needs the Razor SDK: `Microsoft.NET.Sdk.Web` has it, and a worker, console app or class library uses `Microsoft.NET.Sdk.Razor`. A project on the Razor SDK that also holds `.cshtml` template files for RazorLight or RazorEngineCore sets `<EnableDefaultRazorGenerateItems>false</EnableDefaultRazorGenerateItems>`, so the SDK leaves them as template text rather than taking them for MVC views.
+
+### Rendering behaviour
+
+- **Encoding.** Values are HTML-encoded; `@((MarkupString)value)` writes markup.
+- **Async.** `OnInitializedAsync` and `OnParametersSetAsync` are awaited before the HTML is returned.
+- **Components.** Child components and generic components (`@typeparam`) render.
+- **Layouts.** `@layout` has no effect. A shared document frame is a component with a `ChildContent` parameter that wraps the content.
+- **HTML only.** No `NavigationManager`, no event handlers, no render modes, no JavaScript interop.
+- **Culture.** The caller's `CurrentCulture`, so `UseRequestCulture` applies to the rendered HTML.
+- **Whitespace.** Whitespace between elements in code blocks is trimmed; `@preservewhitespace true` keeps it.
+- **Exceptions** pass through unwrapped: the template's own, and `InvalidOperationException` for a parameter the component does not declare or an `@inject` service the provider cannot resolve.
+- **Memory.** Each call renders on its own `HtmlRenderer` and disposes it, so nothing is retained between calls.
 
 ---
 
@@ -213,7 +281,7 @@ builder.Services.AddControllers().DisplayEnumAsString();
 ## Overview
 
 1. **[Index](https://regira.github.io/Regira-Packages/src/Common.Web/)** — Overview, template engines, middleware, and Swagger
-1. [Examples](https://regira.github.io/Regira-Packages/src/Common.Web/docs/examples.html) — HTML templating, exception handling, background tasks
+1. [Examples](https://regira.github.io/Regira-Packages/src/Common.Web/docs/examples.html) — HTML templating, exception handling, background tasks, Razor components
 
 ## License
 

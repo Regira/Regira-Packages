@@ -141,6 +141,7 @@
     <Project Path="src/Common.Web/Common.Web.csproj" />
     <Project Path="src/Web.Analytics/Web.Analytics.csproj" />
     <Project Path="src/Web.Analytics.GeoIP2/Web.Analytics.GeoIP2.csproj" />
+    <Project Path="src/Web.HTML.RazorComponents/Web.HTML.RazorComponents.csproj" />
     <Project Path="src/Web.HTML.RazorEngineCore/Web.HTML.RazorEngineCore.csproj" Id="916bbb45-e9ad-4d88-b82e-b7c754e16422" />
     <Project Path="src/Web.HTML.RazorLight/Web.HTML.RazorLight.csproj" />
     <Project Path="src/Web.Swagger/Web.Swagger.csproj" />

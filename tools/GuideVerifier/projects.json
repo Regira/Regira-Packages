@@ -180,6 +180,7 @@
         "src/Web.Swagger/Web.Swagger.csproj",
         "src/Web.HTML.RazorLight/Web.HTML.RazorLight.csproj",
         "src/Web.HTML.RazorEngineCore/Web.HTML.RazorEngineCore.csproj",
+        "src/Web.HTML.RazorComponents/Web.HTML.RazorComponents.csproj",
         "src/System.Hosting/System.Hosting.csproj",
         "src/Serializing.Newtonsoft/Serializing.Newtonsoft.csproj"
       ],
