@@ -1,298 +1,220 @@
 # Transactions and attachment file consistency in Regira Entities
 
-As of 2026-10-01. Sources: the `Regira-Packages` repository, branch `wip` at `5219481`. EF Core hook behaviour comes from the `dotnet/efcore` sources on `main`: `StateManager`, `DbContext`, `RelationalTransaction` and `BatchExecutor`.
+As of 2026-10-10. Sources: the `Regira-Packages` repository, branch `wip` at `e73e5c0`, and probes run against that commit. The probes used SQLite, a `BinaryFileService` in a temporary folder, and the `AttachmentPrimerTests` fixture. EF Core hook behaviour comes from the `dotnet/efcore` sources on `main` (`DbContext`, `BatchExecutor`). A probe confirmed the hooks for the concurrency case.
 
-**Status: proposal, not built. Five questions are open (see *Open questions*). No target version is set.**
+**Status: built 2026-10-10, uncommitted, at the family's unpublished 6.5.1 (see *Outcome*). The attachment half shipped in 6.5.0 (`b5a29bb`, 2026-10-04), built on a different design from the one first proposed here (see *What 6.5.0 built*). The four fixes, their tests and the documentation of Part 1 followed the recommended answer to every open question.**
 
 ## Recommendation
 
-Decision: add no transaction API to the entity services. Make the attachment pipeline aware of the commit instead, so the database stays the source of truth. After a failure, storage may hold a file too many, but a row never points at a missing file.
+Keep the 6.5.0 design. A public `AttachmentFileReactor` removes files after the commit, and the internal `SaveOutcomes` undoes the writes of a failed save. Add no transaction API. Fix the four paths the probes found. Two of them still let a row name a missing file:
 
-1. Document that a unit of work spanning several saves belongs to the consumer, and that the library joins a transaction the caller owns.
-2. Extend the commit tracking that `EntityReactorInterceptor` already does with actions bound to a commit. Code running inside a save registers work to run after the commit, or after a rollback.
-3. Rebuild `AttachmentPrimer` on that mechanism with three rules:
-   - A content write never overwrites a file.
-   - A failed save removes the files it wrote.
-   - A file is deleted only after the delete of its row has committed.
+1. **A caller's rollback to a savepoint.** At the commit the reactor removes the file of a replace or a delete that the rollback undid. The row then names a removed file.
+2. **A failed save that EF did not roll back.** The save removes the file it wrote, although the row it wrote may still be committed.
+3. **A delete without the `AttachmentFileReactor`.** A stub delete throws, and a delete the database refuses has already lost its file.
+4. **A concurrency conflict** skips the reactor interceptor's discard.
 
-No outcome the mechanism cannot observe ever deletes a file. Commit actions only remove files whose rows are confirmed gone. Rollback actions only remove files whose rows were confirmed never written. If the outcome stays unknown, the cost is an orphaned file, never a dangling row.
+After the fixes, one rule holds: whatever outcome the library can observe, storage holds every file a stored row names. An outcome it cannot be sure of costs an orphaned file, never a dangling row.
+
+All four are fixes and add no public surface, so each is a patch.
 
 ## Part 1: database transactions need no new API
 
-Every write path in the library flushes exactly once, and EF wraps that flush in its own transaction.
+Every write path in the library flushes once, and EF wraps that flush in its own transaction.
 
 | Write path | Flushes | Transaction |
 | --- | --- | --- |
-| Generated endpoints (`ControllerExtensions` Save and Delete, both attachment controllers) | one `SaveChanges` | EF's implicit one |
+| Generated endpoints: controller actions and mapped minimal-API endpoints. Both send requests through `IEntitySender`, and the default handlers of `SaveCommand`, `PatchCommand`, `DeleteCommand` and the three attachment commands (upload, metadata update, file replace) each call `SaveChanges` | one `SaveChanges` | EF's implicit one |
+| The shared `AttachmentControllerBase` upload and replace | one `SaveChanges` | EF's implicit one |
 | `EntityWriteService.SaveChanges` | one `SaveChangesAsync`, then `ChangeTracker.Clear()` on success. On failure the tracker is kept, so the caller can retry | EF's implicit one |
-| A prepper that loads and changes related rows (`entities.patterns.md`) | the owner's single save | EF's implicit one |
+| A prepper that loads and changes related rows | the owner's single save | EF's implicit one |
 | `SaveChangesBreakingDeleteCycles` | two statements when it breaks a cycle, one save otherwise | opens its own when it breaks a cycle, or joins a caller-owned or ambient one |
+| An `IEntityPipelineBehavior` that opens a transaction around a request | the request's single save | the behaviour's own. Reactors, and so the attachment removals, wait for its commit |
 
-A unit of work that spans several saves or several services is the consumer's. The tools already exist: `BeginTransaction()` inside `CreateExecutionStrategy().Execute(...)`, or a `TransactionScope` with `TransactionScopeAsyncFlowOption.Enabled`. The library joins both. A transaction abstraction of our own would duplicate EF's. Every wrapper around a save would also have to detect the caller's transaction itself, and `Database.CurrentTransaction` never sees an ambient `TransactionScope` (`ai/learnings.md`, 2026-08-31).
+A unit of work that spans several saves or several services belongs to the consumer. The tools already exist: `BeginTransaction()` inside `CreateExecutionStrategy().Execute(...)`, or a `TransactionScope` with `TransactionScopeAsyncFlowOption.Enabled`. The library joins both. A transaction abstraction of our own would duplicate EF's, and every wrapper around a save would have to detect the caller's transaction itself. `Database.CurrentTransaction` never sees an ambient `TransactionScope` (`ai/learnings.md`, 2026-08-31).
 
-**Work:** one paragraph in each documentation layer. It says what the library guarantees and where the consumer takes over, and it joins the transaction text the reactors already carry. See step 4.
+No documentation layer says this yet. Today the commit only appears in the text on reactor timing (`docs/services.md` *Entity Reactors*, *How reactors run* in `entities.instructions.md`) and in the delete-cycle helper. Step 3 adds the paragraph.
 
-## Part 2: what the attachment pipeline does today
+## What 6.5.0 built
 
-1. **Preppers run inside `Add`, `Modify` and `Save`, and touch no storage.**
-   - `EntityAttachmentPrepper` keeps the stored `Attachment` on a link that arrives without one. When a new `Attachment` arrives, it marks the stored one `Deleted`.
-   - `RelatedAttachmentsPrepper` syncs an owner's `Attachments`. It builds a new `Attachment` from `NewBytes` and `NewFileName` where a new link carries them, and marks it `Added`. Under `IsStrictRelation` it marks as `Deleted` the `Attachment` of a link that is replaced, and of a link that is dropped.
-   - The validators run after the preppers, before the entity is tracked. A refused write takes back the rows its preppers marked, so it never reaches storage.
-2. **`SaveChanges` calls the primer interceptor first.** `EntityPrimerContainerInterceptor` runs the primers in `SavingChanges` and `SavingChangesAsync`, before EF opens its transaction.
-   - A plain `SaveChanges` runs them outside EF's retry loop, because the execution strategy wraps only the database save inside `StateManager`. The primers therefore run once per call, even under `EnableRetryOnFailure()`.
-   - A save inside a strategy delegate reruns `SavingChanges`, and so the primers, on every retry. That covers the caller's `CreateExecutionStrategy().Execute(...)` recipe and `SaveChangesBreakingDeleteCycles`.
-3. **`EntityAttachmentPrimer` runs next.** It fills a link's `Attachment.Identifier` from `IFileIdentifierGenerator` when it is empty. On a modified link it copies `NewFileName` and `NewBytes` onto the `Attachment`.
-4. **`AttachmentPrimer` then does the storage work.**
-   - For `Added` and `Modified` entries, it sets `ContentType` from `FileName` and writes the bytes whenever `HasContent()` holds.
-   - For `Deleted` entries, it deletes the file, loading `Path` first when it is missing.
-5. **Finally EF opens its transaction, writes the rows and commits.**
+The attachment work was built during the 6.5.0 pre-PR review rounds. Here is how it compares with what this proposal first designed:
 
-Storage is touched first and the database second, with nothing to undo either side.
+| Proposed | Built |
+| --- | --- |
+| Internal commit actions (`AfterCommit`, `AfterRollback`) on commit tracking extracted from `EntityReactorInterceptor` | Nothing was extracted. The removals after the commit are a public reactor, `AttachmentFileReactor<TAttachment, TKey>`, which `WithAttachments` registers and which rides the reactors' commit tracking. What a primer leaves to the end of a save goes to the internal `SaveOutcomes`: undone when the save fails, finished when it succeeds. `SaveOutcomes` follows the save, not the transaction |
+| A content write never overwrites a file | Built. `AttachmentPrimer` stores new content for a stored file under a key beside the stored one, unless the identifier generator already made a new key. `AttachmentFileService.SaveFile` never writes a stored item over another file |
+| A signal for content that came with the write (old open question 5) | Built as recommended: `StoredContent`, a weak table holding the content instance that `AttachmentProcessor` loaded or the primer stored. A rename on the link's own route leaves the file alone |
+| The concurrency hook (old open question 1) | `SaveOutcomes` listens to the context's `SaveChangesFailed` event, which a concurrency conflict raises, as well as the primer interceptor's failure hooks. A probe confirms that a conflict removes the new file |
+| Wiring a primer-only setup (old open question 2; the recommendation was to wire the reactor interceptor under `PrimerInterceptors`) | The other option was built. The startup warning for a context without the reactor interceptor names the attachment files. Without the reactor, the primer falls back: it removes a replaced file once the save succeeds, and a deleted attachment's file during the save |
+| Public or internal (old open question 3; internal recommended) | Internal. The only public addition is the reactor class |
+| A primer that throws runs the save's rollback actions | Built. The primer interceptor and the reactor interceptor report a failure of their own `SavingChanges` pass. Work left by a save that failed in another interceptor's `SavingChanges` is undone when the next primer pass begins |
+| A retry on the same tracker starts from the stored state | Built. A failed save gives the row back its `Identifier`, `Prefix`, `Path` and `Length` |
 
-| Operation | Storage step, before the database | The database then rejects the save |
-| --- | --- | --- |
-| Upload (`POST {objectId}/files`, or a new link in the owner's `Attachments`) | writes a new file | orphaned new file |
-| Replace (`PUT {objectId}/files/{id}`) | writes a new file, deletes the old one | orphaned new file. The surviving row points at the deleted old file |
-| Delete (`DELETE attachments/{id}`, or a link dropped from the owner's collection) | deletes the file | the row survives, the file is gone, and the client got a 409 saying nothing changed |
-| Content change on an existing link (`NewBytes`) | depends on the route, see below | see below |
-| Shared attachment replace (`PUT attachments/{id}` on `AttachmentControllerBase`) | writes under a fresh name derived from `FileName` | orphaned new file |
+The "never overwrite" rule, the stored-content signal and the reactor are described in `docs/attachments.md` (*Dependency Injection*) and in step 6 of the attachments section of `entities.instructions.md`.
 
-**The content change depends on the route.** `Identifier` is `[NotMapped]`. Only `AttachmentProcessor` fills it on a read.
+## Behaviour on `wip`
 
-- **Through the owner's save.** The owner's `Details` runs only the owner's processors, so the nested `Attachment` arrives without an `Identifier`. `EntityAttachmentPrimer` generates a fresh one, and the bytes land under a new name. A failed save orphans the new file. A successful one updates `Path` and leaks the old file.
-- **Through the link's own `PUT {objectId}/attachments/{id}`.** The original is read with `Details`, whose full include set makes `AttachmentProcessor` fill `Identifier` and load `Bytes`. `EntityAttachmentPrepper` keeps that `Attachment`. A write therefore lands on the stored file before the commit, and a failed save leaves the old metadata describing the new bytes.
-  - The loaded `Bytes` satisfy `HasContent()`, so a rename on this route also rewrites the stored file with its own bytes.
-  - How the stored `Attachment` is tracked on this route, and so whether a primer sees `NewBytes` or a rename at all, is untested. Step 0 pins it.
+With the reactor wiring that `UseDefaults()` sets:
 
-Two paths also lose a file **when the save succeeds**: the shared attachment replace, and a content change through the owner's save. Both update `Path` to the new file, and nothing deletes the previous one.
-
-**A storage failure partway through one save** is not consistent either. The primer loop may already have deleted file A when writing file B throws. EF never reaches the database, so A's row survives without its file.
-
-## Part 3: design
-
-### Actions bound to a commit
-
-The surface. Its names are provisional (open question 4), and whether it is public is open question 3.
-
-<!-- no-compile -->
-```csharp
-namespace Regira.Entities.EFcore.Extensions;
-
-public static class CommitActionExtensions
-{
-    // Runs once the rows of the current save are committed. Never throws into the caller; failures are logged.
-    public static void AfterCommit(this DbContext dbContext, Func<CancellationToken, Task> action);
-    // Runs once the rows of the current save are known not to have been written.
-    public static void AfterRollback(this DbContext dbContext, Func<CancellationToken, Task> action);
-    // Whether the commit tracking that runs them is wired (see "No commit tracking wired").
-    public static bool SupportsCommitActions(this DbContext dbContext);
-}
-```
-
-**Commit tracking is shared with the reactors.** `EntityReactorInterceptor` in `Regira.Entities.EFcore` already decides when a save is committed:
-
-- With no transaction open, it acts at `SavedChanges`.
-- Inside a caller's transaction, it waits for that transaction's `TransactionCommitted`. The wait is keyed on the `DbTransaction` itself, so contexts sharing it through `UseTransaction` are covered.
-- Inside an ambient scope, it acts at `TransactionCompleted` with status `Committed`.
-- A rollback, a failure and a transaction disposed without committing discard what waits.
-- Work waiting on a transaction object is dropped when a new transaction starts on it, because Npgsql reuses one `NpgsqlTransaction` per pooled connection.
-
-Its state lives in two `ConditionalWeakTable`s: the save in progress, keyed on the `DbContext`, and the work waiting for a commit, keyed on the `DbTransaction`. An undecided transaction's work is therefore collected with it.
-
-Extract that tracking into an internal component with a payload of its own, and enlist both the reactor batches and the commit actions in it. Do not write a second interceptor with its own lists. The extraction adds what the reactors never needed:
-
-- **Rollback dispatch.** Where the reactors only discard, rollback actions run on a failed or canceled save, on `TransactionRolledBack` and `TransactionFailed`, and on status `Aborted`.
-- **The concurrency hook** (see *Which failure hook fires* below).
-- **The savepoint rules** (see *Savepoints* below).
-- **A primer that throws.** EF calls `SavingChanges` outside the `try` that raises its failure hooks. The primer interceptor therefore runs the save's rollback actions itself before it rethrows.
-- **The reset point.** The reactor interceptor resets the save in progress in its own `SavingChanges`, which runs after the primer interceptor. Reset there, the commit actions' list would lose what the primers just registered. It is reset when the primer pass starts instead (`ai/learnings.md`: reset per-pass state when a pass starts).
-
-| Moment | Save outside any caller transaction | Save inside a caller's `BeginTransaction()` | Save inside an ambient `TransactionScope` |
+| Operation | The database refuses the save | Save succeeds | Caller's transaction rolls back after a successful save |
 | --- | --- | --- | --- |
-| A primer throws in `SavingChanges` | run this save's rollback actions, then rethrow | same | same |
-| Save succeeds (`SavedChanges`) | run commit actions, drop rollback actions | move both lists to the transaction bucket | move both lists to the scope bucket, and subscribe to `TransactionCompleted` |
-| Save fails (`SaveChangesFailed`, the concurrency hook, `SaveChangesCanceled`) | run rollback actions, drop commit actions | if EF rolled back to its own savepoint during this save, run rollback actions. Otherwise move them to the transaction bucket. Drop commit actions either way | move rollback actions to the scope bucket, drop commit actions |
-| Caller rolls back to a savepoint of its own | not applicable | drop every commit action in the bucket, keep its rollback actions | not applicable |
-| Caller commits | not applicable | `TransactionCommitted`: run commit actions, drop rollback actions | status `Committed`: run commit actions, drop rollback actions |
-| Caller rolls back | not applicable | `TransactionRolledBack` or `TransactionFailed`: run rollback actions, drop commit actions | status `Aborted`: run rollback actions, drop commit actions |
-| Caller disposes without committing | not applicable | EF raises no interceptor hook, only a `TransactionDisposed` log event. The bucket stays undecided, runs nothing, and is collected with the `DbTransaction` | status `InDoubt`: run nothing |
+| Upload | new file removed | — | new file kept, an orphan |
+| Replace, or new bytes on any route | new file removed, old file intact, row values restored for a retry | old file removed after the commit | new file kept, an orphan. Old file intact |
+| Delete | file intact | file removed after the commit | file intact |
+| Rename or other metadata edit | no file touched | no file touched | no file touched |
+| Storage fails partway through a save | the files this save already wrote are removed. No delete has run yet | — | — |
+| Concurrency conflict | new file removed (probe) | — | — |
 
-**Savepoints.** EF makes a savepoint for a save only inside a transaction it did not begin, and only when the provider supports savepoints and `Database.AutoSavepointsEnabled` holds. It never makes one under an ambient transaction (`BatchExecutor`). When the save fails, EF rolls back to that savepoint, and only logs a failure of that rollback.
+`docs/attachments.md` documents the orphan a rolled-back transaction leaves.
 
-- **When a failed save wrote nothing.** Inside a transaction, a failed save has written nothing only when `RolledBackToSavepoint` fired between its `SavingChanges` and its failure hook. Otherwise some of its statements may stand, and the caller may still commit them. Its rollback actions then wait for the transaction's outcome.
-- **A rollback to a savepoint outside any save is the caller's own.** EF's savepoint events name no savepoint, so which saves it undid is unknown. Dropping the bucket's commit actions turns any delete they would have made into an orphan, never a dangling row.
-- **The reactors keep running** for the saves made after such a savepoint, as their docs state.
+### Gaps found by the probes
 
-**Which failure hook fires, per EF's `DbContext`:**
+**A caller's savepoint rollback, then a commit: the reactor removes a file the row names.** The probe ran `BeginTransaction()`, then `CreateSavepoint("before")`, then a save that replaced or deleted an attachment, then `RollbackToSavepoint("before")` and `Commit()`. In both cases the row was back to its stored state, but its file was gone. `EntityReactorInterceptor` does not see a rollback to a savepoint, and EF's savepoint events name no savepoint. So at the commit the reactions of the undone save still run, as the reactor docs say. For most reactors that means a reaction to a change that never happened. For `AttachmentFileReactor` it means a lost file.
 
-- A general failure calls `SaveChangesFailed`.
-- Cancellation calls `SaveChangesCanceled` instead.
-- A `DbUpdateConcurrencyException` reaches neither of those. It raises only `ThrowingConcurrencyException` and the context's `SaveChangesFailed` event.
+**A failed save inside a transaction EF did not roll back: the file goes, and the row may stay.** The probe called `BeginTransaction()` with `AutoSavepointsEnabled = false` and made one save holding two uploads. A trigger refused the second insert, and the caller committed anyway. The first row was committed with its `Path`, and its file was gone. With savepoints on (the default), EF rolls back to its savepoint, nothing is committed, and removing the file is right.
 
-The rollback path has to listen to all three, or a 409 from a concurrency conflict leaks files. The reactor interceptor implements the first two only. A failed save reacts to nothing either way, but a concurrency conflict also skips the `ClearStoredOriginals()` its failure path runs, so that save's stored-original marks outlive it. The shared component's concurrency hook covers both.
+- EF makes no savepoint under an ambient `TransactionScope`, with `AutoSavepointsEnabled` off, or when the transaction does not support savepoints (SQL Server with MARS).
+- `SaveOutcomes.Failed` removes the files whatever the transaction.
+- Only a caller that commits after a failed save reaches this path.
 
-**Retries.**
+**Without the `AttachmentFileReactor`, a stub delete throws.** The probe removed `new Attachment { Id }` with the reactor registration taken out. `SaveChanges` threw an `ArgumentNullException` for `Path`, and both the row and the file stayed.
 
-- **A retry inside EF's strategy.** A transient failure followed by a successful retry reaches `SavedChanges` once.
-- **A retry driven by the caller.** When the delegate runs `BeginTransaction()` and `SaveChanges()` again, the primers run again. The failed attempt's transaction reports its failure, and that removes the files the attempt wrote.
-- **A retry on the same tracker.** `EntityWriteService` keeps the tracker after a failed save, so the caller can retry. At the save's failure, the entity's `Path`, `Prefix` and `Identifier` are therefore restored to their values before the write. This happens whether the file removal runs then or waits for the transaction's outcome. The retry then starts from the stored state, not from a file that is removed or about to be.
+- The primer looks `Path` up with a tracking query. Identity resolution hands back the tracked stub, whose `Path` is empty, and `RemoveFile` refuses it.
+- `RelatedAttachmentsPrepper.ResolveAttachment` makes the same kind of stub for a dropped link whose attachment was not loaded.
+- With the reactor the delete works, because the reactor reads the stored row.
+- In this fallback the file of a deleted attachment also goes during the save, before the database takes the delete. A refused delete therefore loses its file. The startup warning says so, and so does `docs/attachments.md`.
 
-**Rules for actions:**
+**A concurrency conflict skips the reactor interceptor's discard.** A probe recorded the hooks: on a conflict, EF raises `ThrowingConcurrencyException` and the context's `SaveChangesFailed` event, not the interceptor's `SaveChangesFailed`.
 
-- **Actions must not use the `DbContext`.** The ambient `TransactionCompleted` event can fire on another thread, after the request scope has finished. The attachment actions capture only the file service and a path, and run under `TransactionScopeOption.Suppress`, as the reactors' ambient work does (`ai/learnings.md`, 2026-09-23).
-- **A failing commit action is logged as a warning and never thrown.** The data is already committed.
-- **A failing rollback action is logged and never masks the original exception.**
-- **The synchronous `SaveChanges` gets the same hooks,** awaited through `SyncOverAsync` like the primers.
+- `EntityReactorInterceptor.Discard` listens only to the interceptor hooks, so the save's stored-original marks outlive it.
+- Its capture is replaced at the next save, so no reaction leaks.
+- A retry that refreshes only the concurrency token reports stale originals as `Original` to every reactor. For the attachment reactor the worst case is an orphan.
 
-**Pooled contexts.** The shared tracking already follows pool leases, and `ReactorTests` pins a pooled context across leases. Every hook that resolves a list clears it, and each primer pass starts from an empty list for the save in progress.
+## Design of the fixes
 
-**No commit tracking wired.** A context without it would queue actions that never run. `AttachmentPrimer` checks `SupportsCommitActions()` and falls back to today's immediate storage calls. That keeps the manual `EntityPrimerContainer` and `ApplyPrimers()` path working exactly as it does now. That path is documented as such.
+### 1. A savepoint rollback leaves the file to the row
 
-**Wiring.** The commit tracking lives in `EntityReactorInterceptor`, which `DbContextWiring.Reactors` wires. `Reactors` is part of `All`, so `UseDefaults()` picks it up.
+- `EntityReactorInterceptor` gains `RolledBackToSavepoint` and `RolledBackToSavepointAsync`. These mark every batch waiting on that `DbTransaction` as possibly undone. Which saves the rollback undid is unknown, so all of them are marked.
+- At the commit the batches run as they do today. Reactors in general keep their documented behaviour.
+- `AttachmentFileReactor` does not react to a change from a marked batch. The mark is internal to `Entities.EFcore`: a weak table keyed on the change, set before the batch is dispatched. The file stays. It is an orphan if the row change stood, and the row's own file if the change was undone.
+- EF's own rollback to its savepoint after a failed save raises the same event. It comes from inside that save and undoes it alone, so it marks nothing: EF's internal `IStateManager.SavingChanges` is set around the statements and reset in a `finally`, which tells it apart.
 
-- `WireDbContext(DbContextWiring.PrimerInterceptors)` alone is the documented setup for an app that registers only primers. It wires no reactor interceptor, so that app's attachments would keep today's behaviour without a word. Open question 2 settles this.
-- Wherever the guides show a context built outside DI adding the primer interceptor by hand, they add the reactor interceptor beside it.
+Open question 1 weighs this against a check on the stored row.
 
-### Attachment rules
+### 2. A failed save keeps its files unless EF rolled it back
 
-`AttachmentPrimer`, by entry state:
+In `SaveOutcomes.Failed`, decide whether EF undid the failed save. It did in two cases:
 
-| Entry | Before the commit | After commit | After rollback |
-| --- | --- | --- | --- |
-| `Added`, with content | write under a fresh identifier | nothing | remove the new file |
-| `Modified`, with new content | read the stored path, then write under a fresh identifier | remove the previously stored file if its path differs | remove the new file |
-| `Modified`, no new content | nothing | nothing | nothing |
-| `Deleted` | resolve `Path` with the existing lookup | remove the file | nothing |
+- The save ran in EF's own transaction: no caller transaction, no ambient transaction, no enlisted one.
+- The save ran in a caller's transaction where EF made a savepoint: `Database.CurrentTransaction` supports savepoints, `AutoSavepointsEnabled` holds, and there is no ambient transaction (`BatchExecutor`'s own rule).
 
-**The stored path of a `Modified` entry**, in order:
+Otherwise the row's values are restored for a retry as they are today, but the file is kept. It is an orphan if the transaction rolls back, and the row's file if the caller commits.
 
-1. The entry's original `Path` value, when the entry was tracked against the stored row.
-2. Otherwise, the entity's own `Path` before the write.
-3. When both are empty, the path loaded the way the `Deleted` branch loads it today.
+Open question 2 weighs this rule against observing the savepoint rollback.
 
-**New content is not `HasContent()`.** `AttachmentProcessor` loads `Bytes` on a read with the full include set, which `Details` always uses. The link's own `PUT {objectId}/attachments/{id}` reads its original that way, so the `Attachment` it writes back already has content. Through the owner's save it does not. The primer needs a signal for content that came with the write (open question 5).
+### 3. The fallback removes a deleted file once the save succeeds
 
-**Never overwrite.** `DefaultFileIdentifierGenerator` builds `{Owner}/Attachments/{ObjectId}/{kebab-name}-{guid}{ext}`, and `SaveFile` derives `{kebab-name}-{guid}{ext}` when `Identifier` is empty. A fresh identifier per content write is therefore a free name by construction. It needs no `Exists` round trip, and two writers cannot race for the same next number.
+When the reactor does not run for the attachment:
 
-- `EntityAttachmentPrimer` generates a fresh `Identifier` for a `Modified` link that carries `NewBytes`, instead of keeping an existing one. That preserves the generator's owner-folder layout.
-- `AttachmentPrimer` gives a `Modified` attachment with new content a fresh identifier when its `Identifier` still names the stored file.
-- A custom `IFileIdentifierGenerator` may build the same name twice. When the fresh identifier equals the stored path, the primer takes the next free name, as `SaveFile` does for a new item.
+- `AttachmentPrimer` reads `Path` from the stored row (`entry.GetDatabaseValuesAsync`, which skips identity resolution) when the entity has none. A row that is already gone has no file to remove.
+- It removes the file through `SaveOutcomes` once the save has written the delete, with a guard like the one the replaced file uses: the entry is detached after an accepting save. A refused delete keeps its file.
 
-`AttachmentFileService.SaveFile` keeps its contract: a new item gets the next free name, and an existing item is written at its `Identifier`.
+The fallback then has one rule: a replaced or deleted file goes once the save succeeds. A transaction that then rolls back can still leave a row naming a removed file. The startup warning covers that, and the reactor wiring is the answer.
 
-**What each operation does afterwards:**
+### 4. A concurrency conflict discards the capture
 
-| Operation | Database rejects the save | Save succeeds |
-| --- | --- | --- |
-| Upload | new file removed | unchanged |
-| Replace (either endpoint) | new file removed, old file intact | old file removed after commit |
-| Delete | file intact | file removed after commit |
-| Content change | new file removed, old file intact | old file removed after commit |
-| Storage fails partway through a save | files already written in this save are removed. No deletes had run yet | not applicable |
-| A delete after the commit fails | not applicable | orphaned file, logged |
-
-Two more outcomes leave an orphan:
-
-- A caller's transaction disposed without committing keeps the files its saves wrote.
-- A caller's rollback to a savepoint, followed by a commit, keeps the files its transaction would have deleted, and the files the undone saves wrote.
+`EntityReactorInterceptor` also listens to the context's `SaveChangesFailed` event and runs `Discard`. It reattaches the handler on each save, as `SaveOutcomes` does, because a pooled context drops its handlers when it is returned.
 
 ## Implementation steps
 
-### Step 0: tests first, failing today
+### Step 0: tests first
 
-Add `tests/Entities.Testing/AttachmentFileLifecycleTests.cs`. It runs on SQLite with a `BinaryFileService` rooted in a temporary folder, and asserts on the folder's contents. The fixture reuses the attachments guide's example owner. The tests cover:
+Add these to `tests/Entities.Testing/AttachmentPrimerTests.cs`. Its `FileContext` and `RecordingFileService` serve every case, and a SQLite trigger with `RAISE(ABORT)` refuses a chosen row. A replace has to change a mapped column (`FileName`) as well as `Bytes`, which is not mapped, or EF sees nothing to save. The first three fail today:
 
-- An upload rejected by a unique constraint leaves no file.
-- A delete blocked by a `Restrict` foreign key keeps the file, and the file stays downloadable.
-- A replace that fails at the database keeps the old file readable, with its original bytes.
-- A content change through the owner's save leaves exactly one file afterwards, holding the new bytes. By the code it leaves two today; no test pins that yet.
-- A concurrency conflict (`IHasConcurrencyToken` on the owner) leaves no new file.
-- A canceled save leaves no new file.
-- A storage failure on the second of two uploads in one save leaves neither file.
-- A delete of an attachment known only by its key removes its file. `AttachmentPrimer` looks `Path` up through a tracking query, which may return the tracked stub with `Path` still empty.
+- A caller's savepoint rollback after a replace, and after a delete, followed by a commit: the row's file survives.
+- A failed save inside a transaction with `AutoSavepointsEnabled = false`, followed by a commit: no row names a missing file. The same save with savepoints on leaves no file.
+- A stub delete (`new Attachment { Id }`) with and without the `AttachmentFileReactor`: the file goes. Without the reactor, a refused delete keeps the file.
+- An upload the database refuses leaves no file.
+- A concurrency conflict leaves no new file, and a canceled save leaves none either.
+- The shared replace, through `IEntityService<Attachment, int>` as `AttachmentControllerBase` calls it, leaves exactly one file. No test API subclasses that controller, so the service level is the place for this test.
+- An upload inside a transaction that rolls back: the row is gone, and the new file stays as documented.
+- An ambient `TransactionScope` disposed without `Complete()` removes no stored file. SQLite cannot enlist, so the rows are written at once; what is pinned is that the reactor runs nothing (as in `ReactorTests.An_Ambient_Transaction_Reacts_When_It_Completes`).
 
-In `tests/Entities.Web.Testing/AttachmentTests.cs`:
+Not repeated for attachments: the retrying strategy, pooled contexts and the synchronous save. `ReactorTests` covers them for the commit tracking, and `A_Save_Failing_In_The_Primer_Pass_Removes_The_File_It_Wrote` covers the synchronous failure path of `SaveOutcomes`.
 
-- A shared `PUT attachments/{id}` leaves exactly one file.
-- A content change through the link's own `PUT {objectId}/attachments/{id}` stores the new bytes.
-- A rename on that route leaves the stored file untouched.
+### Step 1: fixes 1 and 4, in `Entities.EFcore`
 
-### Step 1: commit tracking shared with the reactors, in `Entities.EFcore`
+Add the savepoint mark and the concurrency discard to `EntityReactorInterceptor`, and make `AttachmentFileReactor` skip marked changes. The `ReactorTests` suite stays green. One new test there checks that a reactor other than the attachment reactor still runs after a caller's savepoint rollback, as documented.
 
-Extract the commit tracking from `EntityReactorInterceptor` into the internal component described under *Actions bound to a commit*, and enlist the reactors in it. Then add the commit actions and the extension methods. The whole `ReactorTests` suite stays green; it guards the extraction. The new tests cover:
+### Step 2: fixes 2 and 3, in `Entities.EFcore`
 
-- Success, general failure, concurrency conflict, cancellation, and a primer that throws.
-- A caller transaction that commits, one that rolls back, and one disposed without a commit, which must run nothing.
-- A failed save inside a caller transaction with `AutoSavepointsEnabled = false`, which keeps its files until the transaction rolls back.
-- A caller's rollback to a savepoint followed by a commit, which deletes no file.
-- An ambient scope that completes and one that is disposed. `ReactorTests.An_Ambient_Transaction_Reacts_When_It_Completes` shows how, on SQLite with `AmbientTransactionWarning` ignored. SQLite cannot enlist, so the rows are written at once; what is pinned is when the actions run.
-- A retrying strategy, using the retrying `ExecutionStrategy` subclass that `DeleteCycleTests` already has as a fixture.
-- The synchronous `SaveChanges`.
-- A pooled context reused after a failed save.
+Change `SaveOutcomes.Failed` and the `Deleted` branch of `AttachmentPrimer`. The existing `AttachmentPrimerTests` and the attachment tests in `Entities.Web.Testing`, which run on both surfaces, stay green.
 
-### Step 2: wiring, in `Entities.DependencyInjection`
-
-Wire the commit tracking as open question 2 decides, in `EntityDbContextOptionsConfiguration` with the existing `HasInterceptor` guard, and extend `UseDefaultsAutoWiringTests`.
-
-- **With the recommended option,** `PrimerInterceptors` wires the reactor interceptor too, and `UseDefaultsAutoWiringTests` pins it for a primer-only setup.
-- **With the other,** `InterceptorWiringValidator` warns when attachments are registered and the context lacks the reactor interceptor. Today it reports a missing primer interceptor as a Warning, or as Info when an `EntityPrimerContainer` is registered, and a missing reactor interceptor only when reactors are registered.
-
-### Step 3: attachment rework, in `Entities.EFcore`
-
-Change `AttachmentPrimer` and `EntityAttachmentPrimer` per the rules above, add the new-content signal (open question 5), and keep the fallback when the commit tracking is not wired. `AttachmentFileService.SaveFile` does not change. Step 0's tests turn green.
-
-### Step 4: documentation
+### Step 3: documentation
 
 Each explanation gets one home per layer. Everything else links to it.
 
-- **Developer docs.**
-  - `src/Common.Entities/docs/attachments.md` gains a section on storage and the database: the three rules and what a failed save leaves behind.
-  - `src/Common.Entities/docs/services.md` already states when reactors count a save as committed. The Part 1 paragraph joins that text rather than sitting beside it.
-- **AI guides.**
-  - The attachments section of `entities.instructions.md` gets the same rules in short form.
-  - The transaction paragraph joins *How reactors run* in `entities.instructions.md`.
-  - If open question 3 makes the extension methods public:
-    - `entities.signatures.md` and `entities.namespaces.md` list them.
-    - `entities.patterns.md` gets one worked example of `AfterCommit` in a custom primer, picked so it drags in no unrelated subsystem, and says when a reactor fits better.
-  - Every new snippet compiles under `tools/GuideVerifier`.
-- **`ai/learnings.md`** already records that `SavedChanges` is not the commit and that a savepoint rollback cannot be followed (2026-09-23). It gains what this work adds:
-  - A concurrency conflict skips `SaveChangesFailed`.
-  - EF makes no savepoint under an ambient transaction, so a failed save there may leave statements standing.
-  - A primer that throws reaches no failure hook.
+- **`docs/services.md`:** the Part 1 paragraph joins the *Entity Reactors* text on when a save counts as committed.
+- **`docs/attachments.md`** (*Dependency Injection*):
+  - A failed save removes the file it wrote and gives the row back its stored path, unless it failed inside a transaction EF did not roll back.
+  - After a caller's rollback to a savepoint, the replaced and deleted files stay.
+  - The fallback removes a deleted file once the save succeeds.
+  - The comment in the code sample under it names the reactor.
+- **`entities.instructions.md`:**
+  - The Part 1 paragraph joins *How reactors run*.
+  - Step 6 of the attachments section gets the rules above in short form, and states that new bytes go under a key of their own.
+  - *Unwired interceptors* points to it for the attachment files.
+- **`entities.signatures.md`:** the `WithAttachments` comment names the reactor.
+- **`ai/learnings.md`:**
+  - A concurrency conflict reaches `ThrowingConcurrencyException` and the context's `SaveChangesFailed` event, never the interceptor's `SaveChangesFailed`.
+  - EF makes no savepoint under an ambient transaction, with `AutoSavepointsEnabled` off, or without savepoint support, so a failed save there may leave statements standing.
+  - A reactor that destroys something must allow for a savepoint rollback it cannot see.
 
-### Step 5: changelog and versions
+`entities.instructions.md`, `entities.signatures.md` and `entities.patterns.md` carry uncommitted edits from other work as of this writing. Re-read them before editing.
 
-Add one `CHANGELOG.md` bullet per changed package under `## Unreleased`. `Regira.Entities.EFcore` and `Regira.Entities.DependencyInjection` are at an unpublished 6.5.0. Whether this work joins that number or takes the next one is the maintainer's call.
+### Step 4: changelog and versions
 
-Under AGENTS.md, public extension methods (open question 3) make the `Entities.EFcore` change a minor. Kept internal, the change is a fix, which is a patch.
+Add one `CHANGELOG.md` bullet per changed package under `## Unreleased`: `Regira.Entities.EFcore` for the four fixes, and `Regira.Entities` for the guides. Both are at an unpublished 6.5.1, and every change here is a patch, so the work fits that number. The version line is the maintainer's call.
 
 ## Open questions
 
-1. **The concurrency hook.** `ThrowingConcurrencyException` fires before the throw, and another interceptor can suppress the exception, in which case the save carries on. The alternative is the context's `SaveChangesFailed` event, which fires only for a real failure but is synchronous. The reactor interceptor implements neither. Step 1 settles this with a test in which a consumer interceptor suppresses the exception.
-2. **Wiring a primer-only setup.** `WireDbContext(PrimerInterceptors)` wires no reactor interceptor, so attachments there keep today's behaviour.
-   - One option wires the reactor interceptor under `PrimerInterceptors` as well. The `HasInterceptor` guard keeps it single, and a context with no reactors captures nothing for them.
-   - The other keeps the flags apart and has `InterceptorWiringValidator` warn when attachments are registered without it.
-
-   Recommendation: wire it under both flags, so the attachment guarantee needs no extra step.
-3. **Public or internal.** Consumer primers could use `AfterCommit` to clean up external resources only after a commit. Reactors, though, are already the public extension point for work after a commit (mail, jobs, workflows), with the change and its stored original in hand. A second public hook would leave consumers choosing between two. Recommendation: internal. `AttachmentPrimer`, its only user, sits in the same assembly. Make it public when a use appears that a reactor cannot serve.
-4. **Names.** `AfterCommit`, `AfterRollback` and `SupportsCommitActions` are working names.
-5. **The new-content signal.** `HasContent()` holds for bytes that `AttachmentProcessor` loaded, so the primer needs another way to tell which content came with the write.
-   - One option keeps a weak reference to the byte array the processor loaded, per `Attachment`, and treats that same array on save as stored content.
-   - Another compares a hash with the stored file, at the cost of a read.
-
-   Recommendation: the weak reference, which costs no IO and adds no public surface.
+1. **How the attachment reactor learns that a savepoint rollback may have undone its change.**
+   - The recommended option is the mark described under fix 1. It is internal, does no IO, and leaves the reactor API alone.
+   - The alternative has `AttachmentFileReactor` check, before it removes a file, that no stored row names it. That needs one query per removed file after the commit. It covers any outcome the interceptor misses, not only savepoints. But the reactor would need the attachment's `DbContext` type, and its public constructor, which derived reactors depend on, would have to stay as it is.
+2. **How `SaveOutcomes` decides that EF rolled back a failed save.**
+   - The recommended option applies EF's own savepoint rule, as described under fix 2. It needs no new interface on the public primer interceptor.
+   - The alternative observes `RolledBackToSavepoint` during the save, which means `EntityPrimerContainerInterceptor` implements `IDbTransactionInterceptor`. It is exact even when EF's rollback to its savepoint fails. That failure is only logged, but it leaves a transaction that cannot commit anyway (a broken connection, a doomed SQL Server transaction).
+3. **Removing the new files of a transaction that rolls back after a successful save.** Today they stay as documented orphans. Removing them would need `SaveOutcomes` to follow the transaction's outcome, using the commit tracking `EntityReactorInterceptor` has: `TransactionRolledBack`, `TransactionFailed`, and an ambient status of `Aborted`. Recommendation: not now. Orphans cost storage, never data, and a sweep (see *Out of scope*) covers an app that needs a clean store.
 
 ## Out of scope
 
-- **Staging files and moving them on commit.** On Azure and SSH, `IFileService.Move` is a copy plus a delete, which doubles the storage IO without adding safety over the rules above.
-- **An outbox table, or a job that reconciles storage against the database.** These only address the rare orphans described above. A consumer who needs that can sweep storage against the stored `Path` values. A helper for it could come later.
-- **Saves with `acceptAllChangesOnSuccess: false`.** Those entries stay `Added`, so the next save reruns the primers and writes the files a second time. This is an existing, separate issue.
+- **Staging files and moving them on commit.** On Azure and SSH, `IFileService.Move` is a copy plus a delete. That doubles the storage IO without adding safety over the rules above.
+- **An outbox table, or a job that reconciles storage against the database.** These only address the orphans described above. A consumer who needs that can sweep storage against the stored `Path` values. A helper for it could come later.
+- **Reactions to a change a savepoint rollback undid**, for reactors other than the attachment reactor. This is the reactors' documented limit, and fix 1 leaves it as it is.
+- **Saves with `acceptAllChangesOnSuccess: false`.** Those entries stay `Added`, so the next save primes them and stores their content again. This is an existing, separate issue.
 
 ## Blast radius
 
 | Package | Change | Consumer impact |
 | --- | --- | --- |
-| `Regira.Entities.EFcore` | The commit tracking moves out of `EntityReactorInterceptor` into a shared internal component, and commit actions are added. `AttachmentPrimer` and `EntityAttachmentPrimer` change behaviour, and `AttachmentProcessor` does too if open question 5 picks the weak reference | None at the source level. Files are deleted after the commit instead of before. A content change writes under a new name and removes the old file after the commit |
-| `Regira.Entities.DependencyInjection` | Wiring, per open question 2 | None for `UseDefaults()`. A context built outside DI must add the reactor interceptor to get the new guarantees, and keeps today's behaviour until it does |
-| `Regira.Entities.Web` | No code change | The shared `PUT attachments/{id}` stops leaking the previous file |
+| `Regira.Entities.EFcore` | `EntityReactorInterceptor` handles the savepoint rollback and the concurrency discard. `AttachmentFileReactor` skips changes a savepoint rollback may have undone. `SaveOutcomes` keeps the files of a failed save EF did not roll back. The fallback in `AttachmentPrimer` reads a deleted file's path from the stored row and removes it after the save | None at the source level. Some outcomes that removed a file now leave an orphan instead. A stub delete without the reactor stops throwing |
 | `Regira.Entities` (guides) | Documentation only | Guide-only patch |
+| `Regira.Entities.DependencyInjection`, `Regira.Entities.Web`, `Regira.Entities.Mediator` | No change | None |
+
+## Outcome
+
+Built on `wip` on 2026-10-10 as designed, with the recommended option for each open question: the mark (1), EF's own savepoint rule (2), and no cleanup of a rolled-back transaction's new files (3). Uncommitted.
+
+**Code** (`Regira.Entities.EFcore`):
+
+- **Fix 1.** `EntityReactorInterceptor` implements `RolledBackToSavepoint` and its async twin. They mark every change waiting on that `DbTransaction` in an internal weak table, read through `EntityReactorInterceptor.MayBeUndone(change)`. The mark is set when the rollback happens, so before any dispatch. `AttachmentFileReactor.CanReact` refuses a marked change. A rollback raised while the context is inside EF's own save (`IStateManager.SavingChanges`, an internal API used under `EF1001` as `EntryMarks` does) is EF's rollback of that failing save, and marks nothing. The review suggested a flag set in the interceptor's `SavingChanges` instead. A test shows why that was not taken: when a later interceptor ends the save in its own `SavingChanges`, no hook clears the flag, and a caller's savepoint rollback after it would go unmarked and lose a file.
+- **Fix 2.** `SaveOutcomes` has two failure entry points. `FailedBeforeDatabase` undoes everything: the primer pass, the reactor capture, an explicit `ApplyPrimers()` that throws, and work a save abandoned in another interceptor's `SavingChanges`. `Failed` serves the failure hooks and the context event, and tells each piece of work whether the failed save's statements may stand, by `BatchExecutor`'s rule. That rule also counts `AutoTransactionBehavior.Never`, which the design above did not name. A synchronous hook reads the rule before it hands the work to `SyncOverAsync` (`SaveOutcomes.FailedSync`), because a scope without async flow is bound to the saving thread, and under a non-default `TaskScheduler` the work runs on the thread pool. The reactor interceptor's synchronous `SavedChanges` reads `Transaction.Current` the same way, which fixes a gap that predates this work: there the reactors ran at once instead of waiting for such a scope. `AttachmentPrimer` still restores the row's values for a retry, and keeps the written file when the statements may stand.
+- **Fix 3.** As designed: the fallback reads a missing `Path` with `entry.GetDatabaseValuesAsync` and removes the file at `SaveOutcomes.Saved` when the entry is `Detached`. A probe showed that `ChangeTracker.Clear()` leaves a dropped entry reporting `Deleted` and raises no `StateChanged`, so the guard also keeps the file of an explicitly primed delete the caller dropped.
+- **Fix 4.** A static handler on the context's `SaveChangesFailed` event runs `Discard`. It is re-attached at every capture, because a pooled context drops its handlers when it is returned.
+
+**Beyond the blast radius above:** the startup warning in `Regira.Entities.DependencyInjection` (`InterceptorWiringValidator`) described the old fallback ("removed during the save"). It now says that the replaced and the deleted files go once the save succeeds. That is a text change in a third package.
+
+**Tests.** `AttachmentPrimerTests` gained 19 cases and `ReactorTests` 3. They cover the step 0 list, plus a dropped explicitly primed delete and a refused delete with the reactor. Before the fixes, 7 per target framework failed, as predicted: the savepoint replace and delete, the failed save without savepoints, the stub delete and the refused delete without the reactor, the dropped explicit delete, and the retry after a concurrency conflict. A mutation of the `Detached` guard fails the dropped-delete test. With the review addressed, everything passes: Entities.Testing 572 (net8.0) and 575 (net10.0), Entities.DependencyInjection.Testing 134, Entities.Web.Testing 268, Entities.Mediator.Testing 27.
+
+**Review (2026-10-10).** One should-fix and two nits, all addressed. The should-fix: a failed save the caller catches inside its transaction, followed by a commit, orphaned the files of the earlier saves, because EF's rollback of the failed save marked them. Nit 1: the synchronous failure hooks read `Transaction.Current` on a pool thread under a non-default `TaskScheduler`. Nit 2: the docs now say that `SaveChanges(acceptAllChangesOnSuccess: false)` leaves the files in storage without the reactor wiring. Five tests came with it, and four of them failed before: the caught failed save, for a replace and for a delete; a synchronous refused save under a thread-bound scope on an exclusive scheduler; and the reactors under such a scope. The fifth is the rollback after a save an interceptor ended, which passes with `IStateManager.SavingChanges` and fails with the suggested flag.
+
+**Docs.** As in step 3. `docs/services.md` and *How reactors run* carry the Part 1 paragraph and the savepoint behaviour. `docs/attachments.md` gains *Files and transactions*, and §Attachments step 6 has the same rules in short. *Unwired interceptors* and the `WithAttachments` signature name the reactor. `ai/learnings.md` gains the three entries from step 3 and one on `ChangeTracker.Clear()`. `CHANGELOG.md` has bullets for `Regira.Entities.EFcore`, `Regira.Entities.DependencyInjection` and `Regira.Entities`, all at 6.5.1.

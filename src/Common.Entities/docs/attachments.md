@@ -219,15 +219,33 @@ Attachments need **two** registrations:
 
 1. **`WithAttachments(factory)`** registers the shared `Attachment` entity, the file store, the
    bytes→file primer, and `AttachmentFileReactor`, which removes a file that new bytes replaced, and a deleted
-   attachment's file, once the save is committed — new bytes go under a key of their own, so a refused or rolled-back
-   save leaves the stored files as they were; only a transaction rolled back after a successful save keeps the new file
-   in storage. It runs through the reactor wiring `UseDefaults()` sets; without it, a replaced file is removed once
-   the save succeeds, and a deleted attachment's file during the save.
+   attachment's file, once the save is committed (see *Files and transactions* below).
 2. **`HasAttachments<…>(x => x.Attachments)`** — chained on the owner's `For<>()` builder — registers the
    typed per-owner read/write services, the link prepper and DTO mapping.
 
 The bytes `Details` loads are the attachment's stored file, not new content: saving a rename or another metadata edit
 leaves the file where it is. Bytes or a stream set in their place replace it, stored under the file name's extension.
+
+**Files and transactions.** With the reactor wiring `UseDefaults()` sets, storage keeps every file a stored row names.
+An outcome the library cannot be sure of costs an orphan — a file no row names — never a row without its file:
+
+- New bytes go under a key of their own, so a save the database refuses, or a transaction rolled back, leaves the
+  stored file as it was.
+- A save that fails removes the file it wrote and gives the row back its stored path, so a retry starts from the
+  stored state. Where EF does not roll the failed save back — a caller's transaction without a savepoint
+  (`Database.AutoSavepointsEnabled = false`, SQL Server with MARS), an ambient `TransactionScope`, or
+  `Database.AutoTransactionBehavior = Never` — the statements before the failing one stand and the caller may still
+  commit them, so the file stays.
+- `AttachmentFileReactor` removes the replaced and the deleted files once the save is committed. A rollback to a
+  savepoint the application makes does not say which saves it undid, so the files replaced or deleted by every save
+  before it in that transaction stay. A failed save the application catches inside its transaction is undone alone:
+  the earlier saves' files go as usual.
+- A transaction rolled back after a successful save keeps the new file, which no row names.
+
+An application that needs a clean store sweeps it against the stored `Path` values. Without the reactor wiring, the
+primer removes the replaced and the deleted files once the save succeeds — before a transaction around it commits, so a
+rollback after that leaves a row naming a removed file; the startup validation warns about this setup. There, a
+`SaveChanges(acceptAllChangesOnSuccess: false)` leaves both files in storage.
 
 <!-- no-compile -->
 ```csharp
@@ -244,7 +262,7 @@ builder.Services
         o.UseAttachmentUris();                      // web apps: resolve attachment DTO Uri's (ASP.NET Core)
         /* ... */
     })
-    // 1. shared Attachment entity + file store + bytes→file primer
+    // 1. shared Attachment entity + file store + bytes→file primer + AttachmentFileReactor
     .WithAttachments(_ => new BinaryFileService(
         new FileSystemOptions
         {

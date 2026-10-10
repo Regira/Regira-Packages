@@ -1,6 +1,9 @@
+using System.Data.Common;
+using System.Transactions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Regira.Entities.Attachments.Models;
@@ -8,6 +11,7 @@ using Regira.Entities.DependencyInjection.Extensions;
 using Regira.Entities.DependencyInjection.ServiceCollections.Models;
 using Regira.Entities.EFcore.Attachments;
 using Regira.Entities.EFcore.Primers;
+using Regira.Entities.EFcore.Reactors;
 using Regira.Entities.Services.Abstractions;
 using Regira.IO.Storage;
 using Regira.IO.Storage.Abstractions;
@@ -98,7 +102,36 @@ public class AttachmentPrimerTests
             => ValueTask.FromResult(InterceptionResult<int>.SuppressWithResult(0));
     }
 
-    private void Build(DbContextWiring? wiring = null, Action<IServiceCollection>? afterwards = null, IInterceptor? interceptor = null)
+    /// <summary>Once armed, cancels the save at its first statement, after the primers stored its content.</summary>
+    private sealed class CancelingInterceptor : DbCommandInterceptor
+    {
+        public CancellationTokenSource Cancellation { get; } = new();
+        public bool Armed { get; set; }
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData eventData,
+            InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            if (Armed)
+            {
+                Cancellation.Cancel();
+                throw new OperationCanceledException(Cancellation.Token);
+            }
+            return ValueTask.FromResult(result);
+        }
+    }
+
+    /// <summary>Once armed, ends the save in its own <c>SavingChanges</c>, before EF's save begins.</summary>
+    private sealed class FailingInterceptor : SaveChangesInterceptor
+    {
+        public bool Armed { get; set; }
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData, InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+            => Armed ? throw new InvalidOperationException("refused by an interceptor") : ValueTask.FromResult(result);
+    }
+
+    private void Build(DbContextWiring? wiring = null, Action<IServiceCollection>? afterwards = null, IInterceptor? interceptor = null,
+        Action<DbContextOptionsBuilder>? dbOptions = null)
     {
         var services = new ServiceCollection();
         services.AddDbContext<FileContext>(db =>
@@ -108,6 +141,7 @@ public class AttachmentPrimerTests
             {
                 db.AddInterceptors(interceptor);
             }
+            dbOptions?.Invoke(db);
         });
         services.UseEntities<FileContext>(o =>
             {
@@ -145,6 +179,22 @@ public class AttachmentPrimerTests
         return scope.ServiceProvider.GetRequiredService<FileContext>().Attachments.AsNoTracking().Single(x => x.Id == id);
     }
 
+    private Attachment[] StoredRows()
+    {
+        using var scope = _sp.CreateScope();
+        return scope.ServiceProvider.GetRequiredService<FileContext>().Attachments.AsNoTracking().ToArray();
+    }
+
+    private string? ReadFile(string? path) => File.Exists(Path.Combine(_root, path!)) ? File.ReadAllText(Path.Combine(_root, path!)) : null;
+
+    // a database that refuses the statement, as a constraint would
+    private static Task Refuse(FileContext db, string statement, string? when = null)
+    {
+        var table = db.Model.FindEntityType(typeof(Attachment))!.GetTableName();
+        return db.Database.ExecuteSqlRawAsync(
+            $"CREATE TRIGGER refuse_{statement.ToLowerInvariant()} BEFORE {statement} ON \"{table}\" {(when == null ? "" : $"WHEN {when} ")}BEGIN SELECT RAISE(ABORT, 'refused'); END;");
+    }
+
     // --- A failed save removes the file it wrote ---
 
     // the second upload fails inside the primer pass, before EF's own save begins: the first one's file goes too
@@ -180,9 +230,7 @@ public class AttachmentPrimerTests
         var stored = await AddAttachment("report.txt", "first version");
         using var scope = _sp.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<FileContext>();
-        var table = db.Model.FindEntityType(typeof(Attachment))!.GetTableName();
-        await db.Database.ExecuteSqlRawAsync(
-            $"CREATE TRIGGER refuse BEFORE UPDATE ON \"{table}\" WHEN NEW.FileName = 'refused.txt' BEGIN SELECT RAISE(ABORT, 'refused'); END;");
+        await Refuse(db, "UPDATE", "NEW.FileName = 'refused.txt'");
         var attachment = db.Attachments.Single(x => x.Id == stored.Id);
         attachment.FileName = "refused.txt";
         attachment.Bytes = "second version"u8.ToArray();
@@ -197,6 +245,129 @@ public class AttachmentPrimerTests
 
         Assert.That(StoredFiles(), Has.Length.EqualTo(1));
         Assert.That(File.ReadAllText(StoredFiles()[0]), Is.EqualTo("second version"));
+    }
+
+    [Test]
+    public async Task A_Refused_Upload_Leaves_No_File()
+    {
+        Build();
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FileContext>();
+        await Refuse(db, "INSERT");
+        db.Attachments.Add(new Attachment { FileName = "report.txt", Bytes = [1] });
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+
+        Assert.That(_store.Saves, Has.Count.EqualTo(1));
+        Assert.That(StoredFiles(), Is.Empty);
+    }
+
+    // a conflict raises none of the interceptors' failure hooks, only the context's event
+    [Test]
+    public async Task A_Concurrency_Conflict_Leaves_No_New_File()
+    {
+        Build();
+        var stored = await AddAttachment("report.txt", "first version");
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FileContext>();
+        var attachment = db.Attachments.Single(x => x.Id == stored.Id);
+        // another writer removes the row: the update affects none
+        await db.Attachments.ExecuteDeleteAsync();
+        attachment.FileName = "report-2.txt";
+        attachment.Bytes = "second version"u8.ToArray();
+
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => db.SaveChangesAsync());
+
+        Assert.That(_store.Saves, Has.Count.EqualTo(2));
+        Assert.That(StoredFiles(), Has.Length.EqualTo(1));
+        Assert.That(ReadFile(stored.Path), Is.EqualTo("first version"));
+    }
+
+    [Test]
+    public async Task A_Canceled_Save_Leaves_No_New_File()
+    {
+        var canceling = new CancelingInterceptor();
+        Build(interceptor: canceling);
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FileContext>();
+        db.Attachments.Add(new Attachment { FileName = "report.txt", Bytes = [1] });
+        canceling.Armed = true;
+
+        await Assert.CatchAsync<OperationCanceledException>(() => db.SaveChangesAsync(canceling.Cancellation.Token));
+
+        Assert.That(_store.Saves, Has.Count.EqualTo(1));
+        Assert.That(StoredFiles(), Is.Empty);
+    }
+
+    // --- A failed save inside a caller's transaction ---
+
+    // EF rolls the failed save back to the savepoint it made: no row of it is committed, and no file of it stays
+    [Test]
+    public async Task A_Save_Refused_Inside_A_Transaction_Leaves_No_File()
+    {
+        Build();
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FileContext>();
+        await Refuse(db, "INSERT", "NEW.FileName = 'second.txt'");
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Attachments.Add(new Attachment { FileName = "first.txt", Bytes = [1] });
+        db.Attachments.Add(new Attachment { FileName = "second.txt", Bytes = [2] });
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        await transaction.CommitAsync();
+
+        Assert.That(StoredRows(), Is.Empty);
+        Assert.That(StoredFiles(), Is.Empty);
+    }
+
+    // without a savepoint the statements before the refused one stand, and the caller may commit them: their files stay
+    [Test]
+    public async Task A_Save_Refused_Inside_A_Transaction_Without_Savepoints_Keeps_The_Files_Its_Rows_May_Name()
+    {
+        Build();
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FileContext>();
+        await Refuse(db, "INSERT", "NEW.FileName = 'second.txt'");
+        db.Database.AutoSavepointsEnabled = false;
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Attachments.Add(new Attachment { FileName = "first.txt", Bytes = [1] });
+        db.Attachments.Add(new Attachment { FileName = "second.txt", Bytes = [2] });
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        await transaction.CommitAsync();
+
+        var rows = StoredRows();
+        Assert.That(rows.Select(x => x.FileName), Is.EqualTo(new[] { "first.txt" }));
+        Assert.That(rows.Select(x => File.Exists(Path.Combine(_root, x.Path!))), Is.All.True);
+    }
+
+    // On an exclusive scheduler the synchronous hooks hand their work to the thread pool, where a scope without async
+    // flow is not visible. SQLite cannot enlist, so the first insert is written at once, as a scope would commit it.
+    [Test]
+    public async Task A_Synchronous_Save_Refused_Under_A_Thread_Bound_Scope_Keeps_The_Files_Its_Rows_May_Name()
+    {
+        Build(dbOptions: db => db.ConfigureWarnings(w => w.Ignore(RelationalEventId.AmbientTransactionWarning)));
+        using (var setup = _sp.CreateScope())
+        {
+            await Refuse(setup.ServiceProvider.GetRequiredService<FileContext>(), "INSERT", "NEW.FileName = 'second.txt'");
+        }
+        var scheduler = new ConcurrentExclusiveSchedulerPair().ExclusiveScheduler;
+
+        var save = Task.Factory.StartNew(() =>
+        {
+            using var ambient = new TransactionScope();
+            using var scope = _sp.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<FileContext>();
+            db.Attachments.Add(new Attachment { FileName = "first.txt", Bytes = [1] });
+            db.Attachments.Add(new Attachment { FileName = "second.txt", Bytes = [2] });
+            Assert.Throws<DbUpdateException>(() => db.SaveChanges());
+            ambient.Complete();
+        }, CancellationToken.None, TaskCreationOptions.None, scheduler);
+
+        Assert.That(save.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        var rows = StoredRows();
+        Assert.That(rows.Select(x => x.FileName), Is.EqualTo(new[] { "first.txt" }));
+        Assert.That(rows.Select(x => File.Exists(Path.Combine(_root, x.Path!))), Is.All.True);
     }
 
     // --- The bytes Details loaded are not new content ---
@@ -434,5 +605,222 @@ public class AttachmentPrimerTests
         }
 
         Assert.That(StoredFiles(), Is.Empty);
+    }
+
+    // a delete by key alone: the file's path is the stored row's, whoever removes the file
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task A_Stub_Delete_Removes_The_File(bool fileReactor)
+    {
+        Build(fileReactor ? null : DbContextWiring.PrimerInterceptors);
+        var stored = await AddAttachment("report.txt", "content");
+
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FileContext>();
+            db.Attachments.Remove(new Attachment { Id = stored.Id });
+            await db.SaveChangesAsync();
+        }
+
+        Assert.That(StoredRows(), Is.Empty);
+        Assert.That(StoredFiles(), Is.Empty);
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task A_Refused_Delete_Keeps_The_File(bool fileReactor)
+    {
+        Build(fileReactor ? null : DbContextWiring.PrimerInterceptors);
+        var stored = await AddAttachment("report.txt", "content");
+
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FileContext>();
+            await Refuse(db, "DELETE");
+            db.Attachments.Remove(db.Attachments.Single(x => x.Id == stored.Id));
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        }
+
+        Assert.That(ReadFile(Stored(stored.Id).Path), Is.EqualTo("content"));
+    }
+
+    // a delete primed by an explicit ApplyPrimers() that the caller then drops removes nothing at the next save
+    [Test]
+    public async Task A_Save_After_An_Explicitly_Primed_Delete_Was_Dropped_Keeps_The_File()
+    {
+        Build(DbContextWiring.PrimerInterceptors);
+        var stored = await AddAttachment("report.txt", "content");
+        _sp.Dispose();
+        Build(DbContextWiring.None, services => services.RegisterPrimerContainer<FileContext>());
+
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FileContext>();
+            db.Attachments.Remove(db.Attachments.Single(x => x.Id == stored.Id));
+            await scope.ServiceProvider.GetRequiredService<EntityPrimerContainer>().ApplyPrimers();
+            // the caller decides not to save this delete
+            db.ChangeTracker.Clear();
+
+            db.Attachments.Single(x => x.Id == stored.Id).FileName = "renamed.txt";
+            await db.SaveChangesAsync();
+        }
+
+        Assert.That(ReadFile(Stored(stored.Id).Path), Is.EqualTo("content"));
+    }
+
+    // AttachmentControllerBase's replace: a new attachment for a stored key, holding the uploaded file alone
+    [Test]
+    public async Task The_Shared_Replace_Leaves_Exactly_One_File()
+    {
+        Build();
+        var stored = await AddAttachment("report.txt", "first version");
+
+        using (var scope = _sp.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Attachment, int>>();
+            var item = new Attachment { Id = stored.Id, FileName = "report.txt", Bytes = "second version"u8.ToArray() };
+            await service.Save(item);
+            await service.SaveChanges();
+        }
+
+        Assert.That(StoredFiles(), Has.Length.EqualTo(1));
+        Assert.That(ReadFile(Stored(stored.Id).Path), Is.EqualTo("second version"));
+    }
+
+    // --- A caller's transaction ---
+
+    // the documented orphan: the row is gone, the file it named stays
+    [Test]
+    public async Task An_Upload_Inside_A_Transaction_That_Rolls_Back_Keeps_Its_File()
+    {
+        Build();
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FileContext>();
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            db.Attachments.Add(new Attachment { FileName = "report.txt", Bytes = [1] });
+            await db.SaveChangesAsync();
+            await transaction.RollbackAsync();
+        }
+
+        Assert.That(StoredRows(), Is.Empty);
+        Assert.That(StoredFiles(), Has.Length.EqualTo(1));
+    }
+
+    // which saves a rollback to a savepoint undid is unknown: the replaced and the deleted file stay with the row
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task A_Rollback_To_A_Savepoint_Keeps_The_File_Of_The_Row(bool delete)
+    {
+        Build();
+        var stored = await AddAttachment("report.txt", "first version");
+
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FileContext>();
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            await transaction.CreateSavepointAsync("before");
+            var attachment = db.Attachments.Single(x => x.Id == stored.Id);
+            if (delete)
+            {
+                db.Attachments.Remove(attachment);
+            }
+            else
+            {
+                attachment.FileName = "report-2.txt";
+                attachment.Bytes = "second version"u8.ToArray();
+            }
+            await db.SaveChangesAsync();
+            await transaction.RollbackToSavepointAsync("before");
+            await transaction.CommitAsync();
+        }
+
+        Assert.That(Stored(stored.Id).Path, Is.EqualTo(stored.Path));
+        Assert.That(ReadFile(stored.Path), Is.EqualTo("first version"));
+    }
+
+    // EF's own rollback to the savepoint it made for a failing save undoes that save alone: a caller that catches the
+    // failure and commits has the files of its earlier saves removed as usual
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task A_Failed_Save_Caught_Inside_A_Transaction_Leaves_The_Earlier_Files_To_The_Reactor(bool delete)
+    {
+        Build();
+        var stored = await AddAttachment("report.txt", "first version");
+
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FileContext>();
+            await Refuse(db, "INSERT", "NEW.FileName = 'refused.txt'");
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            var attachment = db.Attachments.Single(x => x.Id == stored.Id);
+            if (delete)
+            {
+                db.Attachments.Remove(attachment);
+            }
+            else
+            {
+                attachment.FileName = "report-2.txt";
+                attachment.Bytes = "second version"u8.ToArray();
+            }
+            await db.SaveChangesAsync();
+            var refused = db.Attachments.Add(new Attachment { FileName = "refused.txt", Bytes = [1] });
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+            refused.State = EntityState.Detached;
+            await transaction.CommitAsync();
+        }
+
+        Assert.That(ReadFile(stored.Path), Is.Null);
+        Assert.That(StoredFiles(), Has.Length.EqualTo(delete ? 0 : 1));
+    }
+
+    // A save that an interceptor after the entity interceptors ends never reaches EF's own save, and raises no hook that
+    // says it ended: a rollback to a savepoint after it is still the caller's, and keeps the file of the replace it undid
+    [Test]
+    public async Task A_Rollback_To_A_Savepoint_After_A_Save_An_Interceptor_Ended_Keeps_The_File_Of_The_Row()
+    {
+        var failing = new FailingInterceptor();
+        Build(afterwards: services => services.ConfigureDbContext<FileContext>(db => db.AddInterceptors(failing)));
+        var stored = await AddAttachment("report.txt", "first version");
+
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FileContext>();
+            var interceptors = db.GetService<IDbContextOptions>().FindExtension<CoreOptionsExtension>()!.Interceptors!.ToList();
+            Assert.That(interceptors.FindIndex(i => i is EntityReactorInterceptor), Is.LessThan(interceptors.IndexOf(failing)));
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            await transaction.CreateSavepointAsync("before");
+            var attachment = db.Attachments.Single(x => x.Id == stored.Id);
+            attachment.FileName = "report-2.txt";
+            attachment.Bytes = "second version"u8.ToArray();
+            await db.SaveChangesAsync();
+            attachment.FileName = "report-3.txt";
+            failing.Armed = true;
+            await Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
+            failing.Armed = false;
+            await transaction.RollbackToSavepointAsync("before");
+            await transaction.CommitAsync();
+        }
+
+        Assert.That(Stored(stored.Id).Path, Is.EqualTo(stored.Path));
+        Assert.That(ReadFile(stored.Path), Is.EqualTo("first version"));
+    }
+
+    // SQLite cannot enlist, so the delete is written at once: what is pinned is that the reactor runs nothing
+    [Test]
+    public async Task An_Ambient_Transaction_Disposed_Without_Complete_Removes_No_File()
+    {
+        Build(dbOptions: db => db.ConfigureWarnings(w => w.Ignore(RelationalEventId.AmbientTransactionWarning)));
+        var stored = await AddAttachment("report.txt", "content");
+
+        using (new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+        using (var scope = _sp.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Attachment, int>>();
+            await service.Remove((await service.Details(stored.Id))!);
+            await service.SaveChanges();
+        }
+
+        Assert.That(ReadFile(stored.Path), Is.EqualTo("content"));
     }
 }

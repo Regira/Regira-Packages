@@ -431,11 +431,18 @@ public abstract class EntityPrimerBase<T> : IEntityPrimer<T>
   `BeginTransaction()` — also for contexts sharing that transaction through `UseTransaction`, whichever of them
   commits it — and when an ambient `TransactionScope` completes. A failed save, a rollback, or a transaction
   disposed without committing reacts to nothing
-- Not seen: a rollback to a savepoint — the reactions of the saves made after it still run — and a transaction
-  committed outside EF, on the `DbTransaction` itself — its reactions never run. A transaction begun outside EF and
-  handed to `UseTransaction` is known to have ended only when it commits or rolls back through EF: on Npgsql, which
-  reuses the transaction object of a pooled connection, one disposed without either leaves its reactions to the
-  next such transaction on that connection
+- One save is one transaction. Every write the library makes — a generated endpoint, `IEntityService.SaveChanges()`,
+  the related rows a prepper changes, an attachment upload — flushes in a single `SaveChanges`, which EF wraps in a
+  transaction of its own. A unit of work that spans several saves or several services is the application's:
+  `BeginTransaction()` inside `CreateExecutionStrategy().Execute(...)`, or a `TransactionScope` with
+  `TransactionScopeAsyncFlowOption.Enabled`. The library joins either, and its reactors wait for that commit
+- A rollback to a savepoint does not say which saves it undid, so the reactions of every save made before it in that
+  transaction still run when it commits; after one the application makes, `AttachmentFileReactor` keeps the files of
+  those saves instead
+- Not seen: a transaction committed outside EF, on the `DbTransaction` itself — its reactions never run. A
+  transaction begun outside EF and handed to `UseTransaction` is known to have ended only when it commits or rolls
+  back through EF: on Npgsql, which reuses the transaction object of a pooled connection, one disposed without either
+  leaves its reactions to the next such transaction on that connection
 - Receive an `IEntityChange<TEntity>`: `Kind` (`Added`/`Modified`/`Deleted` — a soft delete is `Modified`),
   `Entity` (the committed row, generated keys filled in), `Original` (the row as stored before the save) and
   `ChangedProperties`, with the `HasChanged(x => x.Status)` and `ChangedTo(x => x.Status, value)` helpers. Values

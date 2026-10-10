@@ -28,7 +28,10 @@ namespace Regira.Entities.EFcore.Reactors;
 ///     is one. A failed or canceled save, a rollback and a transaction that ends without committing discard them.</item>
 /// </list>
 /// Both call shapes are hooked: a synchronous <c>SaveChanges()</c> waits for its reactors as the asynchronous one does.
-/// Not seen: a rollback to a savepoint (the reactions of the saves made after it still run), and a transaction
+/// A rollback to a savepoint made by the caller names no savepoint, so which saves it undid is unknown: the reactions of
+/// every save made before it in that transaction still run, marked as possibly undone for a reactor that must not act on
+/// a change that never happened (<see cref="Attachments.AttachmentFileReactor{TAttachment, TKey}"/>). EF's own rollback
+/// to the savepoint it made for a failing save undoes that save alone, and marks nothing. Not seen: a transaction
 /// committed outside EF, on the <see cref="DbTransaction"/> itself (its reactions never run). A transaction begun
 /// outside EF and handed to <c>UseTransaction</c> is known to have ended only when it commits or rolls back through
 /// EF; on a provider that reuses its transaction object (Npgsql), one disposed without either leaves its reactions to
@@ -55,6 +58,11 @@ public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveCh
     // collected with it, or — on a provider that hands the same object to the next transaction on its connection
     // (Npgsql) — dropped when that one starts.
     private static readonly ConditionalWeakTable<DbTransaction, AwaitingCommit> AwaitingCommits = new();
+    // the changes a rollback to a savepoint may have undone
+    private static readonly ConditionalWeakTable<IEntityChange, object> MaybeUndone = new();
+    private static readonly object Mark = new();
+    // a concurrency conflict raises the context's event, never the interceptors' failure hooks
+    private static readonly EventHandler<SaveChangesFailedEventArgs> OnSaveChangesFailed = (sender, _) => Discard(sender as DbContext);
 
     private readonly Lazy<ReactionDispatcher> _dispatcher = new(() => new ReactionDispatcher(serviceProvider));
     private readonly Lazy<ReactorTargets> _unregisteredTargets = new(() => ReactorDiscovery.GetTargets(serviceProvider.GetServices<IEntityReactor>()));
@@ -67,6 +75,9 @@ public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveCh
         var registrations = services != null ? ReactorDiscovery.GetCatalog(services).Registrations : _unregisteredReactors.Value;
         return registrations.Any(r => r.IsOf(reactorType) && r.MayHandle(entityType));
     }
+
+    /// <summary>Whether a rollback to a savepoint, made after the save of <paramref name="change"/>, may have undone it.</summary>
+    internal static bool MayBeUndone(IEntityChange change) => MaybeUndone.TryGetValue(change, out _);
 
     // Querying: mark what a tracking query loads
 
@@ -148,7 +159,7 @@ public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveCh
         }
         catch
         {
-            await SaveOutcomes.Failed(context);
+            await SaveOutcomes.FailedBeforeDatabase(context);
             throw;
         }
     }
@@ -156,6 +167,9 @@ public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveCh
     private async Task Capture(DbContext context, bool async, CancellationToken token)
     {
         Watch(context);
+        // re-attached every save: a pooled context drops its handlers when it is returned
+        context.SaveChangesFailed -= OnSaveChangesFailed;
+        context.SaveChangesFailed += OnSaveChangesFailed;
         // replaced, never appended: a save that did not reach SavedChanges left nothing to react to
         var state = States.GetOrCreateValue(context);
         state.InFlight = null;
@@ -187,7 +201,10 @@ public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveCh
     {
         if (eventData.Context is { } context)
         {
-            SyncOverAsync.Wait(() => Complete(context));
+            // read on the saving thread: SyncOverAsync may run the work on the thread pool, where a TransactionScope
+            // without async flow is not visible
+            var ambient = Transaction.Current;
+            SyncOverAsync.Wait(() => Complete(context, ambient));
         }
         return base.SavedChanges(eventData, result);
     }
@@ -195,12 +212,12 @@ public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveCh
     {
         if (eventData.Context is { } context)
         {
-            await Complete(context);
+            await Complete(context, Transaction.Current);
         }
         return await base.SavedChangesAsync(eventData, result, cancellationToken);
     }
 
-    private async Task Complete(DbContext context)
+    private async Task Complete(DbContext context, Transaction? ambient)
     {
         context.ClearStoredOriginals();
         if (!States.TryGetValue(context, out var state) || state.InFlight is not { } captured)
@@ -220,7 +237,7 @@ public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveCh
                 awaiting.Batches.Add((_dispatcher.Value, changes));
             }
         }
-        else if (Transaction.Current is { } ambient)
+        else if (ambient != null)
         {
             // created now, while the scope that saved is alive — the transaction may complete after it is disposed
             var dispatcher = _dispatcher.Value;
@@ -356,4 +373,36 @@ public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveCh
         AwaitingCommits.Remove(transaction);
         return Task.CompletedTask;
     }
+
+    // A rollback to a savepoint names no savepoint: after the caller's, every save waiting on the transaction may have been
+    // undone. EF's own, to the savepoint it made for a failing save, comes from inside that save and undoes it alone.
+    void IDbTransactionInterceptor.RolledBackToSavepoint(DbTransaction transaction, TransactionEventData eventData)
+        => MarkMayBeUndone(transaction, eventData.Context);
+    Task IDbTransactionInterceptor.RolledBackToSavepointAsync(DbTransaction transaction, TransactionEventData eventData, CancellationToken cancellationToken)
+    {
+        MarkMayBeUndone(transaction, eventData.Context);
+        return Task.CompletedTask;
+    }
+
+    private static void MarkMayBeUndone(DbTransaction transaction, DbContext? context)
+    {
+        if (IsSaving(context) || !AwaitingCommits.TryGetValue(transaction, out var awaiting))
+        {
+            return;
+        }
+        lock (awaiting)
+        {
+            foreach (var change in awaiting.Batches.SelectMany(batch => batch.Changes))
+            {
+                MaybeUndone.AddOrUpdate(change, Mark);
+            }
+        }
+    }
+
+    // EF's own flag, set around the statements of a save and reset in a finally: unlike one an interceptor would set in
+    // SavingChanges, it cannot outlive a save that a later interceptor ended before the database was reached
+#pragma warning disable EF1001
+    private static bool IsSaving(DbContext? context)
+        => context?.GetService<Microsoft.EntityFrameworkCore.ChangeTracking.Internal.IStateManager>().SavingChanges == true;
+#pragma warning restore EF1001
 }

@@ -54,7 +54,7 @@ public class EntityPrimerContainerInterceptor(IServiceProvider serviceProvider, 
 
     public override void SaveChangesFailed(DbContextErrorEventData eventData)
     {
-        SyncOverAsync.Wait(() => SaveOutcomes.Failed(eventData.Context));
+        SaveOutcomes.FailedSync(eventData.Context);
         base.SaveChangesFailed(eventData);
     }
     public override async Task SaveChangesFailedAsync(DbContextErrorEventData eventData, CancellationToken cancellationToken = default)
@@ -64,7 +64,7 @@ public class EntityPrimerContainerInterceptor(IServiceProvider serviceProvider, 
     }
     public override void SaveChangesCanceled(DbContextEventData eventData)
     {
-        SyncOverAsync.Wait(() => SaveOutcomes.Failed(eventData.Context));
+        SaveOutcomes.FailedSync(eventData.Context);
         base.SaveChangesCanceled(eventData);
     }
     public override async Task SaveChangesCanceledAsync(DbContextEventData eventData, CancellationToken cancellationToken = default)
@@ -83,7 +83,7 @@ public class EntityPrimerContainerInterceptor(IServiceProvider serviceProvider, 
         }
         catch
         {
-            await SaveOutcomes.Failed(context);
+            await SaveOutcomes.FailedBeforeDatabase(context);
             throw;
         }
         finally

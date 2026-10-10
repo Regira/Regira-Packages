@@ -968,7 +968,8 @@ public class EntityServiceCollection<TContext>
         where TSortBy : struct, Enum
         where TIncludes : struct, Enum;
 
-    // Attachments — register the shared Attachment entity + file store + bytes→file primer.
+    // Attachments — register the shared Attachment entity + file store + bytes→file primer + AttachmentFileReactor,
+    // which removes a replaced or deleted file once the save is committed (see entities.instructions.md §Attachments, step 6).
     // Framework infrastructure: the shared Attachment base is registered once and reused by every owner.
     EntityServiceCollection<TContext> WithAttachments(
         Func<IServiceProvider, IFileService> factory,

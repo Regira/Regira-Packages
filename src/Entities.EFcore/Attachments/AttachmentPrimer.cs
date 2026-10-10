@@ -16,10 +16,11 @@ public class AttachmentPrimer(IAttachmentFileService<Attachment, int> fileServic
 /// Stores the content given to an attachment as the save is primed, and types it by its file name; the bytes
 /// <c>Details</c> loaded are its stored file, not new content. New content for a stored file goes under a key of its own,
 /// with the extension of the file name, so a save the database refuses, or a transaction rolled back, leaves the stored
-/// file as it was; a save that fails removes the file it wrote and hands the row its stored path back. Where an
-/// <see cref="AttachmentFileReactor{TAttachment, TKey}"/> runs for the attachment, the replaced file and the file of a
-/// deleted attachment are removed once the save is committed; where none does, the primer removes the replaced file
-/// once the save succeeds and a deleted attachment's file during the save.
+/// file as it was. A save that fails hands the row its stored path back and removes the file it wrote — unless EF did not
+/// roll the failed save back (a caller's transaction without a savepoint, an ambient transaction), where the row naming
+/// that file may still be committed. Where an <see cref="AttachmentFileReactor{TAttachment, TKey}"/> runs for the attachment,
+/// the replaced file and the file of a deleted attachment are removed once the save is committed; where none does, the
+/// primer removes them once the save succeeds.
 /// </summary>
 public class AttachmentPrimer<TAttachment, TKey>(IAttachmentFileService<TAttachment, TKey> fileService) : EntityPrimerBase<TAttachment>
     where TAttachment : class, IAttachment<TKey>, new()
@@ -47,14 +48,34 @@ public class AttachmentPrimer<TAttachment, TKey>(IAttachmentFileService<TAttachm
         // the file of a deleted attachment; after the commit instead, where an AttachmentFileReactor removes it
         if (entry.State == EntityState.Deleted && !FileReactorRuns(entry.Context))
         {
-            if (string.IsNullOrWhiteSpace(entity.Path))
-            {
-                // make sure Path is known to physically delete the file
-                entity = (await entry.Context.Set<TAttachment>().SingleAsync(x => x.Id!.Equals(entity.Id), token))!;
-            }
-
-            await fileService.RemoveFile(entity, token);
+            await RemoveOnceDeleted(entity, entry, token);
         }
+    }
+
+    private async Task RemoveOnceDeleted(TAttachment entity, EntityEntry entry, CancellationToken token)
+    {
+        var path = entity.Path;
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            // a delete by key: the stored row names the file. Read past identity resolution, which hands back this entity.
+            var stored = await entry.GetDatabaseValuesAsync(token);
+            path = stored?.GetValue<string?>(nameof(IAttachment.Path));
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return;
+            }
+        }
+        var file = new TAttachment { Id = entity.Id, Path = path };
+
+        SaveOutcomes.Register(entry.Context,
+            onSaved: async () =>
+            {
+                // only a save that wrote the delete, which detaches the entry: a delete the database refused keeps its file
+                if (entry.State == EntityState.Detached)
+                {
+                    await fileService.RemoveFile(file);
+                }
+            });
     }
 
     private async Task Store(TAttachment entity, EntityEntry entry, CancellationToken token)
@@ -82,13 +103,17 @@ public class AttachmentPrimer<TAttachment, TKey>(IAttachmentFileService<TAttachm
 
         var context = entry.Context;
         SaveOutcomes.Register(context,
-            onFailed: async () =>
+            onFailed: async mayStand =>
             {
-                // no row refers to the file just written: it goes, and the row holds its stored file again for a retry
+                // the row holds its stored file again for a retry; the file just written goes, unless the row naming it
+                // may still be committed
                 StoredContent.Unmark(entity);
                 try
                 {
-                    await fileService.RemoveFile(entity);
+                    if (!mayStand)
+                    {
+                        await fileService.RemoveFile(entity);
+                    }
                 }
                 finally
                 {

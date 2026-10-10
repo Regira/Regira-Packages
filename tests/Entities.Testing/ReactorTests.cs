@@ -870,6 +870,53 @@ public class ReactorTests
         Assert.That(_log.Single<Invoice>().Entity.Number, Is.EqualTo("INV-2"));
     }
 
+    // a conflict raises none of the interceptors' failure hooks: the marks of the failed save go all the same, so a
+    // retry that refreshes nothing reports the row another writer stored, not the one this context loaded
+    [Test]
+    public async Task A_Retry_After_A_Concurrency_Conflict_Reports_The_Stored_Row()
+    {
+        Build(s => s.For<Invoice>(e => e.React(Record)));
+        var id = await SeedInvoice("INV-1");
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        var invoice = await db.Invoices.SingleAsync(x => x.Id == id);
+        // another writer, past the change tracker
+        await db.Invoices.ExecuteUpdateAsync(s => s.SetProperty(x => x.Number, "INV-2"));
+        // the next update of the row affects none, as one guarded by a stale token would
+        await db.Database.ExecuteSqlRawAsync("CREATE TRIGGER lost BEFORE UPDATE ON \"Invoices\" BEGIN SELECT RAISE(IGNORE); END;");
+        invoice.OrderId = 2;
+
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => db.SaveChangesAsync());
+        await db.Database.ExecuteSqlRawAsync("DROP TRIGGER lost;");
+        await db.SaveChangesAsync();
+
+        var change = _log.Single<Invoice>();
+        Assert.That(change.Original!.Number, Is.EqualTo("INV-2"));
+        Assert.That(change.Entity.Number, Is.EqualTo("INV-2"));
+        Assert.That(change.Entity.OrderId, Is.EqualTo(2));
+    }
+
+    // which saves a rollback to a savepoint undid is unknown: the reactions of every save in the transaction still run
+    [Test]
+    public async Task A_Rollback_To_A_Savepoint_Still_Reacts_To_The_Saves_In_The_Transaction()
+    {
+        Build(s => s.For<Order>(e => e.React(Record)));
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Orders.Add(NewOrder("Kept"));
+        await db.SaveChangesAsync();
+        await transaction.CreateSavepointAsync("before");
+        db.Orders.Add(NewOrder("Undone"));
+        await db.SaveChangesAsync();
+        await transaction.RollbackToSavepointAsync("before");
+        await transaction.CommitAsync();
+
+        Assert.That(_log.Changes.OfType<IEntityChange<Order>>().Select(c => c.Entity.Title), Is.EqualTo(new[] { "Kept", "Undone" }));
+    }
+
     [Test]
     public async Task An_Ambient_Transaction_Reacts_When_It_Completes()
     {
@@ -899,6 +946,30 @@ public class ReactorTests
         }
 
         Assert.That(_log.Changes.OfType<IEntityChange<Order>>().Select(c => c.Entity.Title), Is.EqualTo(new[] { "Completed" }));
+    }
+
+    // on an exclusive scheduler the synchronous hooks hand their work to the thread pool, where a scope without async
+    // flow is not visible: the scope is read on the saving thread
+    [Test]
+    public void A_Synchronous_Save_On_An_Exclusive_Scheduler_Waits_For_A_Thread_Bound_Scope()
+    {
+        Build(s => s.For<Order>(e => e.React(Record)),
+            dbOptions: db => db.ConfigureWarnings(w => w.Ignore(RelationalEventId.AmbientTransactionWarning)));
+        var scheduler = new ConcurrentExclusiveSchedulerPair().ExclusiveScheduler;
+
+        var save = Task.Factory.StartNew(() =>
+        {
+            using (new TransactionScope())
+            using (var scope = _sp.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+                db.Orders.Add(NewOrder("Aborted"));
+                db.SaveChanges();
+            }
+        }, CancellationToken.None, TaskCreationOptions.None, scheduler);
+
+        Assert.That(save.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        Assert.That(_log.Changes, Is.Empty, "a scope disposed without Complete() aborts");
     }
 
     // ── what a reactor may do ───────────────────────────────────────────────────

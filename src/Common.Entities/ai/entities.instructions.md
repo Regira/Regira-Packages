@@ -758,11 +758,17 @@ options.AddReactor<AuditReactor>();    // global — an EntityReactorBase<IHasTi
 - **After the commit, never before** — at once for a save that commits on its own; at `Commit()` for every save
   inside an explicit `BeginTransaction()`, also when several contexts share that transaction through
   `UseTransaction` and one of them commits it; when an ambient `TransactionScope` completes. A failed save, a
-  rollback and a transaction disposed without committing react to nothing. Not seen: a rollback to a savepoint
-  (the reactions of the saves made after it still run), and a commit made on the `DbTransaction` itself rather than
-  through a context `UseEntities` wires (its reactions never run). A transaction begun outside EF and handed to
-  `UseTransaction` must also commit or roll back through EF: on Npgsql, one disposed without either leaves its
-  reactions to the next such transaction on that pooled connection.
+  rollback and a transaction disposed without committing react to nothing. A rollback to a savepoint does not say
+  which saves it undid: the reactions of every save made before it in that transaction still run at the commit
+  (after one the app makes, `AttachmentFileReactor` keeps those saves' files). Not seen: a commit made on the `DbTransaction` itself
+  rather than through a context `UseEntities` wires (its reactions never run). A transaction begun outside EF and
+  handed to `UseTransaction` must also commit or roll back through EF: on Npgsql, one disposed without either leaves
+  its reactions to the next such transaction on that pooled connection.
+- **One save, one transaction** — every write the library makes (a generated endpoint, `IEntityService.SaveChanges()`,
+  a prepper's related rows, an attachment upload) flushes in a single `SaveChanges`, inside EF's own transaction. A
+  unit of work spanning several saves or services is the app's: `BeginTransaction()` inside
+  `CreateExecutionStrategy().Execute(...)`, or a `TransactionScope` with `TransactionScopeAsyncFlowOption.Enabled`.
+  The library joins either; its reactors wait for that commit. Add no transaction abstraction of your own.
 - **In process, inside the call that commits** — that call returns once they have run: `SaveChanges()` for a
   save that commits on its own; `Commit()` / `CommitAsync()` for the saves inside `BeginTransaction()`, whose own
   `SaveChanges()` returns before anything reacts; the `Dispose()` that ends a completed `TransactionScope`, which
@@ -1327,7 +1333,8 @@ in the Development environment by default. It catches, with actionable messages:
   (enabled by `ConfigureDefaultJsonOptions()` or `ValidateEntityControllers()`), plus a missing `IEntityMapper`.
 - **Unwired interceptors** — primers/normalizers/reactors registered in DI while the `DbContext` options lack
   the matching interceptor (they would silently never run). Only applies to setups without `UseDefaults()`
-  (which auto-wires the interceptors) that also skipped `e.WireDbContext(...)`.
+  (which auto-wires the interceptors) that also skipped `e.WireDbContext(...)`. Without the reactor interceptor,
+  attachment files go before a surrounding transaction commits (§Attachments step 6).
 - **Ignored `?q=`** (warning) — entities without `IHasNormalizedContent` and without a custom filter. Any custom
   filter counts as handling `q`, so one that never reads `so.Q` gets no warning: handle it there (`FilterQ`).
 - **Two write paths** (warning) — an entity synced by a parent's `Related()` that also has its own `.For<>()`.
@@ -1593,7 +1600,12 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
    modelBuilder.Entity<ProductAttachment>().HasOne(x => x.Attachment).WithMany().HasForeignKey(x => x.AttachmentId);
    modelBuilder.Entity<Product>().HasMany(x => x.Attachments).WithOne().HasForeignKey(x => x.ObjectId).HasPrincipalKey(x => x.Id);
    ```
-6. Register **two** things: `.WithAttachments(_ => new BinaryFileService(...))` for the shared `Attachment` entity + file store + bytes→file primer + `AttachmentFileReactor` (removes a replaced or deleted attachment's file once the save is committed, so a refused or rolled-back save keeps it — only a transaction rolled back after a successful save keeps the new file too; needs the reactor wiring `UseDefaults()` sets — without it, a replaced file goes once the save succeeds and a deleted one during the save), **and** `.For<Product>(e => e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments))` for the typed per-owner services + link prepper + DTO mapping. `HasAttachments` is an extension on the **base** `EntityServiceBuilder`, so it chains on every `For<>()` tier — a complex owner registers it exactly like the simple one shown here. The bytes `Details` loads are the stored file, not new content, so saving a rename or another metadata edit leaves the file where it is; bytes or a stream set in their place replace it, stored under the file name's extension.
+6. Register **two** things: `.WithAttachments(_ => new BinaryFileService(...))` for the shared `Attachment` entity + file store + bytes→file primer + `AttachmentFileReactor` (removes a replaced or deleted attachment's file once the save is committed), **and** `.For<Product>(e => e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments))` for the typed per-owner services + link prepper + DTO mapping. `HasAttachments` is an extension on the **base** `EntityServiceBuilder`, so it chains on every `For<>()` tier — a complex owner registers it exactly like the simple one shown here. The bytes `Details` loads are the stored file, not new content, so saving a rename or another metadata edit leaves the file where it is; bytes or a stream set in their place replace it, stored under the file name's extension. **Files follow the rows** — with the reactor wiring `UseDefaults()` sets, storage keeps every file a stored row names, and doubt costs an orphan file, never a row without its file:
+   - New bytes go under a key of their own, so a refused save or a rolled-back transaction leaves the stored file as it was.
+   - A failed save removes the file it wrote and gives the row its stored path back for a retry — except where EF does not roll the failed save back (a caller's transaction without a savepoint: `AutoSavepointsEnabled = false`, SQL Server with MARS; an ambient `TransactionScope`; `AutoTransactionBehavior.Never`): the statements before the failing one stand, so the file stays.
+   - Replaced and deleted files go after the commit. A rollback to a savepoint the app makes keeps the files of every save before it in that transaction; a failed save the app catches inside its transaction is undone alone, and the earlier saves' files go as usual.
+   - A transaction rolled back after a successful save leaves the new file as an orphan; an app that needs a clean store sweeps storage against the stored `Path` values.
+   - Without the reactor wiring, the primer removes replaced and deleted files once the save succeeds — before a surrounding transaction commits; a `SaveChanges(acceptAllChangesOnSuccess: false)` leaves them in storage.
 7. *(web apps)* Call `options.UseAttachmentUris()` (before registering entities, on the **same** `UseEntities` options instance) and register `AddHttpContextAccessor()` so attachment DTOs resolve a `Uri`: a link to the owner's mapped download when `MapEntityEndpoints()` serves it, else to the attachment controller's `GetFile` action.
 
 > ⚠️ **A link rule belongs in the owner's validator too.** Validators scoped to the link entity run for the
