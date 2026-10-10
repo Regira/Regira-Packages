@@ -8,7 +8,7 @@ Lightweight Word backend for [Regira Office](https://regira.github.io/Regira-Pac
 <PackageReference Include="Regira.Office.Word.Mini" Version="6.*" />
 ```
 
-Templates follow MiniWord's own tag syntax, which differs from the other backends' for collection tables and images. Nested documents, headers, footers and non-default `InputOptions` throw `NotSupportedException`.
+Templates follow MiniWord's own tag syntax, which differs from the other backends' for collection tables and images; conditional blocks and loops work as on the other backends. Nested documents, headers, footers and non-default `InputOptions` throw `NotSupportedException`.
 
 ## Documentation
 

@@ -8,6 +8,7 @@ using Regira.Media.Drawing.Models;
 using Regira.Media.Drawing.Models.Abstractions;
 using Regira.Office.MimeTypes;
 using Regira.Office.Word.Abstractions;
+using Regira.Office.Word.Layout;
 using Regira.Office.Word.Models;
 using Regira.Office.Word.Syncfusion.Extensions;
 using Regira.Office.Word.Syncfusion.Internal;
@@ -35,8 +36,6 @@ namespace Regira.Office.Word.Syncfusion;
 public class WordService : IWordService
 {
     private static readonly Regex ParamRegex = new("{{ *[a-zA-Z0-9._]+ *}}");
-    // what a marker opens with — not a placeholder's {{ — read as the blocks read it: in any case, else a whole word
-    private static readonly Regex MarkerStartRegex = new(@"\{\{\s*(?:#|/|else\b)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     public WordService(SyncfusionWordConfig? config = null)
     {
@@ -51,9 +50,12 @@ public class WordService : IWordService
         return Task.FromResult(ToMemoryFile(doc));
     }
 
-    public async Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default)
+    public Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default)
+        => Merge(inputs, null, cancellationToken);
+
+    public async Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, MergeOptions? options, CancellationToken cancellationToken = default)
     {
-        using var doc = await MergeDocuments(inputs);
+        using var doc = await MergeDocuments(inputs, options);
         return ToMemoryFile(doc);
     }
 
@@ -119,35 +121,34 @@ public class WordService : IWordService
     protected internal IMemoryFile ToMemoryFile(WordDocument doc, FormatType format = FormatType.Docx)
         => doc.ToStream(format).ToMemoryFile(format == FormatType.Doc ? ContentTypes.DOC : ContentTypes.DOCX);
 
-    protected internal async Task<WordDocument> MergeDocuments(IEnumerable<WordTemplateInput> inputs)
+    protected internal Task<WordDocument> MergeDocuments(IEnumerable<WordTemplateInput> inputs)
+        => MergeDocuments(inputs, null);
+    protected internal Task<WordDocument> MergeDocuments(IEnumerable<WordTemplateInput> inputs, MergeOptions? mergeOptions)
     {
         var doc = new WordDocument();
 
         // the first input stays open as the style reference for the others
         WordDocument? firstDoc = null;
+        var previousIsPadded = false;
         try
         {
             foreach (var input in inputs.AsList())
             {
-                using var newFile = await Create(input);
-                await using var newStream = newFile.GetStream()!;
-
-                var inputDoc = new WordDocument(newStream, FormatType.Docx);
+                // its options processed once, InheritFont taking the first input's font before the padding counts the
+                // pages, so they are counted in the font the input ends up in
+                var inputDoc = CreateDocument(input, null, input.Options?.InheritFont == true ? firstDoc : null);
                 firstDoc ??= inputDoc;
                 try
                 {
-                    if (input.Options != null)
+                    // DocIO imports the input's sections as they are, the first of them starting a new page; only the
+                    // joint between two inputs changes, so an input keeps its own section breaks
+                    if (doc.Sections.Count > 0 && inputDoc.Sections.Count > 0)
                     {
-                        ProcessInputOptions(inputDoc, input.Options, firstDoc);
-                    }
-
-                    foreach (var section in inputDoc.Sections.OfType<WSection>())
-                    {
-                        // without this DocIO starts every imported section on a new page
-                        section.BreakCode = SectionBreakCode.NoBreak;
+                        inputDoc.Sections[0].BreakCode = JointBreak(mergeOptions, previousIsPadded, input.Options?.EnforceEvenAmountOfPages == true);
                     }
 
                     doc.ImportContent(inputDoc, ImportOptions.UseDestinationStyles);
+                    previousIsPadded = input.Options?.EnforceEvenAmountOfPages == true;
                 }
                 finally
                 {
@@ -168,10 +169,24 @@ public class WordService : IWordService
             firstDoc?.Dispose();
         }
 
-        return doc;
+        return Task.FromResult(doc);
     }
 
+    private static SectionBreakCode JointBreak(MergeOptions? options, bool previousIsPadded, bool isPadded)
+        => MergeJoints.Of(options, previousIsPadded, isPadded) switch
+        {
+            MergeJoint.OddPage => SectionBreakCode.Oddpage,
+            MergeJoint.NewPage => SectionBreakCode.NewPage,
+            _ => SectionBreakCode.NoBreak
+        };
+
     protected internal WordDocument CreateDocument(WordTemplateInput input, WordDocument? reference = null)
+        => CreateDocument(input, reference, null);
+    /// <summary>
+    /// Builds the input. Its headers and footers take their font from <paramref name="reference"/>, the input itself from
+    /// <paramref name="fontReference"/> where given: a merge's first input (<see cref="InputOptions.InheritFont"/>).
+    /// </summary>
+    private WordDocument CreateDocument(WordTemplateInput input, WordDocument? reference, WordDocument? fontReference)
     {
         // nested documents, headers and footers all build through here
         using var nesting = NestedDocumentGuard.Enter();
@@ -179,7 +194,7 @@ public class WordService : IWordService
         var doc = LoadDocument(input.Template);
         try
         {
-            return FillDocument(doc, input, reference ?? doc);
+            return FillDocument(doc, input, reference ?? doc, fontReference);
         }
         catch
         {
@@ -189,10 +204,10 @@ public class WordService : IWordService
         }
     }
 
-    private WordDocument FillDocument(WordDocument doc, WordTemplateInput input, WordDocument reference)
+    private WordDocument FillDocument(WordDocument doc, WordTemplateInput input, WordDocument reference, WordDocument? fontReference)
     {
         // first, so a dropped branch's placeholders are never filled or inserted
-        ResolveConditions(doc, input);
+        ResolveBlocks(doc, input);
 
         if (input.DocumentParameters?.Any() == true)
         {
@@ -235,7 +250,7 @@ public class WordService : IWordService
                 !hadEvenPages && pageSetup.DifferentOddAndEvenPages);
         }
 
-        return ProcessInputOptions(doc, input.Options, reference);
+        return ProcessInputOptions(doc, input.Options, fontReference ?? reference);
     }
 
     /// <summary>
@@ -369,8 +384,17 @@ public class WordService : IWordService
             {
                 foreach (var picture in section.Body.FindAllPictures())
                 {
-                    picture.Width *= scaleFactor;
-                    picture.Height *= scaleFactor;
+                    // DocIO writes a shape past Word's 22-inch limit, which Word cannot hold, so the factor stops there
+                    var factor = PictureScaling.Factor(originalWidth, section.PageSetup.ClientWidth, picture.Width, picture.Height);
+                    if (factor == 1)
+                    {
+                        // left as it is, as on the other backends
+                        continue;
+                    }
+                    // both sizes first: setting the width of a picture that keeps its aspect ratio sets its height too
+                    var (width, height) = PictureScaling.Size(picture.Width, picture.Height, factor);
+                    picture.Width = (float)width;
+                    picture.Height = (float)height;
                 }
             }
         }
@@ -475,144 +499,15 @@ public class WordService : IWordService
         }
     }
 
-    /// <summary>Resolves the document's conditional blocks, as <see cref="ConditionalBlocks"/> describes them.</summary>
+    /// <summary>
+    /// Resolves the document's template blocks, as <see cref="TemplateBlocks"/> describes them, and fills the fields of
+    /// its loops' rows.
+    /// </summary>
+    protected internal void ResolveBlocks(WordDocument doc, WordTemplateInput input)
+        => new SyncfusionTemplateWalk(doc).Run(input);
+    [Obsolete("Use ResolveBlocks, which resolves loop blocks as well.", false)]
     protected internal void ResolveConditions(WordDocument doc, WordTemplateInput input)
-    {
-        var stories = doc.Sections.OfType<WSection>()
-            .SelectMany(section => new[]
-            {
-                section.Body,
-                section.HeadersFooters.Header, section.HeadersFooters.FirstPageHeader, section.HeadersFooters.EvenHeader, section.HeadersFooters.OddHeader,
-                section.HeadersFooters.Footer, section.HeadersFooters.FirstPageFooter, section.HeadersFooters.EvenFooter, section.HeadersFooters.OddFooter
-            });
-        var paragraphs = stories
-            .SelectMany(BlockParagraphs)
-            .Concat(MarkerParagraphs(doc))
-            .Distinct()
-            .Select(paragraph => (Paragraph: paragraph, Text: GetVisibleText(paragraph)))
-            .ToArray();
-        if (!paragraphs.Any(paragraph => ConditionalBlocks.OpensBlock(paragraph.Text)))
-        {
-            return;
-        }
-
-        var containers = paragraphs
-            .Where(paragraph => ConditionalBlocks.ContainsMarker(paragraph.Text))
-            .Select(paragraph => paragraph.Paragraph.Owner)
-            .OfType<ICompositeEntity>()
-            .Distinct()
-            .ToArray();
-
-        foreach (var container in containers)
-        {
-            var children = container.ChildEntities;
-            var texts = children.OfType<IEntity>()
-                .Select(child => child is WParagraph paragraph ? GetVisibleText(paragraph) : null)
-                .ToArray();
-
-            foreach (var index in ConditionalBlocks.Resolve(texts, input).OrderByDescending(i => i))
-            {
-                children.RemoveAt(index);
-            }
-
-            // whatever holds paragraphs ends with one: a body, cell, header, footer, text box or content control
-            if (container is WTextBody body && (children.Count == 0 || children[children.Count - 1] is WTable))
-            {
-                body.AddParagraph();
-            }
-        }
-    }
-
-    /// <summary>
-    /// The paragraphs blocks are read from: the story's own, its tables' and content controls', and those of its
-    /// text boxes and shapes, which <see cref="WordDocumentExtensions.Descendants"/> does not enter. A footnote,
-    /// endnote or comment is not part of a template's blocks, as on the other backends.
-    /// </summary>
-    private static IEnumerable<WParagraph> BlockParagraphs(IEntity? entity)
-    {
-        if (entity is not ICompositeEntity composite)
-        {
-            yield break;
-        }
-
-        foreach (var child in composite.ChildEntities.OfType<IEntity>())
-        {
-            var inner = child switch
-            {
-                WFootnote or WComment => null,
-                WTextBox textBox => textBox.TextBoxBody,
-                Shape shape => shape.TextBody,
-                _ => child
-            };
-            if (child is WParagraph paragraph)
-            {
-                yield return paragraph;
-            }
-            foreach (var offspring in BlockParagraphs(inner))
-            {
-                yield return offspring;
-            }
-        }
-    }
-
-    /// <summary>
-    /// The paragraphs a marker opens in, found by search, in a document holding a group of text boxes (<c>wpg:wgp</c>):
-    /// a group loads as a <c>GroupShape</c>, whose shapes the public object model does not expose, so
-    /// <see cref="BlockParagraphs"/> cannot walk into it. Only then: reading a match splits and merges the runs around
-    /// it, which a document without a group is spared. A footnote, endnote or comment is left out, as there.
-    /// </summary>
-    private static IEnumerable<WParagraph> MarkerParagraphs(WordDocument doc)
-        => (doc.FindAllItemsByProperty(EntityType.GroupShape, null, null) is not { Count: > 0 } ? [] : doc.FindAll(MarkerStartRegex) ?? [])
-            .Select(selection => selection.GetAsOneRange()?.OwnerParagraph)
-            .OfType<WParagraph>()
-            .Where(paragraph => !InNoteOrComment(paragraph));
-
-    private static bool InNoteOrComment(IEntity entity)
-    {
-        for (var owner = entity.Owner; owner != null; owner = owner.Owner)
-        {
-            if (owner is WFootnote or WComment)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    /// <summary>
-    /// The paragraph's text without its field codes and deleted revisions, which <see cref="WParagraph.Text"/> holds.
-    /// </summary>
-    private static string GetVisibleText(WParagraph paragraph)
-    {
-        var text = new VisibleText();
-        Read(paragraph.Items);
-        return text.ToString();
-
-        void Read(ParagraphItemCollection items)
-        {
-            foreach (ParagraphItem item in items)
-            {
-                switch (item)
-                {
-                    case WField:
-                        text.FieldStart();
-                        break;
-                    case WFieldMark { Type: FieldMarkType.FieldSeparator }:
-                        text.FieldSeparator();
-                        break;
-                    case WFieldMark { Type: FieldMarkType.FieldEnd }:
-                        text.FieldEnd();
-                        break;
-                    case WTextRange range:
-                        text.Append(range.Text, range.IsDeleteRevision);
-                        break;
-                    case InlineContentControl control:
-                        Read(control.ParagraphItems);
-                        break;
-                }
-            }
-        }
-    }
+        => ResolveBlocks(doc, input);
 
     protected internal void ReplaceGlobalParameters(WordDocument doc, IDictionary<string, object> parameters)
     {
@@ -817,7 +712,7 @@ public class WordService : IWordService
     /// </summary>
     protected internal global::Syncfusion.Drawing.SizeF GetPageSize(RegiraPageSize size)
     {
-        var (width, height) = PageSizes.Points(size);
+        var (width, height) = WordPageSizes.Points(size);
         return new global::Syncfusion.Drawing.SizeF((float)width, (float)height);
     }
 

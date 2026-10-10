@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Office.Mail.Testing.Abstractions;
 using Regira.Office.Mail.MailGun;
+using Regira.Office.Mail.Models;
 
 namespace Office.Mail.Testing;
 
@@ -57,5 +58,22 @@ public class MailGunTests : MailerTestsBase
     {
         RequireCredentials();
         return base.Send_With_Attachment();
+    }
+    /// <summary>Mailgun takes a quoted display name holding a comma, and the <c>h:Reply-To</c> header.</summary>
+    [Test]
+    public async Task Send_With_Display_Names_And_ReplyTo()
+    {
+        RequireCredentials();
+        var msg = new MessageObject
+        {
+            From = new MailAddress { Email = "bram@regira.com", DisplayName = "Regira Tests" },
+            To = { new MailRecipient { Email = "bramverboven@hotmail.com", DisplayName = "Doe, Alice" } },
+            ReplyTo = new MailAddress { Email = "bram@regira.com", DisplayName = "Regira \"Reply\" Desk" },
+            Subject = $"Test from {Mailer.GetType().Name}",
+            Body = "Testing display names and Reply-To..."
+        };
+        var response = await Mailer.Send(msg);
+
+        Assert.That(response.Success, Is.True);
     }
 }

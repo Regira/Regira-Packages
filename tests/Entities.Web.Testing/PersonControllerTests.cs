@@ -242,12 +242,12 @@ public class PersonControllerTests : IClassFixture<ContosoApiFactory>, IDisposab
         var patchResponse = await client.PatchAsJsonAsync($"/persons/{person.Id}", new { givenName = (string?)null });
 
         Assert.Equal(HttpStatusCode.BadRequest, patchResponse.StatusCode);
-        // the body a PUT's DataAnnotations failure answers with: a ValidationProblemDetails, not the bare field map
+        // the body of a validator's refusal: a ValidationProblemDetails with errorDetails, not the bare field map
         Assert.Equal("application/problem+json", patchResponse.Content.Headers.ContentType?.MediaType);
         var problem = await patchResponse.Content.ReadFromJsonAsync<ValidationProblemDetails>();
         // camelCased: this host serializes with Newtonsoft's camelCase resolver, which applies to dictionary keys
         Assert.Contains("givenName", problem!.Errors.Keys);
-        Assert.False(problem.Extensions.ContainsKey("errorDetails"));
+        Assert.True(problem.Extensions.ContainsKey("errorDetails"));
     }
     [Fact]
     public async Task Patch_404()

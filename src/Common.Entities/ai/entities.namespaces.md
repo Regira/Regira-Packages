@@ -131,8 +131,8 @@
 | `Regira.Entities.Mapping.Mapster` | `UseMapsterMapping()` | **Default** mapping provider |
 | `Regira.Entities.Mapping.AutoMapper` | `UseAutoMapper()` | Alternative mapping provider |
 | `Regira.Entities.Mapping.Abstractions` | `IEntityMapper`, `IEntityAfterMapper<>`, `IEntityMapConfigurator`, `EntityAfterMapperBase<>`, `EntityAfterMapper<>` |  |
-| `Regira.Entities.Mapping.Models` | `AttachmentDto<>`, `AttachmentInputDto<>`, `EntityAttachmentDto<>`, `EntityAttachmentInputDto<>` | DTO classes for mapping |
-| `Regira.Entities.Attachments.Mapping.Abstractions` | `IEntityAttachmentInput<>` | Attachment input contracts |
+| `Regira.Entities.Mapping.Models` | `EntityAttachmentDto`, `EntityAttachmentInputDto`, `AttachmentDto`, `AttachmentInputDto` — the `int`-keyed records the guides use — and their generic bases `EntityAttachmentDto<,,>`, `EntityAttachmentInputDto<,,>`, `AttachmentDto<>`, `AttachmentInputDto<>` | DTO records for mapping |
+| `Regira.Entities.Attachments.Mapping.Abstractions` | `IEntityAttachmentInput` (`int`-keyed), `IEntityAttachmentInput<,>`, `IEntityAttachmentInput<,,>` | Attachment input contracts |
 
 ---
 
@@ -182,6 +182,20 @@
 | `Regira.Entities.Web.Controllers.Abstractions` | `EntityControllerBase<>` |
 | `Regira.Entities.Web.Models` | `SaveResult<>`, `DeleteResult<>`, `DetailsResult<>`, `ListResult<>`, `SearchResult<>` *(the generated actions' return types — needed to override one)* |
 | `Microsoft.AspNetCore.Mvc` | `[ApiController]`, `[Route]`, `ControllerBase` |
+| `Regira.Entities.Web.Endpoints` | `MapEntityEndpoints()`, `MapEntity<TEntity>()` *(on `IEndpointRouteBuilder`)*, `Endpoints()` *(on the `For<>()` builders)*, `EntityEndpointOptions`, `EntityEndpointsOptions`, `EntityEndpoint`, `EntityEndpointMetadata`, `EntityExceptionEndpointFilter` — the mapped endpoints, instead of controllers (`entities.patterns` → *Mapped entity endpoints*) |
+
+---
+
+## Entity Operations (requests the endpoints send)
+
+| Namespace | Types |
+|---|---|
+| `Regira.Entities.Mediator.Abstractions` | `IEntitySender`, `IEntityRequest`, `IEntityRequest<>`, `IEntityRequestHandler<,>`, `IEntityPipelineBehavior<,>`, `EntityRequestDelegate<>`, `IEntityRequestExecutor`, `IEntityInputValidator` — package `Regira.Entities.Mediator`, brought by `Regira.Entities.Web` |
+| `Regira.Entities.Mediator.Requests` | `DetailsQuery<,,>`, `ListQuery<,,,>`, `ListQuery<,,,,,>`, `SearchQuery<,,,>`, `SearchQuery<,,,,,>`, `SaveCommand<,,,>`, `PatchCommand<,,,>`, `DeleteCommand<,,>`; an owner's attachment routes: `UploadAttachmentCommand<,,>`, `UpdateAttachmentCommand<,,>`, `ReplaceAttachmentFileCommand<,>`, `AttachmentFileQuery<>`, `AttachmentFileByNameQuery<>` |
+| `Regira.Entities.Mediator.Handlers` | `DetailsHandler<,,>`, `ListHandler<,,,>`, `ListHandler<,,,,,>`, `SearchHandler<,,,>`, `SearchHandler<,,,,,>`, `SaveHandler<,,,>`, `PatchHandler<,,,>`, `DeleteHandler<,,>`, `UploadAttachmentHandler<,,>`, `UpdateAttachmentHandler<,,>`, `ReplaceAttachmentFileHandler<,>`, `AttachmentFileHandler<>`, `AttachmentFileByNameHandler<>` *(the defaults — derive from one to change an operation)* |
+| `Regira.Entities.Mediator` | `EntityOperation`, `EntitySender`, `EntityRequestExecutor`, `DataAnnotationsEntityInputValidator`, `EntityServiceProviderExtensions` *(`GetEntitySender()`)* |
+| `Regira.Entities.Mediator.DependencyInjection` | `EntityMediatorServiceCollectionExtensions` *(`AddEntityMediator()` — `UseEntities()` calls it)* |
+| `Regira.Entities.Mediator.MediatR` | `EntityServiceCollectionOptionsExtensions` *(`UseMediatR()`)*, `EntityRequestMessage`, `EntityRequestMessageHandler`, `MediatREntitySender` — package `Regira.Entities.Mediator.MediatR` |
 
 ---
 
@@ -311,6 +325,11 @@ Regira.DAL.Paging                       → PagingInfo
 ```
 Regira.Entities.Web.Controllers.Abstractions   → EntityControllerBase<...>
 Microsoft.AspNetCore.Mvc                       → [ApiController], [Route]
+```
+
+### Mapping endpoints instead of controllers
+```
+Regira.Entities.Web.Endpoints                  → MapEntityEndpoints(), MapEntity<TEntity>(), e.Endpoints(o => ...)
 ```
 
 ### Registering an entity in DI

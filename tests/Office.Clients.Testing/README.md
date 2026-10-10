@@ -10,8 +10,8 @@ Office API (barcodes, QR codes, CSV, Excel, mail parsing, OCR, PDF, Word), licen
 dotnet test tests/Office.Clients.Testing
 ```
 
-Every fixture is in the `Network` category. All but `LicenseStatusClientTests`, which answers from a canned
-handler, call a running Office API and read two user secrets:
+Every fixture is in the `Network` category. All but `LicenseStatusClientTests` and `WordClientRequestTests`, which
+answer from canned handlers, call a running Office API and read two user secrets:
 
 - `Regira:LicenseKey`: without it those fixtures are skipped.
 - `ApiServices:BaseUrl`: the API's address. With the key set but no address, the fixtures fail.

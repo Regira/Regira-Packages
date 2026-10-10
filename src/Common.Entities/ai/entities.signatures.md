@@ -13,10 +13,11 @@ Exact signatures for interfaces, classes, and extension methods in the Regira En
 5. [Extension Methods](#extension-methods)
 6. [Service Builders](#service-builders)
 7. [Mapping and Processing](#mapping-and-processing)
-8. [Response Types](#response-types)
-9. [Attachments](#attachments)
-10. [Exceptions](#exceptions)
-11. [Supporting Types](#supporting-types)
+8. [Entity Operations](#entity-operations)
+9. [Response Types](#response-types)
+10. [Attachments](#attachments)
+11. [Exceptions](#exceptions)
+12. [Supporting Types](#supporting-types)
 
 ---
 
@@ -436,7 +437,8 @@ public virtual Task<ActionResult<DeleteResult<TDto>>?> Delete([FromRoute] TKey i
 ```
 
 The verb attribute is **inherited** by the override, so the route survives without it: declare only the
-`[Authorize]` and delegate — `return base.Create(model);`.
+`[Authorize]` and delegate — `return base.Create(model);`. When to override and when to replace the operation's handler
+instead, and the mapped-endpoint counterpart: `entities.patterns` → *Replacing one endpoint*.
 
 **Endpoints exposed by controller bases:**
 
@@ -682,10 +684,10 @@ and whether typed `Includes` is available. Match the controller base and any man
 
 | `For<>()` overload | Builder type | Tier | `SortBy` lambda | Typed `Includes` | `Process` / `Related` |
 |---|---|---|---|---|---|
-| `For<TEntity>()` | `EntityIntServiceBuilder` | Simple | `query => …` (1-arg) | — | `Process` ✓ · `Related<TRelated>` ✓ |
-| `For<TEntity, TKey>()` | `EntityServiceBuilder` | Simple | `query => …` (1-arg) | — | `Process` ✓ · `Related<TRelated, TRelatedKey>` (2-arg for non-int key) |
+| `For<TEntity>()` | `EntityIntServiceBuilder` | Simple | `query => …` (1-arg) | — | `Process` ✓ · `Related` ✓ |
+| `For<TEntity, TKey>()` | `EntityServiceBuilder` | Simple | `query => …` (1-arg) | — | `Process` ✓ · `Related` ✓ |
 | `For<TEntity, TKey, TSearchObject>()` | `EntitySearchObjectServiceBuilder` | Simple | `query => …` (1-arg) | — | `Process` ✓ · `Related` ✓ |
-| `For<TEntity, TSearchObject, TSortBy, TIncludes>()` | `ComplexEntityIntServiceBuilder` | **Complex** | `(query, sortBy) => …` (2-arg) | ✓ | `Process` ✓ · `Related<TRelated>` ✓ |
+| `For<TEntity, TSearchObject, TSortBy, TIncludes>()` | `ComplexEntityIntServiceBuilder` | **Complex** | `(query, sortBy) => …` (2-arg) | ✓ | `Process` ✓ · `Related` ✓ |
 | `For<TEntity, TKey, TSearchObject, TSortBy, TIncludes>()` | `ComplexEntityServiceBuilder` | **Complex** | `(query, sortBy) => …` (2-arg) | ✓ | `Process` ✓ · `Related` ✓ |
 
 > Using the 2-arg `SortBy((query, sortBy) => …)` on a **simple** builder is **CS1593** — simple
@@ -693,12 +695,11 @@ and whether typed `Includes` is available. Match the controller base and any man
 > `[Flags]` `TIncludes`) exists only on the two **complex** builders — but every builder, **simple ones
 > included**, inherits the **untyped** `e.Includes((query, EntityIncludes?) => query.Include(...))`
 > overload (the "Typed `Includes`" column below tracks only the typed form), so simple registrations can
-> still eager-load navigations. The single-arg `e.Related<TRelated>(…)` shortcut works on every int-key
-> builder (incl. the simple `For<TEntity, int, TSearchObject>()`), and on each of them a lambda in second
-> position may be either the parent `prepareFunc` or the `RelatedEntityBuilder` callback —
-> `e.Related(x => x.Lines, r => r.ServerOwned(x => x.UnitPrice))`. A non-int related key needs the
-> 2-arg `e.Related<TRelated, TRelatedKey>(…)`, where the second position is always `prepareFunc`: name the
-> callback, `configure: r => …`.
+> still eager-load navigations. Every builder takes `e.Related(…)` for an `int`-keyed child without type
+> arguments, whatever the parent's key, and a lambda in second position may be either the parent
+> `prepareFunc` or the `RelatedEntityBuilder` callback — `e.Related(x => x.Lines, r => r.ServerOwned(x => x.UnitPrice))`.
+> A non-int related key needs the 2-arg `e.Related<TRelated, TRelatedKey>(…)`, where the second position is
+> always `prepareFunc`: name the callback, `configure: r => …`.
 >
 > `HasAttachments` is an extension on the **base** `EntityServiceBuilder` (`Regira.Entities.DependencyInjection.Attachments`),
 > so it applies on **every** tier — a **complex** owner chains `.HasAttachments(...)` exactly like a simple one.
@@ -967,7 +968,8 @@ public class EntityServiceCollection<TContext>
         where TSortBy : struct, Enum
         where TIncludes : struct, Enum;
 
-    // Attachments — register the shared Attachment entity + file store + bytes→file primer.
+    // Attachments — register the shared Attachment entity + file store + bytes→file primer + AttachmentFileReactor,
+    // which removes a replaced or deleted file once the save is committed (see entities.instructions.md §Attachments, step 6).
     // Framework infrastructure: the shared Attachment base is registered once and reused by every owner.
     EntityServiceCollection<TContext> WithAttachments(
         Func<IServiceProvider, IFileService> factory,
@@ -1095,7 +1097,7 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
     EntityServiceBuilder<TContext, TEntity, TKey> Includes(
         Func<IQueryable<TEntity>, EntityIncludes?, IQueryable<TEntity>> addIncludes);
 
-    // Per-entity paging override (HTTP boundary). null = off; SetPageSize() opts out entirely.
+    // Per-entity paging override (applied by the list and search requests). null = off; SetPageSize() opts out entirely.
     EntityServiceBuilder<TContext, TEntity, TKey> SetPageSize(
         int? defaultPageSize = null, int? maxPageSize = null);
 
@@ -1191,6 +1193,19 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
         Action<RelatedEntityBuilder<TContext, TRelated, TRelatedKey>>? configure = null)
         where TRelated : class, IEntity<TRelatedKey>;
 
+    // int-keyed child, whatever TKey: the type argument is inferred from the navigation
+    EntityServiceBuilder<TContext, TEntity, TKey> Related<TRelated>(
+        Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression,
+        Action<TEntity>? prepareFunc = null,
+        Action<RelatedEntityBuilder<TContext, TRelated, int>>? configure = null)
+        where TRelated : class, IEntity<int>;
+
+    // a lone second lambda that configures the child, not the parent
+    EntityServiceBuilder<TContext, TEntity, TKey> Related<TRelated>(
+        Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression,
+        Action<RelatedEntityBuilder<TContext, TRelated, int>> configure)
+        where TRelated : class, IEntity<int>;
+
     void Build();
 }
 ```
@@ -1265,15 +1280,8 @@ public partial class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, T
         Func<IQueryable<TEntity>, TSearchObject?, IQueryable<TEntity>> filterFunc);
 
     // Re-declared to keep the builder type through a chain, here and on the complex builders:
-    // Validate(...) and React(...) — every overload — AddValidator<T>(), AddReactor<T>() and ServerOwned(...)
-
-    // NEW: single-type-arg Related shortcut for int-keyed children (related key is int,
-    // independent of the parent TKey). Use the inherited Related<TRelated, TRelatedKey> for non-int related keys.
-    EntitySearchObjectServiceBuilder<...> Related<TRelated>(
-        Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression,
-        Action<TEntity>? prepareFunc = null,
-        Action<RelatedEntityBuilder<TContext, TRelated, int>>? configure = null)
-        where TRelated : class, IEntity<int>;
+    // Validate(...) and React(...) — every overload — AddValidator<T>(), AddReactor<T>(), ServerOwned(...)
+    // and the two int-child Related<TRelated>(...) overloads
 
     void Build();
 }
@@ -1311,22 +1319,11 @@ public partial class EntityIntServiceBuilder<TContext, TEntity>
         where TValidator : class, IEntityValidator<TEntity>;
     // React(...) — every overload — and AddReactor<TReactor>() likewise return EntityIntServiceBuilder<TContext, TEntity>
 
-    // Re-declared to keep the builder type through a chain — without it the next call falls back to
-    // the base Related<TRelated, TRelatedKey>, whose key argument cannot be inferred (CS0411).
+    // Re-declared to keep the builder type through a chain: ServerOwned(...) and the int-child
+    // Related<TRelated>(...) overloads (sync only, with prepareFunc/configure, or with configure alone)
     EntityIntServiceBuilder<TContext, TEntity> ServerOwned<TProp>(
         Expression<Func<TEntity, TProp>> selector,
         Func<TEntity, TProp>? mintOnCreate = null);
-
-    // Int-key shortcuts: sync only, or with a configure callback. For a parent-level prepare use
-    // the inherited Related<TRelated, int>(nav, prepareFunc) or a separate e.Prepare(...).
-    EntityIntServiceBuilder<TContext, TEntity> Related<TRelated>(
-        Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression)
-        where TRelated : class, IEntity<int>;
-
-    EntityIntServiceBuilder<TContext, TEntity> Related<TRelated>(
-        Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression,
-        Action<RelatedEntityBuilder<TContext, TRelated, int>> configure)
-        where TRelated : class, IEntity<int>;
 
     void Build();
 }
@@ -1407,23 +1404,8 @@ public partial class ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearc
 ### ComplexEntityIntServiceBuilder
 
 Returned by `.For<TEntity, TSearchObject, TSortBy, TIncludes>()`.
-Inherits all `ComplexEntityServiceBuilder` methods. Only addition vs parent:
-
-<!-- no-compile -->
-```csharp
-public partial class ComplexEntityIntServiceBuilder<TContext, TEntity, TSearchObject, TSortBy, TIncludes>
-    : ComplexEntityServiceBuilder<TContext, TEntity, int, TSearchObject, TSortBy, TIncludes>
-{
-    // Int-key shortcut — no TRelatedKey type parameter needed
-    ComplexEntityIntServiceBuilder<...> Related<TRelated>(
-        Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression,
-        Action<TEntity>? prepareFunc = null,
-        Action<RelatedEntityBuilder<TContext, TRelated, int>>? configure = null)
-        where TRelated : class, IEntity<int>;
-
-    void Build();
-}
-```
+Inherits all `ComplexEntityServiceBuilder` methods; the builder-type-keeping re-declarations (`Related<TRelated>`
+included) return `ComplexEntityIntServiceBuilder<...>`.
 
 ---
 
@@ -1842,7 +1824,161 @@ as a single-character wildcard too. Escape them if exact punctuation has to matc
 
 ---
 
+## Entity Operations
+
+Package `Regira.Entities.Mediator` (brought by `Regira.Entities.Web`); usage in
+`entities.patterns` → *Entity operations outside a controller*.
+
+<!-- no-compile -->
+```csharp
+using Regira.Entities.Mediator;                      // EntityOperation, EntitySender, EntityRequestExecutor, DataAnnotationsEntityInputValidator
+using Regira.Entities.Mediator.Abstractions;         // the interfaces below
+using Regira.Entities.Mediator.Requests;             // the requests
+using Regira.Entities.Mediator.Handlers;             // their default handlers, to derive from
+
+public enum EntityOperation { Details, List, Search, Save, Patch, Delete }
+
+public interface IEntityRequest { Type EntityType { get; } EntityOperation Operation { get; } }
+public interface IEntityRequest<TResponse> : IEntityRequest;
+
+// what the controllers and every other caller send through; registered (scoped) by UseEntities()
+public interface IEntitySender
+{
+    Task<TResponse?> Send<TResponse>(IEntityRequest<TResponse> request, CancellationToken token = default);   // null = not found
+}
+// resolves the handler (a registered closed one, otherwise the default), runs the behaviours, and fills Duration on
+// a response that is an IEntityResult (the built-in envelopes) — a request of the app's own answering another type gets none
+public interface IEntityRequestExecutor
+{
+    Task<TResponse?> Execute<TResponse>(IEntityRequest<TResponse> request, CancellationToken token = default);
+    Task<object?> Execute(IEntityRequest request, CancellationToken token = default);                           // for an adapter
+}
+public interface IEntityRequestHandler<in TRequest, TResponse> where TRequest : IEntityRequest<TResponse>
+{
+    Task<TResponse?> Handle(TRequest request, CancellationToken token = default);
+}
+public delegate Task<TResponse?> EntityRequestDelegate<TResponse>();
+// open generic → every request; registration order, first registered outermost
+public interface IEntityPipelineBehavior<in TRequest, TResponse> where TRequest : IEntityRequest<TResponse>
+{
+    Task<TResponse?> Handle(TRequest request, EntityRequestDelegate<TResponse> next, CancellationToken token = default);
+}
+// a save's or a patch's input DTO check; MvcEntityInputValidator (Regira.Entities.Web.Controllers) in an MVC host
+public interface IEntityInputValidator { IReadOnlyList<EntityInputError> Validate(object input); }
+
+// requests — the type lists follow the controller's
+public sealed record DetailsQuery<TEntity, TKey, TDto>(TKey Id, ArchivedFilter? Archived = null) : IEntityRequest<DetailsResult<TDto>>;
+public sealed record ListQuery<TEntity, TKey, TSearchObject, TDto>(TSearchObject? SearchObject = null, PagingInfo? Paging = null)
+    : IEntityRequest<ListResult<TDto>>;
+public sealed record ListQuery<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto>(
+    IList<TSearchObject?> SearchObjects, PagingInfo? Paging = null, TIncludes[]? Includes = null, TSortBy[]? SortBy = null)
+    : IEntityRequest<ListResult<TDto>>;
+public sealed record SearchQuery<TEntity, TKey, TSearchObject, TDto>(TSearchObject? SearchObject = null, PagingInfo? Paging = null)
+    : IEntityRequest<SearchResult<TDto>>;
+public sealed record SearchQuery<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto>(
+    IList<TSearchObject?> SearchObjects, PagingInfo? Paging = null, TIncludes[]? Includes = null, TSortBy[]? SortBy = null)
+    : IEntityRequest<SearchResult<TDto>>;
+public sealed record SaveCommand<TEntity, TKey, TDto, TInputDto>(TInputDto Input, TKey? Id = default, bool ValidateInput = true)
+    : IEntityRequest<SaveResult<TDto>>;
+// SerializerOptions null: JsonSerializerDefaults.Web, cycles ignored, enums by name or number
+public sealed record PatchCommand<TEntity, TKey, TDto, TInputDto>(TKey Id, JsonElement Patch, JsonSerializerOptions? SerializerOptions = null)
+    : IEntityRequest<SaveResult<TDto>>;
+public sealed record DeleteCommand<TEntity, TKey, TDto>(TKey Id) : IEntityRequest<DeleteResult<TDto>>;
+
+// an owner's attachment routes — TEntity is the int-keyed link (IEntityAttachment<int, int, int, Attachment>); the route
+// wins over the input, and a link of another owner throws an EntityInputException keyed objectId. The attachment
+// controller and the mapped endpoints send them; the controller's download by name goes through its GetFile(id), so
+// AttachmentFileByNameQuery comes from the mapped endpoints only
+// ValidateInput as on SaveCommand: the input's DataAnnotations first; the attachment controller passes false
+public sealed record UploadAttachmentCommand<TEntity, TDto, TInputDto>(int ObjectId, TInputDto Input, INamedFile File, bool ValidateInput = true)
+    : IEntityRequest<SaveResult<TDto>>;
+public sealed record UpdateAttachmentCommand<TEntity, TDto, TInputDto>(int ObjectId, int Id, TInputDto Input, bool ValidateInput = true)
+    : IEntityRequest<SaveResult<TDto>>;
+public sealed record ReplaceAttachmentFileCommand<TEntity, TDto>(int ObjectId, int Id, INamedFile File) : IEntityRequest<SaveResult<TDto>>;
+public sealed record AttachmentFileQuery<TEntity>(int Id) : IEntityRequest<Attachment>;
+public sealed record AttachmentFileByNameQuery<TEntity>(int ObjectId, string FileName) : IEntityRequest<Attachment>;
+
+// default handlers (DetailsHandler, ListHandler ×2, SearchHandler ×2, SaveHandler, PatchHandler, DeleteHandler;
+// UploadAttachmentHandler, UpdateAttachmentHandler, ReplaceAttachmentFileHandler, AttachmentFileHandler,
+// AttachmentFileByNameHandler): public classes with a virtual Handle and a protected Services, built from the request's
+// own type arguments
+public class DetailsHandler<TEntity, TKey, TDto>(IServiceProvider services)
+    : IEntityRequestHandler<DetailsQuery<TEntity, TKey, TDto>, DetailsResult<TDto>>;
+
+public static class EntityServiceProviderExtensions
+{
+    public static IEntitySender GetEntitySender(this IServiceProvider services);          // the registered one, else the in-house one
+    public static TService GetRequiredEntityService<TService>(this IServiceProvider services);   // throws with what For<>() registered
+}
+
+// Regira.Entities.Mediator.DependencyInjection — called by UseEntities(); TryAdd throughout
+public static IServiceCollection AddEntityMediator(this IServiceCollection services);
+```
+
+MediatR adapter — package `Regira.Entities.Mediator.MediatR`:
+
+<!-- no-compile -->
+```csharp
+using Regira.Entities.Mediator.MediatR;
+
+// inside UseEntities() or after: replaces the in-house sender; the app calls AddMediatR(...) itself
+public static EntityServiceCollectionOptions UseMediatR(this EntityServiceCollectionOptions options);
+
+// every entity request travels as this one MediatR request
+public sealed record EntityRequestMessage(IEntityRequest Request) : IRequest<object?>;
+public class EntityRequestMessageHandler(IEntityRequestExecutor executor) : IRequestHandler<EntityRequestMessage, object?>;
+public class MediatREntitySender(IServiceProvider services) : IEntitySender;
+```
+
+Mapped endpoints — `Regira.Entities.Web.Endpoints`, usage in `entities.patterns` → *Mapped entity endpoints (no controllers)*:
+
+<!-- no-compile -->
+```csharp
+using Regira.Entities.Web.Endpoints;
+
+// every For<>() registration, the controllers' route table; returns the group of all of them
+public static RouteGroupBuilder MapEntityEndpoints(this IEndpointRouteBuilder endpoints, Action<EntityEndpointsOptions>? configure = null);
+// one registration, even one Disable() or a controller keeps off MapEntityEndpoints(); route: the argument, else its
+// Route, else the convention. Its UseDtos, Exclude and AllowAnonymous apply as they do there
+public static RouteGroupBuilder MapEntity<TEntity>(this IEndpointRouteBuilder endpoints, string? route = null);
+
+public class EntityEndpointsOptions
+{
+    public string Prefix { get; set; } = "";
+    // on top of what the returned group carries: a policy added here applies besides the group's, not instead of it
+    public EntityEndpointsOptions ConfigureGroup<TEntity>(Action<RouteGroupBuilder> configure);
+}
+
+// on each For<>() builder (simple, int, search-object, complex, complex int), returning that builder
+public static TBuilder Endpoints(this TBuilder builder, Action<EntityEndpointOptions> configure);
+
+public class EntityEndpointOptions
+{
+    public string? Route { get; set; }                                  // null = kebab-case plural of the entity name
+    public EntityEndpointOptions Disable();
+    public EntityEndpointOptions Exclude(params EntityEndpoint[] endpoints);
+    public EntityEndpointOptions AllowAnonymous(params EntityEndpoint[] endpoints);
+    public EntityEndpointOptions UseDtos<TDto, TInputDto>();            // else the UseMapping pair; neither = mapping throws
+}
+
+public enum EntityEndpoint
+{
+    Details, List, Search, Save, Create, Modify, Patch, Delete,
+    AttachmentDetails, AttachmentList, AttachmentUpdate, AttachmentDelete, Download, Upload, ReplaceFile
+}
+
+// on every mapped endpoint: the entity (the owner, for an attachment route) and the endpoint
+public sealed record EntityEndpointMetadata(Type EntityType, EntityEndpoint Endpoint) { public bool IsWrite { get; } }
+
+// EntityInputException → 400, EntityConstraintException / EntityConcurrencyException → 409, the controllers' bodies
+public sealed class EntityExceptionEndpointFilter : IEndpointFilter;
+```
+
+---
+
 ## Response Types
+
+Shipped by `Regira.Entities.Mediator`, under the namespace they have always had.
 
 ```csharp
 using Regira.Entities.Web.Models;
@@ -1851,7 +1987,7 @@ public record DetailsResult<TDto>  { public TDto Item { get; set; }        publi
 public record ListResult<TDto>     { public IList<TDto> Items { get; set; } public long? Duration { get; set; } }
 public record SearchResult<TDto>   { public IList<TDto> Items { get; set; } public long Count { get; set; }     public long? Duration { get; set; } }
 public record SaveResult<TDto>     { public TDto Item { get; set; }        public bool IsNew { get; set; }     public int Affected { get; set; }   public long? Duration { get; set; } }
-public record DeleteResult<TDto>   { public TDto Item { get; set; }        public long? Duration { get; set; } }
+public record DeleteResult<TDto>   { public TDto Item { get; set; }        public int Affected { get; set; }   public long? Duration { get; set; } }
 ```
 
 ---
@@ -2023,7 +2159,7 @@ public class EntityServiceCollectionOptions(IServiceCollection services)
 {
     public IServiceCollection Services { get; }
 
-    // Global list/paging defaults applied at the HTTP boundary (null = off).
+    // Global list/paging defaults, applied by the list and search requests the endpoints send (null = off).
     public int? DefaultPageSize { get; set; } // forced page size when the request omits paging
     public int? MaxPageSize { get; set; }     // upper limit a requested page size is clamped to
 

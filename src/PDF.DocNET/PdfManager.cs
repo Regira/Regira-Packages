@@ -1,7 +1,6 @@
 ﻿using Docnet.Core;
 using Docnet.Core.Editors;
 using Docnet.Core.Models;
-using Regira.Collections;
 using Regira.IO.Abstractions;
 using Regira.IO.Extensions;
 using Regira.Media.Drawing.Dimensions;
@@ -10,6 +9,7 @@ using Regira.Media.Drawing.Services.Abstractions;
 using Regira.Office.MimeTypes;
 using Regira.Office.PDF.Abstractions;
 using Regira.Office.PDF.Defaults;
+using Regira.Office.PDF.Internal;
 using Regira.Office.PDF.Models;
 using ImageFormat = Regira.Media.Drawing.Enums.ImageFormat;
 
@@ -26,11 +26,11 @@ public class PdfManager(IImageService imageService) : IPdfService
 
     public async Task<IEnumerable<IMemoryFile>> Split(IMemoryFile pdf, IEnumerable<PdfSplitRange> ranges, CancellationToken cancellationToken = default)
     {
+        var pageRanges = PdfSplitRanges.Resolve(ranges, await GetPageCount(pdf, cancellationToken));
         var result = new List<IMemoryFile>();
-        foreach (var range in ranges)
+        foreach (var (start, end) in pageRanges)
         {
-            var pageCount = await GetPageCount(pdf, cancellationToken);
-            var splitBytes = DocLib.Instance.Split(pdf.GetBytes(), range.Start - 1, (range.End ?? pageCount) - 1);
+            var splitBytes = DocLib.Instance.Split(pdf.GetBytes(), start - 1, end - 1);
             var file = splitBytes.ToMemoryFile(ContentTypes.PDF);
             result.Add(file);
         }
@@ -72,45 +72,38 @@ public class PdfManager(IImageService imageService) : IPdfService
     }
     public async Task<IMemoryFile?> RemovePages(IMemoryFile pdf, IEnumerable<int> pages, CancellationToken cancellationToken = default)
     {
-        var pagesToRemove = pages.ToArray();
+        var pagesToRemove = pages.ToHashSet();
 
         var pageCount = await GetPageCount(pdf, cancellationToken);
 
+        // the runs of consecutive pages that stay, so the order and duplicates of pagesToRemove don't matter
         var ranges = new List<PdfSplitRange>();
-        var firstPage = pagesToRemove.First();
-        if (firstPage > 1)
+        for (var page = 1; page <= pageCount; page++)
         {
-            ranges.Add(new PdfSplitRange { Start = 1 });
-        }
-        foreach (var page in pagesToRemove)
-        {
-            var prev = ranges.LastOrDefault();
-            if (page == prev?.Start)
+            if (pagesToRemove.Contains(page))
             {
-                prev.Start = page + 1;
+                continue;
+            }
+
+            var prev = ranges.LastOrDefault();
+            if (prev?.End == page - 1)
+            {
+                prev.End = page;
             }
             else
             {
-                if (prev?.End.HasValue == false)
-                {
-                    prev.End = page - 1;
-                }
-                if (page < pageCount - 1)
-                {
-                    ranges.Add(new PdfSplitRange
-                    {
-                        Start = page + 1
-                    });
-                }
+                ranges.Add(new PdfSplitRange { Start = page, End = page });
             }
         }
 
-        var splitPdfs = (await Split(pdf, ranges, cancellationToken))
-            .Select(f => f.ToBinaryFile())
-            .ToArray();
-        var merged = await Merge(splitPdfs, cancellationToken);
-        splitPdfs.Dispose();
-        return merged;
+        if (ranges.Count == 0)
+        {
+            return null;
+        }
+
+        // one pass over the document, where splitting per run and merging the pieces parses it once per run
+        var pageRange = string.Join(",", ranges.Select(r => r.Start == r.End ? $"{r.Start}" : $"{r.Start}-{r.End}"));
+        return DocLib.Instance.Split(pdf.GetBytes(), pageRange).ToMemoryFile(ContentTypes.PDF);
     }
 
 
@@ -157,6 +150,10 @@ public class PdfManager(IImageService imageService) : IPdfService
         {
             throw new NullReferenceException($"{nameof(IImageService)} is not initialized");
         }
+        if (input.Images.Count == 0)
+        {
+            return null;
+        }
 
         var maxDim = new[]
         {
@@ -183,10 +180,10 @@ public class PdfManager(IImageService imageService) : IPdfService
     }
     public async Task<IList<IImageFile>> ToImages(IMemoryFile pdf, PdfToImagesOptions? options = null, CancellationToken cancellationToken = default)
     {
-        var pageDimensions = new PageDimensions(
-            options?.Size?.Width ?? PdfDefaults.ImageSize.Width,
-            options?.Size?.Height ?? PdfDefaults.ImageSize.Height
-        );
+        // Docnet fits a page's shorter side to the first dimension and its longer side to the second, and refuses a
+        // first that is larger, so the size fits either way round
+        var size = options?.Size ?? PdfDefaults.ImageSize;
+        var pageDimensions = new PageDimensions(Math.Min(size.Width, size.Height), Math.Max(size.Width, size.Height));
 
         using var docReader = DocLib.Instance.GetDocReader(pdf.GetBytes(), pageDimensions);
         var pageCount = docReader.GetPageCount();

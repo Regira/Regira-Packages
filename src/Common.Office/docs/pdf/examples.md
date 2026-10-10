@@ -5,18 +5,19 @@
 
 <!-- no-compile -->
 ```csharp
-IHtmlToPdfService pdf = new Regira.Office.PDF.SelectPdf.PdfManager();
+IHtmlToPdfService pdf = new Regira.Office.PDF.MsPlaywright.PdfManager();
 
 IMemoryFile result = await pdf.Create(new HtmlInput
 {
     HtmlContent         = reportHtml,
     HeaderHtmlContent   = "<div style='text-align:right;font-size:10px'>Confidential</div>",
     HeaderHeight        = 15,
-    FooterHtmlContent   = "<div style='text-align:center;font-size:10px'>Page {{page}} of {{pages}}</div>",
+    // Chromium fills the pageNumber and totalPages classes
+    FooterHtmlContent   = "<div style='text-align:center;font-size:10px'>Page <span class='pageNumber'></span> of <span class='totalPages'></span></div>",
     FooterHeight        = 15,
     Format              = PageSize.A4,
     Orientation         = PageOrientation.Portrait,
-    Margins             = new float[] { 20, 20, 20, 20 }   // top, right, bottom, left (points)
+    Margins             = new float[] { 20, 20, 20, 20 }   // top, right, bottom, left, in units of DPI (96 per inch)
 });
 
 await fileService.Save("reports/output.pdf", result.GetBytes()!);
@@ -52,7 +53,7 @@ public class InvoicePdfService(IHtmlParser html, IHtmlToPdfService pdf)
 
 <!-- no-compile -->
 ```csharp
-IPdfMerger merger = new Regira.Office.PDF.DocNET.PdfManager(imageService);
+IPdfMerger merger = new Regira.Office.PDF.PdfPig.PdfService(imageService);
 
 var pages = new List<IMemoryFile>
 {
@@ -70,7 +71,7 @@ IMemoryFile merged = (await merger.Merge(pages))!;
 
 <!-- no-compile -->
 ```csharp
-IPdfSplitter splitter = new Regira.Office.PDF.DocNET.PdfManager(imageService);
+IPdfSplitter splitter = new Regira.Office.PDF.PdfPig.PdfService(imageService);
 
 int total  = await splitter.GetPageCount(pdf);
 var ranges = Enumerable.Range(1, total)
@@ -85,7 +86,7 @@ IEnumerable<IMemoryFile> pages = await splitter.Split(pdf, ranges);
 
 <!-- no-compile -->
 ```csharp
-IPdfToImageService converter = new Regira.Office.PDF.Spire.PdfManager();
+IPdfToImageService converter = new Regira.Office.PDF.PdfPig.PdfService(imageService);
 
 var images = await converter.ToImages(pdf, new PdfToImagesOptions
 {
@@ -104,12 +105,12 @@ foreach (var img in images)
 
 <!-- no-compile -->
 ```csharp
-IPdfTextService extractor = new Regira.Office.PDF.DocNET.PdfManager(imageService);
+IPdfTextService extractor = new Regira.Office.PDF.PdfPig.PdfService(imageService);
 
 string fullText        = await extractor.GetText(pdf);
 IList<string> byPage   = await extractor.GetTextPerPage(pdf);
 
-// Remove pages that contain no text (e.g. blank separator pages)
+// Remove pages that contain no text (blank separator pages, and scanned pages too)
 IMemoryFile cleaned = (await extractor.RemoveEmptyPages(pdf))!;
 ```
 
@@ -136,9 +137,31 @@ await printer.Print(new PdfPrinterInput
 
 ---
 
+## Example 8: Spreadsheet → PDF
+
+`IDocumentToPdfService` converts Word documents, spreadsheets and presentations. Register MiniPdf's `PdfService`,
+which has no dependencies, and inject the abstraction.
+
+<!-- no-compile -->
+```csharp
+services.AddSingleton<IDocumentToPdfService, Regira.Office.PDF.MiniPdf.PdfService>();
+
+public class ReportPdfService(IDocumentToPdfService converter)
+{
+    public Task<IMemoryFile> ToPdf(byte[] workbook)
+        => converter.Create(new DocumentInput
+        {
+            Document    = workbook.ToMemoryFile(),
+            Orientation = PageOrientation.Landscape   // an .xlsx takes Orientation; Format or Margins throw
+        });
+}
+```
+
+---
+
 ## Overview
 
 1. [Index](README.md) — Overview, interfaces, models, and implementation notes
-1. **[Examples](examples.md)** — HTML→PDF, merge, split, text extraction, printing
+1. **[Examples](examples.md)** — HTML→PDF, Office documents→PDF, merge, split, text extraction, printing
 
 <!-- {% endraw %} -->

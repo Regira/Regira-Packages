@@ -13,6 +13,8 @@
 | `Entities.Mapping.Mapster` | `Regira.Entities.Mapping.Mapster` | Mapster integration |
 | *`Entities.Mapping.AutoMapper`* | *`Regira.Entities.Mapping.AutoMapper`* | *AutoMapper integration (deprecated)* |
 | `Entities.Validation.FluentValidation` | `Regira.Entities.Validation.FluentValidation` | FluentValidation rules in the write pipeline (§Step 8 → Validators) |
+| `Entities.Mediator` | `Regira.Entities.Mediator` | The requests the endpoints send through `IEntitySender`, for any other caller too (brought by `Regira.Entities.Web`) |
+| `Entities.Mediator.MediatR` | `Regira.Entities.Mediator.MediatR` | Every entity request dispatched through MediatR, inside the app's pipeline (opt-in) |
 
 Always prefer clear, conventional patterns over clever solutions. Default to the more feature-rich options when in doubt. Use the latest .NET version (net10) unless instructed otherwise.
 
@@ -192,7 +194,10 @@ The merge is the move that actually created capacity; the other two only rearran
 Steps 1–15 below are the **full menu** (optional steps included) — treat them as a reference index; this list is the fast path through it.
 Most entities are *simple* and need only the steps below — **skip everything else** unless a row in the optional-steps table applies. This yields full CRUD + List + paging:
 
-1. **Entity** — POCO implementing `IEntityWithSerial` (int key) or `IEntity<TKey>` (Step 1).
+1. **Entity** — POCO implementing `IEntityWithSerial` (int key) or `IEntity<TKey>` (Step 1). A client searching it by
+   keyword (`?q=` — the scaffolded SPA puts a keyword box on every overview) also needs `IHasNormalizedContent`, with
+   `[MaxLength(1024), Normalized(SourceProperties = [nameof(Title)])]` on its `NormalizedContent`; without it startup
+   warns that `?q=` is ignored for the entity (§Normalizing).
 2. **DTOs** — `XDto` (read) and `XInputDto` (write) (Step 5).
 3. **Register** — `services.For<X>(e => { });` in a per-entity DI extension method (Steps 12 & 14).
 4. **Controller** — `public class XController : EntityControllerBase<X, XDto, XInputDto>;` (Step 13).
@@ -517,11 +522,12 @@ Two shapes, and the choice is forced by whether you need the stored row:
 
 What a prepper works with: `modified` is the mapped incoming entity — the instance EF tracks and saves, so a value a prepper sets on it (or on one of its incoming owned rows, before or after the sync) is what gets written. `original` is a **no-tracking** copy of the stored row, loaded like `Details` (every include flag). The `Related()` sync never rewrites `original`'s collection: it holds the stored rows when your `Includes` loads that navigation and `null` otherwise — on either side of the sync. The sync only sets EF states: incoming rows become `Added`/`Modified`, stored rows missing from the payload `Deleted`, and a `null` collection is left untouched (a prepper registered before `Related()` that sets it to `null` keeps the rows from changing on that save). A primer sees the entity *after* every prepper has finished with it. **No prepper runs on `DELETE`**; validators do, with `ctx.Operation == EntityWriteOperation.Remove` — the place for a rule that forbids deleting a row in some state (§Validators below). Primers see `Deleted` entries. Only stages 5 and 6 run for a writer that bypasses `IEntityService` and saves through the raw `DbContext` — the reason a field a workflow service legitimately writes belongs in a prepper, never a primer ([`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update).
 
-`e.Related()` takes an optional parent-level `prepareFunc` followed by an optional `configure` callback — signature `Related<TRelated, TRelatedKey>(x => x.Collection, prepareFunc?, configure?)`:
-- Sync only: `e.Related<TRelated, TRelatedKey>(x => x.Collection, prepareFunc?)` — syncs the collection, optional per-entity prepare.
-- Nested: `e.Related<TRelated, TRelatedKey>(x => x.Collection, configure: builder => { ... })` — use `RelatedEntityBuilder` to nest sub-collections (`builder.Related(...)`) or add item-level prepare logic (`builder.Prepare(...)`). Pass `prepareFunc` before `configure` to combine both. Worked two-level example (party relationships carrying their own contact data): [`entities.blueprints.md`](./entities.blueprints.md) — Stakeholders (§Registration).
+`e.Related(x => x.Collection, prepareFunc?, configure?)` syncs an owned collection: `prepareFunc` runs on the parent, and `configure` takes a `RelatedEntityBuilder` to nest sub-collections (`builder.Related(...)`) or add item-level prepare logic (`builder.Prepare(...)`). A lone second lambda binds by its body — one that calls the builder is `configure`, one that touches the parent is `prepareFunc` — and passing both, `prepareFunc` first, combines them. Worked two-level example (party relationships carrying their own contact data): [`entities.blueprints.md`](./entities.blueprints.md) — Stakeholders (§Registration).
 
-> **Single-arg shortcut for int-keyed children:** when the related entity has an `int` key, drop the second type argument — `e.Related<TRelated>(x => x.Collection, …)`. This shortcut is available on **all** int-key builders, including the simple `For<TEntity, int, TSearchObject>()` registration. The two-arg form `e.Related<TRelated, TRelatedKey>(…)` is only required for non-`int` related keys (type inference can't deduce `TRelatedKey` from a navigation expression alone — **CS0411** if both args are omitted with a non-int key).
+> **Type arguments:** an `int`-keyed child needs none, on every builder and whatever the parent's key —
+> `e.Related(x => x.Lines, lines => lines.Related(x => x.Notes))`. A non-`int` child key needs both,
+> `e.Related<TRelated, TRelatedKey>(…)`: type inference cannot read `TRelatedKey` from the navigation (**CS0411**). On
+> that form the second position is always `prepareFunc`, so name the callback: `configure: r => …`.
 
 **How the sync classifies an incoming row** — three cases, and the first is what the front end sends:
 
@@ -752,11 +758,17 @@ options.AddReactor<AuditReactor>();    // global — an EntityReactorBase<IHasTi
 - **After the commit, never before** — at once for a save that commits on its own; at `Commit()` for every save
   inside an explicit `BeginTransaction()`, also when several contexts share that transaction through
   `UseTransaction` and one of them commits it; when an ambient `TransactionScope` completes. A failed save, a
-  rollback and a transaction disposed without committing react to nothing. Not seen: a rollback to a savepoint
-  (the reactions of the saves made after it still run), and a commit made on the `DbTransaction` itself rather than
-  through a context `UseEntities` wires (its reactions never run). A transaction begun outside EF and handed to
-  `UseTransaction` must also commit or roll back through EF: on Npgsql, one disposed without either leaves its
-  reactions to the next such transaction on that pooled connection.
+  rollback and a transaction disposed without committing react to nothing. A rollback to a savepoint does not say
+  which saves it undid: the reactions of every save made before it in that transaction still run at the commit
+  (after one the app makes, `AttachmentFileReactor` keeps those saves' files). Not seen: a commit made on the `DbTransaction` itself
+  rather than through a context `UseEntities` wires (its reactions never run). A transaction begun outside EF and
+  handed to `UseTransaction` must also commit or roll back through EF: on Npgsql, one disposed without either leaves
+  its reactions to the next such transaction on that pooled connection.
+- **One save, one transaction** — every write the library makes (a generated endpoint, `IEntityService.SaveChanges()`,
+  a prepper's related rows, an attachment upload) flushes in a single `SaveChanges`, inside EF's own transaction. A
+  unit of work spanning several saves or services is the app's: `BeginTransaction()` inside
+  `CreateExecutionStrategy().Execute(...)`, or a `TransactionScope` with `TransactionScopeAsyncFlowOption.Enabled`.
+  The library joins either; its reactors wait for that commit. Add no transaction abstraction of your own.
 - **In process, inside the call that commits** — that call returns once they have run: `SaveChanges()` for a
   save that commits on its own; `Commit()` / `CommitAsync()` for the saves inside `BeginTransaction()`, whose own
   `SaveChanges()` returns before anything reacts; the `Dispose()` that ends a completed `TransactionScope`, which
@@ -856,6 +868,11 @@ table below rather than reasoning it out.
 > would have applied is yours to repeat — omitting it is a data leak that compiles, type-checks and returns 200.
 > A **state transition** (submit/approve/reject) → same file, *Domain actions on an entity resource*.
 
+> **No controllers at all?** `app.MapEntityEndpoints()` maps every `For<>()` registration as minimal-API endpoints with
+> this route table — opt-in, for an app that wants no controller classes. Each mapped entity declares its DTO pair with
+> `UseMapping<TDto, TInputDto>()`, since there is no controller to name it: [`entities.patterns.md`](./entities.patterns.md)
+> § Mapped entity endpoints (no controllers).
+
 > **`EntityControllerBase` lives in `Regira.Entities.Web.Controllers.Abstractions`.** A bare
 > `using Regira.Entities.Web.Controllers;` is **not** enough — the base class is in the `.Abstractions`
 > child namespace and the controller won't resolve (CS0246) without it. See
@@ -917,7 +934,7 @@ IEntityService<Order, int, OrderSearchObject, OrderSortBy, OrderIncludes>       
 
 > **Response envelope.** Responses are wrapped, not bare DTOs: Details → `{ "item": {…} }`; List → `{ "items": [...] }`; Search → `{ "items": [...], "count": N }` (each also carries `duration` in ms). Unwrap `item`/`items` client-side.
 
-> **PATCH vs PUT:** Use `PUT` when the client has the full entity. Use `PATCH` when only a subset of fields should change. The PATCH implementation deserializes the incoming JSON Merge Patch into `TInputDto`, so only fields declared on the input model can be modified. `TInputDto` property names must match `TEntity` property names (camelCase in JSON, PascalCase in C#, which is the STJ default). Related collections absent from the body are left intact, and a scalar field **declared on `TInputDto`** but omitted from a PATCH body is preserved too — Merge Patch writes only the keys you send. The merged input is validated against `TInputDto`'s DataAnnotations first: a failure answers 400 with model binding's `ValidationProblemDetails`, without `errorDetails`. The trap is the opposite case: a field the DTO **never declares** maps as `null`/default on every PATCH *and* PUT — see ⚠️ below.
+> **PATCH vs PUT:** Use `PUT` when the client has the full entity. Use `PATCH` when only a subset of fields should change. The PATCH implementation deserializes the incoming JSON Merge Patch into `TInputDto`, so only fields declared on the input model can be modified. `TInputDto` property names must match `TEntity` property names (camelCase in JSON, PascalCase in C#, which is the STJ default). Related collections absent from the body are left intact, and a scalar field **declared on `TInputDto`** but omitted from a PATCH body is preserved too — Merge Patch writes only the keys you send. The merged input is validated against `TInputDto`'s DataAnnotations first: a failure answers the 400 of a validator's refusal, `errorDetails` included (§Error Handling). The trap is the opposite case: a field the DTO **never declares** maps as `null`/default on every PATCH *and* PUT — see ⚠️ below.
 
 > **⚠️ A field absent from `TInputDto` maps as `null`/default on PATCH *and* PUT.** Server-owned/immutable
 > values (`OwnerId` FKs, generated codes, computed totals) silently reset — a `[Required]` column 500s, a
@@ -973,12 +990,13 @@ Rows scoped to a user/tenant, or endpoints gated by role? One more check applies
 
 ## Seeding via IEntityService
 
-Seed through the services, not the DbContext (no controller, so the usual gotchas are yours to handle):
+**Write** the seed through the services, not the DbContext, so preppers, primers and validators run (no controller, so the usual gotchas are yours to handle). Reads are another matter: the keys of an earlier wave, a detached re-read and pending counts come from the `DbContext` directly, as the bullets below show.
 
 > **Three traps:** name the token — `List(null, token: token)` — or it binds as the *search object* and filters nothing; `SaveChanges()` clears the change tracker (saved entities detach); `e.Related()` owned/join rows have no service of their own.
 
 - **Seed between `builder.Build()` and `app.Run()`.** `app.Run()` blocks until shutdown, so seeding code placed after it never executes — and the app looks empty with no error anywhere.
 - Every `.For<>()` registers `IEntityService<TEntity, TKey>` — resolve that shape (e.g. `IEntityService<Product, int>`) in a scope for seeding/jobs, whatever the builder overload.
+- A job that wants one endpoint's answer — DTO in, re-read DTO out — sends that endpoint's request instead: [`entities.patterns.md`](./entities.patterns.md) → *Entity operations outside a controller*.
 - On that universal interface, `List`/`Count` take `object? so` **first** — a positionally-passed `CancellationToken` binds as the *search object* and silently filters nothing. Name the token: `List(null, token: token)`.
 - It does **not** auto-persist — call `await service.SaveChanges()` yourself.
 - Bulk: loop `await service.Add(item)` (⚠️ **preppers run per item**, so a DB-touching prepper makes the loop N+1 — batch its lookups), then `SaveChanges()` **once** — see [`entities.patterns.md`](./entities.patterns.md) → Bulk insert / update. Standard EF auto-increment rules apply, so flush a parent batch before assigning `child.ParentId = parent.Id`.
@@ -1315,17 +1333,23 @@ in the Development environment by default. It catches, with actionable messages:
   (enabled by `ConfigureDefaultJsonOptions()` or `ValidateEntityControllers()`), plus a missing `IEntityMapper`.
 - **Unwired interceptors** — primers/normalizers/reactors registered in DI while the `DbContext` options lack
   the matching interceptor (they would silently never run). Only applies to setups without `UseDefaults()`
-  (which auto-wires the interceptors) that also skipped `e.WireDbContext(...)`.
-- **Ignored `?q=`** (warning) — entities without `IHasNormalizedContent` and without a custom filter.
+  (which auto-wires the interceptors) that also skipped `e.WireDbContext(...)`. Without the reactor interceptor,
+  attachment files go before a surrounding transaction commits (§Attachments step 6).
+- **Ignored `?q=`** (warning) — entities without `IHasNormalizedContent` and without a custom filter. Any custom
+  filter counts as handling `q`, so one that never reads `so.Q` gets no warning: handle it there (`FilterQ`).
 - **Two write paths** (warning) — an entity synced by a parent's `Related()` that also has its own `.For<>()`.
   Supported when the parent's input DTO omits the collection; the validator can't see DTO shapes, so it always
   reports the pairing. Detects top-level `Related()` calls, not ones nested inside a `configure` builder.
 - **Attachments the input DTO cannot carry** (warning) — an `IHasAttachments` entity whose input DTO (its
-  `UseMapping` one, or else its entity controller's `TInputDto`) declares no `Attachments` collection. Every parent write then maps the collection to `null`
-  ("not sent"), so attachment adds/removes/reorders through the entity controller are silently ignored
+  `UseMapping` one, its entity controller's `TInputDto`, or the one its mapped endpoints bind) declares no `Attachments` collection. Every parent write then maps the collection to `null`
+  ("not sent"), so attachment adds/removes/reorders through the owner's own endpoints are silently ignored
   (§Attachments step 3).
-- **Null attachment `Uri`** (warning) — an attachment controller is mapped while the null resolver is in
-  place, i.e. `UseAttachmentUris()` was omitted or set on a different options instance.
+- **Null attachment `Uri`** (warning) — an attachment controller, or an owner's downloads mapped by
+  `MapEntityEndpoints()`, is in place while the null resolver is, i.e. `UseAttachmentUris()` was omitted or set on a
+  different options instance.
+- **Served by a controller and a mapping** (warning) — `MapEntity<TEntity>()` maps an entity a discovered controller
+  serves (`MapEntityEndpoints()` leaves those alone). On the controller's route a request matches both and fails as
+  ambiguous; on a route of its own the second surface is deliberate and the warning can stand.
 - **Attachment owner not mapped to `ObjectId`** (warning) — an `IHasAttachments` owner whose attachment
   collection reaches the link through any key but `ObjectId`, typically a shadow key EF invented because the
   owner side was left to conventions. Every link row is saved orphaned: the owner's `Attachments` loads empty and
@@ -1369,7 +1393,7 @@ Diagnostic code `REGIRA0001` marks the obsolete `EntityPrimerContainer(DbContext
 
 ## Paging defaults
 
-`PagingInfo.PageSize` is nullable, so List/Search distinguish three cases (enforced at the HTTP boundary; `UseDefaults()` sets `DefaultPageSize = 10`, `MaxPageSize = 100`):
+`PagingInfo.PageSize` is nullable, so List/Search distinguish three cases (enforced by the list and search requests the endpoints send; `UseDefaults()` sets `DefaultPageSize = 10`, `MaxPageSize = 100`):
 
 | Requested `pageSize` | Effective page size |
 |---|---|
@@ -1377,7 +1401,7 @@ Diagnostic code `REGIRA0001` marks the obsolete `EntityPrimerContainer(DbContext
 | `0` or negative | `MaxPageSize` — opts out of paging, capped at the max |
 | positive `n` | `n`, clamped to `MaxPageSize` |
 
-- **Enforced at the HTTP boundary only** — `EntityControllerBase` List/Search apply one shared rule (`EntityListOptionsExtensions.ApplyPagingDefaults`), which any other HTTP surface can reuse so `MaxPageSize` cannot be escaped. Direct `IEntityService` calls are unaffected — they apply the `PagingInfo` you pass as-is (`PageSize` null or `<= 0` → everything, uncapped), so the service layer keeps full control.
+- **Enforced by the requests, not the service** — the `ListQuery` and `SearchQuery` handlers apply one shared rule (`EntityListOptionsExtensions.ApplyPagingDefaults`), so the controllers, the mapped endpoints and any other sender page alike and `MaxPageSize` cannot be escaped through them. Direct `IEntityService` calls are unaffected — they apply the `PagingInfo` you pass as-is (`PageSize` null or `<= 0` → everything, uncapped), so the service layer keeps full control.
 - `MaxPageSize` is always the ceiling; `null` for either option turns that aspect off.
 
 **Global — inside `UseEntities()`:**
@@ -1547,8 +1571,8 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 1. Create a class inheriting the **`EntityAttachment`** base and set `ObjectType` in the constructor:
    `public class ProductAttachment : EntityAttachment { public ProductAttachment() => ObjectType = nameof(Product); }`.
    **One subclass per owner entity** — the class *is* the join table, and its constructor pins a single
-   `ObjectType`, so a second owner needs its own subclass, `DbSet`, controller and registration. Budget it as
-   one extra simple slot per owner, not one for the whole app.
+   `ObjectType`, so a second owner needs its own subclass, `DbSet`, controller (unless its endpoints are mapped, step 4)
+   and registration. Budget it as one extra simple slot per owner, not one for the whole app.
 2. Implement `IHasAttachments` and `IHasAttachments<TAttachment>` on the owning entity. The typed collection
    is the ordinary property; the **non-generic** one takes the explicit implementation, casting both ways.
    Both interfaces also require `HasAttachment` — a flag, not a column (on an entity that already maps it, the
@@ -1564,7 +1588,8 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
    }
    ```
 3. **Owner with its own input DTO (on the controller or through `UseMapping`)? Declare the collection on it:** `public ICollection<EntityAttachmentInputDto>? Attachments { get; set; }` (or your derived attachment input DTO). Without it the convention map drops the incoming collection on every save and the sync reads that as "attachments not sent" — adds, removes and reorders through the parent are silently ignored (200 OK, no error; the `/{objectId}/attachments` sub-routes still work, which masks it). Startup validation warns. Mirror on the read DTO with `ICollection<EntityAttachmentDto>?`.
-4. Create a controller inheriting `EntityAttachmentControllerBase<TAttachment>` — **name it after the attachment type** (`ProductAttachmentController` or `ProductAttachmentsController` for a `ProductAttachment`; any other name makes `Uri` unresolvable, see 7) and set the class route to the **owner base path**, e.g. `[Route("products")]` (resource-relative — see the route-prefix note in §Step 13). The base controller appends the sub-routes `{objectId}/attachments`, `attachments/{id}`, `{objectId}/files`, ….
+4. *(skip when the owner's endpoints are mapped — `MapEntityEndpoints()` serves these routes under the owner for the
+   `int`-keyed link: [`entities.patterns.md`](./entities.patterns.md) § Mapped entity endpoints)* Create a controller inheriting `EntityAttachmentControllerBase<TAttachment>` — **name it after the attachment type** (`ProductAttachmentController` or `ProductAttachmentsController` for a `ProductAttachment`; any other name makes `Uri` unresolvable, see 7) and set the class route to the **owner base path**, e.g. `[Route("products")]` (resource-relative — see the route-prefix note in §Step 13). The base controller appends the sub-routes `{objectId}/attachments`, `attachments/{id}`, `{objectId}/files`, ….
 5. Add `DbSet<Attachment>` and `DbSet<TAttachment>` to the DbContext and map **both** relationships in
    `OnModelCreating`. ⚠️ The owner side is the one EF cannot infer — `ObjectId` is not a conventional FK name, so
    left out it gets a shadow `ProductId`, every link row is saved orphaned, the owner's `Attachments` loads empty
@@ -1575,14 +1600,19 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
    modelBuilder.Entity<ProductAttachment>().HasOne(x => x.Attachment).WithMany().HasForeignKey(x => x.AttachmentId);
    modelBuilder.Entity<Product>().HasMany(x => x.Attachments).WithOne().HasForeignKey(x => x.ObjectId).HasPrincipalKey(x => x.Id);
    ```
-6. Register **two** things: `.WithAttachments(_ => new BinaryFileService(...))` for the shared `Attachment` entity + file store + bytes→file primer + `AttachmentFileReactor` (removes a replaced or deleted attachment's file once the save is committed, so a refused or rolled-back save keeps it — only a transaction rolled back after a successful save keeps the new file too; needs the reactor wiring `UseDefaults()` sets — without it, a replaced file goes once the save succeeds and a deleted one during the save), **and** `.For<Product>(e => e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments))` for the typed per-owner services + link prepper + DTO mapping. `HasAttachments` is an extension on the **base** `EntityServiceBuilder`, so it chains on every `For<>()` tier — a complex owner registers it exactly like the simple one shown here. The bytes `Details` loads are the stored file, not new content, so saving a rename or another metadata edit leaves the file where it is; bytes or a stream set in their place replace it, stored under the file name's extension.
-7. *(web apps)* Call `options.UseAttachmentUris()` (before registering entities, on the **same** `UseEntities` options instance) and register `AddHttpContextAccessor()` so attachment DTOs resolve a `Uri` linking to the attachment controller's `GetFile` action.
+6. Register **two** things: `.WithAttachments(_ => new BinaryFileService(...))` for the shared `Attachment` entity + file store + bytes→file primer + `AttachmentFileReactor` (removes a replaced or deleted attachment's file once the save is committed), **and** `.For<Product>(e => e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments))` for the typed per-owner services + link prepper + DTO mapping. `HasAttachments` is an extension on the **base** `EntityServiceBuilder`, so it chains on every `For<>()` tier — a complex owner registers it exactly like the simple one shown here. The bytes `Details` loads are the stored file, not new content, so saving a rename or another metadata edit leaves the file where it is; bytes or a stream set in their place replace it, stored under the file name's extension. **Files follow the rows** — with the reactor wiring `UseDefaults()` sets, storage keeps every file a stored row names, and doubt costs an orphan file, never a row without its file:
+   - New bytes go under a key of their own, so a refused save or a rolled-back transaction leaves the stored file as it was.
+   - A failed save removes the file it wrote and gives the row its stored path back for a retry — except where EF does not roll the failed save back (a caller's transaction without a savepoint: `AutoSavepointsEnabled = false`, SQL Server with MARS; an ambient `TransactionScope`; `AutoTransactionBehavior.Never`): the statements before the failing one stand, so the file stays.
+   - Replaced and deleted files go after the commit. A rollback to a savepoint the app makes keeps the files of every save before it in that transaction; a failed save the app catches inside its transaction is undone alone, and the earlier saves' files go as usual.
+   - A transaction rolled back after a successful save leaves the new file as an orphan; an app that needs a clean store sweeps storage against the stored `Path` values.
+   - Without the reactor wiring, the primer removes replaced and deleted files once the save succeeds — before a surrounding transaction commits; a `SaveChanges(acceptAllChangesOnSuccess: false)` leaves them in storage.
+7. *(web apps)* Call `options.UseAttachmentUris()` (before registering entities, on the **same** `UseEntities` options instance) and register `AddHttpContextAccessor()` so attachment DTOs resolve a `Uri`: a link to the owner's mapped download when `MapEntityEndpoints()` serves it, else to the attachment controller's `GetFile` action.
 
 > ⚠️ **A link rule belongs in the owner's validator too.** Validators scoped to the link entity run for the
-> attachment endpoints — upload, replace, update and delete. A `PUT` of the owner whose input carries `Attachments`
-> (step 3) syncs the links itself: it adds one for each new entry with `NewBytes`, renames and replaces a kept link's
-> file from its `NewFileName` and `NewBytes`, and deletes the ones the array leaves out, and only the owner's
-> validators run. A kept link keeps its attachment, whatever `attachmentId` the entry sends, and a new one may point
+> attachment endpoints — upload, replace, update and delete. A `POST` or `PUT` of the owner whose input carries
+> `Attachments` (step 3) syncs the links itself: it adds one for each new entry with `NewBytes`, and on a `PUT` renames
+> and replaces a kept link's file from its `NewFileName` and `NewBytes` and deletes the ones the array leaves out, and
+> only the owner's validators run. A kept link keeps its attachment, whatever `attachmentId` the entry sends, and a new one may point
 > only at an attachment the owner already links: one naming another owner's is cleared, and without `NewBytes` of its
 > own the save answers 409.
 > The upload route always creates a link, whatever `Id` its form sends. Repeat a link rule — allowed file types, a file that must not be deleted — in the owner's validator (keys like
@@ -1628,10 +1658,10 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 
 > **The `Uri` is `null`, never an error.** All four causes: the option was omitted, or set on a different
 > `UseEntities` options instance than the one the entity was registered on (both leave the
-> `NullAttachmentUriResolver` in place); no controller named after the attachment type is mapped, or its
-> download route was replaced by a custom endpoint; or there is no active request (seeding, background
-> work). Startup validation warns for the first two whenever an attachment controller is mapped, and the
-> resolver itself warns for the third naming the controller names it tried. A stable alternative is to
+> `NullAttachmentUriResolver` in place); neither the owner's mapped downloads nor a controller named after the
+> attachment type serve the file, or its download route was replaced by a custom endpoint; or there is no active
+> request (seeding, background work). Startup validation warns for the first two whenever an attachment controller
+> or a mapped download is in place, and the resolver itself warns for the third naming the controller names it tried. A stable alternative is to
 > compose `{ownerRoute}/files/{id}` client-side and skip the option entirely.
 
 > **`FileName` carries the client's virtual folders; storage never does.** `FileName` is the client's own
@@ -1673,7 +1703,9 @@ each error's args (§Response Types) — built from `Errors`, which carries ever
 With no errors, the exception's message goes out under the empty key. The generated `DELETE` answers a refused delete
 the same way. `ConfigureDefaultJsonOptions()` registers the exception filter that maps it application-wide,
 so a hand-written domain action (`POST {id}/approve`) answers exactly like the generated `PUT` — one of the two
-reasons that call is not optional.
+reasons that call is not optional. MVC filters do not run on minimal-API endpoints: the mapped endpoints carry
+`EntityExceptionEndpointFilter`, the same answers, and an endpoint of the app's own takes it with
+`.AddEndpointFilter<EntityExceptionEndpointFilter>()`.
 
 > **Catching it yourself** — to add context, or to convert it — catch the **non-generic base**
 > `EntityInputException`. The generated write actions catch their own closed generic, so an
@@ -1689,7 +1721,7 @@ reasons that call is not optional.
 detected per provider: SQLSTATE class 23, SQLite error 19, SQL Server 547/515/2601/2627) in
 `EntityConstraintException`; every write surface returns **409 Conflict** — the controller bases, the
 attachment controllers, and any hand-written action, through the same filter
-`ConfigureDefaultJsonOptions()` registers. The response detail is generic — the provider's
+`ConfigureDefaultJsonOptions()` registers, and the mapped endpoints through `EntityExceptionEndpointFilter`. The response detail is generic — the provider's
 constraint message can leak index names and other users' values, so it is logged server-side (warning) by
 the write service instead. Transient faults (deadlocks, timeouts) are **not** wrapped and keep surfacing as
 500s for alerting. When the client can fix the input, prefer an explicit check in a validator — a
@@ -1736,11 +1768,13 @@ Load that file when implementing one of these:
 - **Server-generated sequential codes** — mint `REQ-2026-00001` from a primer on `Added` and restore it on `Modified`; includes when that primer has to be a prepper instead, and why the counter is primed from the highest code.
 - **Cross-entity aggregates & report endpoints** — a dashboard controller belongs to no entity, so it **bypasses the pipeline**: global filter row security does not apply unless you repeat the predicate.
 - **Domain actions on an entity resource** — a state change (`POST /{id}/approve`) as a second controller on the entity's route, answered with a re-read; **role-gated transitions** for privileged states, the append-only history shape, and where what *follows* a transition belongs.
+- **Mapped entity endpoints (no controllers)** — opt-in: `app.MapEntityEndpoints()` serves every registration with the controllers' route table; the DTO pair each entity declares, route and set per entity, mixing with controllers, the query binding, and write authorization as a policy.
+- **Entity operations outside a controller** — opt-in: the request an endpoint sends (`IEntitySender`), from a job, an import or the app's own endpoint, with the endpoint's paging, re-read and DTO mapping; replacing one operation for one entity with a handler, or one endpoint (a controller override, or an excluded mapped endpoint and the app's own); behaviours around every operation; dispatching through MediatR.
 - **Aggregates over a non-owned child collection** — a parent total rolled up from children that own their own FK. Eventually consistent, seeding needs a second pass, and a child query filter can zero it on restore.
-- **Role-gated write authorization filter** — one global authorization filter mapping controller type → required role, failing closed for a controller it has no entry for, keyed on the generated write actions because the controllers serve reads over `POST` too.
+- **Role-gated write authorization filter** — one global authorization filter mapping controller type → required role, failing closed for a controller it has no entry for, keyed on the generated write actions because the controllers serve reads over `POST` too; on mapped endpoints, a policy keyed on `EntityEndpointMetadata`.
 - **Writing to a related entity from a prepper** — the typed `e.Prepare(entity, dbContext)` overload; `EntityInputException<T>` must name the *serviced* entity or it escapes as a 500.
 - **Renamed DTO property** — wire both directions on the typed `UseMapping` chain when a DTO name differs from the entity's (Mapster maps by name only).
-- **Public (anonymous) attachment downloads** — serve images to `<img>` on a secured API (`[AllowAnonymous]` override of `GetFile`).
+- **Public (anonymous) attachment downloads** — serve images to `<img>` on a secured API (`[AllowAnonymous]` override of `GetFile`, or `o.AllowAnonymous(EntityEndpoint.Download)` on mapped endpoints).
 - **An entity that references one of its own children** — an owner FK pointing at one of its own child rows: the SQL Server migration and every owner `DELETE` both fail. What to do instead, and the two-phase save when the reference has to stay.
 - **Soft delete** — the full `IArchivable` round-trip: `DELETE` archives instead of erasing, which routes see archived rows, and what restore requires.
 - **Owned children that are both sortable and individually togglable** — who owns `SortOrder` vs a per-row flag.
@@ -1802,7 +1836,8 @@ verbatim; everything around them is the wrapper:
 
 // Model binding / DataAnnotations failing first is the same ValidationProblemDetails without "errorDetails" —
 // [ApiController]'s automatic 400. A DataAnnotations failure is keyed by the C# property name; a JSON conversion
-// failure by its path ("$.credits").
+// failure by its path ("$.credits"). On mapped endpoints (MapEntityEndpoints) no MVC runs: a DataAnnotations failure
+// is the 400 above, "errorDetails" included.
 { "title": "One or more validation errors occurred.", "status": 400,
   "errors": { "Credits": ["The field Credits must be between 0 and 5."] } }
 
@@ -1898,13 +1933,13 @@ accepts search objects matching its own key type, so non-int entities need the m
 
 Generated endpoints ship **anonymous** — no controller base carries `[Authorize]`. Every scaffolded endpoint, including delete and attachment download, is public until the app adds authorization.
 
-- Put `[Authorize]` on your controller subclass (use `[AllowAnonymous]` per action for exceptions): `[Authorize] public class ProductController : EntityControllerBase<Product, ProductDto, ProductInputDto>;`
+- Put `[Authorize]` on your controller subclass (use `[AllowAnonymous]` per action for exceptions): `[Authorize] public class ProductController : EntityControllerBase<Product, ProductDto, ProductInputDto>;`. Mapped endpoints take it on the group — `app.MapEntityEndpoints().RequireAuthorization()` — with `e.Endpoints(o => o.AllowAnonymous(…))` for the exceptions.
 - **Row-level scoping:** register a global filter query builder that applies the caller's scope (tenant/owner) to every query — inject `IHttpContextAccessor` in its constructor and filter on the claim. Register it once, app-wide, with `options.AddGlobalFilterQueryBuilder<OwnerFilter>()` inside `UseEntities(options => …)` (`using Regira.Entities.DependencyInjection.QueryBuilders;`), not per entity: an `e.AddFilter<T>()` filter is bound to that entity's search object and is not a global filter. The claim reaches the principal the same way whichever scheme authenticated the caller (bearer token, cookie session, API key), so the filter needs no knowledge of which one is in use. The filter pipeline runs on **every controller path**: List, Search, `Details(id)` (the id goes through the same filters), and the write endpoints' existence checks — so `PUT`/`PATCH`/`DELETE` on a foreign row 404 as well.
 - **What a scoping filter cannot do:** validate **create** (the client supplies the FK — stamp/verify `OwnerId` from the claim in a prepper, never trust the body) or guard **direct `IEntityService` calls** in custom code, which bypass the controller's filtered existence checks. Two variants of the create hole bite hardest:
   - ⚠️ **An owner's row scope does not reach its attachments.** The per-owner link entity (`ProductAttachment`) has no owner column and no navigation back, so a filter that scopes the owner never runs on it. Every attachment route — `GET attachments`, `attachments/{id}`, `{objectId}/attachments`, both downloads (`files/{id}`, `{objectId}/files/{name}`), and the link's `PUT` and `DELETE` — then reads across owners: any signed-in user lists, downloads, edits and deletes every user's files. Give a row-scoped owner with attachments a second global filter, on the **link** entity, that reruns the owner's scope through the owner's `DbSet` (`db.Products.Any(p => p.Id == link.ObjectId && p.OwnerId == userId)`) with the same exemptions, registered app-wide beside the owner's — the shape is in [`entities.examples.md`](./entities.examples.md) → Attachments. With it, those routes answer 404 for another owner's file; check one by id as a second user.
   - ⚠️ **An attachment upload is a create no filter sees, the link filter included.** `POST /{owner}/{id}/files` takes the owner id from the **route**, stamps it on a new link row and saves — no query runs, so no global filter applies, and any authenticated caller can attach a file to a row they cannot read. Add a validator on the **link** entity that re-runs the owner's scope over the owner's `DbSet` on `Add` and adds an error when it resolves nothing — which answers **400**, not the 404 the read path gives a foreign row, since the write pipeline maps only 400 and 409. Override the controller's `virtual Add` and return `NotFound()` instead where the two must agree.
   - ⚠️ **Read scope is not write scope.** The write endpoints' existence checks run the *same* filter, so a read scope you widened deliberately — a manager who may see their reports' rows — silently grants that manager `PATCH`/`DELETE` on them too. When the two differ, keep the filter at read width and put the ownership check in a validator, which runs on a delete too (no prepper does).
-- **Scope before any early return.** The idiomatic query-builder shape opens with `if (so == null) return query;` — for a security filter that is a hole, because `Details(id)` and the write existence checks can run with a null search object and would skip the scoping entirely. Derive from `GlobalFilteredQueryBuilderBase<TEntity>` (it runs on every query and takes no search object), apply the ownership predicate unconditionally, and return `query.Where(_ => false)` when no identity resolves — an anonymous or stale-token call must see nothing, not everything. A seeder or hosted job has no request either, so its `IEntityService` reads see nothing too — and so does `Modify`, whose re-read of the stored row then finds none and saves nothing: give it an explicit identity through a context it sets (the shape of `WritableTenantContext` in [`entities.blueprints.md`](./entities.blueprints.md) → Multi-tenancy — IHasTenantId + global filter + primer), or have it read the `DbContext` directly. Don't equate "no `HttpContext`" with "system": work started from inside a request inherits that request's context.
+- **Scope before any early return.** The idiomatic query-builder shape opens with `if (so == null) return query;` — for a security filter that is a hole, because `Details(id)` and the write existence checks can run with a null search object and would skip the scoping entirely. Derive from `GlobalFilteredQueryBuilderBase<TEntity>` (it runs on every query and takes no search object), apply the ownership predicate unconditionally, and return `query.Where(_ => false)` when no identity resolves — an anonymous or stale-token call must see nothing, not everything. A seeder or hosted job has no request either, so its `IEntityService` reads see nothing too — and so does `Modify`, whose re-read of the stored row then finds none and saves nothing: give it an explicit identity through a context it sets (the shape of `WritableTenantContext` in [`entities.blueprints.md`](./entities.blueprints.md) → Multi-tenancy — IHasTenantId + global filter + primer). Its reads may go to the `DbContext` directly, as §Seeding via IEntityService reads keys, but its writes still go through the service, and a `Modify` there needs the identity. Don't equate "no `HttpContext`" with "system": work started from inside a request inherits that request's context.
 - **Multiple global filters accumulate (AND).** Every registered filter whose `TEntity` the entity satisfies runs, and their predicates compose — so an `IHasUserId`-wide filter and a `ShoppingList`-specific one both apply. `TEntity` may be an interface, a base class, **or the concrete entity type**. The one case that does *not* stack is the key variants of a single filter family (`FilterArchivablesQueryBuilder` vs `<Guid>`): one variant runs, preferring the key-matching one. Two filters deriving separately from `GlobalFilteredQueryBuilderBase<>` are always distinct families and never suppress each other. A filter scoped to a type **no registered entity satisfies** never runs at all — startup validation warns about this, which is your signal that a security filter is inert.
 - **Role/permission tiers** (admin vs editor): declare claim policies (`AddAuthorization(o => o.AddPolicy("EditorOnly", p => p.RequireClaim(...)))`) and gate the baseline with `MapControllers().RequireAuthorization("AdminOrEditor")`. For "everyone reads, some roles write", one global filter carries the tier — worked recipe with the traps in [`entities.patterns.md`](./entities.patterns.md) § Role-gated write authorization filter. ⚠️ Key that filter on your controller types and let it fail closed — a write to a controller it has no entry for, the account controllers included, is refused — and remember `POST /{entity}/search` and `POST /{entity}/list` are reads. Make it an authorization filter, which runs before model binding, and exempt only a write whose action carries `[AllowAnonymous]` itself: a controller opened for anonymous reads with `[AllowAnonymous]` keeps its writes gated. ⚠️ `RequireClaim`/`RequireRole` and any hand-written claim read must use the spelling the *validated* principal carries, and getting it wrong costs rows, not errors (next bullet). The claim contract is one lookup away in `security.instructions` → *Claims emitted per scheme* and *Claim normalization*. The schemes do **not** all agree on the role claim type (`role`, Entra's `roles`, and the long `ClaimTypes.Role` URI are all in play), so read roles with `User.FindRoles()` and scopes with `User.HasScope()` rather than a single `HasClaim`; on a normalized principal — every scheme except the API key — the canonical `sub`/`name`/`email`/`role` spellings are present alongside the provider's, so `RequireClaim("role", …)` does hold.
 - **Verify per identity, not per endpoint.** Log in as each role (and each tenant) and compare `GET /{entity}/search` totals: an administrator sees more than an owner, a second tenant sees none of the first's. A filter that never ran, a role claim that did not survive validation, and a scope matching no registered entity all answer **200 with fewer rows** — invisible to a build, to DI validation, and to a single-user smoke test. Do this once per app after the first scoped entity works, then whenever a filter or claim changes.

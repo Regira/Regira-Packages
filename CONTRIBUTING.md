@@ -33,7 +33,8 @@ dotnet test Regira-Packages.slnx --no-build --filter "TestCategory!=Containers&T
 ```
 
 These categories are on the gated fixtures only. Nothing about the default run changes — run the full
-one before you push.
+one before you push. `Browser` marks the HTML-to-PDF fixtures that drive Chromium, which they download on their
+first run and start once per PDF; add `&TestCategory!=Browser` to leave them out too.
 
 ### Test parallelism
 

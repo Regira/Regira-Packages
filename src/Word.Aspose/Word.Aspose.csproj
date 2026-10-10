@@ -11,13 +11,13 @@
     <AssemblyName>Regira.Office.Word.Aspose</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.5.0</Version>
+    <Version>6.5.1</Version>
     <Description>Word document processing using Aspose.Words for Regira Office.</Description>
     <PackageTags>regira;office;word;aspose;docx</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <!-- Commercial: without a licence the output is watermarked and truncated (see AsposeWordConfig) -->
-    <PackageReference Include="Aspose.Words" Version="26.9.0" />
+    <PackageReference Include="Aspose.Words" Version="26.10.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.Office\Common.Office.csproj" />

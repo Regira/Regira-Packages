@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Office</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.5.0</Version>
+    <Version>6.5.1</Version>
     <Description>Abstractions for office document operations including PDF, Excel, Word, Mail, CSV, OCR, barcodes, and vCards.</Description>
     <PackageTags>regira;office;pdf;excel;word;mail;csv;ocr;barcodes;vcards;mcp;ai-agents</PackageTags>
   </PropertyGroup>
@@ -27,6 +27,25 @@
     <InternalsVisibleTo Include="Regira.Office.Word.Mini" />
     <InternalsVisibleTo Include="Regira.Office.Word.Gotenberg" />
     <InternalsVisibleTo Include="Office.Word.testing" />
+  </ItemGroup>
+  <!-- the Excel backends share header keys, row keys and sheet-name rules (Excel/Internal) without making them public API -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Regira.Office.Excel.ClosedXML" />
+    <InternalsVisibleTo Include="Regira.Office.Excel.EPPlus" />
+    <InternalsVisibleTo Include="Regira.Office.Excel.MiniExcel" />
+    <InternalsVisibleTo Include="Regira.Office.Excel.NpoiMapper" />
+  </ItemGroup>
+  <!-- the headless-Chromium PDF backends share how HtmlInput's page settings reach Chromium (PDF/Internal) without making it public API -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Regira.Office.PDF.MsPlaywright" />
+    <InternalsVisibleTo Include="Regira.Office.PDF.Puppeteer" />
+    <InternalsVisibleTo Include="Regira.Office.PDF.Gotenberg" />
+  </ItemGroup>
+  <!-- the PDF operation backends check split ranges alike (PDF/Internal) without making the check public API -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Regira.Office.PDF.PdfPig" />
+    <InternalsVisibleTo Include="Regira.Office.PDF.DocNET" />
+    <InternalsVisibleTo Include="Regira.Office.PDF.Spire" />
   </ItemGroup>
   <!-- MSBuild targets — auto-imported into consuming builds via NuGet buildTransitive -->
   <ItemGroup>

@@ -809,7 +809,10 @@ e.Process((items, includes) =>
 
 ### Prepper — with DbContext / separate class
 
-The typed `Prepare(Func<TEntity, TContext, Task>)` overload hands you the **strongly-typed `DbContext`**
+`e.Prepare(...)` has two overloads, and the lambda's parameter count picks one. With one parameter it is the
+**synchronous** `Action<TEntity>` — `e.Prepare(item => item.Code ??= "NEW")` — whose body returns nothing, so a
+`return Task.CompletedTask;` fails with CS8030. With two it is the asynchronous `Func<TEntity, TContext, Task>`,
+which hands you the **strongly-typed `DbContext`**
 (the `TContext` from `UseEntities<TContext>()`), so you can look up related rows or apply server-side pricing
 before the entity is tracked — no need to inject anything or write a separate prepper class:
 
@@ -1023,8 +1026,8 @@ services.UseEntities<WebshopDbContext>(options =>
     // Opt out entirely — this entity is never force-paged (omitted / pageSize <= 0 returns every row):
     .For<Category>(e => e.SetPageSize());
 
-// Note: enforced at the HTTP boundary only. A direct IEntityService.List(so) call (no PagingInfo)
-// returns the full set uncapped — the service layer keeps full control.
+// Note: enforced by the ListQuery / SearchQuery the endpoints send, not by the service. A direct
+// IEntityService.List(so) call (no PagingInfo) returns the full set uncapped — the service layer keeps full control.
 ```
 
 ### Attachments

@@ -1,0 +1,9 @@
+<ItemList Items="Model.OrderLines!" Context="line">
+    <ItemTemplate>
+        <OrderLineRow Line="line" />
+    </ItemTemplate>
+</ItemList>
+
+@code {
+    [Parameter, EditorRequired] public Order Model { get; set; } = null!;
+}

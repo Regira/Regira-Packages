@@ -8,7 +8,7 @@ Excel backend for [Regira Office](https://regira.github.io/Regira-Packages/src/C
 <PackageReference Include="Regira.Office.Excel.EPPlus" Version="6.*" />
 ```
 
-The package stays on EPPlus 4 (4.5.3.3), which is under a free licence; EPPlus 5 and later require a commercial licence.
+This package is deprecated: new applications use [Regira.Office.Excel.MiniExcel](https://regira.github.io/Regira-Packages/src/Excel.MiniExcel/) or [Regira.Office.Excel.ClosedXML](https://regira.github.io/Regira-Packages/src/Excel.ClosedXML/). It stays on EPPlus 4 (4.5.3.3), the last release under a free licence — EPPlus 5 and later require a commercial licence — and nuget.org marks that release as legacy, with no further fixes. EPPlus 4 depends on `System.Drawing.Common`, which throws on non-Windows from .NET 6 on, so the package is for Windows hosts.
 
 ## Documentation
 

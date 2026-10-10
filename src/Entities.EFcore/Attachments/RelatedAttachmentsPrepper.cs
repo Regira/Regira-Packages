@@ -45,7 +45,15 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
             EntityAttachmentContent.KeepToOwner(link, ownedAttachmentIds);
         }
 
-        if (original != null)
+        if (original == null)
+        {
+            // an owner inserted with its links: they are tracked with it, and new bytes need an attachment to hold them
+            foreach (var link in modifiedItems)
+            {
+                EntityAttachmentContent.CreateFromNewContent(link);
+            }
+        }
+        else
         {
             var originalItems = storedItems;
 
@@ -58,12 +66,7 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
             var relatedItemsToDelete = originalItems.Where(o => modifiedItems.All(m => m.Id != null && m.Id.Equals(o.Id) != true)).ToArray();
             foreach (var entity in relatedItemsToAdd)
             {
-                if (entity.Attachment == null && entity.NewBytes?.Any() == true)
-                {
-                    entity.Attachment = new TAttachment();
-                    entity.Attachment.Bytes = entity.NewBytes;
-                    entity.Attachment.FileName = entity.NewFileName.ToVirtualPath();
-                }
+                EntityAttachmentContent.CreateFromNewContent(entity);
                 // Only add when attachment has content
                 if (entity.Attachment?.HasContent() == true)
                 {

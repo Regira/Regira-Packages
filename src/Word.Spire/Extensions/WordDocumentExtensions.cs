@@ -1,4 +1,5 @@
-﻿using Regira.TreeList;
+﻿using Regira.Office.Word.Spire.Internal;
+using Regira.TreeList;
 using Regira.Utilities;
 using Spire.Doc;
 using Spire.Doc.Collections;
@@ -10,10 +11,21 @@ namespace Regira.Office.Word.Spire.Extensions;
 
 internal static class WordDocumentExtensions
 {
-    public static Stream ToStream(this Document doc, FileFormat format = FileFormat.Docx)
+    /// <param name="doc">The document to save</param>
+    /// <param name="format">The format to save it in</param>
+    /// <param name="synchronizeFallbacks">
+    /// Whether the text boxes' fallback copies are rewritten from their DrawingML copies: off for a save that Spire reads
+    /// again, whose final save rewrites them
+    /// </param>
+    public static Stream ToStream(this Document doc, FileFormat format = FileFormat.Docx, bool synchronizeFallbacks = true)
     {
         var ms = new MemoryStream();
         doc.SaveToStream(ms, format);
+        if (synchronizeFallbacks && TextBoxFallbacks.InPackage(format))
+        {
+            // Spire writes a text box's VML fallback as the template held it
+            TextBoxFallbacks.Synchronize(ms);
+        }
         ms.Position = 0;
         return ms;
     }

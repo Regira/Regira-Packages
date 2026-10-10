@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Office.PDF.MiniPdf</RootNamespace>
+    <PackageId>Regira.Office.PDF.MiniPdf</PackageId>
+    <AssemblyName>Regira.Office.PDF.MiniPdf</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.5.1</Version>
+    <Description>Word, Excel and PowerPoint to PDF conversion in-process using MiniPdf for Regira Office.</Description>
+    <PackageTags>regira;office;pdf;minipdf;docx;xlsx;pptx</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="MiniPdf" Version="0.43.0" />
+  </ItemGroup>
+</Project>

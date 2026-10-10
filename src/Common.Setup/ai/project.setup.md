@@ -585,6 +585,7 @@ Standard ASP.NET Core API hosted on IIS, Azure, or Docker. No authentication. Su
 
 <!-- no-compile -->
 ```csharp
+using System.Text.Json.Serialization;
 using Scalar.AspNetCore;
 using Serilog;
 
@@ -633,6 +634,8 @@ finally
 > `Http.Json.JsonOptions`, so on a `Regira.Entities` API swap this block for `ConfigureDefaultJsonOptions()`
 > (`Regira.Entities.Web.DependencyInjection`) — it applies cycles/nulls/enum-names (and a UTC read of request-body `DateTime`s) to **both** sets so the
 > generated schema matches the wire format (`get_package(id: "Regira.Entities", section: "entities.setup")` → P3).
+> An Entities API on mapped entity endpoints alone (`MapEntityEndpoints()`, no controllers) drops `AddControllers()`
+> and `MapControllers()` too.
 
 > A browser SPA on `http://` is 307-redirected by `UseHttpsRedirection()`; see *Calling the API in dev*
 > (front-end `regira_modules.vue.entities` → `entities.setup`) to wire the dev SPA to this API.

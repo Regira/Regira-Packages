@@ -12,7 +12,8 @@ public record InputOptions
     /// </summary>
     public HorizontalAlignment? HorizontalAlignment { get; set; }
     /// <summary>
-    /// Adds an empty page to ensure an even amount of pages
+    /// Adds an empty page to ensure an even amount of pages, counted in the font <see cref="InheritFont"/> gives. Merged,
+    /// the input starts on an odd page and so does the one after it, so the empty page is the only one between them
     /// </summary>
     public bool EnforceEvenAmountOfPages { get; set; }
     public bool RemoveEmptyParagraphs { get; set; }

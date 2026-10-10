@@ -11,7 +11,8 @@
 | Namespace | Types |
 |---|---|
 | `Regira.Entities.Web.Controllers.Abstractions` | `EntityControllerBase<>` (all overloads) |
-| `Regira.Entities.Web.Controllers` | `ControllerExtensions` *(`Details()`/`Save()`/`Patch()`/`Delete()` — on `ControllerBase`)*, `EntityExceptionFilter`, `EntityConstraintConflictAttribute` |
+| `Regira.Entities.Web.Controllers` | `ControllerExtensions` *(`Details()`/`Save()`/`Patch()`/`Delete()` — on `ControllerBase`; each sends the matching request through `IEntitySender`)*, `EntityExceptionFilter`, `EntityConstraintConflictAttribute`, `MvcEntityInputValidator` *(a patch's input judged by MVC's model validation)* |
+| `Regira.Entities.Web.Endpoints` | `MapEntityEndpoints()`, `MapEntity<TEntity>()` *(on `IEndpointRouteBuilder`)*, `Endpoints()` *(on the `For<>()` builders)*, `EntityEndpointOptions`, `EntityEndpointsOptions`, `EntityEndpoint`, `EntityEndpointMetadata`, `EntityExceptionEndpointFilter` — the mapped endpoints, no controller (`entities.patterns` → *Mapped entity endpoints*) |
 
 > ⚠️ **The `.Abstractions` suffix is required.** `using Regira.Entities.Web.Controllers;` is NOT enough — the class lives one level deeper in `...Controllers.Abstractions`.
 
@@ -37,7 +38,8 @@ EntityControllerBase<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto, TIn
 
 See the `For<>` → controller pairing table in `entities.instructions.md` for which overload matches each `.For<>()` registration.
 
-Simple and complex controller bases expose different endpoint sets:
+Simple and complex controller bases expose different endpoint sets — and `MapEntityEndpoints()` maps the same sets for a
+simple and a complex registration:
 
 | Method | Route | Action | Availability |
 |---|---|---|---|
@@ -87,5 +89,9 @@ Simple and complex controller bases expose different endpoint sets:
 | Namespace | Types |
 |---|---|
 | `Regira.Entities.Web.Models` | `ListResult<>`, `DetailsResult<>`, `CountResult`, `SaveResult<>`, `DeleteResult<>`, `SearchResult<>` |
-| `Regira.Entities.Web.Models.Abstractions` | `IEntityResult<>` |
+| `Regira.Entities.Web.Models.Abstractions` | `IEntityResult` |
 | `Regira.Entities.Web` | `EntityConstraintProblem`, `EntityConcurrencyProblem` — the two 409 `ProblemDetails` bodies, titled "Conflict" and "Concurrency conflict" |
+
+> The envelopes ship in `Regira.Entities.Mediator`, which this package brings, under these namespaces: the requests
+> the endpoints send build them. Those requests — `IEntitySender`, `DetailsQuery<,,>` and the rest — are listed in
+> `entities.namespaces` (package `Regira.Entities`) → *Entity Operations*.

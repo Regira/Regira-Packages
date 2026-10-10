@@ -1,5 +1,4 @@
-﻿using System.Net;
-using Regira.Office.Mail.Abstractions;
+﻿using Regira.Office.Mail.Abstractions;
 using Regira.Office.Mail.Exceptions;
 using Regira.Office.Mail.Models;
 using Regira.Office.Mail.SendGrid.Extensions;
@@ -15,11 +14,6 @@ public class SendGridMailer(SendGridConfig config) : MailerBase
     {
         var mail = message.ToMailMessage();
         var mailerResponse = await _client.SendEmailAsync(mail, cancellationToken);
-
-        if (mailerResponse.StatusCode == HttpStatusCode.Unauthorized)
-        {
-            throw new Exception("Not authorized");
-        }
 
         var responseContent = await mailerResponse.Body.ReadAsStringAsync();
         if (!mailerResponse.IsSuccessStatusCode)

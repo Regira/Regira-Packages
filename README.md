@@ -6,7 +6,7 @@
 [![Docs](https://img.shields.io/badge/docs-regira.github.io-blue)](https://regira.github.io/Regira-Packages/)
 [![MCP server](https://img.shields.io/badge/MCP-mcp.regira.com-8A2BE2)](https://mcp.regira.com/mcp)
 
-This is the **public, source-available** repository for the Regira NuGet packages, published on [nuget.org](https://www.nuget.org/profiles/regira-bbv). Most packages are [Apache-2.0](LICENSE); the eight commercially licensed packages ship the [Regira Commercial License](legal/REGIRA-COMMERCIAL-LICENSE.md) with a free tier — see [Licensing](#licensing). Homepage: [regira.com](https://regira.com) · Documentation: [regira.github.io/Regira-Packages](https://regira.github.io/Regira-Packages/).
+This is the **public, source-available** repository for the Regira NuGet packages, published on [nuget.org](https://www.nuget.org/profiles/regira-bbv). Most packages are [Apache-2.0](LICENSE); the ten commercially licensed packages ship the [Regira Commercial License](legal/REGIRA-COMMERCIAL-LICENSE.md) with a free tier — see [Licensing](#licensing). Homepage: [regira.com](https://regira.com) · Documentation: [regira.github.io/Regira-Packages](https://regira.github.io/Regira-Packages/).
 
 Regira is a collection of .NET libraries providing unified abstractions for common application concerns. All packages follow the same pattern: a shared interface in a `Common.*` project, with one or more backend implementations as separate packages. This repository supersedes the former private Regira-Codebase: public history starts at the 6.0.0 release (2026-08-05), but the libraries were extracted from a longer-running private codebase that powers production systems such as the [live demos](#samples--demos) below.
 
@@ -123,7 +123,7 @@ The hosted server lives at `https://mcp.regira.com/mcp`. No key or sign-up is ne
 |--------|----------------|-------|
 | Claude Code (CLI / VS Code extension) | `claude mcp add --transport http regira https://mcp.regira.com/mcp` — or commit the `.mcp.json` below at the repo root | The first time, Claude Code asks you to approve the project server (or run `/mcp`). `claude mcp list` shows whether it is connected. |
 | Claude Desktop / claude.ai | Customize → Connectors → **+** → **Add custom connector** → name `regira`, URL `https://mcp.regira.com/mcp` | No config file (`claude_desktop_config.json` only takes local servers). Every plan can add one; Free is capped at a single custom connector. |
-| GitHub Copilot (VS Code) | `.vscode/mcp.json` with the JSON below, but with the top key `servers` instead of `mcpServers` | Click the **Start** action VS Code shows above the server entry, then switch Copilot Chat to **Agent mode**. |
+| GitHub Copilot (VS Code, Copilot CLI) | The same `.mcp.json` below at the repo root | Start the server when VS Code prompts (or through **MCP: List Servers**), then switch Copilot Chat to **Agent mode**. VS Code 1.140 deprecated `.vscode/mcp.json` (top key `servers`): it still reads that file, but only older versions need it. |
 | Cursor | Settings → MCP Servers → Add server → paste `https://mcp.regira.com/mcp` | — |
 
 ```json
@@ -189,8 +189,8 @@ At a glance:
 
 | Packages | License | Key needed? |
 |----------|---------|-------------|
-| Everything except the eight below | [Apache-2.0](LICENSE) | Never — no license validation |
-| `Regira.Licensing`, `Regira.Entities.EFcore`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Web`, `Regira.Entities.Mapping.Mapster`, `Regira.Entities.Mapping.AutoMapper`, `Regira.Entities.Validation.FluentValidation`, `Regira.Office.Clients` | [Regira Commercial](legal/REGIRA-COMMERCIAL-LICENSE.md) — free tier included | Only beyond the free tier |
+| Everything except the ten below | [Apache-2.0](LICENSE) | Never — no license validation |
+| `Regira.Licensing`, `Regira.Entities.EFcore`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Web`, `Regira.Entities.Mediator`, `Regira.Entities.Mediator.MediatR`, `Regira.Entities.Mapping.Mapster`, `Regira.Entities.Mapping.AutoMapper`, `Regira.Entities.Validation.FluentValidation`, `Regira.Office.Clients` | [Regira Commercial](legal/REGIRA-COMMERCIAL-LICENSE.md) — free tier included | Only beyond the free tier |
 
 Full limits, definitions, and prices: [licensing.md](licensing.md).
 

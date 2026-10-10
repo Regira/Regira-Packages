@@ -1,7 +1,5 @@
 using Office.Word.testing.Abstractions;
-using Regira.Drawing.SkiaSharp.Services;
 using Regira.Office.Models;
-using Regira.Office.PDF.DocNET;
 using Regira.Office.Word.Aspose;
 using Regira.Office.Word.Models;
 
@@ -47,7 +45,7 @@ public class AsposeEvaluationTests() : WordAssetsTestsBase("Aspose")
         var service = new WordService(Evaluation);
         var text = await service.GetText(TemplateInput("lorem_ipsum.docx"));
         using var pdf = await service.Convert(TemplateInput("lorem_ipsum.docx"), FileFormat.Pdf);
-        var pdfText = await new PdfManager(new ImageService()).GetText(pdf);
+        var pdfText = string.Join("\n", (await ReadPdf(pdf)).PageTexts);
 
         TestContext.Out.WriteLine($"Evaluation text:{Environment.NewLine}{text[..Math.Min(text.Length, 400)]}");
 

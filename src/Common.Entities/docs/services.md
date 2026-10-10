@@ -40,7 +40,7 @@ Task<long> Count(TSearchObject? so, CancellationToken token = default)
 Task<long> Count(IList<TSearchObject?> so, CancellationToken token = default)
 ```
 
-> **Paging at the service layer:** `List` only pages when you pass a `PagingInfo` with a positive `PageSize`; otherwise it returns the full set. The configurable default/maximum page size (`DefaultPageSize` / `MaxPageSize`, or per-entity `e.SetPageSize(...)`) is applied at the **HTTP boundary** (the MVC controllers), not here — so direct service calls keep full control. See [Web Endpoints → Paging](web-endpoints.md#paging).
+> **Paging at the service layer:** `List` only pages when you pass a `PagingInfo` with a positive `PageSize`; otherwise it returns the full set. The configurable default/maximum page size (`DefaultPageSize` / `MaxPageSize`, or per-entity `e.SetPageSize(...)`) is applied by the list and search requests the endpoints send ([Entity Operations](web-endpoints.md#entity-operations)), not here — so direct service calls keep full control. See [Web Endpoints → Paging](web-endpoints.md#paging).
 
 ### Write Operations
 
@@ -233,7 +233,7 @@ The signature is `Related(navigationExpression, prepareFunc, configure)`, where 
 - **`prepareFunc`** — a parent-level prepare callback, invoked with the parent entity.
 - **`configure`** — a `RelatedEntityBuilder` callback for shaping the child collection. Use `builder.Related(...)` to synchronize a nested sub-collection (recursively, to any depth) and `builder.Prepare(...)` to run a per-item prepare on each child.
 
-For an `int`-keyed child, the single-type-argument `Related<TRelated>` of every `int`-keyed builder also takes `configure` in second position, so `e.Related(x => x.Lines, r => r.ServerOwned(x => x.UnitPrice))` needs no parameter name. The two-type-argument form below always reads its second argument as `prepareFunc`, so it names `configure:`.
+For an `int`-keyed child, every builder infers the type argument, whatever the parent's key, and takes `configure` in second position too, so `e.Related(x => x.Lines, r => r.ServerOwned(x => x.UnitPrice))` needs no parameter name. A child with another key type takes the two-type-argument form below, which always reads its second argument as `prepareFunc`, so it names `configure:`.
 
 <!-- no-compile -->
 ```csharp
@@ -431,11 +431,18 @@ public abstract class EntityPrimerBase<T> : IEntityPrimer<T>
   `BeginTransaction()` — also for contexts sharing that transaction through `UseTransaction`, whichever of them
   commits it — and when an ambient `TransactionScope` completes. A failed save, a rollback, or a transaction
   disposed without committing reacts to nothing
-- Not seen: a rollback to a savepoint — the reactions of the saves made after it still run — and a transaction
-  committed outside EF, on the `DbTransaction` itself — its reactions never run. A transaction begun outside EF and
-  handed to `UseTransaction` is known to have ended only when it commits or rolls back through EF: on Npgsql, which
-  reuses the transaction object of a pooled connection, one disposed without either leaves its reactions to the
-  next such transaction on that connection
+- One save is one transaction. Every write the library makes — a generated endpoint, `IEntityService.SaveChanges()`,
+  the related rows a prepper changes, an attachment upload — flushes in a single `SaveChanges`, which EF wraps in a
+  transaction of its own. A unit of work that spans several saves or several services is the application's:
+  `BeginTransaction()` inside `CreateExecutionStrategy().Execute(...)`, or a `TransactionScope` with
+  `TransactionScopeAsyncFlowOption.Enabled`. The library joins either, and its reactors wait for that commit
+- A rollback to a savepoint does not say which saves it undid, so the reactions of every save made before it in that
+  transaction still run when it commits; after one the application makes, `AttachmentFileReactor` keeps the files of
+  those saves instead
+- Not seen: a transaction committed outside EF, on the `DbTransaction` itself — its reactions never run. A
+  transaction begun outside EF and handed to `UseTransaction` is known to have ended only when it commits or rolls
+  back through EF: on Npgsql, which reuses the transaction object of a pooled connection, one disposed without either
+  leaves its reactions to the next such transaction on that connection
 - Receive an `IEntityChange<TEntity>`: `Kind` (`Added`/`Modified`/`Deleted` — a soft delete is `Modified`),
   `Entity` (the committed row, generated keys filled in), `Original` (the row as stored before the save) and
   `ChangedProperties`, with the `HasChanged(x => x.Status)` and `ChangedTo(x => x.Status, value)` helpers. Values

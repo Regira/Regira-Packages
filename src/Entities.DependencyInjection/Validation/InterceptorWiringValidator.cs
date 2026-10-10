@@ -117,7 +117,7 @@ internal sealed class InterceptorWiringValidator : IEntityRegistrationValidator
                 if (hasReactors && !interceptors.Any(i => i is EntityReactorInterceptor))
                 {
                     var attachmentFiles = context.Services.Any(d => IsAttachmentFileReactor(d.ImplementationType ?? d.ImplementationInstance?.GetType()))
-                        ? " Among them is the AttachmentFileReactor WithAttachments registers: without it, an attachment's deleted file is removed during the save, before the database takes it, and a file new bytes replaced once the save succeeds, before a transaction around it commits."
+                        ? " Among them is the AttachmentFileReactor WithAttachments registers: without it, a file new bytes replaced, and a deleted attachment's file, are removed once the save succeeds, before a transaction around it commits."
                         : string.Empty;
                     yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
                         $"IEntityReactor services are registered but {inspectType.Name} has no reactor interceptor — reactors will not run after its saves are committed.{attachmentFiles} " +

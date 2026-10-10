@@ -33,6 +33,8 @@
     <Project Path="src/Entities.EFcore/Entities.EFcore.csproj" />
     <Project Path="src/Entities.Mapping.AutoMapper/Entities.Mapping.AutoMapper.csproj" />
     <Project Path="src/Entities.Mapping.Mapster/Entities.Mapping.Mapster.csproj" />
+    <Project Path="src/Entities.Mediator/Entities.Mediator.csproj" />
+    <Project Path="src/Entities.Mediator.MediatR/Entities.Mediator.MediatR.csproj" />
     <Project Path="src/Entities.Validation.FluentValidation/Entities.Validation.FluentValidation.csproj" />
     <Project Path="src/Entities.Web/Entities.Web.csproj" />
   </Folder>
@@ -86,6 +88,7 @@
   </Folder>
   <Folder Name="/src/Office/Mail/">
     <Project Path="src/Mail.MailGun/Mail.MailGun.csproj" />
+    <Project Path="src/Mail.MailKit/Mail.MailKit.csproj" />
     <Project Path="src/Mail.MSGReader/Mail.MSGReader.csproj" />
     <Project Path="src/Mail.SendGrid/Mail.SendGrid.csproj" />
     <Project Path="src/Mail.Web/Mail.Web.csproj" />
@@ -96,6 +99,9 @@
   </Folder>
   <Folder Name="/src/Office/PDF/">
     <Project Path="src/PDF.DocNET/PDF.DocNET.csproj" />
+    <Project Path="src/PDF.Gotenberg/PDF.Gotenberg.csproj" />
+    <Project Path="src/PDF.MiniPdf/PDF.MiniPdf.csproj" />
+    <Project Path="src/PDF.PdfPig/PDF.PdfPig.csproj" />
     <Project Path="src/PDF.PDFtoPrinter/PDF.PDFtoPrinter.csproj" />
     <Project Path="src/PDF.Playwright/PDF.Playwright.csproj" Id="649ab648-d5ab-4dc6-9407-590066a84dce" />
     <Project Path="src/PDF.PockyBum522/PDF.PockyBum522.csproj" />
@@ -137,6 +143,7 @@
     <Project Path="src/Common.Web/Common.Web.csproj" />
     <Project Path="src/Web.Analytics/Web.Analytics.csproj" />
     <Project Path="src/Web.Analytics.GeoIP2/Web.Analytics.GeoIP2.csproj" />
+    <Project Path="src/Web.HTML.RazorComponents/Web.HTML.RazorComponents.csproj" />
     <Project Path="src/Web.HTML.RazorEngineCore/Web.HTML.RazorEngineCore.csproj" Id="916bbb45-e9ad-4d88-b82e-b7c754e16422" />
     <Project Path="src/Web.HTML.RazorLight/Web.HTML.RazorLight.csproj" />
     <Project Path="src/Web.Swagger/Web.Swagger.csproj" />
@@ -150,6 +157,7 @@
     <Project Path="tests/Drawing.Testing/Drawing.Testing.csproj" />
     <Project Path="tests/Entities.DependencyInjection.Testing/Entities.DependencyInjection.Testing.csproj" />
     <Project Path="tests/Entities.Mapping.Mapster.Testing/Entities.Mapping.Mapster.Testing.csproj" />
+    <Project Path="tests/Entities.Mediator.Testing/Entities.Mediator.Testing.csproj" />
     <Project Path="tests/Entities.Providers.Testing/Entities.Providers.Testing.csproj" />
     <Project Path="tests/Entities.TestApi/Entities.TestApi.csproj" />
     <Project Path="tests/Entities.Testing/Entities.Testing.csproj" />

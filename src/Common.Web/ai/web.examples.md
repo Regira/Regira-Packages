@@ -7,8 +7,7 @@
 
 ```csharp
 // Program.cs
-services.AddSingleton<IHtmlParser, Regira.Web.HTML.RazorLight.RazorTemplateParser>(
-    _ => new(new() { TemplateKey = "invoice-email" }));
+services.AddSingleton<IHtmlParser>(new Regira.Web.HTML.RazorLight.RazorTemplateParser());
 
 services.AddControllers(options =>
 {
@@ -37,9 +36,9 @@ public async Task<string> RenderInvoiceEmail(Invoice invoice)
 
 <!-- no-compile -->
 ```csharp
-var parser = new HtmlTemplateParser(_jsonSerializer);
+var parser = new HtmlTemplateParser(_jsonSerializer) { HtmlEncode = true };
 string html = await parser.Parse(
-    "<p>Hello {{Name}}, your order <strong>{{OrderNumber}}</strong> is confirmed.</p>",
+    "<p>Hello {name}, your order <strong>{orderNumber}</strong> is confirmed.</p>",
     new { Name = "Alice", OrderNumber = "ORD-0042" });
 ```
 

@@ -48,13 +48,15 @@ internal static class ParagraphExtensions
         if (src.Image != null)
         {
             var docPicture = target.AppendPicture(src.Image.File?.GetBytes());
-            if (src.Image.Size.HasValue)
+            if (src.Image.Size is { } size)
             {
-                docPicture.Width = src.Image.Size.Value.Width;
-            }
-            if (src.Image.Size.HasValue)
-            {
-                docPicture.Height = src.Image.Size.Value.Height;
+                // a picture that keeps its aspect ratio sets its height with its width, and its width with its height:
+                // the size is set unlocked, so it comes out as given
+                var locked = docPicture.AspectRatioLocked;
+                docPicture.AspectRatioLocked = false;
+                docPicture.Width = size.Width;
+                docPicture.Height = size.Height;
+                docPicture.AspectRatioLocked = locked;
             }
             if (!string.IsNullOrWhiteSpace(src.Image.Name))
             {
@@ -73,7 +75,12 @@ internal static class ParagraphExtensions
         target.Format.AfterAutoSpacing = true;
 
         target.Format.PageBreakBefore = src.PageBreakBefore;
-        target.Format.PageBreakAfter = src.PageBreakAfter;
+        if (src.PageBreakAfter)
+        {
+            // Word has no page-break-after paragraph property, so Spire saves none; a page break character ends the
+            // paragraph instead
+            target.AppendBreak(BreakType.PageBreak);
+        }
 
         return target;
     }

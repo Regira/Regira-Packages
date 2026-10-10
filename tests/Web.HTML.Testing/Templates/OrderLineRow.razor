@@ -1,0 +1,5 @@
+<li>@Line.Title: @Line.Amount x @Line.Price</li>
+
+@code {
+    [Parameter, EditorRequired] public OrderLine Line { get; set; } = null!;
+}

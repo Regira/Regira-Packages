@@ -203,6 +203,7 @@ string abs     = UriUtility.ToAbsoluteUri("../images/logo.png");
 ```csharp
 float inches = DimensionsUtility.MmToIn(25.4f);   // 1.0f
 float mm     = DimensionsUtility.InToMm(1.0f);    // 25.4f
+float pt72   = DimensionsUtility.ModifyDpi(96f, 96, 72);   // 72f — the same length at another DPI; a Size2D overload converts both sides
 ```
 
 ---

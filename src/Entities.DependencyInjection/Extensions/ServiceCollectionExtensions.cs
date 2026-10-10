@@ -25,6 +25,7 @@ public static class ServiceCollectionExtensions
         services.RegisterGlobalQueryOptions(options);
         services.RegisterGlobalReadOptions(options);
         services.RegisterStartupValidation(options);
+        services.RegisterEntityMediator();
         return options;
     }
 
@@ -40,8 +41,22 @@ public static class ServiceCollectionExtensions
         services.RegisterGlobalQueryOptions(options);
         services.RegisterGlobalReadOptions(options);
         services.RegisterStartupValidation(options);
+        services.RegisterEntityMediator();
         services.WireDbContextDefaults<TContext>(options);
         return new EntityServiceCollection<TContext>(options);
+    }
+
+    /// <summary>
+    /// Registers the entity operations — the sender the controllers, jobs and a consumer's own endpoints send requests
+    /// through. They live in Regira.Entities.Mediator, which references this package, so they are bound late, as the
+    /// controller validator is: every host that calls <c>UseEntities()</c> gets them without another call, and the call
+    /// no-ops where that package is absent.
+    /// </summary>
+    private static void RegisterEntityMediator(this IServiceCollection services)
+    {
+        var registration = Type.GetType(
+            "Regira.Entities.Mediator.DependencyInjection.EntityMediatorServiceCollectionExtensions, Regira.Entities.Mediator", throwOnError: false);
+        registration?.GetMethod("AddEntityMediator", [typeof(IServiceCollection)])?.Invoke(null, [services]);
     }
 
     /// <summary>
@@ -169,23 +184,14 @@ public static class ServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, EntityValidatorWiringValidator>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, RepositoryShapeValidator>());
 
-        // The controller validator lives in Regira.Entities.Web (it needs MVC types), which this project
-        // cannot reference — bind it late so validation is enabled by UseEntities() itself rather than by
-        // an unrelated JSON-options call. No-ops for apps that don't reference the web package.
-        var controllerValidator = Type.GetType(
-            "Regira.Entities.Web.Validation.ControllerRegistrationValidator, Regira.Entities.Web", throwOnError: false);
-        if (controllerValidator != null)
-        {
-            services.TryAddEnumerable(ServiceDescriptor.Singleton(typeof(IEntityRegistrationValidator), controllerValidator));
-        }
-        // Same for the controllers' DTO shapes: declaring the DTOs on the controller alone is the default, and the
-        // DTO checks (concurrency token, attachments collection) otherwise see only UseMapping registrations.
-        var controllerDtoShapes = Type.GetType(
-            "Regira.Entities.Web.Validation.ControllerDtoShapeSource, Regira.Entities.Web", throwOnError: false);
-        if (controllerDtoShapes != null)
-        {
-            services.TryAddEnumerable(ServiceDescriptor.Singleton(typeof(IEntityDtoShapeSource), controllerDtoShapes));
-        }
+        // The web checks live in Regira.Entities.Web (they need MVC and routing types), which this project cannot
+        // reference — bind them late so validation is enabled by UseEntities() itself rather than by an unrelated
+        // JSON-options call: the controller and mapped-endpoint checks, and the DTO shapes they bind, without which
+        // the DTO checks (concurrency token, attachments collection) see only UseMapping registrations. No-ops for
+        // apps that don't reference the web package.
+        Type.GetType("Regira.Entities.Web.Validation.EntityControllerValidationExtensions, Regira.Entities.Web", throwOnError: false)?
+            .GetMethod("ValidateEntityControllers", [typeof(IServiceCollection)])?
+            .Invoke(null, [services]);
 
         if (options.ValidationConfigured)
         {

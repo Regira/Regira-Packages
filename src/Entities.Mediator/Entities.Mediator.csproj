@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Entities.Mediator</RootNamespace>
+    <PackageId>Regira.Entities.Mediator</PackageId>
+    <AssemblyName>Regira.Entities.Mediator</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.5.1</Version>
+    <RegiraLicenseEnforced>true</RegiraLicenseEnforced>
+    <Description>HTTP-neutral entity operations for Regira entities: details, list, search, save, patch and delete as requests sent through IEntitySender, with the paging, refetch-after-save and DTO mapping the generated endpoints apply. The controllers send through it, and so can jobs, seeders and a consumer's own endpoints. Free tier included — a license key removes the free-tier limits.</Description>
+    <PackageTags>regira;entities;mediator;requests;handlers;pipeline;operations</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(OutputPath)$(AssemblyName).xml" Pack="true" PackagePath="lib\$(TargetFramework)\" Visible="false" Condition="Exists('$(OutputPath)$(AssemblyName).xml')" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Entities.DependencyInjection\Entities.DependencyInjection.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="ai\entities.mediator.card.md" Pack="true" PackagePath="ai\" />
+  </ItemGroup>
+</Project>

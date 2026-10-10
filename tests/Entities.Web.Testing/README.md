@@ -1,6 +1,7 @@
 # Entities.Web.Testing
 
-xUnit tests for [Entities.Web](../../src/Entities.Web/README.md): entity and attachment controllers, minimal APIs,
+xUnit tests for [Entities.Web](../../src/Entities.Web/README.md): entity and attachment controllers, the mapped entity
+endpoints (the course tests run against both, the second time on the test API's `Endpoints` surface), minimal APIs,
 DTO shapes, JSON options, the exception filter and validation responses, concurrency tokens and archived-entity
 contracts. The HTTP tests host [Entities.TestApi](../Entities.TestApi/README.md) through
 `WebApplicationFactory<Program>`; the rest build their own service collections.

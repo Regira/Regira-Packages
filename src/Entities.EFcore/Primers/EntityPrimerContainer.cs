@@ -48,7 +48,7 @@ public class EntityPrimerContainer
         catch
         {
             // the save these primers prepare will not run: what they left for it is undone
-            await SaveOutcomes.Failed(_dbContext);
+            await SaveOutcomes.FailedBeforeDatabase(_dbContext);
             throw;
         }
     }

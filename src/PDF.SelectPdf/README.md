@@ -1,6 +1,6 @@
 # Regira.Office.PDF.SelectPdf
 
-HTML→PDF backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/), built on [Select.HtmlToPdf.NetCore](https://www.nuget.org/packages/Select.HtmlToPdf.NetCore). `PdfManager` implements `IHtmlToPdfService`. Unlike the headless-Chromium backends it applies every `HtmlInput` property — page size, orientation, margins, headers and footers — and needs no browser installation.
+HTML→PDF backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/), built on [Select.HtmlToPdf.NetCore](https://www.nuget.org/packages/Select.HtmlToPdf.NetCore). `PdfManager` implements `IHtmlToPdfService`. It applies every `HtmlInput` property — page size, orientation, margins, headers and footers — and needs no browser installation.
 
 Two limits decide whether it fits:
 

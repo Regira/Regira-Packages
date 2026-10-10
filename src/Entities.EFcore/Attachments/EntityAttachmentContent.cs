@@ -15,6 +15,23 @@ internal static class EntityAttachmentContent
         => !string.IsNullOrWhiteSpace(entity.NewFileName) || entity.NewBytes?.Any() == true;
 
     /// <summary>
+    /// Gives a link that carries <c>NewBytes</c> and no attachment a new one holding them under its <c>NewFileName</c>,
+    /// typed by that name as the save types it — on every path that adds a link: an owner created or updated with it, and
+    /// the link's own service.
+    /// </summary>
+    public static void CreateFromNewContent<TKey, TObjectKey, TAttachmentKey, TAttachment>(IEntityAttachment<TKey, TObjectKey, TAttachmentKey, TAttachment> link)
+        where TAttachment : class, IAttachment<TAttachmentKey>, new()
+    {
+        if (link.Attachment != null || link.NewBytes?.Any() != true)
+        {
+            return;
+        }
+
+        link.Attachment = new TAttachment { Bytes = link.NewBytes, FileName = link.NewFileName.ToVirtualPath() };
+        TypeByName(link.Attachment);
+    }
+
+    /// <summary>
     /// Applies a link's <c>NewFileName</c> and <c>NewBytes</c> to the attachment it links.
     /// </summary>
     /// <returns>Whether the attachment changed</returns>

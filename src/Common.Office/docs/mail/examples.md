@@ -86,6 +86,17 @@ if (backend == "mailgun")
         cfg.Domain = configuration["Mail:MailGun:Domain"]!;
     });
 }
+else if (backend == "smtp")
+{
+    services.AddMailKit(cfg =>
+    {
+        cfg.Host     = configuration["Mail:Smtp:Host"]!;
+        cfg.Port     = int.Parse(configuration["Mail:Smtp:Port"] ?? "587");
+        cfg.Security = Enum.Parse<SecureSocketOptions>(configuration["Mail:Smtp:Security"] ?? "StartTls");
+        cfg.UserName = configuration["Mail:Smtp:UserName"];
+        cfg.Password = configuration["Mail:Smtp:Password"];
+    });
+}
 else
 {
     services.AddSendGrid(cfg =>

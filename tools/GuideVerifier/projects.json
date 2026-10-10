@@ -27,7 +27,9 @@
         "src/Entities.EFcore/Entities.EFcore.csproj",
         "src/Entities.DependencyInjection/Entities.DependencyInjection.csproj",
         "src/Entities.Web/Entities.Web.csproj",
-        "src/Entities.Validation.FluentValidation/Entities.Validation.FluentValidation.csproj"
+        "src/Entities.Validation.FluentValidation/Entities.Validation.FluentValidation.csproj",
+        "src/Entities.Mediator/Entities.Mediator.csproj",
+        "src/Entities.Mediator.MediatR/Entities.Mediator.MediatR.csproj"
       ],
       "guideDirs": [
         "src/Common.Entities/ai",
@@ -72,7 +74,9 @@
         "src/Entities.EFcore/Entities.EFcore.csproj",
         "src/Entities.DependencyInjection/Entities.DependencyInjection.csproj",
         "src/Entities.Web/Entities.Web.csproj",
-        "src/Entities.Validation.FluentValidation/Entities.Validation.FluentValidation.csproj"
+        "src/Entities.Validation.FluentValidation/Entities.Validation.FluentValidation.csproj",
+        "src/Entities.Mediator/Entities.Mediator.csproj",
+        "src/Entities.Mediator.MediatR/Entities.Mediator.MediatR.csproj"
       ],
       "guideFiles": [
         "src/Common.Entities/docs/examples.md"
@@ -180,6 +184,7 @@
         "src/Web.Swagger/Web.Swagger.csproj",
         "src/Web.HTML.RazorLight/Web.HTML.RazorLight.csproj",
         "src/Web.HTML.RazorEngineCore/Web.HTML.RazorEngineCore.csproj",
+        "src/Web.HTML.RazorComponents/Web.HTML.RazorComponents.csproj",
         "src/System.Hosting/System.Hosting.csproj",
         "src/Serializing.Newtonsoft/Serializing.Newtonsoft.csproj"
       ],
@@ -508,10 +513,13 @@
       "projects": [
         "src/Common.Office/Common.Office.csproj",
         "src/PDF.SelectPdf/PDF.SelectPdf.csproj",
+        "src/PDF.MiniPdf/PDF.MiniPdf.csproj",
         "src/PDF.DocNET/PDF.DocNET.csproj",
+        "src/PDF.PdfPig/PDF.PdfPig.csproj",
         "src/PDF.Spire/PDF.Spire.csproj",
         "src/PDF.Puppeteer/PDF.Puppeteer.csproj",
         "src/PDF.Playwright/PDF.Playwright.csproj",
+        "src/PDF.Gotenberg/PDF.Gotenberg.csproj",
         "src/PDF.PDFtoPrinter/PDF.PDFtoPrinter.csproj",
         "src/Drawing.SkiaSharp/Drawing.SkiaSharp.csproj"
       ],
@@ -565,7 +573,7 @@
         "src/Word.Mini/Word.Mini.csproj",
         "src/Word.Spire/Word.Spire.csproj",
         "src/Word.Syncfusion/Word.Syncfusion.csproj",
-        "src/PDF.DocNET/PDF.DocNET.csproj",
+        "src/PDF.PdfPig/PDF.PdfPig.csproj",
         "src/Drawing.SkiaSharp/Drawing.SkiaSharp.csproj"
       ],
       "guideFiles": [
@@ -593,6 +601,7 @@
         "src/Common.Office/Common.Office.csproj",
         "src/Mail.SendGrid/Mail.SendGrid.csproj",
         "src/Mail.MailGun/Mail.MailGun.csproj",
+        "src/Mail.MailKit/Mail.MailKit.csproj",
         "src/Mail.MSGReader/Mail.MSGReader.csproj",
         "src/Mail.Web/Mail.Web.csproj",
         "src/Security.Authentication.Web/Security.Authentication.Web.csproj"
@@ -612,6 +621,8 @@
         "Regira.Office.Mail.Services",
         "Regira.Office.Mail.SendGrid.DependencyInjection",
         "Regira.Office.Mail.MailGun.DependencyInjection",
+        "Regira.Office.Mail.MailKit.DependencyInjection",
+        "MailKit.Security",
         "Regira.Security.Authentication.Web.Mail"
       ],
       "frameworkReferences": ["Microsoft.AspNetCore.App"]

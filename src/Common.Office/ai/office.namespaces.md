@@ -31,12 +31,12 @@ like it has no content accessor at all.
 
 | Namespace | Types |
 |---|---|
-| `Regira.Office.PDF.Abstractions` | `IPdfService`, `IHtmlToPdfService`, `IPdfEditor`, `IPdfMerger`, `IPdfSplitter`, `IPdfTextExtractor`, `IPdfTextService`, `IPdfImageService`, `IImagesToPdfService`, `IPdfToImageService`, `IPdfToImageAsyncService`, `IPdfPrinter`, `PdfInputBase` |
-| `Regira.Office.PDF.Models` | `HtmlInput`, `ImagesInput`, `PdfSplitRange`, `PdfToImagesOptions` |
+| `Regira.Office.PDF.Abstractions` | `IPdfService`, `IHtmlToPdfService`, `IDocumentToPdfService`, `IPdfEditor`, `IPdfMerger`, `IPdfSplitter`, `IPdfTextExtractor`, `IPdfTextService`, `IPdfImageService`, `IImagesToPdfService`, `IPdfToImageService`, `IPdfToImageAsyncService`, `IPdfPrinter`, `PdfInputBase` |
+| `Regira.Office.PDF.Models` | `HtmlInput`, `DocumentInput`, `ImagesInput`, `PdfSplitRange`, `PdfToImagesOptions` |
 | `Regira.Office.PDF.Defaults` | `PdfDefaults` |
 | `Regira.Office.PDF.Drawing` | `PdfImageCreator`, `PdfToImageLayerOptions` |
 | `Regira.Office.PDF.Printer` | `PdfPrinterInput` |
-| **Providers** | `Regira.Office.PDF.SelectPdf` · `…DocNET` · `…Spire` · `…Puppeteer` · `…MsPlaywright` → `PdfManager`; `Regira.Office.PDF.PDFtoPrinter` · `…PockyBum522` → `PdfPrinter` |
+| **Providers** | `Regira.Office.PDF.SelectPdf` · `…DocNET` · `…Spire` · `…Puppeteer` · `…MsPlaywright` → `PdfManager`; `Regira.Office.PDF.MiniPdf` · `…PdfPig` · `…Gotenberg` → `PdfService`, and `Regira.Office.PDF.Gotenberg.DependencyInjection` → `ServiceCollectionExtensions` (`AddGotenbergPdf`); `Regira.Office.PDF.PDFtoPrinter` · `…PockyBum522` → `PdfPrinter` |
 
 ## Barcodes & QR
 
@@ -69,7 +69,7 @@ size or error correction.
 | Namespace | Types |
 |---|---|
 | `Regira.Office.Word.Abstractions` | `IWordService`, `IWordManager`, `IWordCreator`, `IWordConverter`, `IWordMerger`, `IWordTextExtractor`, `IWordImageExtractor`, `IWordToImagesService` |
-| `Regira.Office.Word.Models` | `WordTemplateInput`, `WordHeaderFooterInput`, `WordImage`, `WordTable`, `Paragraph`, `ParagraphStyle`, `DocumentSettings`, `ConversionOptions`, `InputOptions`, `HeaderFooterType`, `HorizontalAlignment` |
+| `Regira.Office.Word.Models` | `WordTemplateInput`, `WordHeaderFooterInput`, `WordImage`, `WordTable`, `Paragraph`, `ParagraphStyle`, `DocumentSettings`, `ConversionOptions`, `InputOptions`, `MergeOptions`, `HeaderFooterType`, `HorizontalAlignment` |
 | `Regira.Office.Word.Drawing` | `WordImageCreator`, `WordToImageLayerOptions` |
 | **Providers** | `Regira.Office.Word.Spire` → `WordService`, `DocumentBuilder`, `WordDocumentSettings`; `Regira.Office.Word.Syncfusion` → `WordService`, `DocumentBuilder`, `WordDocumentSettings`, `SyncfusionWordConfig`; `Regira.Office.Word.Aspose` → `WordService`, `DocumentBuilder`, `WordDocumentSettings`, `AsposeWordConfig`; `Regira.Office.Word.Mini` → `WordService`; `Regira.Office.Word.Gotenberg` → `WordService`, `GotenbergWordConfig`; `Regira.Office.Word.Gotenberg.DependencyInjection` → `ServiceCollectionExtensions` |
 
@@ -83,8 +83,8 @@ size or error correction.
 | `Regira.Office.Mail.Exceptions` | `MailException`, `EmailFormatException` |
 | `Regira.Office.Mail.Web` | `MailInput`, `Address`, `Recipient`, `Attachment` — DTOs for an HTTP endpoint |
 | `Regira.Office.Mail.Services` | `DummyMailer` |
-| **Providers** | `Regira.Office.Mail.SendGrid` → `SendGridMailer`, `SendGridConfig`; `Regira.Office.Mail.MailGun` → `MailGunMailer`, `MailgunConfig`; `Regira.Office.Mail.MSGReader` → `MsgParser`, `EmlParser` |
-| **DI** | `Regira.Office.Mail.SendGrid.DependencyInjection` · `Regira.Office.Mail.MailGun.DependencyInjection` → `ServiceCollectionExtensions` |
+| **Providers** | `Regira.Office.Mail.SendGrid` → `SendGridMailer`, `SendGridConfig`; `Regira.Office.Mail.MailGun` → `MailGunMailer`, `MailgunConfig`; `Regira.Office.Mail.MailKit` → `MailKitMailer`, `MailKitConfig` (its `Security` takes `MailKit.Security.SecureSocketOptions`); `Regira.Office.Mail.MSGReader` → `MsgParser`, `EmlParser` |
+| **DI** | `Regira.Office.Mail.SendGrid.DependencyInjection` · `Regira.Office.Mail.MailGun.DependencyInjection` · `Regira.Office.Mail.MailKit.DependencyInjection` → `ServiceCollectionExtensions` |
 
 ## CSV · OCR · vCards · Printing
 
@@ -124,7 +124,8 @@ Regira.Office.PDF.Models         → HtmlInput
 Regira.Office.Models             → PageSize, PageOrientation, Margins
 Regira.IO.Abstractions           → IMemoryFile          (the return type)
 Regira.IO.Extensions             → GetBytes(), GetStream()
-Regira.Office.PDF.SelectPdf      → PdfManager           (registration only)
+Regira.Office.PDF.MsPlaywright   → PdfManager           (registration only)
+Regira.Office.PDF.Gotenberg.DependencyInjection → ServiceCollectionExtensions  (AddGotenbergPdf, through a Gotenberg server)
 ```
 
 ### QR code / barcode image
@@ -142,7 +143,7 @@ Regira.Office.Barcodes.ZXing                   → QRCodeService       (registra
 Regira.Office.PDF.Abstractions   → IPdfMerger, IPdfSplitter, IPdfTextExtractor, IPdfEditor
 Regira.Office.PDF.Models         → PdfSplitRange
 Regira.IO.Abstractions           → IMemoryFile
-Regira.Office.PDF.DocNET         → PdfManager           (registration only)
+Regira.Office.PDF.PdfPig         → PdfService           (registration only)
 ```
 
 ### Generate a Word document from a template

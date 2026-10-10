@@ -310,6 +310,29 @@ public class ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject,
         return this;
     }
 
+    // Related
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Related{TRelated}(Expression{Func{TEntity,ICollection{TRelated}}},Action{TEntity},Action{RelatedEntityBuilder{TContext,TRelated,int}})" />
+    public new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> Related<TRelated>(
+        Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression,
+        Action<TEntity>? prepareFunc = null,
+        Action<RelatedEntityBuilder<TContext, TRelated, int>>? configure = null)
+        where TRelated : class, IEntity<int>
+    {
+        Related<TRelated, int>(navigationExpression, prepareFunc, configure);
+
+        return this;
+    }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Related{TRelated}(Expression{Func{TEntity,ICollection{TRelated}}},Action{RelatedEntityBuilder{TContext,TRelated,int}})" />
+    public new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> Related<TRelated>(
+        Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression,
+        Action<RelatedEntityBuilder<TContext, TRelated, int>> configure)
+        where TRelated : class, IEntity<int>
+    {
+        Related<TRelated, int>(navigationExpression, null, configure);
+
+        return this;
+    }
+
     // Entity Processor
     public ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> Process(Func<IList<TEntity>, TIncludes?, Task> process)
     {

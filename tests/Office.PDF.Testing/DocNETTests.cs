@@ -1,154 +1,54 @@
-﻿using NUnit.Framework.Legacy;
 using Office.PDF.Testing.Abstractions;
-using Regira.Collections;
 using Regira.Drawing.SkiaSharp.Services;
-using Regira.IO.Extensions;
-using Regira.IO.Storage.FileSystem;
+using Regira.Office.Models;
 using Regira.Office.PDF.DocNET;
 using Regira.Office.PDF.Models;
-using Regira.Utilities;
 
 namespace Office.PDF.Testing;
 
-[TestFixture]
-[Parallelizable(ParallelScope.All)]
-public class DocNETTests
+/// <summary>
+/// PDF.DocNET runs every shared scenario in <see cref="PdfTestsBase{TBackend}"/>; below is what it does differently,
+/// and its merge by file path.
+/// </summary>
+[PdfFixture]
+public class DocNETTests() : PdfTestsBase<PdfManager>(new PdfManager(new ImageService()), "DocNET")
 {
-    private readonly string _inputDir;
-    private readonly string _outputDir;
-    private readonly PdfManager _pdfService;
-
-    public DocNETTests()
+    /// <summary>
+    /// DocNET makes each page the size of its image: the image is scaled down to fit the format's page less its
+    /// margins, measured in units of the input's DPI, and the page takes that many points.
+    /// </summary>
+    [TestCase("img-1.jpg,img-2.jpg,img-3.jpg,img-4.jpg", PageSize.A4, PageOrientation.Portrait)]
+    [TestCase("lion.png,horse.png", PageSize.A4, PageOrientation.Landscape)]
+    [TestCase("img-1.jpg,lion.png", PageSize.A5, PageOrientation.Portrait)]
+    public override async Task ImagesToPdf_Puts_Each_Image_On_A_Page_Of_Its_Own(string images, PageSize format, PageOrientation orientation)
     {
-        var imageService = new ImageService();
-        _pdfService = new PdfManager(imageService);
-        var assemblyDir = AssemblyUtility.GetAssemblyDirectory()!;
-        var assetsDir = Path.Combine(assemblyDir, "../../../", "Assets");
-        _inputDir = Path.Combine(assetsDir, "Input");
-        _outputDir = Path.Combine(assetsDir, "Output/DocNET");
-        Directory.CreateDirectory(_outputDir);
+        var input = new ImagesInput { Images = ReadImages(images), Format = format, Orientation = orientation };
+
+        using var pdf = await Backend.ImagesToPdf(input);
+
+        var output = await ReadPdf(pdf);
+        var maxWidth = input.MaxDimensions.Width - input.Margins.Left - input.Margins.Right;
+        var maxHeight = input.MaxDimensions.Height - input.Margins.Top - input.Margins.Bottom;
+        Assert.That(output.PageCount, Is.EqualTo(input.Images.Count));
+        foreach (var (page, i) in output.Pages.Select((page, i) => (page, i + 1)))
+        {
+            Assert.That(page.Width, Is.LessThanOrEqualTo(maxWidth + 1), $"page {i} width");
+            Assert.That(page.Height, Is.LessThanOrEqualTo(maxHeight + 1), $"page {i} height");
+            Assert.That(page.Images, Has.Count.EqualTo(1), $"page {i} images");
+            var image = page.Images[0];
+            Assert.That(new[] { image.Left, image.Top, image.Right, image.Bottom }, Is.EqualTo(new[] { 0, 0, page.Width, page.Height }).Within(1),
+                $"page {i}'s image fills it");
+        }
     }
 
     [Test]
-    public async Task ReadText()
+    public async Task Merge_By_Path_Keeps_Each_Pages_Text_In_Order()
     {
-        var expectedText = @"A Simple PDF File 
- This is a small demonstration .pdf file - 
- just for use in the Virtual Mechanics tutorials. More text. And more 
- text. And more text. And more text. And more text. 
- And more text. And more text. And more text. And more text. And more 
- text. And more text. Boring, zzzzz. And more text. And more text. And 
- more text. And more text. And more text. And more text. And more text. 
- And more text. And more text. 
- And more text. And more text. And more text. And more text. And more 
- text. And more text. And more text. Even more. Continued on page 2 ...
-Simple PDF File 2 
- ...continued from page 1. Yet more text. And more text. And more text. 
- And more text. And more text. And more text. And more text. And more 
- text. Oh, how boring typing this stuff. But not as boring as watching 
- paint dry. And more text. And more text. And more text. And more text. 
- Boring. More, a little more text. The end, and just as well.";
-        await using var pdfStream = File.OpenRead(Path.Combine(_inputDir, "sample.pdf"));
-        var pdfText = await _pdfService.GetText(pdfStream.ToBinaryFile());
-        Assert.That(pdfText, Is.EqualTo(expectedText));
-    }
+        var names = Enumerable.Range(1, 6).Select(i => $"lorem-ipsum{i}.pdf").ToArray();
 
-    [Test]
-    public async Task MergeDocs_By_Path()
-    {
-        var inputDocs = Enumerable.Range(1, 6)
-            .Select(i => Path.Combine(_inputDir, $"lorem-ipsum{i}.pdf"))
-            .ToArray();
+        using var merged = Backend.Merge(names.Select(InputPath));
 
-        using var merged = _pdfService.Merge(inputDocs);
-
-        var inputPageCounts = await Task.WhenAll(inputDocs.Select(doc => _pdfService.GetPageCount(File.ReadAllBytes(doc).ToBinaryFile())));
-        var inputPageCount = inputPageCounts.Sum();
-        var mergedPageCount = await _pdfService.GetPageCount(merged.ToBinaryFile());
-
-        Assert.That(mergedPageCount, Is.EqualTo(inputPageCount));
-        PdfTestHelper.AssertReadableWithoutRewind(merged);
-
-        var outputPath = Path.Combine(_outputDir, "merged-by-path.pdf");
-        await File.WriteAllBytesAsync(outputPath, merged.GetBytes()!);
-    }
-    [Test]
-    public async Task MergeDocs_By_Stream()
-    {
-        var inputStreams = Enumerable.Range(1, 6)
-            .Select(i => File.OpenRead(Path.Combine(_inputDir, $"lorem-ipsum{i}.pdf")).ToBinaryFile())
-            .ToArray();
-
-        using var merged = (await _pdfService.Merge(inputStreams))!;
-
-        var inputPageCounts = await Task.WhenAll(inputStreams.Select(doc => _pdfService.GetPageCount(doc)));
-        var inputPageCount = inputPageCounts.Sum();
-        var mergedPageCount = await _pdfService.GetPageCount(merged.ToBinaryFile());
-
-        Assert.That(mergedPageCount, Is.EqualTo(inputPageCount));
-        PdfTestHelper.AssertReadableWithoutRewind(merged);
-
-        var outputPath = Path.Combine(_outputDir, "merged-by-stream.pdf");
-        await File.WriteAllBytesAsync(outputPath, merged.GetBytes()!);
-
-        inputStreams.Dispose();
-    }
-
-    [Test]
-    public Task Split_1to10_and_14to24()
-        => PdfTestHelper.Split_Documents(_pdfService);
-
-    [Test]
-    public Task Merge_Split_Documents()
-        => PdfTestHelper.Merge_Split_Documents(_pdfService, _pdfService);
-
-
-    [Test]
-    public async Task Remove_Empty_Pages()
-    {
-        var bf = (await FileSystemUtility.Parse(Path.Combine(_inputDir, "has-empty-pages.pdf")))!;
-        var textsWithEmptyPages = await _pdfService.GetTextPerPage(bf);
-        using var resultPdf = await _pdfService.RemoveEmptyPages(bf);
-        PdfTestHelper.AssertReadableWithoutRewind(resultPdf);
-        var texts = await _pdfService.GetTextPerPage(resultPdf!.ToBinaryFile());
-        Assert.That(texts, Is.Not.Empty);
-        Assert.That(textsWithEmptyPages.Where(string.IsNullOrWhiteSpace), Is.Not.Empty);
-        ClassicAssert.IsEmpty(texts.Where(string.IsNullOrWhiteSpace));
-    }
-
-
-    [Test]
-    public Task ToImages()
-        => PdfTestHelper.ToImages(_pdfService);
-
-    [Test]
-    public async Task JpegImagesToPdf()
-    {
-        var images = await Task.WhenAll(
-            Enumerable.Range(1, 4)
-                .Select(i => File.ReadAllBytesAsync(Path.Combine(_inputDir, $"img-{i}.jpg")))
-        );
-
-        var input = new ImagesInput { Images = images };
-        using var pdf = await _pdfService.ImagesToPdf(input);
-        PdfTestHelper.AssertReadableWithoutRewind(pdf);
-
-        var outputPath = Path.Combine(_outputDir, "jpg-images.pdf");
-        await FileSystemUtility.SaveStream(outputPath, pdf.GetStream()!);
-    }
-
-    [Test]
-    public async Task PngImagesToPdf()
-    {
-        var images = await Task.WhenAll("lion,horse".Split(",")
-            .Select(img => File.ReadAllBytesAsync(Path.Combine(_inputDir, $"{img}.png")))
-        );
-
-        var input = new ImagesInput { Images = images };
-        using var pdf = await _pdfService.ImagesToPdf(input);
-        PdfTestHelper.AssertReadableWithoutRewind(pdf);
-
-        var outputPath = Path.Combine(_outputDir, "png-images.pdf");
-        await FileSystemUtility.SaveStream(outputPath, pdf.GetStream()!);
+        var output = await ReadPdf(merged);
+        Assert.That(output.PageTexts, Is.EqualTo(names.SelectMany(name => InputFacts(name).PageTexts)));
     }
 }

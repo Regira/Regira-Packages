@@ -1,10 +1,12 @@
 # Web Endpoints
 
-Expose entity CRUD operations as HTTP endpoints using controllers:
+Expose entity CRUD operations as HTTP endpoints, through controllers or as mapped minimal-API endpoints. Both serve the
+same routes and send the same requests:
 
 | Package | Description |
 |---------|-------------|
-| `Regira.Entities.Web` | MVC attribute model via `EntityControllerBase` |
+| `Regira.Entities.Web` | MVC controllers via `EntityControllerBase`, or mapped endpoints via `MapEntityEndpoints()` ([Mapped Endpoints](#mapped-endpoints)) |
+| `Regira.Entities.Mediator` | The requests both surfaces send through `IEntitySender` ([Entity Operations](#entity-operations)) |
 
 ---
 
@@ -134,7 +136,7 @@ services.UseEntities<AppDbContext>(options =>
 
 - Both values are optional; `null` means that aspect is off.
 - The default only fills in when the request has no positive `pageSize`; an explicit larger `pageSize` is honoured unless `MaxPageSize` clamps it; `page` is preserved.
-- **Enforced at the HTTP boundary only** — the MVC controllers apply the single shared clamp (`EntityListOptionsExtensions.ApplyPagingDefaults`), which any other HTTP surface can reuse so `MaxPageSize` cannot be escaped. Calling `IEntityService.List(...)` directly (without `PagingInfo`) still returns the full set — the service layer keeps full control.
+- **Enforced by the list and search requests, not the service** — the `ListQuery` and `SearchQuery` handlers apply the single shared clamp (`EntityListOptionsExtensions.ApplyPagingDefaults`), so the controllers, the mapped endpoints and any other sender of those requests page alike and `MaxPageSize` cannot be escaped through them. Calling `IEntityService.List(...)` directly (without `PagingInfo`) still returns the full set — the service layer keeps full control.
 
 #### Save (Add/Modify/Patch)
 
@@ -159,9 +161,8 @@ Save(inputDto) -> SaveResult
 > - The merge base is the current entity serialized to JSON and then deserialized as `TInputDto`, so only properties declared on the input model can be modified — audit/computed fields on `TEntity` are automatically excluded.
 > - Related collections not included in the patch body are left intact (the entity is fetched without includes, so `null` collections are treated as absent, not as "remove all").
 > - Assumes `TInputDto` property names match the corresponding `TEntity` property names.
-> - The merged input is validated against `TInputDto`'s DataAnnotations before the save: a failure answers **400** with
->   the `ValidationProblemDetails` model binding answers with, without `errorDetails`. The save then runs the
->   validators as a `PUT` does.
+> - The merged input is validated against `TInputDto`'s DataAnnotations before the save: a failure answers the **400**
+>   of a validator's refusal, `errorDetails` included (below). The save then runs the validators as a `PUT` does.
 
 #### DELETE Endpoint
 
@@ -189,7 +190,8 @@ Delete(id) -> DeleteResult
 
 - ⚠️ **Generated endpoints ship anonymous.** No controller base carries `[Authorize]`, so every scaffolded
   endpoint — including delete and attachment download — is public until the application adds authorization.
-  Apply it globally when mapping (`MapControllers().RequireAuthorization()`), or put `[Authorize]` on each
+  Apply it globally when mapping (`MapControllers().RequireAuthorization()`, and
+  `MapEntityEndpoints().RequireAuthorization()` for [mapped endpoints](#mapped-endpoints)), or put `[Authorize]` on each
   controller subclass and `[AllowAnonymous]` on the individual actions that must stay public. For row-level
   scoping (tenant or owner), register a global filter query builder rather than relying on endpoint attributes; an
   owner with attachments needs one on its link entity too ([Attachments → Controllers](attachments.md#controllers)).
@@ -205,6 +207,113 @@ Delete(id) -> DeleteResult
   `EntityExceptionFilter` application-wide, so a hand-written action added beside the generated ones answers a
   rule breach the same way. See [Built-in Features → Constraint Exceptions](built-in-features.md#constraint-exceptions)
   and [Concurrency Exceptions](built-in-features.md#concurrency-exceptions)
+
+---
+
+## Mapped Endpoints
+
+An application that wants no controller classes maps its entities instead: `app.MapEntityEndpoints()`, from
+`Regira.Entities.Web.Endpoints`, serves every entity registered through `For<>()` with the controllers' routes, request
+bodies and response envelopes, and the attachment routes under an owner registered with `HasAttachments()`.
+
+```csharp
+using Microsoft.AspNetCore.Builder;
+using Regira.Entities.Web.Endpoints;
+
+app.MapEntityEndpoints(o => o.Prefix = "api").RequireAuthorization();
+```
+
+- **DTOs.** There is no controller to name an entity's DTO pair, so each mapped entity declares it with
+  `e.UseMapping<TDto, TInputDto>()`, or with `e.Endpoints(o => o.UseDtos<TDto, TInputDto>())`; `UseDtos<Product, Product>()`
+  serves the entity as itself. An entity with neither stops the application at startup rather than going out with every
+  column.
+- **Routes.** An entity's route is the kebab-case plural of its name (`InterventionType` → `intervention-types`,
+  `Category` → `categories`, `TicketStatus` → `ticket-statuses`); an irregular noun comes out regular (`Person` →
+  `persons`), so it sets its own.
+  `e.Endpoints(o => …)` on its registration sets another (`o.Route = "people"`), leaves endpoints out (`o.Exclude(…)`),
+  opens some anonymously (`o.AllowAnonymous(EntityEndpoint.Download)`) or keeps the entity off the surface
+  (`o.Disable()`). `MapEntityEndpoints(o => o.ConfigureGroup<Product>(g => …))` configures one entity's route group; a
+  policy added there applies besides the one on the returned group.
+- **Controllers alongside.** An entity whose controller MVC discovers stays on its controller, and an attachment link
+  with an attachment controller does too, so an application can move one entity at a time. `app.MapEntity<Product>("v2/products")`
+  maps a single entity even when `o.Disable()` or a controller keeps it off `MapEntityEndpoints()`; its other options
+  apply.
+- **Attachments.** An owner registered with `HasAttachments()` gets the attachment controller's routes under its own,
+  for the `int`-keyed link, so the application writes no attachment controller
+  ([Attachments → Controllers](attachments.md#controllers)).
+- **Behaviour.** Every endpoint sends the same request as the matching controller action (see *Entity Operations*
+  below). A request body's DataAnnotations are checked by that request — the attachment upload's and update's too — so
+  an invalid body answers the 400 of a validator's refusal, `errorDetails` included. A missing row answers a `ProblemDetails` 404, and the uploads skip
+  antiforgery validation. JSON is `System.Text.Json`; an application on `AddNewtonsoftJson` keeps its controllers.
+- **Query strings** bind the search object's simple and collection properties as MVC does — repeated keys
+  (`ids=1&ids=2`) or indexed ones (`ids[0]=1`), enums by name in any case — plus `includes` and `sortBy` on a complex
+  entity. A value that does not convert answers 400. MVC's binding attributes (`[BindNever]`, `[FromQuery(Name = …)]`)
+  are not read.
+- **Errors on endpoints of your own.** An endpoint that sends entity requests answers refused writes like the mapped ones
+  with `.AddEndpointFilter<EntityExceptionEndpointFilter>()`. One mapped on an entity's group, through
+  `ConfigureGroup<TEntity>()`, already has it.
+- **Authorization.** Every mapped endpoint carries an `EntityEndpointMetadata` naming its entity and whether it writes,
+  for an authorization policy that gates writes per entity.
+
+---
+
+## Entity Operations
+
+Each generated endpoint sends a request through `IEntitySender`, from `Regira.Entities.Mediator` (which
+`Regira.Entities.Web` brings): `DetailsQuery`, `ListQuery`, `SearchQuery`, `SaveCommand`, `PatchCommand` and
+`DeleteCommand`, with the controller's type arguments. Code outside a controller — a background job, an import, a
+minimal-API endpoint of the application's own — sends the same requests and gets what the endpoint answers: paging
+defaults, the archived-inclusive lookup of an update, the re-read after a save, the DTO mapping and the result
+envelope. `UseEntities()` registers the sender.
+
+```csharp
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Requests;
+
+public class Product : IEntityWithSerial
+{
+    public int Id { get; set; }
+    public string? Title { get; set; }
+}
+public class ProductDto { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductInputDto { public int Id { get; set; } [Required] public string? Title { get; set; } }
+
+public class ProductImport(IEntitySender sender)
+{
+    public async Task<ProductDto?> Import(ProductInputDto input, CancellationToken token)
+    {
+        // null when the product to update does not exist; a refused write throws EntityInputException
+        var saved = await sender.Send(new SaveCommand<Product, int, ProductDto, ProductInputDto>(input), token);
+        return saved?.Item;
+    }
+}
+```
+
+- **Input validation.** A `SaveCommand` checks the input DTO's DataAnnotations first, nested objects and collection
+  items included — in an MVC application by MVC's own rules — and refuses with an `EntityInputException`. The
+  controllers skip that check (`ValidateInput: false`), since MVC has answered an invalid request body by then; the
+  mapped endpoints keep it. A patch's merged input is always checked, so `PATCH` answers an invalid result with the
+  same 400 a validator's refusal has.
+- **Replacing one operation for one entity.** Register a closed `IEntityRequestHandler<TRequest, TResponse>` for the
+  request type — typically derived from the default handler, such as `DetailsHandler<Product, int, ProductDto>` from
+  `Regira.Entities.Mediator.Handlers`. It answers for the endpoint and for every other sender. A `PATCH` saves its
+  merged input itself rather than through the `SaveCommand` handler, so a rule about how an entity saves — an
+  authorization check, say — overrides both `SaveCommand` and `PatchCommand`, or `PATCH` bypasses it.
+- **Replacing one endpoint.** For what belongs to HTTP — an attribute, a header, a status code — replace the endpoint
+  rather than the handler. A controller overrides the `virtual` action with the same signature; the verb, route and
+  binding attributes are inherited. Mapped endpoints exclude the generated one (`e.Endpoints(o => o.Exclude(EntityEndpoint.List))`)
+  and map the app's own on the entity's group (`MapEntityEndpoints(o => o.ConfigureGroup<Product>(g => g.MapGet(…)))`),
+  sending the same request and carrying `EntityEndpointMetadata`.
+- **Behaviours.** An `IEntityPipelineBehavior<TRequest, TResponse>` registered as an open generic runs around every
+  request, the first registered outermost. `IEntityRequest.EntityType` and `IEntityRequest.Operation` tell which entity
+  and which operation. `Duration` is written on the result a request returns when it is an `IEntityResult`, as the built-in envelopes are, so a caching behaviour hands out a copy
+  (`cached with { }`) rather than the instance it keeps.
+- **MediatR.** With `Regira.Entities.Mediator.MediatR`, `options.UseMediatR()` inside `UseEntities()` dispatches every
+  entity request through MediatR, so the application's own pipeline behaviours wrap the generated endpoints. The
+  application registers MediatR itself — MediatR 13 and later with its licence key, or MediatR 12.5.0, the last
+  Apache-2.0 release, without one; handlers, behaviours and `Duration` work as without it. Every entity request travels as one MediatR request type, `EntityRequestMessage`, holding the
+  entity request. Another library plugs in the same way: replace the `IEntitySender` registration with a sender that
+  passes the request through the library to `IEntityRequestExecutor`.
 
 ---
 
@@ -243,9 +352,12 @@ public record SaveResult<TDto>
 public record DeleteResult<TDto>
 {
     public TDto Item { get; set; } // The deleted item
+    public int Affected { get; set; } // Rows written; a soft delete writes one too
     public long? Duration { get; set; }
 }
 ```
+
+The result types ship in `Regira.Entities.Mediator`, under the `Regira.Entities.Web.Models` namespace.
 
 ---
 

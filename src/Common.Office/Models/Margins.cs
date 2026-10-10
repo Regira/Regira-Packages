@@ -1,4 +1,6 @@
-﻿namespace Regira.Office.Models;
+﻿using Regira.Utilities;
+
+namespace Regira.Office.Models;
 
 /// <summary>
 /// Margin in points
@@ -11,6 +13,22 @@ public class Margins : IEquatable<Margins>
     public float Right { get; set; } = DEFAULT_MARGIN;
     public float Bottom { get; set; } = DEFAULT_MARGIN;
     public float Left { get; set; } = DEFAULT_MARGIN;
+
+    /// <summary>
+    /// The same margins measured at another DPI (dots per inch): 37.8 at 96 is 28.35 at 72, PDF points.
+    /// </summary>
+    /// <param name="srcDpi">The DPI these margins are measured at.</param>
+    /// <param name="targetDpi">The DPI to measure the returned margins at.</param>
+    public Margins ModifyDpi(int srcDpi, int targetDpi)
+    {
+        return new Margins
+        {
+            Top = DimensionsUtility.ModifyDpi(Top, srcDpi, targetDpi),
+            Right = DimensionsUtility.ModifyDpi(Right, srcDpi, targetDpi),
+            Bottom = DimensionsUtility.ModifyDpi(Bottom, srcDpi, targetDpi),
+            Left = DimensionsUtility.ModifyDpi(Left, srcDpi, targetDpi)
+        };
+    }
 
     public static implicit operator Margins(float margin)
     {

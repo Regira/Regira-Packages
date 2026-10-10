@@ -10,11 +10,13 @@
     <PackageId>Regira.Entities.Web</PackageId>
     <AssemblyName>Regira.Entities.Web</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.5.0</Version>
+    <!-- AD0001: ASP.NET Core's RouteHandlerAnalyzer throws a NullReferenceException on a route handler whose parameters
+         are type parameters, which every handler of the mapped entity endpoints (Endpoints/EntityEndpointMapper.cs) has -->
+    <NoWarn>1701;1702;1591;AD0001</NoWarn>
+    <Version>6.5.1</Version>
     <RegiraLicenseEnforced>true</RegiraLicenseEnforced>
-    <Description>REST/CRUD Web API for Regira entities: EntityControllerBase controllers with list, search, filter, sort and paging endpoints. Top-level web entry point — brings the DependencyInjection and EF Core packages transitively. Free tier included — a license key removes the free-tier limits.</Description>
-    <PackageTags>regira;entities;web;aspnetcore;api;rest;endpoints;controllers;http;crud-api;web-api;openapi</PackageTags>
+    <Description>REST/CRUD Web API for Regira entities: list, search, filter, sort and paging endpoints, as EntityControllerBase controllers or mapped minimal-API endpoints (MapEntityEndpoints). Top-level web entry point — brings the DependencyInjection and EF Core packages transitively. Free tier included — a license key removes the free-tier limits.</Description>
+    <PackageTags>regira;entities;web;aspnetcore;api;rest;endpoints;controllers;minimal-api;http;crud-api;web-api;openapi</PackageTags>
   </PropertyGroup>
   <!-- AI instruction files -->
   <ItemGroup>
@@ -27,5 +29,6 @@
     <ProjectReference Include="..\Common.Web\Common.Web.csproj" />
     <ProjectReference Include="..\Entities.DependencyInjection\Entities.DependencyInjection.csproj" />
     <ProjectReference Include="..\Entities.EFcore\Entities.EFcore.csproj" />
+    <ProjectReference Include="..\Entities.Mediator\Entities.Mediator.csproj" />
   </ItemGroup>
 </Project>

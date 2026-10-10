@@ -62,7 +62,7 @@ public interface IEntityAttachment<TKey, TObjectKey, TAttachmentKey, TAttachment
 {
     string? ObjectType { get; } // Name of owning entity type (e.g. Product, Article, ...)
 
-    // properties used to update existing attachment values
+    // a new link's file (when it carries no Attachment), or a kept link's new name / replacement bytes
     string? NewFileName { get; set; }
     [Obsolete] string? NewContentType { get; set; }   // ignored: the content type follows the file name
     byte[]? NewBytes { get; set; }
@@ -88,8 +88,8 @@ public class ProductAttachment : EntityAttachment
 ```
 
 Each owning entity gets its own subclass: the class is the join table and its constructor pins one
-`ObjectType`, so attaching files to a second entity means a second subclass, `DbSet`, controller and
-registration.
+`ObjectType`, so attaching files to a second entity means a second subclass, `DbSet`, controller (none when its
+endpoints are mapped) and registration.
 
 ### Owning Entity
 
@@ -150,6 +150,11 @@ key from the owner to one of its own attachments makes the two tables reference 
 
 ### Controllers
 
+An application that maps its entities with `MapEntityEndpoints()` writes no attachment controller: the routes below
+are mapped under the owner's route, for the `int`-keyed link (`IHasAttachments<TLink>`), and send the same requests
+([Web Endpoints → Mapped Endpoints](web-endpoints.md#mapped-endpoints)). An owner with another key type keeps a
+controller.
+
 The custom EntityAttachmentController must derive from `EntityAttachmentControllerBase`. Set the class
 `[Route]` to the **owner base path** — the base actions append the sub-routes
 (`{objectId}/attachments`, `attachments/{id}`, `{objectId}/files`, `files/{id}`, …).
@@ -187,10 +192,10 @@ a download is served with `X-Content-Type-Options: nosniff` and, for every file 
 [validator](services.md#entity-validators) refuses answers **400** with a `ValidationProblemDetails`
 ([Input Exceptions](built-in-features.md#input-exceptions)).
 
-Validators scoped to the link entity run for these endpoints only. A `PUT` of the owner whose input carries
-`Attachments` syncs the links itself — it adds one for each new entry with `NewBytes`, renames and replaces a kept
-link's file from its `NewFileName` and `NewBytes`, and deletes the ones the array leaves out — and runs only the
-owner's validators. A kept link keeps its attachment, whatever `AttachmentId` the entry sends, and a new one may point
+Validators scoped to the link entity run for these endpoints only. A `POST` or `PUT` of the owner whose input carries
+`Attachments` syncs the links itself — it adds one for each new entry with `NewBytes`, and on a `PUT` renames and
+replaces a kept link's file from its `NewFileName` and `NewBytes` and deletes the ones the array leaves out — and runs
+only the owner's validators. A kept link keeps its attachment, whatever `AttachmentId` the entry sends, and a new one may point
 only at an attachment the owner already links: one naming another owner's is cleared, and without `NewBytes` of its
 own the save answers 409. The
 upload route always creates a link, whatever `Id` its form sends.
@@ -214,15 +219,33 @@ Attachments need **two** registrations:
 
 1. **`WithAttachments(factory)`** registers the shared `Attachment` entity, the file store, the
    bytes→file primer, and `AttachmentFileReactor`, which removes a file that new bytes replaced, and a deleted
-   attachment's file, once the save is committed — new bytes go under a key of their own, so a refused or rolled-back
-   save leaves the stored files as they were; only a transaction rolled back after a successful save keeps the new file
-   in storage. It runs through the reactor wiring `UseDefaults()` sets; without it, a replaced file is removed once
-   the save succeeds, and a deleted attachment's file during the save.
+   attachment's file, once the save is committed (see *Files and transactions* below).
 2. **`HasAttachments<…>(x => x.Attachments)`** — chained on the owner's `For<>()` builder — registers the
    typed per-owner read/write services, the link prepper and DTO mapping.
 
 The bytes `Details` loads are the attachment's stored file, not new content: saving a rename or another metadata edit
 leaves the file where it is. Bytes or a stream set in their place replace it, stored under the file name's extension.
+
+**Files and transactions.** With the reactor wiring `UseDefaults()` sets, storage keeps every file a stored row names.
+An outcome the library cannot be sure of costs an orphan — a file no row names — never a row without its file:
+
+- New bytes go under a key of their own, so a save the database refuses, or a transaction rolled back, leaves the
+  stored file as it was.
+- A save that fails removes the file it wrote and gives the row back its stored path, so a retry starts from the
+  stored state. Where EF does not roll the failed save back — a caller's transaction without a savepoint
+  (`Database.AutoSavepointsEnabled = false`, SQL Server with MARS), an ambient `TransactionScope`, or
+  `Database.AutoTransactionBehavior = Never` — the statements before the failing one stand and the caller may still
+  commit them, so the file stays.
+- `AttachmentFileReactor` removes the replaced and the deleted files once the save is committed. A rollback to a
+  savepoint the application makes does not say which saves it undid, so the files replaced or deleted by every save
+  before it in that transaction stay. A failed save the application catches inside its transaction is undone alone:
+  the earlier saves' files go as usual.
+- A transaction rolled back after a successful save keeps the new file, which no row names.
+
+An application that needs a clean store sweeps it against the stored `Path` values. Without the reactor wiring, the
+primer removes the replaced and the deleted files once the save succeeds — before a transaction around it commits, so a
+rollback after that leaves a row naming a removed file; the startup validation warns about this setup. There, a
+`SaveChanges(acceptAllChangesOnSuccess: false)` leaves both files in storage.
 
 <!-- no-compile -->
 ```csharp
@@ -239,7 +262,7 @@ builder.Services
         o.UseAttachmentUris();                      // web apps: resolve attachment DTO Uri's (ASP.NET Core)
         /* ... */
     })
-    // 1. shared Attachment entity + file store + bytes→file primer
+    // 1. shared Attachment entity + file store + bytes→file primer + AttachmentFileReactor
     .WithAttachments(_ => new BinaryFileService(
         new FileSystemOptions
         {
@@ -278,10 +301,11 @@ builder.Services
 > `Entities.DependencyInjection` doesn't reference `Entities.Web`, so the ASP.NET Core resolver
 > (`LinkGenerator` + `IHttpContextAccessor`) is opt-in (namespace
 > `Regira.Entities.Web.Attachments.DependencyInjection`). Call it in the `UseEntities` options block, before
-> entities are registered; without it, `Uri` is `null`. The `Uri` is generated as a link to the `GetFile`
-> action on the attachment entity's controller (`{EntityAttachment}Controller : EntityAttachmentControllerBase<…>`),
-> so that controller must be mapped. If you replace the generated attachment endpoints with a custom download
-> route, the link generator finds no matching action and `Uri` stays `null` — use the download endpoint
+> entities are registered; without it, `Uri` is `null`. The `Uri` links to the owner's mapped download when
+> `MapEntityEndpoints()` serves it (the first mapping, for an owner mapped twice), else to the `GetFile` action on the
+> attachment entity's controller (`{EntityAttachment}Controller : EntityAttachmentControllerBase<…>`), so one of
+> the two must be in place. If you replace the generated attachment endpoints with a custom download
+> route, the link generator finds no match and `Uri` stays `null` — use the download endpoint
 > directly. It is also `null` outside an active request (e.g. during seeding).
 
 ## Overview

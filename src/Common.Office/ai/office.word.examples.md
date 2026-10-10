@@ -62,6 +62,40 @@ IMemoryFile contract = await word.Create(new WordTemplateInput
 });
 ```
 
+## A schedule per site
+
+A contract covering several sites gets a schedule per site, each listing that site's services. The template loops
+over the sites, and over each site's services in marker rows — each marker alone in its row (see *Loop Blocks* in
+`office.word.instructions.md`):
+
+```text
+{{#each Sites}}
+Schedule {{ row_number }}: {{SiteName}}, {{SiteAddress}}
+| Service         | Hours a week |
+| {{#each Services}} |           |
+| {{Service}}     | {{Hours}}    |
+| {{/each}}       |              |
+{{/each}}
+```
+
+<!-- no-compile -->
+```csharp
+IMemoryFile contract = await word.Create(new WordTemplateInput
+{
+    Template             = templateBytes!.ToMemoryFile(),
+    GlobalParameters     = new Dictionary<string, object> { ["ClientName"] = client.Name },
+    CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
+    {
+        ["Sites"] = contractData.Sites.Select(site => new Dictionary<string, object>
+        {
+            ["SiteName"]    = site.Name,
+            ["SiteAddress"] = site.Address,
+            ["Services"]    = site.Services.Select(service => new { service.Service, Hours = service.Hours.ToString("N1") }).ToList()
+        } as IDictionary<string, object>).ToList()
+    }
+});
+```
+
 ## Convert to PDF for signing
 
 <!-- no-compile -->
@@ -74,8 +108,9 @@ await _fileService.Save($"contracts/{client.Id}/contract-{DateTime.Today:yyyyMMd
 ```
 
 > ⚠️ `word` is Word.Spire here, and the FreeSpire.Doc free edition writes only the first three pages of a PDF, with a
-> notice page in place of the rest, and no error. For a contract that can run longer, convert with Word.Syncfusion,
-> Word.Aspose or Word.Gotenberg (*Without a vendor licence*, below).
+> notice page in place of the rest, and no error. For a contract that can run longer, run Word.Spire on the commercial
+> Spire.Doc (see *Commercial Spire.Doc* in `office.word.instructions`), or convert with Word.Syncfusion, Word.Aspose or
+> Word.Gotenberg (*Without a vendor licence*, below).
 
 ### Without a vendor licence
 

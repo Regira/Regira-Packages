@@ -33,5 +33,6 @@ public record CourseAttachmentDto : EntityAttachmentDto
 }
 public record CourseAttachmentInputDto : EntityAttachmentInputDto
 {
+    [MaxLength(100)]
     public string? Description { get; set; }
 }

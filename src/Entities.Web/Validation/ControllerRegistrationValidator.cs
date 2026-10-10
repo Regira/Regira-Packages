@@ -90,7 +90,7 @@ public sealed class ControllerRegistrationValidator(ApplicationPartManager? part
         }
     }
 
-    private static bool IsNullUriResolver(EntityValidationContext context, Type attachmentEntity)
+    internal static bool IsNullUriResolver(EntityValidationContext context, Type attachmentEntity)
     {
         var resolverType = typeof(IAttachmentUriResolver<>).MakeGenericType(attachmentEntity);
         object? resolver;

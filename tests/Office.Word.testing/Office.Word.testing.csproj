@@ -9,17 +9,20 @@
     <UserSecretsId>a148955e-1052-48e7-a8da-4534748de1c4</UserSecretsId>
     <Description>Unit and integration tests for Regira Office Word packages.</Description>
     <PackageTags>regira;testing;office;word</PackageTags>
+    <!-- what a test run writes: outputs named after their tests, and TestResults, which copies them into deeper folders
+         past the 260-character paths Visual Studio's MSBuild can read without long-path support -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);Assets/Output/**;TestResults/**</DefaultItemExcludes>
 </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="10.0.12" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
     <PackageReference Include="NUnit" Version="5.0.0" />
-    <PackageReference Include="NUnit3TestAdapter" Version="6.3.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="6.3.1" />
     <PackageReference Include="NUnit.Analyzers" Version="4.15.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Testcontainers" Version="4.15.0" />
+    <PackageReference Include="Testcontainers" Version="4.16.0" />
     <PackageReference Include="coverlet.collector" Version="10.1.0">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -30,6 +33,7 @@
     <ProjectReference Include="..\..\src\Common.Office.Clients\Common.Office.Clients.csproj" />
     <ProjectReference Include="..\..\src\Drawing.SkiaSharp\Drawing.SkiaSharp.csproj" />
     <ProjectReference Include="..\..\src\PDF.DocNET\PDF.DocNET.csproj" />
+    <ProjectReference Include="..\..\src\PDF.PdfPig\PDF.PdfPig.csproj" />
     <ProjectReference Include="..\..\src\Word.Aspose\Word.Aspose.csproj" />
     <ProjectReference Include="..\..\src\Word.Gotenberg\Word.Gotenberg.csproj" />
     <ProjectReference Include="..\..\src\Word.Mini\Word.Mini.csproj" />

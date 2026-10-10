@@ -1,0 +1,6 @@
+@inject OrderNumberFormatter Formatter
+<p>@Formatter.Format(Model)</p>
+
+@code {
+    [Parameter, EditorRequired] public Order Model { get; set; } = null!;
+}

@@ -11,10 +11,13 @@
     <AssemblyName>Regira.Office.Mail.MailGun</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.5.0</Version>
+    <Version>6.5.1</Version>
     <Description>Mail sending via the Mailgun API for Regira Office.</Description>
     <PackageTags>regira;office;mail;mailgun;email</PackageTags>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Office.Mail.Testing" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
   </ItemGroup>
