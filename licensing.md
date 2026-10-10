@@ -6,8 +6,8 @@ Regira packages use a split licensing model designed to stay out of your way: **
 
 | Packages | License | Key needed? |
 |----------|---------|-------------|
-| Everything except the eight below | [Apache License 2.0](LICENSE) | Never — these packages contain **no license validation and no runtime limits** |
-| `Regira.Licensing`, `Regira.Entities.EFcore`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Web`, `Regira.Entities.Mapping.Mapster`, `Regira.Entities.Mapping.AutoMapper`, `Regira.Entities.Validation.FluentValidation`, `Regira.Office.Clients` | [Regira Commercial License](legal/REGIRA-COMMERCIAL-LICENSE.md) | Only beyond the free tier |
+| Everything except the ten below | [Apache License 2.0](LICENSE) | Never — these packages contain **no license validation and no runtime limits** |
+| `Regira.Licensing`, `Regira.Entities.EFcore`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Web`, `Regira.Entities.Mediator`, `Regira.Entities.Mediator.MediatR`, `Regira.Entities.Mapping.Mapster`, `Regira.Entities.Mapping.AutoMapper`, `Regira.Entities.Validation.FluentValidation`, `Regira.Office.Clients` | [Regira Commercial License](legal/REGIRA-COMMERCIAL-LICENSE.md) | Only beyond the free tier |
 
 The front-end library [`@regira/modules`](https://github.com/Regira/Regira-Modules) (npm) is also Apache-2.0. The hosted services ([services.regira.com](https://services.regira.com/)) and the [MCP server](https://mcp.regira.com/mcp) follow the commercial model with rate-limited free tiers.
 
@@ -58,6 +58,6 @@ services.UseRegira(licenseKey);      // pass keys explicitly
 - **What happens when a key expires?** An expired key is refused: the licensed packages throw a `LicenseException` naming the expiry date. A short grace period softens the cut-over; its length is not part of the license terms and may change between versions, so do not plan on it. `UseRegira` reminds you on the console from two weeks before the date, so renew at [regira.com/licensing](https://regira.com/licensing) before it passes.
 - **How do I check what a service makes of my key?** Ask it: `get_license_status` on the MCP server, or `GET /license/status` on the hosted Office API (`ILicenseStatusClient` in `Regira.Office.Clients`). Both answer for any key — missing, expired or valid — with the customer, expiry date, whether the key is accepted and a one-line reason.
 - **Can I ship Regira DLLs inside my commercial product?** Yes — the commercial license grants redistribution in compiled form as part of your application ([clause 3](legal/REGIRA-COMMERCIAL-LICENSE.md)). The Apache-2.0 packages carry the standard Apache grant.
-- **Will license scanners flag Regira?** The Apache-2.0 packages carry a standard SPDX expression that every scanner recognizes. Only the eight commercial packages show a custom license file.
+- **Will license scanners flag Regira?** The Apache-2.0 packages carry a standard SPDX expression that every scanner recognizes. Only the ten commercial packages show a custom license file.
 
 Questions: [b2b@regira.com](mailto:b2b@regira.com) or the [contact form](https://regira.com/contact).

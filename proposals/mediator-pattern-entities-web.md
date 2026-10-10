@@ -1,8 +1,28 @@
 # Mediator pattern for Regira Entities Web
 
-As of 2026-10-09. Sources: the `Regira-Packages` repository, branch `wip` at `b32dbe1`; the README of the source-generated Mediator library ([martinothamar/Mediator](https://github.com/martinothamar/Mediator)) and Microsoft Learn's [Parameter binding in Minimal API applications](https://learn.microsoft.com/aspnet/core/fundamentals/minimal-apis/parameter-binding), both read on 2026-10-09. The other libraries' licences are as their projects state them. Nothing on this page has been built.
+As of 2026-10-09. Sources: the `Regira-Packages` repository, branch `wip` at `b32dbe1`; the README of the source-generated Mediator library ([martinothamar/Mediator](https://github.com/martinothamar/Mediator)) and Microsoft Learn's [Parameter binding in Minimal API applications](https://learn.microsoft.com/aspnet/core/fundamentals/minimal-apis/parameter-binding), both read on 2026-10-09. The other libraries' licences are as their projects state them. The design below predates the build; *Outcome* records what was built and where it differs.
 
-**Status: proposal, not built. Five questions are open (see *Open questions*). The first decides whether the dispatch is a mediator at all.**
+**Status: built on `wip` on 2026-10-10 through rollout step 5, uncommitted (see *Outcome*). The optional minimal-API surface, rollout step 6, is not built, and open question 3 waits for it.**
+
+## Outcome
+
+Built as recommended — the mediator (open question 1), with the in-house sender as the default and MediatR as the first adapter — in two new packages, both under the Regira Commercial License at the family's 6.5.1:
+
+- **`Regira.Entities.Mediator`** holds the requests, the default handlers, `IEntityRequestExecutor`, the in-house `EntitySender` and the input check. Open question 2 is answered for now with this package of its own rather than a move into `Regira.Entities` or the DI package. It references `Regira.Entities.DependencyInjection` alone, as the FluentValidation adapter does, so a worker host takes no ASP.NET Core with it. The response envelopes and `EntitySaveHelper` moved here under their old namespaces, and `Regira.Entities.Web` forwards them (`TypeForwards.cs`).
+- **`Regira.Entities.Mediator.MediatR`** is the adapter: `UseMediatR()`, the closed envelope `EntityRequestMessage : IRequest<object?>` and its handler, and `MediatREntitySender`. Open question 5: it references MediatR 12.0.0 as its floor, and its tests pass on 12.0.0, 13.1.0 and 14.2.0.
+
+Where the build differs from the design:
+
+- **Timing is the executor's, not a behaviour.** `Duration` is filled wherever the executor runs — under any sender, and in a host wired without `UseEntities()` — and needs no registration. Open question 4 is decided as recommended: it stays filled by default.
+- **The controllers are unchanged.** They already forward to the `ControllerExtensions` helpers, and the helpers now send the requests, so step 4 changed the helpers alone.
+- **Registration** is `AddEntityMediator()`, which `UseEntities()` invokes late-bound. `GetEntitySender()` falls back to an in-house sender where nothing is registered, so a host wired by hand keeps working.
+- **The input check is a seam, `IEntityInputValidator`.** Plain DataAnnotations would have made a patch's check weaker than MVC's `TryValidateModel`: MVC refuses `null` for a non-nullable reference without `[Required]`, and runs the app's validator providers. `Regira.Entities.Web` therefore contributes `MvcEntityInputValidator`, bound late by `AddEntityMediator()`; other hosts get the recursive `DataAnnotationsEntityInputValidator`.
+- **`SaveCommand` has `ValidateInput`, default `true`.** The controllers pass `false`, so an app that suppressed MVC's automatic 400 still saves what model binding let through, as before. A patch's merged input is always checked.
+- **A patch saves through the shared save routine**, not through the `SaveCommand` handler, as the PATCH helper called the Save helper rather than the Save action before. The patterns guide says to override both when a save must change.
+- **`PatchCommand.SerializerOptions` is optional.** The default is the Web defaults ignoring cycles, the options the PATCH helper fell back to. A non-object patch is refused in the controller as before, and a job's gets an `ArgumentException`.
+- **Every request carries `EntityType` and `Operation`** through the non-generic `IEntityRequest`, implemented explicitly so the records' own members stay their data.
+
+Verified: `tests/Entities.Mediator.Testing` (new, 24 tests) on the three MediatR versions. `Entities.Web.Testing` (190) passes; its PATCH test now expects `errorDetails`, the planned body change. `Entities.Testing`, `Entities.DependencyInjection.Testing`, `Entities.Mapping.Mapster.Testing` and `Entities.Providers.Testing` pass, and the GuideVerifier `entities` group compiles. The guides gained *Entity operations outside a controller* in `entities.patterns`, with the signatures, namespaces, card, setup and instructions entries, and `docs/web-endpoints` *Entity Operations*. The licensing lists, the routing tables, the solution and `CHANGELOG.md` are updated.
 
 ## Recommendation
 

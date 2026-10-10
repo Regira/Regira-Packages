@@ -226,12 +226,14 @@ transitively. **A Web API needs only two references: `Regira.Entities.Web` + a m
 
 ```
 Regira.Entities.Web                       ← Web API entry point — EntityControllerBase + HTTP endpoints
+├─ Regira.Entities.Mediator               the requests the endpoints send (IEntitySender) — for jobs too
 └─ Regira.Entities.DependencyInjection    ← non-web entry point — UseEntities() / .For<>()
    └─ Regira.Entities.EFcore              EntityRepository (EF Core)
       └─ Regira.Entities                  abstractions / interfaces
 
 Regira.Entities.Mapping.Mapster           ← add separately — DTO mapping (NOT pulled transitively)
 Regira.Entities.Validation.FluentValidation ← optional — AbstractValidator rules as entity validators
+Regira.Entities.Mediator.MediatR          ← optional — entity requests dispatched through the app's MediatR pipeline
 ```
 
 | Host | Install |

@@ -6,9 +6,13 @@ using Regira.Entities.Processing.Abstractions;
 using Regira.Entities.Services.Abstractions;
 using System.Collections.Concurrent;
 
+// Keeps the namespace it had in Regira.Entities.Web, which forwards the type here.
 namespace Regira.Entities.Web;
 
-/// <summary>Shared save-endpoint behavior at the HTTP boundary — used by the MVC controllers, reusable by any other HTTP surface.</summary>
+/// <summary>
+/// Shared save behavior of the entity operations — used by the save and patch handlers that the controllers and every
+/// other caller send through, and reusable by any other surface.
+/// </summary>
 public static class EntitySaveHelper
 {
     private static readonly ConcurrentDictionary<(Type Entity, Type InputDto), bool> PreservesArchivedStateCache = new();

@@ -27,5 +27,6 @@
     <ProjectReference Include="..\Common.Web\Common.Web.csproj" />
     <ProjectReference Include="..\Entities.DependencyInjection\Entities.DependencyInjection.csproj" />
     <ProjectReference Include="..\Entities.EFcore\Entities.EFcore.csproj" />
+    <ProjectReference Include="..\Entities.Mediator\Entities.Mediator.csproj" />
   </ItemGroup>
 </Project>

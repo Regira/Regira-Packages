@@ -13,6 +13,8 @@
 | `Entities.Mapping.Mapster` | `Regira.Entities.Mapping.Mapster` | Mapster integration |
 | *`Entities.Mapping.AutoMapper`* | *`Regira.Entities.Mapping.AutoMapper`* | *AutoMapper integration (deprecated)* |
 | `Entities.Validation.FluentValidation` | `Regira.Entities.Validation.FluentValidation` | FluentValidation rules in the write pipeline (§Step 8 → Validators) |
+| `Entities.Mediator` | `Regira.Entities.Mediator` | The requests the endpoints send through `IEntitySender`, for any other caller too (brought by `Regira.Entities.Web`) |
+| `Entities.Mediator.MediatR` | `Regira.Entities.Mediator.MediatR` | Every entity request dispatched through MediatR, inside the app's pipeline (opt-in) |
 
 Always prefer clear, conventional patterns over clever solutions. Default to the more feature-rich options when in doubt. Use the latest .NET version (net10) unless instructed otherwise.
 
@@ -980,6 +982,7 @@ Seed through the services, not the DbContext (no controller, so the usual gotcha
 
 - **Seed between `builder.Build()` and `app.Run()`.** `app.Run()` blocks until shutdown, so seeding code placed after it never executes — and the app looks empty with no error anywhere.
 - Every `.For<>()` registers `IEntityService<TEntity, TKey>` — resolve that shape (e.g. `IEntityService<Product, int>`) in a scope for seeding/jobs, whatever the builder overload.
+- A job that wants one endpoint's answer — DTO in, re-read DTO out — sends that endpoint's request instead: [`entities.patterns.md`](./entities.patterns.md) → *Entity operations outside a controller*.
 - On that universal interface, `List`/`Count` take `object? so` **first** — a positionally-passed `CancellationToken` binds as the *search object* and silently filters nothing. Name the token: `List(null, token: token)`.
 - It does **not** auto-persist — call `await service.SaveChanges()` yourself.
 - Bulk: loop `await service.Add(item)` (⚠️ **preppers run per item**, so a DB-touching prepper makes the loop N+1 — batch its lookups), then `SaveChanges()` **once** — see [`entities.patterns.md`](./entities.patterns.md) → Bulk insert / update. Standard EF auto-increment rules apply, so flush a parent batch before assigning `child.ParentId = parent.Id`.
@@ -1738,6 +1741,7 @@ Load that file when implementing one of these:
 - **Server-generated sequential codes** — mint `REQ-2026-00001` from a primer on `Added` and restore it on `Modified`; includes when that primer has to be a prepper instead, and why the counter is primed from the highest code.
 - **Cross-entity aggregates & report endpoints** — a dashboard controller belongs to no entity, so it **bypasses the pipeline**: global filter row security does not apply unless you repeat the predicate.
 - **Domain actions on an entity resource** — a state change (`POST /{id}/approve`) as a second controller on the entity's route, answered with a re-read; **role-gated transitions** for privileged states, the append-only history shape, and where what *follows* a transition belongs.
+- **Entity operations outside a controller** — opt-in: the request an endpoint sends (`IEntitySender`), from a job, an import or the app's own endpoint, with the endpoint's paging, re-read and DTO mapping; replacing one operation for one entity with a handler; behaviours around every operation; dispatching through MediatR.
 - **Aggregates over a non-owned child collection** — a parent total rolled up from children that own their own FK. Eventually consistent, seeding needs a second pass, and a child query filter can zero it on restore.
 - **Role-gated write authorization filter** — one global authorization filter mapping controller type → required role, failing closed for a controller it has no entry for, keyed on the generated write actions because the controllers serve reads over `POST` too.
 - **Writing to a related entity from a prepper** — the typed `e.Prepare(entity, dbContext)` overload; `EntityInputException<T>` must name the *serviced* entity or it escapes as a 500.

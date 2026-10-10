@@ -1,21 +1,23 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Regira.DAL.Paging;
-using Regira.Entities.DependencyInjection.Validation;
-using Regira.Entities.Extensions;
-using Regira.Entities.Mapping.Abstractions;
+using Regira.Entities.Mediator;
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Requests;
 using Regira.Entities.Models;
 using Regira.Entities.Models.Abstractions;
-using Regira.Entities.Services.Abstractions;
 using Regira.Entities.Web.Models;
-using Microsoft.Extensions.Options;
-using Regira.Utilities;
-using System.Diagnostics;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Regira.Entities.Web.Controllers;
 
+/// <summary>
+/// The generated actions' implementation, also for a hand-written action: each helper sends the matching request of
+/// <c>Regira.Entities.Mediator</c> through the <see cref="IEntitySender"/> and answers with its result — <c>null</c> when
+/// the entity does not exist, so the caller picks the 404. The write helpers answer a refused write with 400 and a
+/// constraint or concurrency conflict with 409, with or without the exception filter.
+/// </summary>
 public static class ControllerExtensions
 {
     // Details
@@ -32,22 +34,7 @@ public static class ControllerExtensions
     /// </summary>
     public static async Task<ActionResult<DetailsResult<TDto>>?> Details<TEntity, TKey, TDto>(this ControllerBase ctrl, TKey id, ArchivedFilter? archived = null)
         where TEntity : class, IEntity<TKey>
-    {
-        var sw = new Stopwatch();
-        sw.Start();
-
-        var service = ctrl.GetRequiredEntityService<IEntityService<TEntity, TKey>>();
-        var item = await service.Details(id, archived);
-        if (item == null)
-        {
-            return null;
-        }
-
-        var mapper = ctrl.HttpContext.RequestServices.GetRequiredService<IEntityMapper>();
-        var model = mapper.Map<TDto>(item);
-        sw.Stop();
-        return ctrl.DetailsResult(model, sw.ElapsedMilliseconds);
-    }
+        => Ok(await ctrl.Sender().Send(new DetailsQuery<TEntity, TKey, TDto>(id, archived)));
 
     // List
     public static OkObjectResult ListResult<TDto>(this ControllerBase _, IList<TDto> items, long? duration = null) =>
@@ -56,20 +43,7 @@ public static class ControllerExtensions
     public static async Task<ActionResult<ListResult<TDto>>> List<TEntity, TKey, TSearchObject, TDto>(this ControllerBase ctrl, TSearchObject? so = null, PagingInfo? pagingInfo = null)
         where TEntity : class, IEntity<TKey>
         where TSearchObject : class, ISearchObject<TKey>
-    {
-        var sw = new Stopwatch();
-        sw.Start();
-
-        var service = ctrl.GetRequiredEntityService<IEntityService<TEntity, TKey>>();
-        pagingInfo = ctrl.WithPagingDefaults<TEntity>(pagingInfo);
-        var items = await service.List(so, pagingInfo);
-
-        var mapper = ctrl.HttpContext.RequestServices.GetRequiredService<IEntityMapper>();
-        var models = mapper.Map<List<TDto>>(items);
-
-        sw.Stop();
-        return ctrl.ListResult(models, sw.ElapsedMilliseconds);
-    }
+        => Ok(await ctrl.Sender().Send(new ListQuery<TEntity, TKey, TSearchObject, TDto>(so, pagingInfo)))!;
     // complex
     public static async Task<ActionResult<ListResult<TDto>>> List<TEntity, TKey, TSo, TSortBy, TIncludes, TDto>(this ControllerBase ctrl,
         TSo[] so, PagingInfo pagingInfo, TIncludes[] includes, TSortBy[] sortBy)
@@ -77,68 +51,20 @@ public static class ControllerExtensions
         where TSo : class, ISearchObject<TKey>, new()
         where TSortBy : struct, Enum
         where TIncludes : struct, Enum
-    {
-        var sw = new Stopwatch();
-        sw.Start();
-
-        var service = ctrl.GetRequiredEntityService<IEntityService<TEntity, TKey, TSo, TSortBy, TIncludes>>();
-        var items = await service
-            .List(so, sortBy, includes.ToBitmask(), ctrl.WithPagingDefaults<TEntity>(pagingInfo));
-
-        var mapper = ctrl.HttpContext.RequestServices.GetRequiredService<IEntityMapper>();
-        var models = mapper.Map<List<TDto>>(items);
-
-        sw.Stop();
-        return ctrl.ListResult(models, sw.ElapsedMilliseconds);
-    }
+        => Ok(await ctrl.Sender().Send(new ListQuery<TEntity, TKey, TSo, TSortBy, TIncludes, TDto>(so, pagingInfo, includes, sortBy)))!;
 
     // Search
     public static OkObjectResult SearchResult<TDto>(this ControllerBase _, IList<TDto> items, long count, long? duration = null) =>
         new(new SearchResult<TDto> { Items = items, Count = count, Duration = duration });
     // simple
-    public static async Task<ActionResult<SearchResult<TDto>>> Search<TEntity, TKey, TDto>(this ControllerBase ctrl, SearchObject<TKey>? so = null, PagingInfo? pagingInfo = null)
+    public static Task<ActionResult<SearchResult<TDto>>> Search<TEntity, TKey, TDto>(this ControllerBase ctrl, SearchObject<TKey>? so = null, PagingInfo? pagingInfo = null)
         where TEntity : class, IEntity<TKey>
-    {
-        var service = ctrl.GetRequiredEntityService<IEntityService<TEntity, TKey>>();
-
-        var sw = new Stopwatch();
-        sw.Start();
-
-        var count = await service.Count(so);
-
-        IList<TEntity> items = count == 0
-            ? Array.Empty<TEntity>()
-            : await service.List(so, ctrl.WithPagingDefaults<TEntity>(pagingInfo));
-
-        var mapper = ctrl.HttpContext.RequestServices.GetRequiredService<IEntityMapper>();
-        var models = mapper.Map<List<TDto>>(items);
-
-        sw.Stop();
-        return ctrl.SearchResult(models, count, sw.ElapsedMilliseconds);
-
-    }
+        => ctrl.Search<TEntity, TKey, SearchObject<TKey>, TDto>(so, pagingInfo);
     // simple (custom search object)
     public static async Task<ActionResult<SearchResult<TDto>>> Search<TEntity, TKey, TSearchObject, TDto>(this ControllerBase ctrl, TSearchObject? so = null, PagingInfo? pagingInfo = null)
         where TEntity : class, IEntity<TKey>
         where TSearchObject : class, ISearchObject<TKey>
-    {
-        var service = ctrl.GetRequiredEntityService<IEntityService<TEntity, TKey>>();
-
-        var sw = new Stopwatch();
-        sw.Start();
-
-        var count = await service.Count(so);
-
-        IList<TEntity> items = count == 0
-            ? Array.Empty<TEntity>()
-            : await service.List(so, ctrl.WithPagingDefaults<TEntity>(pagingInfo));
-
-        var mapper = ctrl.HttpContext.RequestServices.GetRequiredService<IEntityMapper>();
-        var models = mapper.Map<List<TDto>>(items);
-
-        sw.Stop();
-        return ctrl.SearchResult(models, count, sw.ElapsedMilliseconds);
-    }
+        => Ok(await ctrl.Sender().Send(new SearchQuery<TEntity, TKey, TSearchObject, TDto>(so, pagingInfo)))!;
     // complex
     public static async Task<ActionResult<SearchResult<TDto>>> Search<TEntity, TKey, TSo, TSortBy, TIncludes, TDto>(this ControllerBase ctrl,
         TSo[] so, PagingInfo pagingInfo, TIncludes[] includes, TSortBy[] sortBy)
@@ -146,84 +72,18 @@ public static class ControllerExtensions
         where TSo : class, ISearchObject<TKey>, new()
         where TSortBy : struct, Enum
         where TIncludes : struct, Enum
-    {
-        var service = ctrl.GetRequiredEntityService<IEntityService<TEntity, TKey, TSo, TSortBy, TIncludes>>();
-
-        var sw = new Stopwatch();
-        sw.Start();
-
-        var count = await service.Count(so);
-
-        IList<TEntity> items = count == 0
-            ? Array.Empty<TEntity>()
-            : await service.List(so, sortBy, includes.ToBitmask(), ctrl.WithPagingDefaults<TEntity>(pagingInfo));
-
-        var mapper = ctrl.HttpContext.RequestServices.GetRequiredService<IEntityMapper>();
-        var models = mapper.Map<List<TDto>>(items);
-
-        sw.Stop();
-        return ctrl.SearchResult(models, count, sw.ElapsedMilliseconds);
-    }
+        => Ok(await ctrl.Sender().Send(new SearchQuery<TEntity, TKey, TSo, TSortBy, TIncludes, TDto>(so, pagingInfo, includes, sortBy)))!;
 
     // Save
     public static OkObjectResult SaveResult<TDto>(this ControllerBase _, TDto item, int affected, bool isNew, long? duration = null) =>
         new(new SaveResult<TDto> { Item = item, Affected = affected, IsNew = isNew, Duration = duration });
-    public static async Task<ActionResult<SaveResult<TDto>>?> Save<TEntity, TKey, TDto, TInputDto>(this ControllerBase ctrl, TInputDto model, TKey? id = default)
+    /// <summary>
+    /// Creates or updates from <paramref name="model"/>. The model's DataAnnotations are not checked again: MVC has
+    /// answered an invalid request body by then, or the app suppressed that answer on purpose.
+    /// </summary>
+    public static Task<ActionResult<SaveResult<TDto>>?> Save<TEntity, TKey, TDto, TInputDto>(this ControllerBase ctrl, TInputDto model, TKey? id = default)
         where TEntity : class, IEntity<TKey>
-    {
-        var sw = new Stopwatch();
-        sw.Start();
-
-        try
-        {
-            var mapper = ctrl.HttpContext.RequestServices.GetRequiredService<IEntityMapper>();
-            var item = mapper.Map<TEntity>(model!);
-            if (!id?.Equals(default(TKey)) ?? false)
-            {
-                item.Id = id;
-            }
-            var isNew = item.IsNew();
-
-            var service = ctrl.GetRequiredEntityService<IEntityService<TEntity, TKey>>();
-            if (!isNew)
-            {
-                // archived-inclusive row lookup + preservation of a persisted IsArchived that TInputDto
-                // cannot express (see EntitySaveHelper.ResolveExistingForWrite)
-                var exists = await EntitySaveHelper.ResolveExistingForWrite<TEntity, TKey, TInputDto>(service, item);
-                if (!exists)
-                {
-                    return null;
-                }
-            }
-
-            await service.Save(item);
-            var affected = await service.SaveChanges();
-
-            var savedItem = await EntitySaveHelper.ResolveSavedItem(ctrl.HttpContext.RequestServices, service, item);
-            var savedModel = mapper.Map<TDto>(savedItem!);
-
-            sw.Stop();
-
-            return ctrl.SaveResult(savedModel, affected, isNew, sw.ElapsedMilliseconds);
-        }
-        catch (EntityInputException<TEntity> ex)
-        {
-            return ex.ToBadRequest(ctrl.HttpContext);
-        }
-        catch (EntityConstraintException)
-        {
-            return ctrl.Conflict(EntityConstraintProblem.Create());
-        }
-        catch (EntityConcurrencyException)
-        {
-            return ctrl.Conflict(EntityConcurrencyProblem.Create());
-        }
-    }
-    // Patch
-    private static readonly JsonSerializerOptions DefaultPatchSerializerOptions = new(JsonSerializerDefaults.Web)
-    {
-        ReferenceHandler = ReferenceHandler.IgnoreCycles
-    };
+        => ctrl.Write<TEntity, SaveResult<TDto>>(new SaveCommand<TEntity, TKey, TDto, TInputDto>(model, id, ValidateInput: false));
     /// <summary>
     /// Applies a JSON Merge Patch (RFC 7386) from the request body to an existing entity.<br />
     /// Reads the body directly (independent of the configured MVC input formatter).
@@ -252,57 +112,20 @@ public static class ControllerExtensions
     /// The current entity is serialized as merge base, patched, then deserialized as <typeparamref name="TInputDto"/>,
     /// so only properties present on the input model can be modified.<br />
     /// Assumes <typeparamref name="TInputDto"/> property names match those of <typeparamref name="TEntity"/>.
+    /// The merged input is validated as a request body is, and refused with the 400 of a validator's refusal.
     /// </summary>
-    public static async Task<ActionResult<SaveResult<TDto>>?> Patch<TEntity, TKey, TDto, TInputDto>(this ControllerBase ctrl, TKey id, JsonElement patch)
+    public static Task<ActionResult<SaveResult<TDto>>?> Patch<TEntity, TKey, TDto, TInputDto>(this ControllerBase ctrl, TKey id, JsonElement patch)
         where TEntity : class, IEntity<TKey>
         where TInputDto : class
         where TDto : class
     {
         if (patch.ValueKind != JsonValueKind.Object)
         {
-            return ctrl.BadRequest();
+            return Task.FromResult<ActionResult<SaveResult<TDto>>?>(ctrl.BadRequest());
         }
 
-        var service = ctrl.GetRequiredEntityService<IEntityService<TEntity, TKey>>();
-        // List instead of Details to avoid loading related entities (Details fetches max includes).
-        // Archived-inclusive: patching an archived row (e.g. to restore it) must reach it. The lookup runs
-        // through the regular query pipeline, so every other global filter (tenant/owner row security) still
-        // applies — and so does every EF query filter the app configured itself, on both target frameworks
-        // (see QueryExtensions.FilterArchivable).
-        var existing = (await service.List(new { id, Archived = ArchivedFilter.Included }, new PagingInfo { PageSize = 1 })).SingleOrDefault();
-        if (existing == null) return null;
-
-        var serializerOptions = ctrl.HttpContext.RequestServices
-            .GetService<IOptions<JsonOptions>>()?.Value.JsonSerializerOptions
-            ?? DefaultPatchSerializerOptions;
-
-        // serializing TEntity and deserializing as TInputDto keeps TInputDto as the write boundary
-        var baseJson = JsonSerializer.Serialize(existing, serializerOptions);
-        var mergedJson = ApplyJsonMergePatch(baseJson, patch, serializerOptions);
-        var mergedInput = JsonSerializer.Deserialize<TInputDto>(mergedJson, serializerOptions)!;
-
-        // the ValidationProblemDetails [ApiController]'s automatic 400 answers a PUT's input with
-        if (!ctrl.TryValidateModel(mergedInput))
-            return ctrl.ValidationProblem(ctrl.ModelState);
-
-        return await ctrl.Save<TEntity, TKey, TDto, TInputDto>(mergedInput, id);
-    }
-
-    private static string ApplyJsonMergePatch(string baseJson, JsonElement patch, JsonSerializerOptions serializerOptions)
-    {
-        using var baseDoc = JsonDocument.Parse(baseJson);
-        var result = baseDoc.RootElement.EnumerateObject()
-            .ToDictionary(p => p.Name, p => p.Value, StringComparer.OrdinalIgnoreCase);
-
-        foreach (var prop in patch.EnumerateObject())
-        {
-            if (prop.Value.ValueKind == JsonValueKind.Null)
-                result.Remove(prop.Name);
-            else
-                result[prop.Name] = prop.Value;
-        }
-
-        return JsonSerializer.Serialize(result, serializerOptions);
+        var serializerOptions = ctrl.HttpContext.RequestServices.GetService<IOptions<JsonOptions>>()?.Value.JsonSerializerOptions;
+        return ctrl.Write<TEntity, SaveResult<TDto>>(new PatchCommand<TEntity, TKey, TDto, TInputDto>(id, patch, serializerOptions));
     }
 
     // Delete
@@ -327,28 +150,39 @@ public static class ControllerExtensions
     /// query filters) still constrains it on both target frameworks.
     /// <c>Affected</c> reports the real number of rows written.
     /// </summary>
-    public static async Task<ActionResult<DeleteResult<TDto>>?> Delete<TEntity, TKey, TDto>(this ControllerBase ctrl, TKey id)
+    public static Task<ActionResult<DeleteResult<TDto>>?> Delete<TEntity, TKey, TDto>(this ControllerBase ctrl, TKey id)
         where TEntity : class, IEntity<TKey>
-    {
-        var sw = new Stopwatch();
-        sw.Start();
+        => ctrl.Write<TEntity, DeleteResult<TDto>>(new DeleteCommand<TEntity, TKey, TDto>(id));
 
-        var service = ctrl.GetRequiredEntityService<IEntityService<TEntity, TKey>>();
-        var item = (await service.List(new { id, Archived = ArchivedFilter.Included })).SingleOrDefault();
-        if (item == null)
+    public static TService GetRequiredEntityService<TService>(this ControllerBase ctrl)
+        where TService : notnull
+        => ctrl.HttpContext.RequestServices.GetRequiredEntityService<TService>();
+
+    private static IEntitySender Sender(this ControllerBase ctrl) => ctrl.HttpContext.RequestServices.GetEntitySender();
+
+    private static ActionResult<TResult>? Ok<TResult>(TResult? result)
+        where TResult : class
+    {
+        if (result == null)
         {
             return null;
         }
+        return new OkObjectResult(result);
+    }
 
-        int affected;
+    /// <summary>
+    /// Sends a write and maps what the write pipeline refuses — a 400 like a validator's, a 409 for a constraint or a
+    /// concurrency conflict — whether or not the exception filter is registered.
+    /// </summary>
+    private static async Task<ActionResult<TResult>?> Write<TEntity, TResult>(this ControllerBase ctrl, IEntityRequest<TResult> request)
+        where TResult : class
+    {
         try
         {
-            await service.Remove(item);
-            affected = await service.SaveChanges();
+            return Ok(await ctrl.Sender().Send(request));
         }
         catch (EntityInputException<TEntity> ex)
         {
-            // a validator rejected the delete — a 400 like a save's, whether or not the exception filter is registered
             return ex.ToBadRequest(ctrl.HttpContext);
         }
         catch (EntityConstraintException)
@@ -359,45 +193,5 @@ public static class ControllerExtensions
         {
             return ctrl.Conflict(EntityConcurrencyProblem.Create());
         }
-
-        var mapper = ctrl.HttpContext.RequestServices.GetRequiredService<IEntityMapper>();
-        var model = mapper.Map<TDto>(item);
-
-        sw.Stop();
-
-        return ctrl.DeleteResult(model, affected, sw.ElapsedMilliseconds);
-    }
-
-    public static TService GetRequiredEntityService<TService>(this ControllerBase ctrl)
-        where TService : notnull
-    {
-        try
-        {
-            return ctrl.HttpContext.RequestServices.GetRequiredService<TService>();
-        }
-        catch (InvalidOperationException ex)
-        {
-            var services = ctrl.HttpContext.RequestServices.GetService<IServiceCollection>();
-            throw new InvalidOperationException(EntityServiceDiagnostics.DescribeMissingService(typeof(TService), services), ex);
-        }
-    }
-
-    /// <summary>
-    /// Resolves the effective paging for a List/Search request from the configured <see cref="EntityListOptions"/>.
-    /// Enforced at the HTTP boundary only — the clamp lives in the shared
-    /// <see cref="EntityListOptionsExtensions.ApplyPagingDefaults"/> helper, while direct
-    /// service calls keep full control. A per-entity
-    /// <see cref="EntityListOptions{TEntity}"/>, when registered, fully replaces the global options.
-    /// An omitted <c>PageSize</c> (<c>null</c>) falls back to <see cref="EntityListOptions.DefaultPageSize"/>;
-    /// a non-positive <c>PageSize</c> (an explicit opt-out) falls back to <see cref="EntityListOptions.MaxPageSize"/>;
-    /// a positive value is honoured. <c>MaxPageSize</c> is always the ceiling. <see cref="PagingInfo"/> is a
-    /// record, so <c>with</c> preserves <c>Page</c>.
-    /// </summary>
-    private static PagingInfo? WithPagingDefaults<TEntity>(this ControllerBase ctrl, PagingInfo? pagingInfo)
-        where TEntity : class
-    {
-        var services = ctrl.HttpContext.RequestServices;
-        var opts = (EntityListOptions?)services.GetService<EntityListOptions<TEntity>>() ?? services.GetService<EntityListOptions>();
-        return pagingInfo.ApplyPagingDefaults(opts);
     }
 }

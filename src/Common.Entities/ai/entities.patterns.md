@@ -729,6 +729,232 @@ the workflow service is its only writer, so its validator refuses any create or 
 trusted-writer flag, the parent's input DTO leaves the collection out (one writer per save
 path), and its controller exposes no `DELETE` (override it to return `405`).
 
+## Entity operations outside a controller
+
+<!-- how_to: key=entity-operations aliases=sender,ientitysender,mediator,mediatr,request,requests,handler,behavior,behaviour,minimal-api,operation,operations -->
+
+*Opt-in — reach for it when code outside a controller needs what an endpoint answers, or the app already runs
+MediatR.* Every generated endpoint sends a request through `IEntitySender` (package `Regira.Entities.Mediator`,
+which `Regira.Entities.Web` brings): `DetailsQuery`, `ListQuery`, `SearchQuery`, `SaveCommand`, `PatchCommand`,
+`DeleteCommand` in `Regira.Entities.Mediator.Requests`. A job, an import or the app's own minimal-API endpoint sends
+the same requests and gets the endpoint's semantics — the paging defaults, the archived-inclusive update lookup, the
+re-read after a save, the DTO mapping and the result envelope — where `IEntityService` gives entities and leaves those
+to the caller. `UseEntities()` registers the sender; inject it like any scoped service:
+
+```csharp
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Requests;
+
+public class Product : IEntityWithSerial
+{
+    public int Id { get; set; }
+    public string? Title { get; set; }
+    public decimal Price { get; set; }
+}
+public class ProductDto { public int Id { get; set; } public string? Title { get; set; } public decimal Price { get; set; } }
+public class ProductInputDto { public int Id { get; set; } [Required, MaxLength(100)] public string? Title { get; set; } public decimal Price { get; set; } }
+
+public class PriceImport(IEntitySender sender)
+{
+    // checks the input's DataAnnotations, saves, re-reads and maps — what POST /products answers
+    public async Task<ProductDto?> Import(ProductInputDto input, CancellationToken token)
+        => (await sender.Send(new SaveCommand<Product, int, ProductDto, ProductInputDto>(input), token))?.Item;
+}
+```
+
+- **The type list is the controller's.** `EntityControllerBase<Product, ProductDto, ProductInputDto>` sends
+  `DetailsQuery<Product, int, ProductDto>`; a complex entity's `ListQuery` and `SearchQuery` take its search object,
+  sort and includes types too. A list that matches no `For<>()` registration fails at its first send, naming what
+  was registered.
+- **`null` means not found.** A refused write throws, as the write pipeline does: `EntityInputException`,
+  `EntityConstraintException`, `EntityConcurrencyException`.
+- **`SaveCommand` checks the input DTO's DataAnnotations first** — nested objects and collection items too, and in an
+  MVC host by MVC's own rules — and refuses with an `EntityInputException`. The generated endpoints turn that off
+  (`ValidateInput: false`): MVC has answered an invalid body by then. A patch's merged input is always checked.
+- **One entity per request.** A bulk write or a seed of many rows stays on `IEntityService` with one `SaveChanges()`
+  (§Bulk insert / update).
+- In a domain action, `this.Details<TEntity, TDto>(id)` (§Domain actions on an entity resource) already sends a
+  `DetailsQuery`.
+
+Below: *Replacing one operation for one entity*, *Behaviours around every operation*, *Dispatching through MediatR*
+and *A mediator library without an adapter*.
+
+### Replacing one operation for one entity
+
+Register a closed handler for the request type; it answers in place of the default, for the endpoint and every other
+sender alike, with no controller override. Deriving from the default handler keeps its behaviour:
+
+```csharp
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Handlers;
+using Regira.Entities.Mediator.Requests;
+using Regira.Entities.Web.Models;
+
+public class Product : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductDto { public int Id { get; set; } public string? Title { get; set; } public int Stock { get; set; } }
+
+public interface IWarehouse { Task<int> Stock(int productId, CancellationToken token); }
+
+// GET products/{id} — and a job's DetailsQuery — answers with the stock the warehouse holds now
+public class ProductDetailsHandler(IServiceProvider services, IWarehouse warehouse)
+    : DetailsHandler<Product, int, ProductDto>(services)
+{
+    public override async Task<DetailsResult<ProductDto>?> Handle(DetailsQuery<Product, int, ProductDto> request, CancellationToken token = default)
+    {
+        var result = await base.Handle(request, token);
+        if (result != null)
+        {
+            result.Item.Stock = await warehouse.Stock(result.Item.Id, token);
+        }
+        return result;
+    }
+}
+
+public static class ProductOperations
+{
+    public static IServiceCollection AddProductOperations(this IServiceCollection services)
+        => services.AddTransient<IEntityRequestHandler<DetailsQuery<Product, int, ProductDto>, DetailsResult<ProductDto>>, ProductDetailsHandler>();
+}
+```
+
+- **One request type each.** A `PATCH` saves its merged input itself, not through the `SaveCommand` handler: a change
+  to how an entity saves overrides both `SaveCommand<…>` and `PatchCommand<…>`.
+- A request of the app's own — a record implementing `IEntityRequest<TResponse>` — works the same way: it has no
+  default handler, so it needs a registered one, and its first send says so when it is missing.
+
+### Behaviours around every operation
+
+An `IEntityPipelineBehavior<,>` registered as an open generic runs around every request — caching, or a log of the
+operation itself, reads and refused attempts included:
+
+```csharp
+using Microsoft.Extensions.Logging;
+using Regira.Entities.Mediator.Abstractions;
+
+public class OperationLog<TRequest, TResponse>(ILogger<OperationLog<TRequest, TResponse>> logger)
+    : IEntityPipelineBehavior<TRequest, TResponse>
+    where TRequest : IEntityRequest<TResponse>
+{
+    public async Task<TResponse?> Handle(TRequest request, EntityRequestDelegate<TResponse> next, CancellationToken token = default)
+    {
+        try
+        {
+            return await next();
+        }
+        finally
+        {
+            logger.LogInformation("{Operation} {Entity}", request.Operation, request.EntityType.Name);
+        }
+    }
+}
+
+public static class OperationLogging
+{
+    public static IServiceCollection AddOperationLog(this IServiceCollection services)
+        => services.AddTransient(typeof(IEntityPipelineBehavior<,>), typeof(OperationLog<,>));
+}
+```
+
+- Behaviours run in registration order, the first registered outermost. `Duration` on the result spans them all, and
+  is written on the result returned: a cache hands out a copy (`cached with { }`), not the instance it keeps, or
+  every hit — parallel ones too — rewrites the shared instance.
+- **What follows a committed write is a reactor's job**, not a behaviour's: a reactor runs once the save commits,
+  whatever path wrote; a behaviour sees only the requests sent, and an attempt the pipeline then refused
+  (entities.instructions §Step 9 → Reactors).
+
+### Dispatching through MediatR
+
+`Regira.Entities.Mediator.MediatR` dispatches every entity request through MediatR, so the app's own pipeline
+behaviours — logging, tracing, authorization, a unit of work — wrap the generated endpoints as they wrap the app's
+other requests. Add the package, register MediatR as usual, and call `UseMediatR()` inside `UseEntities()`:
+
+```csharp
+using MediatR;
+using Microsoft.Extensions.Logging;
+using Regira.Entities.DependencyInjection.ServiceCollections;
+using Regira.Entities.Mediator;
+using Regira.Entities.Mediator.MediatR;
+
+public class Product : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } }
+
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+{
+    public DbSet<Product> Products => Set<Product>();
+}
+
+// one of the app's behaviours: an entity request arrives as an EntityRequestMessage
+public class WriteLog<TRequest, TResponse>(ILogger<WriteLog<TRequest, TResponse>> logger) : IPipelineBehavior<TRequest, TResponse>
+    where TRequest : notnull
+{
+    public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
+    {
+        if (request is EntityRequestMessage { Request.Operation: EntityOperation.Save or EntityOperation.Patch or EntityOperation.Delete } message)
+        {
+            logger.LogInformation("{Operation} {Entity}", message.Request.Operation, message.Request.EntityType.Name);
+        }
+        return await next();
+    }
+}
+
+public static class ShopServiceConfiguration
+{
+    public static EntityServiceCollection<AppDbContext> AddShop(this IServiceCollection services)
+    {
+        services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<AppDbContext>());
+        services.AddTransient(typeof(IPipelineBehavior<,>), typeof(WriteLog<,>));
+        return services
+            .UseEntities<AppDbContext>(o =>
+            {
+                o.UseDefaults();
+                o.UseMediatR();   // replaces the in-house sender, whatever the order
+            })
+            .For<Product>();
+    }
+}
+```
+
+- **The app registers MediatR**, with its licence key from MediatR 13 on. The adapter works with 12, 13 and 14.
+- **What stays the same:** the closed-handler override, the `IEntityPipelineBehavior`s and `Duration` — MediatR's
+  handler for the envelope hands the request to the same executor the in-house sender uses.
+- **Every entity request is one MediatR request type**, `EntityRequestMessage`, holding the entity request. A
+  behaviour reads `Request.EntityType` and `Request.Operation` to tell a read from a write, and one keyed on a single
+  request type cannot pick out an entity operation.
+- ⚠️ **Let the entity exceptions through.** A behaviour that rethrows `EntityInputException`,
+  `EntityConstraintException` or `EntityConcurrencyException` wrapped in an exception of its own turns the endpoint's
+  400 and 409s into 500s.
+- A behaviour that opens a transaction around a write defers the reactors to its commit — the reactor rule
+  (entities.instructions §Step 9 → Reactors).
+
+### A mediator library without an adapter
+
+The seam is public, so any library plugs in the way the MediatR adapter does: one envelope type with one handler that
+passes the request on to `IEntityRequestExecutor`, a sender that sends the envelope, and a `Replace` of the
+`IEntitySender` registration. The executor keeps resolving the handlers and running the behaviours.
+
+<!-- no-compile -->
+```csharp
+// the envelope and its handler, in the library's own shapes
+public sealed record EntityMessage(IEntityRequest Request);
+public class EntityMessageHandler(IEntityRequestExecutor executor)
+{
+    public Task<object?> Handle(EntityMessage message, CancellationToken token) => executor.Execute(message.Request, token);
+}
+
+// the sender: the library's send, the response cast back
+public class BusEntitySender(IMessageBus bus) : IEntitySender
+{
+    public async Task<TResponse?> Send<TResponse>(IEntityRequest<TResponse> request, CancellationToken token = default)
+        => await bus.InvokeAsync<object?>(new EntityMessage(request), token) is TResponse response ? response : default;
+}
+
+// inside or after UseEntities(), either way
+services.Replace(ServiceDescriptor.Scoped<IEntitySender, BusEntitySender>());
+```
+
+Keep the envelope one closed type: a generic one needs an open-generic handler registration, and the container
+resolves a closed service from the last open-generic registration of its type, so it would shadow the app's own
+open-generic handlers or be shadowed by them.
+
 ## Input validation with FluentValidation
 
 `Regira.Entities.Validation.FluentValidation` runs `AbstractValidator<T>` rules as the write pipeline's validator

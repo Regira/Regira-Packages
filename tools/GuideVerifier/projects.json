@@ -27,7 +27,9 @@
         "src/Entities.EFcore/Entities.EFcore.csproj",
         "src/Entities.DependencyInjection/Entities.DependencyInjection.csproj",
         "src/Entities.Web/Entities.Web.csproj",
-        "src/Entities.Validation.FluentValidation/Entities.Validation.FluentValidation.csproj"
+        "src/Entities.Validation.FluentValidation/Entities.Validation.FluentValidation.csproj",
+        "src/Entities.Mediator/Entities.Mediator.csproj",
+        "src/Entities.Mediator.MediatR/Entities.Mediator.MediatR.csproj"
       ],
       "guideDirs": [
         "src/Common.Entities/ai",
@@ -72,7 +74,9 @@
         "src/Entities.EFcore/Entities.EFcore.csproj",
         "src/Entities.DependencyInjection/Entities.DependencyInjection.csproj",
         "src/Entities.Web/Entities.Web.csproj",
-        "src/Entities.Validation.FluentValidation/Entities.Validation.FluentValidation.csproj"
+        "src/Entities.Validation.FluentValidation/Entities.Validation.FluentValidation.csproj",
+        "src/Entities.Mediator/Entities.Mediator.csproj",
+        "src/Entities.Mediator.MediatR/Entities.Mediator.MediatR.csproj"
       ],
       "guideFiles": [
         "src/Common.Entities/docs/examples.md"

@@ -185,6 +185,19 @@
 
 ---
 
+## Entity Operations (requests the endpoints send)
+
+| Namespace | Types |
+|---|---|
+| `Regira.Entities.Mediator.Abstractions` | `IEntitySender`, `IEntityRequest`, `IEntityRequest<>`, `IEntityRequestHandler<,>`, `IEntityPipelineBehavior<,>`, `EntityRequestDelegate<>`, `IEntityRequestExecutor`, `IEntityInputValidator` — package `Regira.Entities.Mediator`, brought by `Regira.Entities.Web` |
+| `Regira.Entities.Mediator.Requests` | `DetailsQuery<,,>`, `ListQuery<,,,>`, `ListQuery<,,,,,>`, `SearchQuery<,,,>`, `SearchQuery<,,,,,>`, `SaveCommand<,,,>`, `PatchCommand<,,,>`, `DeleteCommand<,,>` |
+| `Regira.Entities.Mediator.Handlers` | `DetailsHandler<,,>`, `ListHandler<,,,>`, `ListHandler<,,,,,>`, `SearchHandler<,,,>`, `SearchHandler<,,,,,>`, `SaveHandler<,,,>`, `PatchHandler<,,,>`, `DeleteHandler<,,>` *(the defaults — derive from one to change an operation)* |
+| `Regira.Entities.Mediator` | `EntityOperation`, `EntitySender`, `EntityRequestExecutor`, `DataAnnotationsEntityInputValidator`, `EntityServiceProviderExtensions` *(`GetEntitySender()`)* |
+| `Regira.Entities.Mediator.DependencyInjection` | `EntityMediatorServiceCollectionExtensions` *(`AddEntityMediator()` — `UseEntities()` calls it)* |
+| `Regira.Entities.Mediator.MediatR` | `EntityServiceCollectionOptionsExtensions` *(`UseMediatR()`)*, `EntityRequestMessage`, `EntityRequestMessageHandler`, `MediatREntitySender` — package `Regira.Entities.Mediator.MediatR` |
+
+---
+
 ## Common .NET / EF Core Namespaces
 
 | Namespace | Types |

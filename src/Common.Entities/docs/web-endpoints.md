@@ -208,6 +208,61 @@ Delete(id) -> DeleteResult
 
 ---
 
+## Entity Operations
+
+Each generated endpoint sends a request through `IEntitySender`, from `Regira.Entities.Mediator` (which
+`Regira.Entities.Web` brings): `DetailsQuery`, `ListQuery`, `SearchQuery`, `SaveCommand`, `PatchCommand` and
+`DeleteCommand`, with the controller's type arguments. Code outside a controller — a background job, an import, a
+minimal-API endpoint of the application's own — sends the same requests and gets what the endpoint answers: paging
+defaults, the archived-inclusive lookup of an update, the re-read after a save, the DTO mapping and the result
+envelope. `UseEntities()` registers the sender.
+
+```csharp
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Requests;
+
+public class Product : IEntityWithSerial
+{
+    public int Id { get; set; }
+    public string? Title { get; set; }
+}
+public class ProductDto { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductInputDto { public int Id { get; set; } [Required] public string? Title { get; set; } }
+
+public class ProductImport(IEntitySender sender)
+{
+    public async Task<ProductDto?> Import(ProductInputDto input, CancellationToken token)
+    {
+        // null when the product to update does not exist; a refused write throws EntityInputException
+        var saved = await sender.Send(new SaveCommand<Product, int, ProductDto, ProductInputDto>(input), token);
+        return saved?.Item;
+    }
+}
+```
+
+- **Input validation.** A `SaveCommand` checks the input DTO's DataAnnotations first, nested objects and collection
+  items included — in an MVC application by MVC's own rules — and refuses with an `EntityInputException`. The
+  generated endpoints skip that check (`ValidateInput: false`), since MVC has answered an invalid request body by
+  then. A patch's merged input is always checked, so `PATCH` answers an invalid result with the same 400 a
+  validator's refusal has.
+- **Replacing one operation for one entity.** Register a closed `IEntityRequestHandler<TRequest, TResponse>` for the
+  request type — typically derived from the default handler, such as `DetailsHandler<Product, int, ProductDto>` from
+  `Regira.Entities.Mediator.Handlers`. It answers for the endpoint and for every other sender. A `PATCH` saves its
+  merged input itself rather than through the `SaveCommand` handler, so a rule about how an entity saves — an
+  authorization check, say — overrides both `SaveCommand` and `PatchCommand`, or `PATCH` bypasses it.
+- **Behaviours.** An `IEntityPipelineBehavior<TRequest, TResponse>` registered as an open generic runs around every
+  request, the first registered outermost. `IEntityRequest.EntityType` and `IEntityRequest.Operation` tell which entity
+  and which operation. `Duration` is written on the result a request returns, so a caching behaviour hands out a copy
+  (`cached with { }`) rather than the instance it keeps.
+- **MediatR.** With `Regira.Entities.Mediator.MediatR`, `options.UseMediatR()` inside `UseEntities()` dispatches every
+  entity request through MediatR, so the application's own pipeline behaviours wrap the generated endpoints. The
+  application registers MediatR itself (with its licence key from MediatR 13 on); handlers, behaviours and `Duration`
+  work as without it. Every entity request travels as one MediatR request type, `EntityRequestMessage`, holding the
+  entity request. Another library plugs in the same way: replace the `IEntitySender` registration with a sender that
+  passes the request through the library to `IEntityRequestExecutor`.
+
+---
+
 ## Response Types
 
 Both approaches return the same standardised result wrappers:
@@ -243,9 +298,12 @@ public record SaveResult<TDto>
 public record DeleteResult<TDto>
 {
     public TDto Item { get; set; } // The deleted item
+    public int Affected { get; set; } // Rows written; a soft delete writes one too
     public long? Duration { get; set; }
 }
 ```
+
+The result types ship in `Regira.Entities.Mediator`, under the `Regira.Entities.Web.Models` namespace.
 
 ---
 

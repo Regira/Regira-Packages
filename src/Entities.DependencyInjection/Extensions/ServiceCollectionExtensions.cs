@@ -25,6 +25,7 @@ public static class ServiceCollectionExtensions
         services.RegisterGlobalQueryOptions(options);
         services.RegisterGlobalReadOptions(options);
         services.RegisterStartupValidation(options);
+        services.RegisterEntityMediator();
         return options;
     }
 
@@ -40,8 +41,22 @@ public static class ServiceCollectionExtensions
         services.RegisterGlobalQueryOptions(options);
         services.RegisterGlobalReadOptions(options);
         services.RegisterStartupValidation(options);
+        services.RegisterEntityMediator();
         services.WireDbContextDefaults<TContext>(options);
         return new EntityServiceCollection<TContext>(options);
+    }
+
+    /// <summary>
+    /// Registers the entity operations — the sender the controllers, jobs and a consumer's own endpoints send requests
+    /// through. They live in Regira.Entities.Mediator, which references this package, so they are bound late, as the
+    /// controller validator is: every host that calls <c>UseEntities()</c> gets them without another call, and the call
+    /// no-ops where that package is absent.
+    /// </summary>
+    private static void RegisterEntityMediator(this IServiceCollection services)
+    {
+        var registration = Type.GetType(
+            "Regira.Entities.Mediator.DependencyInjection.EntityMediatorServiceCollectionExtensions, Regira.Entities.Mediator", throwOnError: false);
+        registration?.GetMethod("AddEntityMediator", [typeof(IServiceCollection)])?.Invoke(null, [services]);
     }
 
     /// <summary>

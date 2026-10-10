@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.Entities.Mediator.MediatR</RootNamespace>
+    <PackageId>Regira.Entities.Mediator.MediatR</PackageId>
+    <AssemblyName>Regira.Entities.Mediator.MediatR</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.5.1</Version>
+    <RegiraLicenseEnforced>true</RegiraLicenseEnforced>
+    <Description>MediatR integration for Regira entity operations: every entity request the controllers, jobs and endpoints send is dispatched through MediatR, so the app's pipeline behaviours wrap it. Works with MediatR 12 and later; the app registers MediatR, and from 13 on its licence key. Free tier included — a license key removes the free-tier limits.</Description>
+    <PackageTags>regira;entities;mediator;mediatr;pipeline</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(OutputPath)$(AssemblyName).xml" Pack="true" PackagePath="lib\$(TargetFramework)\" Visible="false" Condition="Exists('$(OutputPath)$(AssemblyName).xml')" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The floor, not a pin: 12 is the last Apache-2.0 line, and an app on 13 or later resolves its own version,
+         licence key included. The adapter uses only ISender, IRequest<T> and IRequestHandler<,>, alike in 12 to 14. -->
+    <PackageReference Include="MediatR" Version="12.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Entities.Mediator\Entities.Mediator.csproj" />
+  </ItemGroup>
+</Project>

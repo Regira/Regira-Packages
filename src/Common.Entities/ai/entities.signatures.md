@@ -13,10 +13,11 @@ Exact signatures for interfaces, classes, and extension methods in the Regira En
 5. [Extension Methods](#extension-methods)
 6. [Service Builders](#service-builders)
 7. [Mapping and Processing](#mapping-and-processing)
-8. [Response Types](#response-types)
-9. [Attachments](#attachments)
-10. [Exceptions](#exceptions)
-11. [Supporting Types](#supporting-types)
+8. [Entity Operations](#entity-operations)
+9. [Response Types](#response-types)
+10. [Attachments](#attachments)
+11. [Exceptions](#exceptions)
+12. [Supporting Types](#supporting-types)
 
 ---
 
@@ -1821,7 +1822,100 @@ as a single-character wildcard too. Escape them if exact punctuation has to matc
 
 ---
 
+## Entity Operations
+
+Package `Regira.Entities.Mediator` (brought by `Regira.Entities.Web`); usage in `entities.patterns.md` → *Entity
+operations outside a controller*.
+
+<!-- no-compile -->
+```csharp
+using Regira.Entities.Mediator;                      // EntityOperation, EntitySender, EntityRequestExecutor, DataAnnotationsEntityInputValidator
+using Regira.Entities.Mediator.Abstractions;         // the interfaces below
+using Regira.Entities.Mediator.Requests;             // the requests
+using Regira.Entities.Mediator.Handlers;             // their default handlers, to derive from
+
+public enum EntityOperation { Details, List, Search, Save, Patch, Delete }
+
+public interface IEntityRequest { Type EntityType { get; } EntityOperation Operation { get; } }
+public interface IEntityRequest<TResponse> : IEntityRequest;
+
+// what the controllers and every other caller send through; registered (scoped) by UseEntities()
+public interface IEntitySender
+{
+    Task<TResponse?> Send<TResponse>(IEntityRequest<TResponse> request, CancellationToken token = default);   // null = not found
+}
+// resolves the handler (a registered closed one, otherwise the default), runs the behaviours, fills Duration
+public interface IEntityRequestExecutor
+{
+    Task<TResponse?> Execute<TResponse>(IEntityRequest<TResponse> request, CancellationToken token = default);
+    Task<object?> Execute(IEntityRequest request, CancellationToken token = default);                           // for an adapter
+}
+public interface IEntityRequestHandler<in TRequest, TResponse> where TRequest : IEntityRequest<TResponse>
+{
+    Task<TResponse?> Handle(TRequest request, CancellationToken token = default);
+}
+public delegate Task<TResponse?> EntityRequestDelegate<TResponse>();
+// open generic → every request; registration order, first registered outermost
+public interface IEntityPipelineBehavior<in TRequest, TResponse> where TRequest : IEntityRequest<TResponse>
+{
+    Task<TResponse?> Handle(TRequest request, EntityRequestDelegate<TResponse> next, CancellationToken token = default);
+}
+// a save's or a patch's input DTO check; MvcEntityInputValidator (Regira.Entities.Web.Controllers) in an MVC host
+public interface IEntityInputValidator { IReadOnlyList<EntityInputError> Validate(object input); }
+
+// requests — the type lists follow the controller's
+public sealed record DetailsQuery<TEntity, TKey, TDto>(TKey Id, ArchivedFilter? Archived = null) : IEntityRequest<DetailsResult<TDto>>;
+public sealed record ListQuery<TEntity, TKey, TSearchObject, TDto>(TSearchObject? SearchObject = null, PagingInfo? Paging = null)
+    : IEntityRequest<ListResult<TDto>>;
+public sealed record ListQuery<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto>(
+    IList<TSearchObject?> SearchObjects, PagingInfo? Paging = null, TIncludes[]? Includes = null, TSortBy[]? SortBy = null)
+    : IEntityRequest<ListResult<TDto>>;
+public sealed record SearchQuery<TEntity, TKey, TSearchObject, TDto>(TSearchObject? SearchObject = null, PagingInfo? Paging = null)
+    : IEntityRequest<SearchResult<TDto>>;
+public sealed record SearchQuery<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto>(
+    IList<TSearchObject?> SearchObjects, PagingInfo? Paging = null, TIncludes[]? Includes = null, TSortBy[]? SortBy = null)
+    : IEntityRequest<SearchResult<TDto>>;
+public sealed record SaveCommand<TEntity, TKey, TDto, TInputDto>(TInputDto Input, TKey? Id = default, bool ValidateInput = true)
+    : IEntityRequest<SaveResult<TDto>>;
+public sealed record PatchCommand<TEntity, TKey, TDto, TInputDto>(TKey Id, JsonElement Patch, JsonSerializerOptions? SerializerOptions = null)
+    : IEntityRequest<SaveResult<TDto>>;
+public sealed record DeleteCommand<TEntity, TKey, TDto>(TKey Id) : IEntityRequest<DeleteResult<TDto>>;
+
+// default handlers (DetailsHandler, ListHandler ×2, SearchHandler ×2, SaveHandler, PatchHandler, DeleteHandler):
+// public classes with a virtual Handle and a protected Services, built from the request's own type arguments
+public class DetailsHandler<TEntity, TKey, TDto>(IServiceProvider services)
+    : IEntityRequestHandler<DetailsQuery<TEntity, TKey, TDto>, DetailsResult<TDto>>;
+
+public static class EntityServiceProviderExtensions
+{
+    public static IEntitySender GetEntitySender(this IServiceProvider services);          // the registered one, else the in-house one
+    public static TService GetRequiredEntityService<TService>(this IServiceProvider services);   // throws with what For<>() registered
+}
+
+// Regira.Entities.Mediator.DependencyInjection — called by UseEntities(); TryAdd throughout
+public static IServiceCollection AddEntityMediator(this IServiceCollection services);
+```
+
+MediatR adapter — package `Regira.Entities.Mediator.MediatR`:
+
+<!-- no-compile -->
+```csharp
+using Regira.Entities.Mediator.MediatR;
+
+// inside UseEntities() or after: replaces the in-house sender; the app calls AddMediatR(...) itself
+public static EntityServiceCollectionOptions UseMediatR(this EntityServiceCollectionOptions options);
+
+// every entity request travels as this one MediatR request
+public sealed record EntityRequestMessage(IEntityRequest Request) : IRequest<object?>;
+public class EntityRequestMessageHandler(IEntityRequestExecutor executor) : IRequestHandler<EntityRequestMessage, object?>;
+public class MediatREntitySender(IServiceProvider services) : IEntitySender;
+```
+
+---
+
 ## Response Types
+
+Shipped by `Regira.Entities.Mediator`, under the namespace they have always had.
 
 ```csharp
 using Regira.Entities.Web.Models;
@@ -1830,7 +1924,7 @@ public record DetailsResult<TDto>  { public TDto Item { get; set; }        publi
 public record ListResult<TDto>     { public IList<TDto> Items { get; set; } public long? Duration { get; set; } }
 public record SearchResult<TDto>   { public IList<TDto> Items { get; set; } public long Count { get; set; }     public long? Duration { get; set; } }
 public record SaveResult<TDto>     { public TDto Item { get; set; }        public bool IsNew { get; set; }     public int Affected { get; set; }   public long? Duration { get; set; } }
-public record DeleteResult<TDto>   { public TDto Item { get; set; }        public long? Duration { get; set; } }
+public record DeleteResult<TDto>   { public TDto Item { get; set; }        public int Affected { get; set; }   public long? Duration { get; set; } }
 ```
 
 ---
