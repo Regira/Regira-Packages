@@ -11,11 +11,18 @@ using Testing.Library.Data;
 
 namespace Entities.Web.Testing;
 
-public class CourseControllerTests : IClassFixture<ContosoApiFactory>, IDisposable
+/// <summary>The course routes, served by the course controller.</summary>
+public class CourseControllerTests(ContosoApiFactory factory) : CourseTests<ContosoApiFactory>(factory);
+
+/// <summary>The same routes and cases, served by <c>MapEntityEndpoints()</c>.</summary>
+public class CourseEndpointTests(ContosoEndpointsApiFactory factory) : CourseTests<ContosoEndpointsApiFactory>(factory);
+
+public abstract class CourseTests<TFactory> : IClassFixture<TFactory>, IDisposable
+    where TFactory : ContosoApiFactory
 {
     private readonly ContosoContext _dbContext;
-    private readonly ContosoApiFactory _factory;
-    public CourseControllerTests(ContosoApiFactory factory)
+    private readonly TFactory _factory;
+    protected CourseTests(TFactory factory)
     {
         _factory = factory;
         _dbContext = factory.CreateDbContext();

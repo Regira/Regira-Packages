@@ -140,7 +140,7 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         where TIncludes : struct, Enum
     {
         _licenseValidator.TrackComplex(options.Services, typeof(TEntity));
-        _registrationLog.TrackEntity(typeof(TContext), typeof(TEntity), typeof(int), typeof(TSearchObject), isComplex: true);
+        _registrationLog.TrackEntity(typeof(TContext), typeof(TEntity), typeof(int), typeof(TSearchObject), typeof(TSortBy), typeof(TIncludes));
         var simpleBuilder = new EntitySearchObjectServiceBuilder<TContext, TEntity, int, TSearchObject>(Options);
         var builder = new ComplexEntityIntServiceBuilder<TContext, TEntity, TSearchObject, TSortBy, TIncludes>(simpleBuilder);
         configure?.Invoke(builder);
@@ -187,7 +187,7 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         where TIncludes : struct, Enum
     {
         _licenseValidator.TrackComplex(options.Services, typeof(TEntity));
-        _registrationLog.TrackEntity(typeof(TContext), typeof(TEntity), typeof(TKey), typeof(TSearchObject), isComplex: true);
+        _registrationLog.TrackEntity(typeof(TContext), typeof(TEntity), typeof(TKey), typeof(TSearchObject), typeof(TSortBy), typeof(TIncludes));
         var simpleBuilder = new EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject>(Options);
         var builder = new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes>(simpleBuilder);
         configure?.Invoke(builder);

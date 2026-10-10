@@ -769,8 +769,9 @@ public class PriceImport(IEntitySender sender)
 - **`null` means not found.** A refused write throws, as the write pipeline does: `EntityInputException`,
   `EntityConstraintException`, `EntityConcurrencyException`.
 - **`SaveCommand` checks the input DTO's DataAnnotations first** — nested objects and collection items too, and in an
-  MVC host by MVC's own rules — and refuses with an `EntityInputException`. The generated endpoints turn that off
-  (`ValidateInput: false`): MVC has answered an invalid body by then. A patch's merged input is always checked.
+  MVC host by MVC's own rules — and refuses with an `EntityInputException`. The controllers turn that off
+  (`ValidateInput: false`), since MVC has answered an invalid body by then; the mapped endpoints keep it on, as no MVC
+  ran. A patch's merged input is always checked.
 - **One entity per request.** A bulk write or a seed of many rows stays on `IEntityService` with one `SaveChanges()`
   (§Bulk insert / update).
 - In a domain action, `this.Details<TEntity, TDto>(id)` (§Domain actions on an entity resource) already sends a
@@ -954,6 +955,83 @@ services.Replace(ServiceDescriptor.Scoped<IEntitySender, BusEntitySender>());
 Keep the envelope one closed type: a generic one needs an open-generic handler registration, and the container
 resolves a closed service from the last open-generic registration of its type, so it would shadow the app's own
 open-generic handlers or be shadowed by them.
+
+## Mapped entity endpoints (no controllers)
+
+*Opt-in — for an app that wants no controller classes.* `app.MapEntityEndpoints()` (`Regira.Entities.Web.Endpoints`)
+maps every entity registered through `For<>()` as minimal-API endpoints: the controllers' route table, request bodies
+and response envelopes (entities.instructions §Step 13), and the attachment routes under an owner that
+`HasAttachments()` registered. Each endpoint sends the request the matching controller action sends (§Entity operations
+outside a controller), so handler overrides, behaviours and `UseMediatR()` apply alike. The options on a registration
+say how its entity maps:
+
+```csharp
+using Regira.Entities.DependencyInjection.ServiceCollections;
+using Regira.Entities.Web.Endpoints;
+
+public class Product : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductDto { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductInputDto { public int Id { get; set; } [Required] public string? Title { get; set; } }
+public class AuditLog : IEntityWithSerial { public int Id { get; set; } public string? Message { get; set; } }
+
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+{
+    public DbSet<Product> Products => Set<Product>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+}
+
+public static class ShopServiceConfiguration
+{
+    public static EntityServiceCollection<AppDbContext> AddShop(this IServiceCollection services)
+        => services
+            .UseEntities<AppDbContext>(o => o.UseDefaults())
+            .For<Product>(e =>
+            {
+                e.UseMapping<ProductDto, ProductInputDto>();          // the DTO pair the endpoints answer with and bind
+                e.Endpoints(o => o.Exclude(EntityEndpoint.Delete));   // trim the set
+            })
+            .For<AuditLog>(e => e.Endpoints(o => o.Disable()));      // keep it off the surface
+}
+```
+
+```csharp
+using Microsoft.AspNetCore.Builder;                 // RequireAuthorization() — implicit in a Web SDK project
+using Regira.Entities.Web.Endpoints;
+
+app.MapEntityEndpoints().RequireAuthorization();   // GET/POST products, PUT/PATCH products/{id}, … — one policy for all
+```
+
+- **Every mapped entity declares its DTO pair** — `e.UseMapping<TDto, TInputDto>()`, or `e.Endpoints(o => o.UseDtos<TDto,
+  TInputDto>())` when the maps are configured elsewhere; `o.UseDtos<Product, Product>()` serves the entity as itself.
+  Without one, mapping throws at startup: there is no fallback to the entity, which would put every column on the wire.
+- **The route** is the kebab-case plural of the entity's name (`InterventionType` → `intervention-types`). An irregular
+  plural sets `o.Route = "people"`; `app.MapEntityEndpoints(o => o.Prefix = "api")` puts every route under a base path.
+- **Per entity:** `o.Exclude(…)` trims the set, `o.AllowAnonymous(EntityEndpoint.Download)` opens the downloads an
+  `<img>` loads (§Public (anonymous) attachment downloads), `o.Disable()` leaves the entity out, and
+  `app.MapEntityEndpoints(o => o.ConfigureGroup<Product>(g => g.RequireAuthorization("Editors")))` adds a policy for one
+  entity. It adds to the policy on the returned group rather than replacing it: a caller must pass both.
+- **Controllers and mapped endpoints mix.** An entity whose `EntityControllerBase` subclass MVC discovers is left to its
+  controller (logged), and so is an attachment link with an attachment controller, so an app moves one entity at a time.
+  `app.MapEntity<Product>("v2/products")` maps one entity even when `o.Disable()` or a controller keeps it off
+  `MapEntityEndpoints()`; its DTOs, exclusions and anonymous endpoints still apply. The startup check warns about an entity
+  both a controller and a mapping serve.
+- **What differs from a controller.** The input DTO's DataAnnotations are checked by the request, with the 400 of a
+  validator's refusal (`errorDetails` included) rather than MVC's automatic one. A missing row answers a `ProblemDetails`
+  404. JSON is `System.Text.Json` only — a host on `AddNewtonsoftJson` keeps its controllers. The upload routes skip
+  antiforgery validation, since an API client sends no token.
+- **The query string** binds the search object's scalar and collection properties — `ids=1&ids=2` or `ids[0]=1`,
+  invariant culture, enums by name in any case — and `includes` / `sortBy` on a complex entity. A property of a complex
+  type does not bind, and MVC's binding attributes are not read: a property marked `[BindNever]` binds here, and one
+  renamed with `[FromQuery(Name = …)]` binds by its own name. A value that does not convert answers 400, keyed by the
+  property.
+- **Attachments** map under the owner's route with the attachment controller's sub-routes, so the app writes no
+  attachment controller. Only the `int`-keyed link shape (`IHasAttachments<TLink>`) maps; an owner with another key
+  type is logged and keeps an attachment controller. `UseAttachmentUris()` links the DTO `Uri` to the mapped download —
+  for an owner mapped twice, to its first mapping, since endpoint names are global.
+- **An endpoint of the app's own** beside them sends its request through `IEntitySender` and takes
+  `.AddEndpointFilter<EntityExceptionEndpointFilter>()`, for the 400 and 409 bodies the mapped endpoints answer with.
+- **Write authorization** is a policy on the group, not a controller filter: §Role-gated write authorization filter →
+  *On mapped endpoints*.
 
 ## Input validation with FluentValidation
 
@@ -1167,6 +1245,63 @@ its own controller, so it needs its own entry for file upload (`POST {objectId}/
 **Check it** with a signed-in user outside the roles: a write to a gated controller answers 403, also with a
 malformed body, a `POST …/search` answers 200, and no warning names a controller you meant to list. On a
 controller open for anonymous reads, the same write without a token answers 401.
+
+### On mapped endpoints
+
+The mapped endpoints (§Mapped entity endpoints) have no controller to key on and run no MVC filter. Each carries an
+`EntityEndpointMetadata` — its entity (the owner, for an attachment route) and `IsWrite` — so the tier is an
+authorization policy on the mapped group. The authorization middleware runs it before binding, as the controller
+filter runs before model binding, and it fails closed the same way:
+
+<!-- no-compile -->
+```csharp
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;                       // HttpContext, GetEndpoint()
+using Regira.Entities.Web.Endpoints;                   // EntityEndpointMetadata
+using Regira.Security.Authentication.Jwt.Extensions;   // FindRoles() — package Regira.Security.Authentication
+
+public sealed class EntityWriteRequirement : IAuthorizationRequirement;
+
+// builder.Services.AddAuthorization(o => o.AddPolicy("EntityWrites", p => p.RequireAuthenticatedUser().AddRequirements(new EntityWriteRequirement())));
+// builder.Services.AddSingleton<IAuthorizationHandler, EntityWriteAuthorizationHandler>();
+// app.MapEntityEndpoints().RequireAuthorization("EntityWrites");
+public class EntityWriteAuthorizationHandler(ILogger<EntityWriteAuthorizationHandler> logger) : AuthorizationHandler<EntityWriteRequirement>
+{
+    // Keyed on the entity TYPE — the owner's entry covers its attachment routes. An empty array lets any signed-in user write.
+    private static readonly Dictionary<Type, string[]> WriteRoles = new()
+    {
+        [typeof(Product)] = ["Administrator", "Editor"],
+    };
+
+    protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, EntityWriteRequirement requirement)
+    {
+        var http = context.Resource as HttpContext;
+        var metadata = http?.GetEndpoint()?.Metadata.GetMetadata<EntityEndpointMetadata>();
+        // an endpoint without the metadata — one of the app's own on the group — writes unless it is a GET: the safe default
+        var isWrite = metadata?.IsWrite ?? !HttpMethods.IsGet(http?.Request.Method ?? string.Empty);
+        if (!isWrite)
+        {
+            context.Succeed(requirement);                // a read — POST list and POST search included
+        }
+        else if (metadata == null || !WriteRoles.TryGetValue(metadata.EntityType, out var roles))
+        {
+            // fail closed — and say what is missing, or the 403 reads like a role problem
+            logger.LogWarning("EntityWriteAuthorizationHandler has no entry for {Endpoint}; its writes are refused. Add it to WriteRoles.",
+                metadata?.EntityType.Name ?? http?.GetEndpoint()?.DisplayName);
+        }
+        else if (roles.Length == 0 || roles.Intersect(context.User.FindRoles(), StringComparer.OrdinalIgnoreCase).Any())
+        {
+            context.Succeed(requirement);
+        }
+        return Task.CompletedTask;
+    }
+}
+```
+
+`o.AllowAnonymous(EntityEndpoint.Download)` on a registration exempts its downloads from the policy, as
+`[AllowAnonymous]` on a download action does. A write endpoint of the app's own on the group carries no entity metadata
+and is refused: gate it with a policy of its own, or give it `.WithMetadata(new EntityEndpointMetadata(typeof(CreditRequest),
+EntityEndpoint.Modify))` to share the entity's entry.
 
 ## Owned children that are both sortable and individually togglable
 
@@ -1557,8 +1692,9 @@ public class ArticleAttachmentController : EntityAttachmentControllerBase<Articl
 ```
 
 Overriding only the id overload is the trap: the generated `Uri` points at the filename route, which stays
-guarded — the `<img>` still 401s. (Authorization is evaluated on the *routed* action only; the filename
-action's internal call into the id action is a plain method call.) Reserve this for genuinely public assets
+guarded — the `<img>` still 401s. (Authorization is evaluated on the *routed* action only.) On mapped endpoints
+(§Mapped entity endpoints) the owner's registration opens both downloads at once:
+`e.Endpoints(o => o.AllowAnonymous(EntityEndpoint.Download))`. Reserve this for genuinely public assets
 (product/article pictures) — the routes are guessable; sensitive documents stay on the authenticated path
 (download them through the shared axios, which sends the bearer).
 

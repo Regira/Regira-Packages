@@ -1,3 +1,4 @@
+using Entities.TestApi.Controllers;
 using Entities.TestApi.Infrastructure;
 using Entities.TestApi.Infrastructure.Courses;
 using Entities.TestApi.Infrastructure.Departments;
@@ -18,6 +19,7 @@ using Regira.Entities.Mapping.AutoMapper;
 using Regira.Entities.Models.Abstractions;
 using Regira.Entities.Web.Attachments.DependencyInjection;
 using Regira.Entities.Web.DependencyInjection;
+using Regira.Entities.Web.Endpoints;
 using Regira.IO.Storage.FileSystem;
 using Regira.Licensing.DependencyInjection;
 using Scalar.AspNetCore;
@@ -32,8 +34,18 @@ var builder = WebApplication.CreateBuilder(args);
 // AddControllers().AddJsonOptions(...) does not touch. Configuring only the MVC side types every enum as an
 // integer in the document while the API sends names — nothing errors, and the SPA generates the wrong types.
 builder.Services.ConfigureDefaultJsonOptions();
+var mapsEntityEndpoints = ApiConfiguration.MapsEntityEndpoints(builder.Configuration);
 builder.Services
     .AddControllers()
+    // with the mapped endpoints serving courses, MVC must not discover their controllers, or MapEntityEndpoints() leaves
+    // courses to them
+    .ConfigureApplicationPartManager(parts =>
+    {
+        if (mapsEntityEndpoints)
+        {
+            parts.FeatureProviders.Add(new ExcludedControllers(typeof(CourseController), typeof(CourseAttachmentController)));
+        }
+    })
     .AddNewtonsoftJson(o =>
     {
         o.UseCamelCasing(true);
@@ -141,6 +153,14 @@ app.UseHttpsRedirection();
 app.MapEndPoints();
 // add controller mappings
 app.MapControllers();
+if (mapsEntityEndpoints)
+{
+    // courses, the one entity no discovered controller serves; departments and persons stay on their controllers, and
+    // enrollments are disabled
+    app.MapEntityEndpoints();
+    // and courses again on a route of their own, as a second API version would: a link mapped twice names its downloads once
+    app.MapEntity<Course>("v2/courses");
+}
 
 app.Run();
 

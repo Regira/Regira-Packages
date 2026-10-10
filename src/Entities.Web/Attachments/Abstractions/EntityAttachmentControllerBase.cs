@@ -12,9 +12,11 @@ using Regira.Entities.Services.Abstractions;
 using Regira.Entities.Web.Controllers;
 using Regira.Entities.Web.Models;
 using Regira.Web.IO;
-using System.Diagnostics;
 using Regira.Entities.Attachments.Mapping.Abstractions;
 using Regira.Entities.Mapping.Models;
+using Regira.Entities.Mediator;
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Requests;
 using static Regira.Web.Extensions.ControllerExtensions;
 
 namespace Regira.Entities.Web.Attachments.Abstractions;
@@ -45,38 +47,12 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
     [HttpPut("{objectId}/attachments/{id}")]
     public virtual async Task<ActionResult<SaveResult<TDto>>?> Update([FromRoute] int objectId, [FromRoute] int id, [FromBody] TInputDto model)
     {
-        var sw = new Stopwatch();
-        sw.Start();
-
         try
         {
-            var mapper = HttpContext.RequestServices.GetRequiredService<IEntityMapper>();
-            var item = mapper.Map<TEntity>(model);
             // the route is authoritative — the body can neither target another row nor reparent it
-            item.Id = id;
-            item.ObjectId = objectId;
-
-            var service = HttpContext.RequestServices.GetRequiredService<IEntityService<TEntity, int>>();
-            var original = await FetchItem(id);
-            if (original == null)
-            {
-                return NotFound();
-            }
-            if (original.ObjectId != objectId)
-            {
-                ModelState.AddModelError(nameof(objectId), "Not a link of this owner.");
-                return ValidationProblem(ModelState);
-            }
-
-            await service.Save(item);
-            var affected = await service.SaveChanges();
-
-            var savedItem = await FetchItem(id);
-            var savedModel = mapper.Map<TDto>(savedItem!);
-
-            sw.Stop();
-
-            return this.SaveResult(savedModel, affected, false, sw.ElapsedMilliseconds);
+            // MVC has validated the body by then, as for SaveCommand
+            var result = await Sender.Send(new UpdateAttachmentCommand<TEntity, TDto, TInputDto>(objectId, id, model, ValidateInput: false));
+            return result == null ? NotFound() : Ok(result);
         }
         catch (EntityInputException<TEntity> ex)
         {
@@ -93,66 +69,31 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
     [HttpGet("files/{id}")]
     public virtual async Task<IActionResult> GetFile([FromRoute] int id, bool inline = true)
     {
-        var service = HttpContext.RequestServices.GetRequiredService<IEntityService<TEntity, int>>();
-        var item = await service.Details(id);
-
-        if (item == null)
-        {
-            return NotFound();
-        }
-
-        return this.File(item.Attachment!, inline);
+        var attachment = await Sender.Send(new AttachmentFileQuery<TEntity>(id));
+        return attachment == null ? NotFound() : this.File(attachment, inline);
     }
     /// <summary>
     /// Downloads by the client-facing <c>FileName</c>, which may carry a virtual folder
     /// (<c>folder1/folder2/report.pdf</c>) — hence the catch-all: a single-segment token would never route a
-    /// foldered name, leaving those files reachable only by id.
+    /// foldered name, leaving those files reachable only by id. Served through <see cref="GetFile(int, bool)"/>, so an
+    /// override of that one covers this download too.
     /// </summary>
     [HttpGet("{objectId}/files/{*fileName}")]
     public virtual async Task<IActionResult> GetFile([FromRoute] int objectId, [FromRoute] string fileName, bool inline = true)
     {
-        // ASP.NET Core does not decode %2F in a path segment (it would change the route's shape), and
-        // LinkGenerator emits exactly that form for the Uri on the DTO — so an encoded link arrives as
-        // "archive%2F2026%2Fscan.txt" and must be decoded here. A literal path arrives already split and is
-        // untouched. Normalizing after decoding means both spellings hit the same stored value.
-        var decodedFileName = (fileName.Contains("%2F", StringComparison.OrdinalIgnoreCase)
-            ? Uri.UnescapeDataString(fileName)
-            : fileName).ToVirtualPath();
         var service = HttpContext.RequestServices.GetRequiredService<IEntityService<TEntity, int>>();
-        var items = await service.List(new { objectId = new[] { objectId }, fileName = decodedFileName }, new PagingInfo { PageSize = 1 });
-
-        if (!items.Any())
-        {
-            return NotFound();
-        }
-
-        return await GetFile(items.First().Id);
+        var link = (await service.List(new { objectId = new[] { objectId }, fileName = AttachmentRouteValues.DecodeFileName(fileName) }, new PagingInfo { PageSize = 1 }))
+            .FirstOrDefault();
+        return link == null ? NotFound() : await GetFile(link.Id, inline);
     }
     // Upload
     [HttpPost("{objectId}/files")]
     public virtual async Task<ActionResult<SaveResult<TDto>>> Add([FromRoute] int objectId, IFormFile file, [FromForm] TInputDto model)
     {
-        var sw = new Stopwatch();
-        sw.Start();
-
-        var service = HttpContext.RequestServices.GetRequiredService<IEntityService<TEntity, int>>();
-        var mapper = HttpContext.RequestServices.GetRequiredService<IEntityMapper>();
-
-        var item = mapper.Map<TEntity>(model);
-        // the route creates a link: an Id in the form cannot turn the upload into a write to another one
-        item.Id = default;
-        item.ObjectId = objectId;
-        item.Attachment = file.ToNamedFile().ToAttachment();
-
         try
         {
-            await service.Save(item);
-            var affected = await service.SaveChanges();
-            var savedModel = mapper.Map<TDto>(item);
-
-            sw.Stop();
-
-            return this.SaveResult(savedModel, affected, true, sw.ElapsedMilliseconds);
+            // the route creates a link: an Id in the form cannot turn the upload into a write to another one
+            return Ok(await Sender.Send(new UploadAttachmentCommand<TEntity, TDto, TInputDto>(objectId, model, file.ToNamedFile(), ValidateInput: false)));
         }
         catch (EntityInputException<TEntity> ex)
         {
@@ -162,35 +103,10 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
     [HttpPut("{objectId}/files/{id}")]
     public virtual async Task<ActionResult<SaveResult<TDto>>> Modify([FromRoute] int objectId, [FromRoute] int id, IFormFile file)
     {
-        var sw = new Stopwatch();
-        sw.Start();
-
-        var service = HttpContext.RequestServices.GetRequiredService<IEntityService<TEntity, int>>();
-        var mapper = HttpContext.RequestServices.GetRequiredService<IEntityMapper>();
-
-        var item = (await service.List(new { id }, new PagingInfo { PageSize = 1 })).SingleOrDefault();
-        if (item == null)
-        {
-            return NotFound();
-        }
-        if (item.ObjectId != objectId)
-        {
-            ModelState.AddModelError(nameof(objectId), "Not a link of this owner.");
-            return ValidationProblem(ModelState);
-        }
-
-        item.ObjectId = objectId;
-        item.Attachment = file.ToNamedFile().ToAttachment();
-
         try
         {
-            await service.Save(item);
-            var affected = await service.SaveChanges();
-            var savedModel = mapper.Map<TDto>(item);
-
-            sw.Stop();
-
-            return this.SaveResult(savedModel, affected, false, sw.ElapsedMilliseconds);
+            var result = await Sender.Send(new ReplaceAttachmentFileCommand<TEntity, TDto>(objectId, id, file.ToNamedFile()));
+            return result == null ? NotFound() : Ok(result);
         }
         catch (EntityInputException<TEntity> ex)
         {
@@ -198,6 +114,7 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
         }
     }
 
+    private IEntitySender Sender => HttpContext.RequestServices.GetEntitySender();
 
     /// <summary>
     /// Fetches item with related Attachment, but without file contents

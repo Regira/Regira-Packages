@@ -2,7 +2,7 @@
 
 As of 2026-10-09. Sources: the `Regira-Packages` repository, branch `wip` at `b32dbe1`; the README of the source-generated Mediator library ([martinothamar/Mediator](https://github.com/martinothamar/Mediator)) and Microsoft Learn's [Parameter binding in Minimal API applications](https://learn.microsoft.com/aspnet/core/fundamentals/minimal-apis/parameter-binding), both read on 2026-10-09. The other libraries' licences are as their projects state them. The design below predates the build; *Outcome* records what was built and where it differs.
 
-**Status: built on `wip` on 2026-10-10 through rollout step 5, uncommitted (see *Outcome*). The optional minimal-API surface, rollout step 6, is not built, and open question 3 waits for it.**
+**Status: built on `wip` on 2026-10-10 — rollout steps 1 to 5 committed in `7470cdc`, the minimal-API surface (step 6) uncommitted (see *Outcome*). Every open question is decided; open question 2 for now.**
 
 ## Outcome
 
@@ -10,6 +10,8 @@ Built as recommended — the mediator (open question 1), with the in-house sende
 
 - **`Regira.Entities.Mediator`** holds the requests, the default handlers, `IEntityRequestExecutor`, the in-house `EntitySender` and the input check. Open question 2 is answered for now with this package of its own rather than a move into `Regira.Entities` or the DI package. It references `Regira.Entities.DependencyInjection` alone, as the FluentValidation adapter does, so a worker host takes no ASP.NET Core with it. The response envelopes and `EntitySaveHelper` moved here under their old namespaces, and `Regira.Entities.Web` forwards them (`TypeForwards.cs`).
 - **`Regira.Entities.Mediator.MediatR`** is the adapter: `UseMediatR()`, the closed envelope `EntityRequestMessage : IRequest<object?>` and its handler, and `MediatREntitySender`. Open question 5: it references MediatR 12.0.0 as its floor, and its tests pass on 12.0.0, 13.1.0 and 14.2.0.
+
+### Steps 1 to 5
 
 Where the build differs from the design:
 
@@ -23,6 +25,45 @@ Where the build differs from the design:
 - **Every request carries `EntityType` and `Operation`** through the non-generic `IEntityRequest`, implemented explicitly so the records' own members stay their data.
 
 Verified: `tests/Entities.Mediator.Testing` (new, 24 tests) on the three MediatR versions. `Entities.Web.Testing` (190) passes; its PATCH test now expects `errorDetails`, the planned body change. `Entities.Testing`, `Entities.DependencyInjection.Testing`, `Entities.Mapping.Mapster.Testing` and `Entities.Providers.Testing` pass, and the GuideVerifier `entities` group compiles. The guides gained *Entity operations outside a controller* in `entities.patterns`, with the signatures, namespaces, card, setup and instructions entries, and `docs/web-endpoints` *Entity Operations*. The licensing lists, the routing tables, the solution and `CHANGELOG.md` are updated.
+
+### The minimal-API surface (rollout step 6)
+
+Built as the work-item table describes, open question 3 decided as recommended: no fallback to the entity, so mapping
+throws for an entity without a DTO pair, and `e.Endpoints(o => o.UseDtos<Product, Product>())` serves one as itself.
+
+- **`MapEntityEndpoints()` and `MapEntity<TEntity>(route)`** (`Regira.Entities.Web.Endpoints`) close a generic mapping
+  method per entity from `EntityRegistrationLog`, which now records a complex registration's sort and includes types as
+  init-only members. `Endpoints()` is five overloads, one per `For<>()` builder type, as `Validate` and `React` are.
+- **Skipped from the surface:** an entity a discovered controller serves (logged), an attachment link (served under its
+  owner), and the shared `Attachment` store `WithAttachments()` registers, which the design did not foresee in the log.
+- **Query binding** is `EntityQueryBinder`, MVC's conversion rules over `TypeConverter` with the invariant culture.
+- **Exception mapping** is `EntityExceptionEndpointFilter` over `ToValidationProblem`, split out of `ToBadRequest`. The
+  spike's question is settled by a test: without MVC, `Results.Problem` writes through the app's `IProblemDetailsService`,
+  so `AddProblemDetails(o => o.CustomizeProblemDetails = …)` reaches the 400 and the 404 bodies.
+- **Attachments:** the operations layer gained the five attachment requests, and the attachment controller sends them,
+  so both surfaces share one implementation. Its 400 for a link of another owner now carries `errorDetails`. One
+  exception: the controller's download by file name still goes through its virtual `GetFile(id)`, so an app's override
+  of that action keeps covering the link the DTO `Uri` points at; `AttachmentFileByNameQuery` is the mapped surface's
+  alone. `AttachmentUriResolver` links by endpoint name first. Endpoint names are global, and a duplicate fails every
+  request, so a link mapped twice (`MapEntity<TEntity>()` on a second route) has only its first downloads named,
+  tracked by `EntityEndpointRegistry`; the `Uri` links to the first mapping. A form posting no model fields binds no
+  `[FromForm]` model in a minimal API, so the upload endpoint creates an empty one, as MVC does. The upload and update
+  commands carry `SaveCommand`'s `ValidateInput`, which the attachment controller turns off: on the mapped surface no MVC
+  checks those bodies. Downloads use Regira.Web's new `INamedFile.ToFileResult()`, sharing the controller helper's
+  headers, with a `ProblemDetails` 404 for missing content.
+- **Write authorization:** every endpoint carries `EntityEndpointMetadata`, and the recipe is an authorization policy
+  that also refuses an unmarked non-GET endpoint on the group, so an app's own write there fails closed.
+- **Startup checks:** `EntityEndpointValidator` and `EntityEndpointDtoShapeSource`, registered by
+  `ValidateEntityControllers()`, which `UseEntities()` now invokes late-bound in place of naming each web check. The
+  served-twice check is a warning, not an error: `MapEntity<TEntity>(route)` on a route of its own is legitimate.
+- **`AD0001` is suppressed in `Entities.Web.csproj`:** ASP.NET Core's `RouteHandlerAnalyzer` throws on a handler whose
+  parameters are type parameters, which every mapped handler has.
+
+Verified for step 6: the course tests run against both surfaces — `CourseTests<TFactory>` and
+`CourseAttachmentsTests<TFactory>`, 55 cases, on a test-API mode where `MapEntityEndpoints()` serves courses and
+`MapEntity<Course>("v2/courses")` maps them a second time — and `EntityEndpointTests` (19) cover a host without MVC, the
+binding, the options, the DTO rule, the filter on an app's own endpoint, the problem customization, the metadata, the
+authorization recipe and the startup checks. `Entities.Web.Testing` passes 267.
 
 ## Recommendation
 

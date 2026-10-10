@@ -364,7 +364,9 @@ without their SaveChanges interceptor (an informational note instead when the `R
 content and no custom filter — any custom filter counts as handling `q`) and when an
 attachments owner's collection is not mapped to the link's `ObjectId`, when an entity validator applies to no
 registered entity or an entity's write path cannot run the validators in its scope, and when `UseRepository()` has no
-repository type for a `For<>()` shape, and fails on a `[ServerOwned]` declaration nothing can enforce.
+repository type for a `For<>()` shape, and fails on a `[ServerOwned]` declaration nothing can enforce. With
+[mapped endpoints](web-endpoints.md#mapped-endpoints) it also warns about an entity both a controller and a mapping
+serve, and about mapped attachment downloads without `UseAttachmentUris()`, whose DTOs would carry a null `Uri`.
 Configure via `UseEntities(o => o.ConfigureValidation(v => { v.Enabled = true; /* Production opt-in */ }))`.
 
 
@@ -615,7 +617,7 @@ public static class QueryExtensions
 }
 ```
 
-**Default & maximum page size** — configure these so List/Search endpoints page automatically instead of returning the full set. Enforced at the HTTP boundary only (by the MVC controllers, via the shared `ApplyPagingDefaults` clamp); direct `IEntityService` calls keep full control.
+**Default & maximum page size** — configure these so List/Search endpoints page automatically instead of returning the full set. Enforced by the list and search requests the endpoints send (their handlers apply the shared `ApplyPagingDefaults` clamp); direct `IEntityService` calls keep full control.
 
 <!-- no-compile -->
 ```csharp

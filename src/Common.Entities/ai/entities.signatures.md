@@ -1095,7 +1095,7 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
     EntityServiceBuilder<TContext, TEntity, TKey> Includes(
         Func<IQueryable<TEntity>, EntityIncludes?, IQueryable<TEntity>> addIncludes);
 
-    // Per-entity paging override (HTTP boundary). null = off; SetPageSize() opts out entirely.
+    // Per-entity paging override (applied by the list and search requests). null = off; SetPageSize() opts out entirely.
     EntityServiceBuilder<TContext, TEntity, TKey> SetPageSize(
         int? defaultPageSize = null, int? maxPageSize = null);
 
@@ -1881,8 +1881,23 @@ public sealed record PatchCommand<TEntity, TKey, TDto, TInputDto>(TKey Id, JsonE
     : IEntityRequest<SaveResult<TDto>>;
 public sealed record DeleteCommand<TEntity, TKey, TDto>(TKey Id) : IEntityRequest<DeleteResult<TDto>>;
 
-// default handlers (DetailsHandler, ListHandler ×2, SearchHandler ×2, SaveHandler, PatchHandler, DeleteHandler):
-// public classes with a virtual Handle and a protected Services, built from the request's own type arguments
+// an owner's attachment routes — TEntity is the int-keyed link (IEntityAttachment<int, int, int, Attachment>); the route
+// wins over the input, and a link of another owner throws an EntityInputException keyed objectId. The attachment
+// controller and the mapped endpoints send them; the controller's download by name goes through its GetFile(id), so
+// AttachmentFileByNameQuery comes from the mapped endpoints only
+// ValidateInput as on SaveCommand: the input's DataAnnotations first; the attachment controller passes false
+public sealed record UploadAttachmentCommand<TEntity, TDto, TInputDto>(int ObjectId, TInputDto Input, INamedFile File, bool ValidateInput = true)
+    : IEntityRequest<SaveResult<TDto>>;
+public sealed record UpdateAttachmentCommand<TEntity, TDto, TInputDto>(int ObjectId, int Id, TInputDto Input, bool ValidateInput = true)
+    : IEntityRequest<SaveResult<TDto>>;
+public sealed record ReplaceAttachmentFileCommand<TEntity, TDto>(int ObjectId, int Id, INamedFile File) : IEntityRequest<SaveResult<TDto>>;
+public sealed record AttachmentFileQuery<TEntity>(int Id) : IEntityRequest<Attachment>;
+public sealed record AttachmentFileByNameQuery<TEntity>(int ObjectId, string FileName) : IEntityRequest<Attachment>;
+
+// default handlers (DetailsHandler, ListHandler ×2, SearchHandler ×2, SaveHandler, PatchHandler, DeleteHandler;
+// UploadAttachmentHandler, UpdateAttachmentHandler, ReplaceAttachmentFileHandler, AttachmentFileHandler,
+// AttachmentFileByNameHandler): public classes with a virtual Handle and a protected Services, built from the request's
+// own type arguments
 public class DetailsHandler<TEntity, TKey, TDto>(IServiceProvider services)
     : IEntityRequestHandler<DetailsQuery<TEntity, TKey, TDto>, DetailsResult<TDto>>;
 
@@ -1909,6 +1924,50 @@ public static EntityServiceCollectionOptions UseMediatR(this EntityServiceCollec
 public sealed record EntityRequestMessage(IEntityRequest Request) : IRequest<object?>;
 public class EntityRequestMessageHandler(IEntityRequestExecutor executor) : IRequestHandler<EntityRequestMessage, object?>;
 public class MediatREntitySender(IServiceProvider services) : IEntitySender;
+```
+
+Mapped endpoints — `Regira.Entities.Web.Endpoints`, usage in `entities.patterns.md` → *Mapped entity endpoints (no controllers)*:
+
+<!-- no-compile -->
+```csharp
+using Regira.Entities.Web.Endpoints;
+
+// every For<>() registration, the controllers' route table; returns the group of all of them
+public static RouteGroupBuilder MapEntityEndpoints(this IEndpointRouteBuilder endpoints, Action<EntityEndpointsOptions>? configure = null);
+// one registration, even one Disable() or a controller keeps off MapEntityEndpoints(); route: the argument, else its
+// Route, else the convention. Its UseDtos, Exclude and AllowAnonymous apply as they do there
+public static RouteGroupBuilder MapEntity<TEntity>(this IEndpointRouteBuilder endpoints, string? route = null);
+
+public class EntityEndpointsOptions
+{
+    public string Prefix { get; set; } = "";
+    // on top of what the returned group carries: a policy added here applies besides the group's, not instead of it
+    public EntityEndpointsOptions ConfigureGroup<TEntity>(Action<RouteGroupBuilder> configure);
+}
+
+// on each For<>() builder (simple, int, search-object, complex, complex int), returning that builder
+public static TBuilder Endpoints(this TBuilder builder, Action<EntityEndpointOptions> configure);
+
+public class EntityEndpointOptions
+{
+    public string? Route { get; set; }                                  // null = kebab-case plural of the entity name
+    public EntityEndpointOptions Disable();
+    public EntityEndpointOptions Exclude(params EntityEndpoint[] endpoints);
+    public EntityEndpointOptions AllowAnonymous(params EntityEndpoint[] endpoints);
+    public EntityEndpointOptions UseDtos<TDto, TInputDto>();            // else the UseMapping pair; neither = mapping throws
+}
+
+public enum EntityEndpoint
+{
+    Details, List, Search, Save, Create, Modify, Patch, Delete,
+    AttachmentDetails, AttachmentList, AttachmentUpdate, AttachmentDelete, Download, Upload, ReplaceFile
+}
+
+// on every mapped endpoint: the entity (the owner, for an attachment route) and the endpoint
+public sealed record EntityEndpointMetadata(Type EntityType, EntityEndpoint Endpoint) { public bool IsWrite { get; } }
+
+// EntityInputException → 400, EntityConstraintException / EntityConcurrencyException → 409, the controllers' bodies
+public sealed class EntityExceptionEndpointFilter : IEndpointFilter;
 ```
 
 ---
@@ -2096,7 +2155,7 @@ public class EntityServiceCollectionOptions(IServiceCollection services)
 {
     public IServiceCollection Services { get; }
 
-    // Global list/paging defaults applied at the HTTP boundary (null = off).
+    // Global list/paging defaults, applied by the list and search requests the endpoints send (null = off).
     public int? DefaultPageSize { get; set; } // forced page size when the request omits paging
     public int? MaxPageSize { get; set; }     // upper limit a requested page size is clamped to
 

@@ -1023,8 +1023,8 @@ services.UseEntities<WebshopDbContext>(options =>
     // Opt out entirely — this entity is never force-paged (omitted / pageSize <= 0 returns every row):
     .For<Category>(e => e.SetPageSize());
 
-// Note: enforced at the HTTP boundary only. A direct IEntityService.List(so) call (no PagingInfo)
-// returns the full set uncapped — the service layer keeps full control.
+// Note: enforced by the ListQuery / SearchQuery the endpoints send, not by the service. A direct
+// IEntityService.List(so) call (no PagingInfo) returns the full set uncapped — the service layer keeps full control.
 ```
 
 ### Attachments

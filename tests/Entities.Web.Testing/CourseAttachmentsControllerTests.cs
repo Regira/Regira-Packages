@@ -23,14 +23,41 @@ using Testing.Library.Data;
 
 namespace Entities.Web.Testing;
 
-public class CourseAttachmentsControllerTests : IClassFixture<ContosoApiFactory>, IDisposable
+/// <summary>The course attachment routes, served by the attachment controller.</summary>
+public class CourseAttachmentsControllerTests(ContosoApiFactory factory) : CourseAttachmentsTests<ContosoApiFactory>(factory);
+
+/// <summary>The same routes and cases, served by <c>MapEntityEndpoints()</c>.</summary>
+public class CourseAttachmentsEndpointTests(ContosoEndpointsApiFactory factory) : CourseAttachmentsTests<ContosoEndpointsApiFactory>(factory)
+{
+    private readonly ContosoEndpointsApiFactory _factory = factory;
+
+    // the test API maps courses a second time, on v2/courses: endpoint names are global, so a repeated download name
+    // would fail every request; the second mapping serves the files unnamed, and the Uri links to the first
+    [Fact]
+    public async Task A_Second_Mapping_Serves_The_Files_And_The_Uri_Links_To_The_First()
+    {
+        using var client = _factory.CreateClient();
+        var content = new MultipartFormDataContent { { new StringContent("mapped twice"), "file", "v2.txt" } };
+        using var upload = await client.PostAsync("/v2/courses/3/files", content);
+        Assert.Equal(HttpStatusCode.OK, upload.StatusCode);
+        var saved = (await upload.Content.ReadFromJsonAsync<SaveResult<EntityAttachmentDto>>())!.Item;
+
+        Assert.Equal("http://localhost/courses/3/files/v2.txt?inline=True", saved.Uri);
+        Assert.Equal("mapped twice", await client.GetStringAsync(saved.Uri));
+        Assert.Equal("mapped twice", await client.GetStringAsync($"/v2/courses/files/{saved.Id}"));
+        Assert.Equal("mapped twice", await client.GetStringAsync("/v2/courses/3/files/v2.txt"));
+    }
+}
+
+public abstract class CourseAttachmentsTests<TFactory> : IClassFixture<TFactory>, IDisposable
+    where TFactory : ContosoApiFactory
 {
     Department[] Departments { get; }
     Course[] Courses { get; }
 
     private readonly ContosoContext _dbContext;
-    private readonly ContosoApiFactory _factory;
-    public CourseAttachmentsControllerTests(ContosoApiFactory factory)
+    private readonly TFactory _factory;
+    protected CourseAttachmentsTests(TFactory factory)
     {
         _factory = factory;
         Directory.CreateDirectory(_factory.AttachmentsDirectory);
@@ -935,6 +962,29 @@ public class CourseAttachmentsControllerTests : IClassFixture<ContosoApiFactory>
         var download = await client.GetAsync($"/courses/{courseId}/files/{name}");
         Assert.Equal(HttpStatusCode.OK, download.StatusCode);
         Assert.Equal("image/png", download.Content.Headers.ContentType?.MediaType);
+    }
+
+    // MVC checks an [ApiController]'s bodies; the mapped endpoints have the upload and update commands check them
+    [Fact]
+    public async Task The_Upload_And_The_Update_Check_Their_Input_Against_Its_DataAnnotations()
+    {
+        using var client = _factory.CreateClient();
+        var tooLong = new string('x', 101);
+
+        var form = new MultipartFormDataContent
+        {
+            { new StringContent("annotated"), "file", "annotated.txt" },
+            { new StringContent(tooLong), "description" }
+        };
+        using var upload = await client.PostAsync("/courses/3/files", form);
+        Assert.Equal(HttpStatusCode.BadRequest, upload.StatusCode);
+
+        var link = await Upload(client, 3, "annotated.txt", "annotated");
+        using var update = await client.PutAsJsonAsync($"/courses/3/attachments/{link.Id}", new CourseAttachmentInputDto { Description = tooLong });
+        Assert.Equal(HttpStatusCode.BadRequest, update.StatusCode);
+        var problem = await update.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+        // the controller host serializes through Newtonsoft's camelCase resolver, which camelCases the key
+        Assert.Contains(problem!.Errors.Keys, key => key.Equals(nameof(CourseAttachmentInputDto.Description), StringComparison.OrdinalIgnoreCase));
     }
 
     private static async Task<CourseAttachmentDto> Upload(HttpClient client, int courseId, string fileName, string text)

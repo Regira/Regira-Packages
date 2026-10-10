@@ -88,8 +88,8 @@ public class ProductAttachment : EntityAttachment
 ```
 
 Each owning entity gets its own subclass: the class is the join table and its constructor pins one
-`ObjectType`, so attaching files to a second entity means a second subclass, `DbSet`, controller and
-registration.
+`ObjectType`, so attaching files to a second entity means a second subclass, `DbSet`, controller (none when its
+endpoints are mapped) and registration.
 
 ### Owning Entity
 
@@ -149,6 +149,11 @@ key from the owner to one of its own attachments makes the two tables reference 
 [Entity Models: Referencing one of your own children](models.md#referencing-one-of-your-own-children).
 
 ### Controllers
+
+An application that maps its entities with `MapEntityEndpoints()` writes no attachment controller: the routes below
+are mapped under the owner's route, for the `int`-keyed link (`IHasAttachments<TLink>`), and send the same requests
+([Web Endpoints → Mapped Endpoints](web-endpoints.md#mapped-endpoints)). An owner with another key type keeps a
+controller.
 
 The custom EntityAttachmentController must derive from `EntityAttachmentControllerBase`. Set the class
 `[Route]` to the **owner base path** — the base actions append the sub-routes
@@ -278,10 +283,11 @@ builder.Services
 > `Entities.DependencyInjection` doesn't reference `Entities.Web`, so the ASP.NET Core resolver
 > (`LinkGenerator` + `IHttpContextAccessor`) is opt-in (namespace
 > `Regira.Entities.Web.Attachments.DependencyInjection`). Call it in the `UseEntities` options block, before
-> entities are registered; without it, `Uri` is `null`. The `Uri` is generated as a link to the `GetFile`
-> action on the attachment entity's controller (`{EntityAttachment}Controller : EntityAttachmentControllerBase<…>`),
-> so that controller must be mapped. If you replace the generated attachment endpoints with a custom download
-> route, the link generator finds no matching action and `Uri` stays `null` — use the download endpoint
+> entities are registered; without it, `Uri` is `null`. The `Uri` links to the owner's mapped download when
+> `MapEntityEndpoints()` serves it (the first mapping, for an owner mapped twice), else to the `GetFile` action on the
+> attachment entity's controller (`{EntityAttachment}Controller : EntityAttachmentControllerBase<…>`), so one of
+> the two must be in place. If you replace the generated attachment endpoints with a custom download
+> route, the link generator finds no match and `Uri` stays `null` — use the download endpoint
 > directly. It is also `null` outside an active request (e.g. during seeding).
 
 ## Overview

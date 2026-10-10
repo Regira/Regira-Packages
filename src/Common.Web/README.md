@@ -221,19 +221,21 @@ services.AddControllers(options =>
     options.InputFormatters.Insert(0, new TextPlainInputFormatter()));
 ```
 
-### ControllerExtensions and FormFileExtensions
+### ControllerExtensions, NamedFileResultExtensions and FormFileExtensions
 
 <!-- no-compile -->
 ```csharp
 // Return INamedFile as a download or inline
 return this.File(namedFile, inline: true);
+// The same from a minimal-API endpoint, as an IResult
+return namedFile.ToFileResult(httpContext, inline: true);
 
 // Read an upload as an INamedFile
 var upload = formFile.ToNamedFile();
 ```
 
-- `File()` sends `X-Content-Type-Options: nosniff` and, with every file but a PDF, `Content-Security-Policy:
-  sandbox`, so a file served from the app's origin renders but runs no script, whatever its name or stored type. A PDF
+- `File()` and `ToFileResult()` answer 404 for a file without content, and send `X-Content-Type-Options: nosniff` and,
+  with every file but a PDF, `Content-Security-Policy: sandbox`, so a file served from the app's origin renders but runs no script, whatever its name or stored type. A PDF
   goes without: a sandbox keeps the browser's PDF viewer from loading. The sandbox is added to a policy the app
   already sent, not put in its place; a middleware that sets `Content-Security-Policy` once the response starts
   (`OnStarting`) must append to the header too, or it replaces the sandbox.

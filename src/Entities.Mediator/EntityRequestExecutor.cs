@@ -30,6 +30,11 @@ public class EntityRequestExecutor(IServiceProvider services) : IEntityRequestEx
         [typeof(SaveCommand<,,,>)] = typeof(SaveHandler<,,,>),
         [typeof(PatchCommand<,,,>)] = typeof(PatchHandler<,,,>),
         [typeof(DeleteCommand<,,>)] = typeof(DeleteHandler<,,>),
+        [typeof(UploadAttachmentCommand<,,>)] = typeof(UploadAttachmentHandler<,,>),
+        [typeof(UpdateAttachmentCommand<,,>)] = typeof(UpdateAttachmentHandler<,,>),
+        [typeof(ReplaceAttachmentFileCommand<,>)] = typeof(ReplaceAttachmentFileHandler<,>),
+        [typeof(AttachmentFileQuery<>)] = typeof(AttachmentFileHandler<>),
+        [typeof(AttachmentFileByNameQuery<>)] = typeof(AttachmentFileByNameHandler<>),
     };
 
     private static readonly MethodInfo RunMethod =

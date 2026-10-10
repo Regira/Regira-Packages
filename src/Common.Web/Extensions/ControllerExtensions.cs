@@ -1,53 +1,21 @@
-﻿using System.Net.Mime;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Regira.IO.Abstractions;
-using Regira.IO.Extensions;
-using Regira.IO.Utilities;
 
 namespace Regira.Web.Extensions;
 
 public static class ControllerExtensions
 {
+    /// <summary>
+    /// Serves <paramref name="file"/> as its stored type, inline or as a download, with the headers that keep a file
+    /// from running on this origin (see <see cref="NamedFileResultExtensions.ToFileResult"/>, the minimal-API counterpart);
+    /// a file whose content is missing answers 404.
+    /// </summary>
     public static IActionResult File(this ControllerBase ctrl, INamedFile file, bool inline = true)
     {
-        // Resolved before any header is written: a missing blob must return a clean 404, not one advertising
-        // a Content-Disposition for a file that is not there.
-        // (GetStream() copies a stream-backed file into a MemoryStream, so this does buffer — it is a
-        // fresh, rewound, independently disposable stream, not a zero-copy handover.)
-        var stream = file.GetStream();
+        var stream = NamedFileResponse.Prepare(ctrl.Response, file, inline, out var contentType);
         if (stream == null)
         {
             return ctrl.NotFound();
-        }
-
-        var disposition = new ContentDisposition
-        {
-            FileName = file.FileName,
-            Inline = inline
-        };
-        ctrl.Response.Headers["Content-Disposition"] = disposition.ToString();
-        // make content-disposition available for axios client
-        ctrl.Response.Headers["Access-Control-Expose-Headers"] = "Content-Disposition";
-        // the file is served as its stored type: a browser must not guess another from its bytes
-        ctrl.Response.Headers["X-Content-Type-Options"] = "nosniff";
-        // Belt-and-braces: GetStream() already hands back a rewound stream. FileStreamResult sends
-        // Content-Length = stream.Length but copies from the current position, so were that ever not the
-        // case the body would be truncated (or empty) with a correct Content-Length.
-        if (stream.CanSeek)
-        {
-            stream.Position = 0;
-        }
-        var contentType = !string.IsNullOrWhiteSpace(file.ContentType)
-            ? file.ContentType
-            : ContentTypeUtility.GetContentType(file.FileName);
-        // a file that renders as a page runs its scripts on this origin — an upload named .html or .svg, or a type a client
-        // declared before uploads were typed by name. The sandbox lets any file render and run nothing; only a PDF goes
-        // without, since a sandbox keeps the browser's PDF viewer from loading. Appended, not set: a browser enforces every
-        // policy it receives, so one the app already sent still applies.
-        if (!contentType.Split(';')[0].Trim().Equals("application/pdf", StringComparison.OrdinalIgnoreCase))
-        {
-            ctrl.Response.Headers.Append("Content-Security-Policy", "sandbox");
         }
         return ctrl.File(stream, contentType, inline ? null : file.FileName);
     }
