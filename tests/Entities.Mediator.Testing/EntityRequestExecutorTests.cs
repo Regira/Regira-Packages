@@ -146,6 +146,24 @@ public class EntityRequestExecutorTests
         Assert.Null(await shop.FindAsync(shop.PenId));
     }
 
+    // without SerializerOptions a job's patch may name an enum value or give its number, as a client's JSON would
+    [Theory]
+    [InlineData("""{ "kind": "Refill" }""")]
+    [InlineData("""{ "kind": "refill" }""")]
+    [InlineData("""{ "kind": 1 }""")]
+    public async Task A_Patch_Without_Options_Reads_An_Enum_By_Name_Or_Number(string body)
+    {
+        await using var shop = await Shop.CreateServicesAsync();
+        using var scope = shop.Services.CreateScope();
+        var sender = scope.ServiceProvider.GetRequiredService<IEntitySender>();
+
+        using var patch = System.Text.Json.JsonDocument.Parse(body);
+        var patched = await sender.Send(new PatchCommand<Product, int, Product, ProductInputDto>(shop.PenId, patch.RootElement));
+
+        Assert.Equal(ProductKind.Refill, patched!.Item.Kind);
+        Assert.Equal("Pen", patched.Item.Title);
+    }
+
     [Fact]
     public async Task A_Search_Counts_And_Pages()
     {

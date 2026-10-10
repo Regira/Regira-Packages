@@ -258,14 +258,15 @@ Regira.Entities.Mediator.MediatR          ← optional — entity requests dispa
 **Optional — entity attachments:** `Regira.IO.Storage` (local file system / SFTP) or
 `Regira.IO.Storage.Azure` (Azure Blob Storage).
 
-> **NuGet advisory with no patched version (NU1903 / NU1902).** A transitive dependency can raise a security
-> advisory for which no fixed version exists yet (commonly seen via `SQLitePCLRaw.bundle_e_sqlite3` pulled in by
-> the SQLite provider). Options:
-> - **Float the transitive up** by adding an explicit higher version as a direct reference, lifting the resolved
->   version above the advisory. The advisory affects the whole `2.1.x` line — only the `3.x` line clears it, so
->   float to the latest `3.x`:
+> **NuGet advisory on a transitive dependency (NU1902 / NU1903).** A package can pull in a version that carries a
+> security advisory. The SQLite provider is the common case: GHSA-2m69-gcr7-jv3q (CVE-2025-6965, moderate, so
+> **NU1902**) affects `SQLitePCLRaw.lib.e_sqlite3` up to **2.1.11**, which `Microsoft.EntityFrameworkCore.Sqlite`
+> brings on every **8.0.x** and on **10.0.10 and earlier**. From **10.0.11** on it brings 2.1.12, past the
+> advisory, and needs nothing. Options:
+> - **Float the transitive up** by referencing the bundle directly at a version past the advisory — the same
+>   `2.1.x` line the provider was built against:
 >   ```xml
->   <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
+>   <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
 >   ```
 >   Then verify the advisory is gone: `dotnet list package --vulnerable --include-transitive`.
 > - **Or accept/suppress it** when no fixed version is available and the advisory does not affect your usage:
@@ -282,13 +283,13 @@ Regira.Entities.Mediator.MediatR          ← optional — entity requests dispa
 |---|---|
 | `Regira.Entities.*` | major **6**; resolve the patch at add time. Keep the `Regira.*` packages you reference **directly** on the same version, or restore reports NU1605 |
 | `Microsoft.OpenApi` | **no direct reference** — it arrives through `Microsoft.AspNetCore.OpenApi`, whose range is the compatible one by definition — from **10.0.11** on it is past the 2.x advisory (10.0.12 → `[2.12.0, 3.0.0)`); 10.0.10 and earlier pull the vulnerable 2.0.0, one more reason that package is added first (below). It must stay on **2.x**: 3.x breaks the .NET 10 OpenAPI source generator, and `dotnet add package Microsoft.OpenApi` resolves 3.x with at most an NU1608 warning. Overriding it anyway? Pin by hand the version restore already resolves (`dotnet list package --include-transitive`) — anything lower fails restore with NU1605 |
-| `SQLitePCLRaw.bundle_e_sqlite3` | pin **3.0.3** |
+| `SQLitePCLRaw.bundle_e_sqlite3` | **no direct reference** on EF Core Sqlite **10.0.11** or later, which brings 2.1.12, past GHSA-2m69-gcr7-jv3q; on net8 or 10.0.10 and earlier pin **2.1.12** (the advisory note above) |
 | `Microsoft.EntityFrameworkCore.*` (+ provider) | major must equal the TFM's EF Core major (`net10.0` → **10.x**, see Checklist 0.5); resolve the patch at add time |
 | `Microsoft.AspNetCore.OpenApi` | major must equal your TFM (`net10.0` → **10.x**); resolve the patch at add time. ⚠️ `dotnet new webapi` pins the patch its SDK shipped with, which can sit below the floor **`Regira.Security.Authentication.Web`** sets (SDK 10.0.400 writes `10.0.11`; the floor is `10.0.12`) — adding sign-in then trips NU1605 until you raise the pin |
 | `Scalar.AspNetCore` | major **2**; resolve the patch at add time |
 | `Serilog.AspNetCore`, `Serilog.Settings.Configuration`, `Serilog.Sinks.Console` | latest **stable** major — never a preview; resolve the patch at add time. The console/file sinks arrive transitively with `Serilog.AspNetCore`, so add them explicitly only if you pin them |
 
-**Add them as commands, not as hand-written XML.** Which rows you may type by hand is then structural rather than a rule to remember: only the exact pin below is XML, and every major-constraint row resolves its own patch.
+**Add them as commands, not as hand-written XML.** Which rows you may type by hand is then structural rather than a rule to remember: only the conditional pin below is XML, and every major-constraint row resolves its own patch.
 
 ```bash
 dotnet add package Microsoft.AspNetCore.OpenApi   # first — lifts the template's pin, so adding auth later can't downgrade (see below)
@@ -307,8 +308,8 @@ dotnet add package Serilog.Settings.Configuration
 > is live, and no hand-editing is needed.
 
 ```xml
-<!-- the one row that is pinned rather than resolved -->
-<PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
+<!-- only on net8, or EF Core Sqlite 10.0.10 and earlier: the one row that is pinned rather than resolved -->
+<PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
 ```
 
 ⚠️ A patch number you invent restores with **NU1603** ("*x.y.z was not found; x.y.z+n was resolved instead*") — or **NU1605** when a sibling package pulls a higher version of the same dependency. NU1603 is a warning, so a hand-authored `.csproj` can carry a version that does not exist and still build; **NU1605 is an error by default** and stops the restore dead.
@@ -413,6 +414,12 @@ builder.Services.AddEntityServices(builder.Configuration);
 // ...
 // build app and configure as in BasicApi
 ```
+
+> **Mapped entity endpoints only?** An app that serves its entities through `app.MapEntityEndpoints()` and has no
+> controller drops `AddControllers()` and `app.MapControllers()`: `ConfigureDefaultJsonOptions()` configures the
+> options alone and needs no MVC, and the mapped endpoints carry their own exception filter
+> (`entities.patterns` → *Mapped entity endpoints (no controllers)*). Keep both while any controller remains — a
+> hand-written one, or the account controllers of `Regira.Security.Authentication.Web`.
 
 > **⚠️ SQLite ignores foreign keys unless the connection string enables them.** `Microsoft.Data.Sqlite` leaves
 > `PRAGMA foreign_keys` **off**, so `DeleteBehavior.Restrict` never fires, cascades don't run, and orphan rows
@@ -530,6 +537,8 @@ builder.Services.AddControllers(o => o.Conventions.Add(new RoutePrefixConvention
 ```
 
 Spell a multi-word resource in **kebab-case plural**: `InterventionType` → `[Route("intervention-types")]`, `FacetGroup` → `[Route("facet-groups")]`. The SPA's `IConfig.api` must match it character-for-character, so a flattened `interventiontypes` or a camelCase `interventionTypes` costs a 404 on every call to that entity.
+
+**Mapped entity endpoints** (`app.MapEntityEndpoints()`, no controllers) are not reached by an MVC convention, so `UseCentralRoutePrefix` leaves them at the root. Give them the base where they are mapped — `app.MapEntityEndpoints(o => o.Prefix = "api")` — and keep it equal to the controllers' prefix when the app has both; `app.UsePathBase("/api")` covers both alike. Their routes are already the kebab-case plurals above (`entities.patterns` → *Mapped entity endpoints (no controllers)*).
 
 > **Building the paired SPA?** This prefix is one of four settings that must line up — SPA axios base,
 > entity `IConfig.api`, the Vite dev proxy, and this route prefix. The front-end guide resolves them as one

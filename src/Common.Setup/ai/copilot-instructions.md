@@ -159,7 +159,7 @@ The front-end default is a **full, scalable SPA** using the complete `regira` pa
 Keep setup aligned with the selected `projectTemplate`.
 
 - Use the latest stable .NET framework and C# features unless the project already targets something else. The LTS version is **.NET 10**
-- When adding a NuGet package, install the latest stable version rather than pinning an older one — outdated versions may carry known vulnerabilities. After restoring, run `dotnet list package --vulnerable --include-transitive` and upgrade anything flagged
+- When adding a NuGet package, install the latest stable version rather than pinning an older one — outdated versions may carry known vulnerabilities. After restoring, run `dotnet list package --vulnerable --include-transitive` and upgrade anything flagged. The one exception is a dependency whose newer majors need a commercial licence the app has no key for: MediatR 13 and later do, so such an app pins MediatR 12.5.0, the last Apache-2.0 release
 - Keep `Program.cs` thin; move service registration and middleware setup into `IServiceCollection` extension methods
 - Prefer `Microsoft.Extensions.DependencyInjection` and depend on abstractions instead of concrete implementations
 - Use file-scoped namespaces

@@ -227,7 +227,9 @@ app.MapEntityEndpoints(o => o.Prefix = "api").RequireAuthorization();
   `e.UseMapping<TDto, TInputDto>()`, or with `e.Endpoints(o => o.UseDtos<TDto, TInputDto>())`; `UseDtos<Product, Product>()`
   serves the entity as itself. An entity with neither stops the application at startup rather than going out with every
   column.
-- **Routes.** An entity's route is the kebab-case plural of its name (`InterventionType` → `intervention-types`).
+- **Routes.** An entity's route is the kebab-case plural of its name (`InterventionType` → `intervention-types`,
+  `Category` → `categories`, `TicketStatus` → `ticket-statuses`); an irregular noun comes out regular (`Person` →
+  `persons`), so it sets its own.
   `e.Endpoints(o => …)` on its registration sets another (`o.Route = "people"`), leaves endpoints out (`o.Exclude(…)`),
   opens some anonymously (`o.AllowAnonymous(EntityEndpoint.Download)`) or keeps the entity off the surface
   (`o.Disable()`). `MapEntityEndpoints(o => o.ConfigureGroup<Product>(g => …))` configures one entity's route group; a
@@ -248,7 +250,8 @@ app.MapEntityEndpoints(o => o.Prefix = "api").RequireAuthorization();
   entity. A value that does not convert answers 400. MVC's binding attributes (`[BindNever]`, `[FromQuery(Name = …)]`)
   are not read.
 - **Errors on endpoints of your own.** An endpoint that sends entity requests answers refused writes like the mapped ones
-  with `.AddEndpointFilter<EntityExceptionEndpointFilter>()`.
+  with `.AddEndpointFilter<EntityExceptionEndpointFilter>()`. One mapped on an entity's group, through
+  `ConfigureGroup<TEntity>()`, already has it.
 - **Authorization.** Every mapped endpoint carries an `EntityEndpointMetadata` naming its entity and whether it writes,
   for an authorization policy that gates writes per entity.
 
@@ -296,14 +299,19 @@ public class ProductImport(IEntitySender sender)
   `Regira.Entities.Mediator.Handlers`. It answers for the endpoint and for every other sender. A `PATCH` saves its
   merged input itself rather than through the `SaveCommand` handler, so a rule about how an entity saves — an
   authorization check, say — overrides both `SaveCommand` and `PatchCommand`, or `PATCH` bypasses it.
+- **Replacing one endpoint.** For what belongs to HTTP — an attribute, a header, a status code — replace the endpoint
+  rather than the handler. A controller overrides the `virtual` action with the same signature; the verb, route and
+  binding attributes are inherited. Mapped endpoints exclude the generated one (`e.Endpoints(o => o.Exclude(EntityEndpoint.List))`)
+  and map the app's own on the entity's group (`MapEntityEndpoints(o => o.ConfigureGroup<Product>(g => g.MapGet(…)))`),
+  sending the same request and carrying `EntityEndpointMetadata`.
 - **Behaviours.** An `IEntityPipelineBehavior<TRequest, TResponse>` registered as an open generic runs around every
   request, the first registered outermost. `IEntityRequest.EntityType` and `IEntityRequest.Operation` tell which entity
-  and which operation. `Duration` is written on the result a request returns, so a caching behaviour hands out a copy
+  and which operation. `Duration` is written on the result a request returns when it is an `IEntityResult`, as the built-in envelopes are, so a caching behaviour hands out a copy
   (`cached with { }`) rather than the instance it keeps.
 - **MediatR.** With `Regira.Entities.Mediator.MediatR`, `options.UseMediatR()` inside `UseEntities()` dispatches every
   entity request through MediatR, so the application's own pipeline behaviours wrap the generated endpoints. The
-  application registers MediatR itself (with its licence key from MediatR 13 on); handlers, behaviours and `Duration`
-  work as without it. Every entity request travels as one MediatR request type, `EntityRequestMessage`, holding the
+  application registers MediatR itself — MediatR 13 and later with its licence key, or MediatR 12.5.0, the last
+  Apache-2.0 release, without one; handlers, behaviours and `Duration` work as without it. Every entity request travels as one MediatR request type, `EntityRequestMessage`, holding the
   entity request. Another library plugs in the same way: replace the `IEntitySender` registration with a sender that
   passes the request through the library to `IEntityRequestExecutor`.
 

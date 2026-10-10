@@ -437,7 +437,8 @@ public virtual Task<ActionResult<DeleteResult<TDto>>?> Delete([FromRoute] TKey i
 ```
 
 The verb attribute is **inherited** by the override, so the route survives without it: declare only the
-`[Authorize]` and delegate — `return base.Create(model);`.
+`[Authorize]` and delegate — `return base.Create(model);`. When to override and when to replace the operation's handler
+instead, and the mapped-endpoint counterpart: `entities.patterns` → *Replacing one endpoint*.
 
 **Endpoints exposed by controller bases:**
 
@@ -1824,8 +1825,8 @@ as a single-character wildcard too. Escape them if exact punctuation has to matc
 
 ## Entity Operations
 
-Package `Regira.Entities.Mediator` (brought by `Regira.Entities.Web`); usage in `entities.patterns.md` → *Entity
-operations outside a controller*.
+Package `Regira.Entities.Mediator` (brought by `Regira.Entities.Web`); usage in
+`entities.patterns` → *Entity operations outside a controller*.
 
 <!-- no-compile -->
 ```csharp
@@ -1844,7 +1845,8 @@ public interface IEntitySender
 {
     Task<TResponse?> Send<TResponse>(IEntityRequest<TResponse> request, CancellationToken token = default);   // null = not found
 }
-// resolves the handler (a registered closed one, otherwise the default), runs the behaviours, fills Duration
+// resolves the handler (a registered closed one, otherwise the default), runs the behaviours, and fills Duration on
+// a response that is an IEntityResult (the built-in envelopes) — a request of the app's own answering another type gets none
 public interface IEntityRequestExecutor
 {
     Task<TResponse?> Execute<TResponse>(IEntityRequest<TResponse> request, CancellationToken token = default);
@@ -1877,6 +1879,7 @@ public sealed record SearchQuery<TEntity, TKey, TSearchObject, TSortBy, TInclude
     : IEntityRequest<SearchResult<TDto>>;
 public sealed record SaveCommand<TEntity, TKey, TDto, TInputDto>(TInputDto Input, TKey? Id = default, bool ValidateInput = true)
     : IEntityRequest<SaveResult<TDto>>;
+// SerializerOptions null: JsonSerializerDefaults.Web, cycles ignored, enums by name or number
 public sealed record PatchCommand<TEntity, TKey, TDto, TInputDto>(TKey Id, JsonElement Patch, JsonSerializerOptions? SerializerOptions = null)
     : IEntityRequest<SaveResult<TDto>>;
 public sealed record DeleteCommand<TEntity, TKey, TDto>(TKey Id) : IEntityRequest<DeleteResult<TDto>>;
@@ -1926,7 +1929,7 @@ public class EntityRequestMessageHandler(IEntityRequestExecutor executor) : IReq
 public class MediatREntitySender(IServiceProvider services) : IEntitySender;
 ```
 
-Mapped endpoints — `Regira.Entities.Web.Endpoints`, usage in `entities.patterns.md` → *Mapped entity endpoints (no controllers)*:
+Mapped endpoints — `Regira.Entities.Web.Endpoints`, usage in `entities.patterns` → *Mapped entity endpoints (no controllers)*:
 
 <!-- no-compile -->
 ```csharp

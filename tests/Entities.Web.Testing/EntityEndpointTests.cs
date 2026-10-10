@@ -403,6 +403,35 @@ public class EntityEndpointTests
         Assert.Equal(HttpStatusCode.OK, (await host.Client.GetAsync("/notes")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await host.Client.GetAsync("/v2/notes")).StatusCode);
     }
+
+    private sealed class PinnedNotesHandler : IEntityRequestHandler<ListQuery<Note, int, SearchObject, Note>, ListResult<Note>>
+    {
+        public Task<ListResult<Note>?> Handle(ListQuery<Note, int, SearchObject, Note> request, CancellationToken token = default)
+            => Task.FromResult<ListResult<Note>?>(new ListResult<Note> { Items = [new Note { Title = "pinned" }] });
+    }
+
+    // a plain For<>() entity's list is one request type on both surfaces, so one handler replaces it on either
+    [Fact]
+    public async Task One_List_Handler_Answers_For_The_Controller_And_The_Mapped_Endpoint()
+    {
+        await using var host = await Host.CreateAsync(
+            services =>
+            {
+                services.AddControllers().AddApplicationPart(typeof(NotesController).Assembly);
+                services.AddTransient<IEntityRequestHandler<ListQuery<Note, int, SearchObject, Note>, ListResult<Note>>, PinnedNotesHandler>();
+            },
+            app =>
+            {
+                app.MapControllers();
+                app.MapEntity<Note>("v2/notes");
+            });
+
+        foreach (var route in new[] { "/notes", "/v2/notes" })
+        {
+            var list = await host.Client.GetFromJsonAsync<ListResult<Note>>(route);
+            Assert.Equal(["pinned"], list!.Items.Select(x => x.Title));
+        }
+    }
 }
 
 /// <summary>

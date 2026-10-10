@@ -131,8 +131,8 @@
 | `Regira.Entities.Mapping.Mapster` | `UseMapsterMapping()` | **Default** mapping provider |
 | `Regira.Entities.Mapping.AutoMapper` | `UseAutoMapper()` | Alternative mapping provider |
 | `Regira.Entities.Mapping.Abstractions` | `IEntityMapper`, `IEntityAfterMapper<>`, `IEntityMapConfigurator`, `EntityAfterMapperBase<>`, `EntityAfterMapper<>` |  |
-| `Regira.Entities.Mapping.Models` | `AttachmentDto<>`, `AttachmentInputDto<>`, `EntityAttachmentDto<>`, `EntityAttachmentInputDto<>` | DTO classes for mapping |
-| `Regira.Entities.Attachments.Mapping.Abstractions` | `IEntityAttachmentInput<>` | Attachment input contracts |
+| `Regira.Entities.Mapping.Models` | `EntityAttachmentDto`, `EntityAttachmentInputDto`, `AttachmentDto`, `AttachmentInputDto` — the `int`-keyed records the guides use — and their generic bases `EntityAttachmentDto<,,>`, `EntityAttachmentInputDto<,,>`, `AttachmentDto<>`, `AttachmentInputDto<>` | DTO records for mapping |
+| `Regira.Entities.Attachments.Mapping.Abstractions` | `IEntityAttachmentInput` (`int`-keyed), `IEntityAttachmentInput<,>`, `IEntityAttachmentInput<,,>` | Attachment input contracts |
 
 ---
 

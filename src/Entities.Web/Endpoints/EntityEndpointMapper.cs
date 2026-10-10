@@ -93,7 +93,10 @@ internal sealed class EntityEndpointMapper
         }
         else
         {
-            Invoke(MapSimpleMethod.MakeGenericMethod(entityType, registration.KeyType, registration.SearchObjectType, dtoType, inputDtoType), group, options);
+            // a plain int For<>() records SearchObject<int>, while its controller base binds the SearchObject record: binding
+            // that one too, the endpoints send the ListQuery and SearchQuery a controller sends, so one handler replaces either
+            var searchObjectType = registration.SearchObjectType == typeof(SearchObject<int>) ? typeof(SearchObject) : registration.SearchObjectType;
+            Invoke(MapSimpleMethod.MakeGenericMethod(entityType, registration.KeyType, searchObjectType, dtoType, inputDtoType), group, options);
         }
 
         var attachments = AttachmentsOf(entityType);

@@ -13,7 +13,8 @@ namespace Regira.Entities.Mediator.Requests;
 /// would save it. Archived rows can be patched — that is how one is restored. <c>null</c> when the row does not exist.
 /// <para>
 /// <see cref="Patch"/> has to be a JSON object. <see cref="SerializerOptions"/> are the ones the merge reads and writes
-/// with; the default is <see cref="JsonSerializerDefaults.Web"/>, ignoring cycles.
+/// with; the default is <see cref="JsonSerializerDefaults.Web"/>, ignoring cycles, with enums read by name or by number.
+/// The endpoints pass the app's JSON options; a sender that relies on converters of the app's own passes them too.
 /// </para>
 /// </summary>
 public sealed record PatchCommand<TEntity, TKey, TDto, TInputDto>(TKey Id, JsonElement Patch, JsonSerializerOptions? SerializerOptions = null)

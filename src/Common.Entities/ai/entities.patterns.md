@@ -202,6 +202,9 @@ return await this.Details<CreditRequest, CreditRequestDto>(id) ?? NotFound();   
 - **Who may set the state?** Anyone with PATCH rights → the fields stay on `TInputDto`. Only the action →
   take them off and restore them in a prepper guarded by a scoped trusted-writer flag the action flips
   (`[ServerOwned]` has no bypass, so it would revert the action too).
+- **Through `IEntitySender`?** A `PatchCommand` carries only `TInputDto`'s fields, so a transition whose fields are
+  off the DTO is a request of the app's own (`IEntityRequest<DetailsResult<TDto>>`, declaring its `EntityType` and
+  `Operation`) whose handler is the trusted writer — *Role-gated transitions* → *Sent through the mediator*.
 - **Gate the transition set, not only the fields.** A generic transition endpoint that reaches a state a
   role-gated action also reaches voids that action's role check; decide who may reach which state in the one
   service every path calls.
@@ -654,6 +657,11 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
   through the collections. **Clearing** a relation takes the navigation too
   (`item.AssigneeId = null; item.Assignee = null;`): an empty key beside a loaded navigation is what a body
   sending only the nested object looks like, so the navigation keeps deciding it.
+- ⚠️ **That holds within one graph.** Two entities read by separate `Details` calls each carry their own instance of
+  a principal they share — two allocations of the same employee — so modifying both in one save tracks that principal
+  twice and throws *"…cannot be tracked because another instance with the same key value…"*, a 500. Clear the shared
+  reference navigation on each and keep its key (`source.Employee = null; next.Employee = null;`), so only the key
+  decides.
 - **Answer with a re-read, exactly as `GET /{id}` would.** `this.Details<TEntity, TDto>(id)`
   (`Regira.Entities.Web.Controllers`) reads the row back through the service, maps it to the read DTO and
   wraps it as `{ "item": … }`, so a client reads `data.item` on every route and the SPA service needs no
@@ -678,7 +686,8 @@ keeping `Status` on `TInputDto` hands every PATCH caller a state pen. Invert the
 
 1. **Take the workflow fields off `TInputDto`** (`Status`, `DecidedOn`, decider ids). The role-gated action is
    now the only writer.
-2. **Restore them in a prepper** so ordinary PUT/PATCH round-trips them untouched instead of resetting them —
+2. **Restore them in a prepper** so ordinary PUT/PATCH round-trips them untouched instead of resetting them, and
+   start a create in the initial state, so no `Add` — an import, a job — creates a request already decided. It is
    guarded by a scoped flag the trusted writer flips, or the restore would also undo the action's own write.
    That flag is why these fields are not `[ServerOwned]`: its restore has no bypass, so the action's
    `Modify` would be reverted too.
@@ -692,11 +701,12 @@ public class CreditRequestGuard(WorkflowContext workflow) : EntityPrepperBase<Cr
 {
     public override Task Prepare(CreditRequest modified, CreditRequest? original, CancellationToken token = default)
     {
-        if (original != null && !workflow.IsTrustedWriter)
+        if (workflow.IsTrustedWriter)
         {
-            modified.Status = original.Status;
-            modified.DecidedOn = original.DecidedOn;
+            return Task.CompletedTask;
         }
+        modified.Status = original?.Status ?? RequestStatus.Draft;          // an update keeps the stored state,
+        modified.DecidedOn = original?.DecidedOn;                           // a create starts undecided
         return Task.CompletedTask;
     }
 }
@@ -708,15 +718,121 @@ public class CreditRequestGuard(WorkflowContext workflow) : EntityPrepperBase<Cr
 <!-- no-compile -->
 ```csharp
 workflowContext.IsTrustedWriter = true;
-item.Status = RequestStatus.Approved;
-item.DecidedOn = DateTime.UtcNow;
-await service.Modify(item);
-await service.SaveChanges();
+try
+{
+    item.Status = RequestStatus.Approved;
+    item.DecidedOn = DateTime.UtcNow;
+    await service.Modify(item);
+    await service.SaveChanges();
+}
+finally
+{
+    workflowContext.IsTrustedWriter = false;
+}
 ```
 
-A seeder that stamps historical states is a trusted writer too — flip the same flag in its scope. The guard
+The flag lives as long as the scope, so left set it lets every later write in that scope past the guard — a second
+request the same handler sends, every write a job makes from one scope. Hold it for the one write, as the `finally`
+does. A seeder that stamps historical states is a trusted writer too — flip the same flag around its writes. The guard
 stays in the prepper (not the controller) so *every* write path — CRUD PUT/PATCH, other services, future
 endpoints — passes through it.
+
+**Sent through the mediator** (§Entity operations outside a controller). `PatchCommand` and `SaveCommand` carry
+only what `TInputDto` declares, so with the workflow fields off it (step 1) a transition cannot be a patch. Make the
+transition a request of the app's own, whose handler is the trusted writer: it writes the fields through
+`IEntityService` exactly as above, and the app's behaviours wrap it like every entity operation, since it declares its
+entity and operation:
+
+```csharp
+using Microsoft.AspNetCore.Authorization;
+using Regira.Entities.Mediator;                     // EntityOperation
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Requests;
+using Regira.Entities.Web.Models;                   // DetailsResult<T>
+
+public enum RequestStatus { Draft, Submitted, Approved }
+public class CreditRequest : IEntity<int>
+{
+    public int Id { get; set; }
+    public RequestStatus Status { get; set; }
+    public DateTime? DecidedOn { get; set; }
+}
+public class CreditRequestDto { public int Id { get; set; } public RequestStatus Status { get; set; } public DateTime? DecidedOn { get; set; } }
+public sealed class WorkflowContext { public bool IsTrustedWriter { get; set; } }
+
+// a behaviour sees the approval as a Save of CreditRequest
+public sealed record ApproveCreditRequest(int Id) : IEntityRequest<DetailsResult<CreditRequestDto>>
+{
+    Type IEntityRequest.EntityType => typeof(CreditRequest);
+    EntityOperation IEntityRequest.Operation => EntityOperation.Save;
+}
+
+public class ApproveCreditRequestHandler(IEntityService<CreditRequest, int> service, WorkflowContext workflow, IEntitySender sender)
+    : IEntityRequestHandler<ApproveCreditRequest, DetailsResult<CreditRequestDto>>
+{
+    public async Task<DetailsResult<CreditRequestDto>?> Handle(ApproveCreditRequest request, CancellationToken token = default)
+    {
+        var item = await service.Details(request.Id, token);
+        if (item == null)
+        {
+            return null;                                                     // → 404
+        }
+        if (item.Status != RequestStatus.Submitted)
+        {
+            throw new EntityInputException<CreditRequest>("Only a submitted request can be approved.")
+            {
+                InputErrors = { [nameof(item.Status)] = "Only a submitted request can be approved." }
+            };
+        }
+
+        workflow.IsTrustedWriter = true;                                     // the guard prepper lets this write through
+        try
+        {
+            item.Status = RequestStatus.Approved;
+            item.DecidedOn = DateTime.UtcNow;
+            await service.Modify(item, token);
+            await service.SaveChanges(token);
+        }
+        finally
+        {
+            workflow.IsTrustedWriter = false;                                // for this write only (above)
+        }
+        return await sender.Send(new DetailsQuery<CreditRequest, int, CreditRequestDto>(request.Id), token);   // what GET {id} answers
+    }
+}
+
+public static class CreditWorkflowConfiguration
+{
+    public static IServiceCollection AddCreditWorkflow(this IServiceCollection services)
+        => services
+            .AddScoped<WorkflowContext>()
+            .AddTransient<IEntityRequestHandler<ApproveCreditRequest, DetailsResult<CreditRequestDto>>, ApproveCreditRequestHandler>();
+}
+
+[ApiController, Route("credit-requests"), Authorize(Roles = "Manager")]
+public class CreditRequestWorkflowController(IEntitySender sender) : ControllerBase
+{
+    [HttpPost("{id:int}/approve")]
+    public async Task<ActionResult<DetailsResult<CreditRequestDto>>> Approve(int id)
+    {
+        var result = await sender.Send(new ApproveCreditRequest(id));
+        if (result == null)
+        {
+            return NotFound();
+        }
+        return result;
+    }
+}
+```
+
+- **`EntityType` and `Operation` are the request's to declare** — `IEntityRequest` requires both, and a behaviour
+  reads them to tell which entity and which operation it wraps. Implementing them explicitly keeps them off the
+  record's own members, as the built-in requests do.
+- The answer's `DetailsQuery` passes the behaviours too, as a read: an audit behaviour records the approval as a
+  `Save` followed by a `Details`.
+- The other route — the fields kept on `TInputDto` behind the guard prepper, the action flipping the flag and sending
+  a `PatchCommand` — works too, but puts the state back on the input DTO every PATCH caller binds, where the guard alone
+  keeps a caller from setting it. Prefer the request.
 
 ⚠️ **Gate the transition set, not only the fields.** The guard decides *who writes the fields*; which role may
 reach which **state** is a second rule. When a generic action (`POST {id}/transitions` taking the target state)
@@ -772,6 +888,9 @@ public class PriceImport(IEntitySender sender)
   MVC host by MVC's own rules — and refuses with an `EntityInputException`. The controllers turn that off
   (`ValidateInput: false`), since MVC has answered an invalid body by then; the mapped endpoints keep it on, as no MVC
   ran. A patch's merged input is always checked.
+- **`PatchCommand` without `SerializerOptions`** merges with `JsonSerializerDefaults.Web`, cycles ignored, enums by
+  name or number. The endpoints pass the app's JSON options; a job whose patch relies on a converter of the app's own
+  passes them too.
 - **One entity per request.** A bulk write or a seed of many rows stays on `IEntityService` with one `SaveChanges()`
   (§Bulk insert / update).
 - In a domain action, `this.Details<TEntity, TDto>(id)` (§Domain actions on an entity resource) already sends a
@@ -821,7 +940,107 @@ public static class ProductOperations
 - **One request type each.** A `PATCH` saves its merged input itself, not through the `SaveCommand` handler: a change
   to how an entity saves overrides both `SaveCommand<…>` and `PatchCommand<…>`.
 - A request of the app's own — a record implementing `IEntityRequest<TResponse>` — works the same way: it has no
-  default handler, so it needs a registered one, and its first send says so when it is missing.
+  default handler, so it needs a registered one, and its first send says so when it is missing. It declares the
+  `EntityType` and `Operation` a behaviour reads; a worked one is §Role-gated transitions → *Sent through the
+  mediator*.
+
+### Replacing one endpoint
+
+A handler (above) changes what an operation answers — for the controller, the mapped endpoint and every other sender
+at once — so a rule about the data belongs there. A plain `For<Product>()` lists and searches with the `SearchObject`
+record on both surfaces: its list handler replaces `ListQuery<Product, int, SearchObject, ProductDto>`. Replace the
+endpoint itself only for what belongs to HTTP: an attribute, a header, a status code, a parameter the request does not
+carry.
+
+**On a controller**, override the action. The generated actions are `virtual`, and the override inherits the verb and
+route attributes and the parameters' binding attributes, so it declares only what it adds and delegates to `base`:
+
+```csharp
+using Microsoft.AspNetCore.Authorization;
+using Regira.DAL.Paging;
+using Regira.Entities.Web.Controllers.Abstractions;
+using Regira.Entities.Web.Models;
+
+public class Product : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductDto { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductInputDto { public int Id { get; set; } [Required] public string? Title { get; set; } }
+
+[ApiController, Route("products")]
+public class ProductController : EntityControllerBase<Product, ProductDto, ProductInputDto>
+{
+    // still GET products?q=…&page=…: the route and the query binding come from the base action
+    [Authorize(Policy = "Catalog")]
+    public override Task<ActionResult<ListResult<ProductDto>>> List(SearchObject so, PagingInfo pagingInfo)
+    {
+        Response.Headers.CacheControl = "private, max-age=60";
+        return base.List(so, pagingInfo);
+    }
+}
+```
+
+- **Keep the signature exactly.** A method with another parameter list is no override but a second action on the
+  same route, and every request to it fails as ambiguous.
+- The complex base has a second `List` and `Search` — `POST list` and `POST search`, with the search objects in the
+  body — and each is overridden on its own.
+
+**On mapped endpoints** there is no action to override: exclude the generated endpoint and map the app's own on the
+entity's route group. Sending the same request keeps a handler override and the behaviours in play:
+
+```csharp
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using Regira.DAL.Paging;
+using Regira.Entities.DependencyInjection.ServiceCollections;
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Requests;
+using Regira.Entities.Web.Endpoints;
+
+public class Product : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductDto { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductInputDto { public int Id { get; set; } [Required] public string? Title { get; set; } }
+
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+{
+    public DbSet<Product> Products => Set<Product>();
+}
+
+public static class ShopConfiguration
+{
+    public static EntityServiceCollection<AppDbContext> AddShop(this IServiceCollection services)
+        => services
+            .UseEntities<AppDbContext>(o => o.UseDefaults())
+            .For<Product>(e =>
+            {
+                e.UseMapping<ProductDto, ProductInputDto>();
+                e.Endpoints(o => o.Exclude(EntityEndpoint.List));          // GET products is the app's own below
+            });
+
+    public static IEndpointRouteBuilder MapShop(this IEndpointRouteBuilder app)
+    {
+        app.MapEntityEndpoints(o => o.ConfigureGroup<Product>(products => products
+            .MapGet("", async (IEntitySender sender, HttpContext http, string? q, int? page, int? pageSize) =>
+            {
+                http.Response.Headers.CacheControl = "private, max-age=60";
+                var paging = new PagingInfo { Page = page ?? 1, PageSize = pageSize };
+                return Results.Ok(await sender.Send(new ListQuery<Product, int, SearchObject, ProductDto>(new SearchObject { Q = q }, paging)));
+            })
+            .WithMetadata(new EntityEndpointMetadata(typeof(Product), EntityEndpoint.List))));
+        return app;
+    }
+}
+```
+
+- **Exclude first.** Without `o.Exclude(…)` two endpoints share the route, and every request to it fails as ambiguous.
+  `EntityEndpoint.List` covers `GET` and, on a complex entity, `POST list`; `EntityEndpoint.Search` covers both
+  searches.
+- **The group's exception filter applies**, so the endpoint answers a refused write with the 400 and 409 bodies the
+  mapped ones use, without an `AddEndpointFilter` of its own.
+- **Add the metadata.** A write-authorization policy keys on `EntityEndpointMetadata` (§Role-gated write
+  authorization filter → *On mapped endpoints*); without it the policy cannot tell the endpoint's entity, and refuses
+  it unless it is a `GET`.
+- **The endpoint binds its own parameters.** The mapped endpoints' query binder is not public, so take what the
+  endpoint needs as parameters (`q`, `page`, `pageSize` above) or `[AsParameters]` of a type of the app's own.
 
 ### Behaviours around every operation
 
@@ -856,12 +1075,19 @@ public static class OperationLogging
 }
 ```
 
-- Behaviours run in registration order, the first registered outermost. `Duration` on the result spans them all, and
-  is written on the result returned: a cache hands out a copy (`cached with { }`), not the instance it keeps, or
+- Behaviours run in registration order, the first registered outermost. `Duration` spans them all and is written on
+  the result returned when it is an `IEntityResult`, as the built-in envelopes are; a request of the app's own that
+  answers with another type gets none. A cache hands out a copy (`cached with { }`), not the instance it keeps, or
   every hit — parallel ones too — rewrites the shared instance.
 - **What follows a committed write is a reactor's job**, not a behaviour's: a reactor runs once the save commits,
   whatever path wrote; a behaviour sees only the requests sent, and an attempt the pipeline then refused
   (entities.instructions §Step 9 → Reactors).
+- **A behaviour that writes to the database** — an audit row per operation — writes through a scope of its own
+  (`IServiceScopeFactory.CreateAsyncScope()`, so its own `DbContext`), not the request's. A save refused at
+  `SaveChanges()`, a 409, leaves the request's `DbContext` tracking the refused change, so a `SaveChanges()` there
+  sends it again: the audit row fails with it, and a raw `DbContext.SaveChangesAsync()` turns the 409 into a 500. (A
+  validator's refusal, a 400, is taken back before anything is tracked.) Its own scope also keeps the audit row of an
+  operation that failed, which is usually what an audit is for.
 
 ### Dispatching through MediatR
 
@@ -914,7 +1140,9 @@ public static class ShopServiceConfiguration
 }
 ```
 
-- **The app registers MediatR**, with its licence key from MediatR 13 on. The adapter works with 12, 13 and 14.
+- **The app registers MediatR**, and chooses its version by licence. MediatR 13 and later are commercially licensed
+  and need the app's licence key; an app without one pins **MediatR 12.5.0**, the last Apache-2.0 release — the one
+  package where "install the latest stable" does not apply. The adapter works with 12, 13 and 14.
 - **What stays the same:** the closed-handler override, the `IEntityPipelineBehavior`s and `Duration` — MediatR's
   handler for the envelope hands the request to the same executor the in-house sender uses.
 - **Every entity request is one MediatR request type**, `EntityRequestMessage`, holding the entity request. A
@@ -1004,8 +1232,11 @@ app.MapEntityEndpoints().RequireAuthorization();   // GET/POST products, PUT/PAT
 - **Every mapped entity declares its DTO pair** — `e.UseMapping<TDto, TInputDto>()`, or `e.Endpoints(o => o.UseDtos<TDto,
   TInputDto>())` when the maps are configured elsewhere; `o.UseDtos<Product, Product>()` serves the entity as itself.
   Without one, mapping throws at startup: there is no fallback to the entity, which would put every column on the wire.
-- **The route** is the kebab-case plural of the entity's name (`InterventionType` → `intervention-types`). An irregular
-  plural sets `o.Route = "people"`; `app.MapEntityEndpoints(o => o.Prefix = "api")` puts every route under a base path.
+- **The route** is the kebab-case plural of the entity's name, the same spelling `scaffold.mjs` derives on the client:
+  `InterventionType` → `intervention-types`. A `y` after a consonant becomes `ies` (`Priority` → `priorities`); `s`,
+  `x`, `z`, `ch` and `sh` take `es` (`TicketStatus` → `ticket-statuses`, `Box` → `boxes`); anything else takes `s`, so
+  an irregular noun comes out regular (`Person` → `persons`) — set `o.Route = "people"` for it.
+  `app.MapEntityEndpoints(o => o.Prefix = "api")` puts every route under a base path.
 - **Per entity:** `o.Exclude(…)` trims the set, `o.AllowAnonymous(EntityEndpoint.Download)` opens the downloads an
   `<img>` loads (§Public (anonymous) attachment downloads), `o.Disable()` leaves the entity out, and
   `app.MapEntityEndpoints(o => o.ConfigureGroup<Product>(g => g.RequireAuthorization("Editors")))` adds a policy for one
@@ -1028,8 +1259,10 @@ app.MapEntityEndpoints().RequireAuthorization();   // GET/POST products, PUT/PAT
   attachment controller. Only the `int`-keyed link shape (`IHasAttachments<TLink>`) maps; an owner with another key
   type is logged and keeps an attachment controller. `UseAttachmentUris()` links the DTO `Uri` to the mapped download —
   for an owner mapped twice, to its first mapping, since endpoint names are global.
-- **An endpoint of the app's own** beside them sends its request through `IEntitySender` and takes
-  `.AddEndpointFilter<EntityExceptionEndpointFilter>()`, for the 400 and 409 bodies the mapped endpoints answer with.
+- **An endpoint of the app's own** sends its request through `IEntitySender`. Mapped outside the entity groups — on
+  `app` itself — it takes `.AddEndpointFilter<EntityExceptionEndpointFilter>()` for the 400 and 409 bodies the mapped
+  endpoints answer with. Mapped inside one, through `ConfigureGroup<TEntity>()`, it already has the filter, which the
+  group `MapEntityEndpoints()` returns carries.
 - **Write authorization** is a policy on the group, not a controller filter: §Role-gated write authorization filter →
   *On mapped endpoints*.
 

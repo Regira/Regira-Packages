@@ -22,4 +22,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Entities.DependencyInjection\Entities.DependencyInjection.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="ai\entities.mediator.card.md" Pack="true" PackagePath="ai\" />
+  </ItemGroup>
 </Project>

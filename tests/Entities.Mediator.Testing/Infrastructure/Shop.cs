@@ -15,11 +15,14 @@ using Regira.Utilities;
 
 namespace Entities.Mediator.Testing.Infrastructure;
 
+public enum ProductKind { Standard, Refill }
+
 public class Product : IEntity<int>
 {
     public int Id { get; set; }
     public string Title { get; set; } = "";
     public int Stock { get; set; }
+    public ProductKind Kind { get; set; }
 }
 
 /// <summary>
@@ -32,6 +35,7 @@ public class ProductInputDto
     public string Title { get; set; } = null!;
     [Range(0, 1000)]
     public int Stock { get; set; }
+    public ProductKind Kind { get; set; }
 }
 
 public class ShopContext(DbContextOptions<ShopContext> options) : DbContext(options)

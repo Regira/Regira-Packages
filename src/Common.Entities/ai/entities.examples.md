@@ -809,7 +809,10 @@ e.Process((items, includes) =>
 
 ### Prepper — with DbContext / separate class
 
-The typed `Prepare(Func<TEntity, TContext, Task>)` overload hands you the **strongly-typed `DbContext`**
+`e.Prepare(...)` has two overloads, and the lambda's parameter count picks one. With one parameter it is the
+**synchronous** `Action<TEntity>` — `e.Prepare(item => item.Code ??= "NEW")` — whose body returns nothing, so a
+`return Task.CompletedTask;` fails with CS8030. With two it is the asynchronous `Func<TEntity, TContext, Task>`,
+which hands you the **strongly-typed `DbContext`**
 (the `TContext` from `UseEntities<TContext>()`), so you can look up related rows or apply server-side pricing
 before the entity is tracked — no need to inject anything or write a separate prepper class:
 

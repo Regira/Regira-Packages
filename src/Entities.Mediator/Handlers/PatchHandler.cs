@@ -17,9 +17,12 @@ public class PatchHandler<TEntity, TKey, TDto, TInputDto>(IServiceProvider servi
     where TDto : class
     where TInputDto : class
 {
+    // enums read by name or by number: a sender outside HTTP writes a patch either way, and the merge base is written
+    // with these options too, so the round trip never meets a representation it cannot read
     private static readonly JsonSerializerOptions DefaultSerializerOptions = new(JsonSerializerDefaults.Web)
     {
-        ReferenceHandler = ReferenceHandler.IgnoreCycles
+        ReferenceHandler = ReferenceHandler.IgnoreCycles,
+        Converters = { new JsonStringEnumConverter() }
     };
 
     protected IServiceProvider Services { get; } = services;
