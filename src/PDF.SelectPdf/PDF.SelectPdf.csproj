@@ -19,7 +19,7 @@
     <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Select.HtmlToPdf.NetCore" Version="26.3.0" />
+    <PackageReference Include="Select.HtmlToPdf.NetCore" Version="26.4.0" />
   </ItemGroup>
   <ItemGroup>
     <!-- Upgraded for vulnerabilities -->

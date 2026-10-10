@@ -22,7 +22,7 @@
     <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="MailKit" Version="4.18.0" />
+    <PackageReference Include="MailKit" Version="4.18.1" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="10.0.12" />
   </ItemGroup>
 </Project>

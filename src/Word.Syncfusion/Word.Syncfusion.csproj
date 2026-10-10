@@ -16,9 +16,9 @@
     <PackageTags>regira;office;word;syncfusion;docio;docx</PackageTags>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Syncfusion.DocIO.Net.Core" Version="35.1.37" />
+    <PackageReference Include="Syncfusion.DocIO.Net.Core" Version="35.1.39" />
     <!-- SkiaSharp-based renderer: required for PDF conversion and page rasterization -->
-    <PackageReference Include="Syncfusion.DocIORenderer.Net.Core" Version="35.1.37" />
+    <PackageReference Include="Syncfusion.DocIORenderer.Net.Core" Version="35.1.39" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
