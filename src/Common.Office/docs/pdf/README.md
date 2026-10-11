@@ -237,6 +237,9 @@ advance. Each conversion starts a browser of its own, which takes one to three s
   <div style="text-align:center">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>
   ```
 - **Backgrounds.** Chromium prints as a printer would: CSS background colours and images are left out.
+- **Untrusted HTML.** Chromium fetches every URL the HTML names — images, frames, stylesheets, scripts — from the host
+  it runs on, internal addresses and cloud metadata (`169.254.169.254`) included. Convert HTML built from user input
+  only once its URLs are removed or checked against an allow list, or on a host whose outbound network is restricted.
 
 ### Gotenberg — HTML→PDF without a browser in the application
 
@@ -250,8 +253,10 @@ run time, or a deployment that already runs Gotenberg for Word.Gotenberg.
 - **Fonts.** Text renders in the fonts installed in the Gotenberg image, not the host's, so a page laid out through
   Playwright on Windows can wrap differently. Web fonts by URL or `data:` URI render alike on every backend.
 - **URLs.** An absolute URL in the HTML is fetched from the container, where `localhost` is the container itself. HTML
-  built from user input can make the server request internal addresses: restrict them with Gotenberg's outbound URL
-  filtering, which answers `403` for a refused URL.
+  built from user input can make the server request internal addresses, cloud metadata (`169.254.169.254`) included:
+  Gotenberg's default deny list refuses only `file:` URLs. For untrusted HTML, start the server with
+  `--chromium-allow-list` or `--chromium-deny-list` (regular expressions matched against every URL Chromium requests;
+  a refused one answers `403`) and restrict the container's outbound network.
 - **Errors.** A refused request throws `HttpRequestException` carrying the status code and Gotenberg's message: `400`
   for settings Chromium refuses (margins that leave no room for content), `503` for a conversion past the server's
   `--api-timeout` (30 seconds by default). Raise that on the server as well as `Timeout` here for large documents: the
@@ -312,6 +317,10 @@ It applies the `DocumentInput` settings per source format:
 
 Any other source — `.doc`, `.xls`, `.odt`, `.rtf`, a PDF — throws `NotSupportedException`. Every visible sheet of
 a workbook is rendered, in order.
+
+Neither MiniPdf nor `PdfService` limits a document's size. Each part is read whole into memory, so a small `.xlsx`,
+`.docx` or `.pptx` whose compressed parts expand to gigabytes exhausts the process's memory. For uploads, cap the
+file's size and the summed `Length` and count of its zip entries before converting, or convert in a process of its own.
 
 Text renders in the host's system fonts. On a host with few — a container — register TrueType fonts once at
 startup; the registration holds for the whole process:

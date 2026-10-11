@@ -50,10 +50,29 @@ public class PatchHandler<TEntity, TKey, TDto, TInputDto>(IServiceProvider servi
         // serializing TEntity and deserializing as TInputDto keeps TInputDto as the write boundary
         var baseJson = JsonSerializer.Serialize(existing, serializerOptions);
         var mergedJson = ApplyJsonMergePatch(baseJson, request.Patch, serializerOptions);
-        var mergedInput = JsonSerializer.Deserialize<TInputDto>(mergedJson, serializerOptions)!;
+        TInputDto mergedInput;
+        try
+        {
+            mergedInput = JsonSerializer.Deserialize<TInputDto>(mergedJson, serializerOptions)!;
+        }
+        catch (JsonException ex)
+        {
+            // a value of the wrong type is the client's input, refused as a validator refuses it
+            throw new EntityInputException<TEntity>("The input is not valid.", ex)
+            {
+                Errors = [new EntityInputError(ToInputKey(ex.Path), "The value is not valid.")]
+            };
+        }
 
         Services.ThrowIfInvalidInput<TEntity>(mergedInput);
         return await Services.Save<TEntity, TKey, TDto, TInputDto>(mergedInput, request.Id, token);
+    }
+
+    // "$.stock" → "Stock", the key a validator gives that property; a deeper path keeps its JSON spelling
+    private static string ToInputKey(string? path)
+    {
+        var key = path is { Length: > 2 } && path.StartsWith("$.") ? path[2..] : string.Empty;
+        return typeof(TInputDto).GetProperties().FirstOrDefault(p => string.Equals(p.Name, key, StringComparison.OrdinalIgnoreCase))?.Name ?? key;
     }
 
     private static string ApplyJsonMergePatch(string baseJson, JsonElement patch, JsonSerializerOptions serializerOptions)

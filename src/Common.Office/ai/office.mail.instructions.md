@@ -199,7 +199,8 @@ the refusal there, and the status code on its own usually does not.
 
 MailKit specifics:
 
-- A message without a sender or recipients throws `MailException` before a connection is opened.
+- A message without a sender or recipients, or with an address or attachment content type MimeKit cannot parse,
+  throws `MailException` before a connection is opened.
 - **One refused recipient aborts the whole message** — nothing is delivered, not even to the accepted
   recipients — and `ResponseContent` names the refused address.
 - A connection fault is not a refusal and passes through unwrapped: `SocketException` (no server),

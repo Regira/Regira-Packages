@@ -51,9 +51,9 @@ Regira is a collection of .NET libraries providing unified abstractions for comm
 | [Barcodes](src/Common.Office/docs/barcodes) | Barcode and QR code generation and scanning |
 | [CSV](src/Common.Office/docs/csv) | CSV reading and writing |
 | [Excel](src/Common.Office/docs/excel) | Excel workbook reading and writing |
-| [Mail](src/Common.Office/docs/mail) | Email sending via SendGrid and Mailgun, `.msg`/`.eml` reading, and mail DTOs for HTTP endpoints |
+| [Mail](src/Common.Office/docs/mail) | Email sending via SendGrid, Mailgun and any SMTP server (MailKit), `.msg`/`.eml` reading, and mail DTOs for HTTP endpoints |
 | [OCR](src/Common.Office/docs/ocr) | Optical character recognition |
-| [PDF](src/Common.Office/docs/pdf) | HTML→PDF, PDF operations, and printing |
+| [PDF](src/Common.Office/docs/pdf) | HTML→PDF, Word/Excel/PowerPoint→PDF, PDF operations, and printing |
 | [VCards](src/Common.Office/docs/vcards) | vCard contact file reading and writing |
 | [Word](src/Common.Office/docs/word) | Word document creation, conversion, merge, and extraction |
 

@@ -2,8 +2,9 @@ using Regira.Web.HTML.Abstractions;
 
 namespace Web.HTML.Testing;
 
-// Each compiled template loads an assembly that is never unloaded, so the loaded assemblies are counted:
-// a parser has to compile a template once, not on every call
+// Each compiled template loads an assembly that is never unloaded, so the templates' assemblies are counted:
+// a parser has to compile a template once, not on every call. Both engines load a template from bytes, so only
+// assemblies without a file count — a framework assembly another thread loads meanwhile is not one
 [TestFixture]
 [NonParallelizable] // a template compiled by a concurrent test would be counted here
 public class TemplateCompilationTests
@@ -53,7 +54,7 @@ public class TemplateCompilationTests
         await createParser().Parse("<p>Warm-up @Model.Name</p>", Model);
         var id = Guid.NewGuid().ToString("N");
         var template = $"<p>Hello @Model.Name</p><!-- {id} -->";
-        var before = AppDomain.CurrentDomain.GetAssemblies().Length;
+        var before = LoadedAssemblies();
 
         using var start = new Barrier(ConcurrentCalls);
         var renders = Enumerable.Range(0, ConcurrentCalls)
@@ -65,7 +66,7 @@ public class TemplateCompilationTests
         var results = await Task.WhenAll(renders);
 
         Assert.That(results, Has.All.EqualTo($"<p>Hello Alice</p><!-- {id} -->"));
-        Assert.That(AppDomain.CurrentDomain.GetAssemblies().Length - before, Is.EqualTo(1));
+        Assert.That(TemplatesLoadedSince(before), Is.EqualTo(1));
     }
 
     [Test]
@@ -92,13 +93,18 @@ public class TemplateCompilationTests
     {
         // The first call compiles the template and loads what rendering needs
         await getParser().Parse(Template, Model);
-        var before = AppDomain.CurrentDomain.GetAssemblies().Length;
+        var before = LoadedAssemblies();
 
         for (var i = 0; i < Calls; i++)
         {
             await getParser().Parse(Template, Model);
         }
 
-        return AppDomain.CurrentDomain.GetAssemblies().Length - before;
+        return TemplatesLoadedSince(before);
     }
+
+    private static HashSet<System.Reflection.Assembly> LoadedAssemblies() => [.. AppDomain.CurrentDomain.GetAssemblies()];
+
+    private static int TemplatesLoadedSince(HashSet<System.Reflection.Assembly> before)
+        => AppDomain.CurrentDomain.GetAssemblies().Count(a => !before.Contains(a) && !a.IsDynamic && string.IsNullOrEmpty(a.Location));
 }

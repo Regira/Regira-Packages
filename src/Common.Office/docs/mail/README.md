@@ -259,7 +259,7 @@ a send was refused.
 
 The **MailKit** backend throws it when the SMTP server refuses the credentials, the sender, a recipient or the
 message, with the server's reply on `ResponseContent`, and before connecting when the message has no sender or no
-recipients. One refused recipient aborts the whole message: nothing is delivered, not even to the accepted
+recipients, or an address or attachment content type MimeKit cannot parse. One refused recipient aborts the whole message: nothing is delivered, not even to the accepted
 recipients, and `ResponseContent` names the refused address. A connection fault is not a refusal and passes
 through unwrapped — `SocketException`, `SslHandshakeException`, `NotSupportedException` (`StartTls` against a
 server without STARTTLS), `TimeoutException` or `OperationCanceledException`.

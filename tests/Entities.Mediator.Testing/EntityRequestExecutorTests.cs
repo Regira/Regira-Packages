@@ -164,6 +164,23 @@ public class EntityRequestExecutorTests
         Assert.Equal("Pen", patched.Item.Title);
     }
 
+    // a value the input DTO cannot hold is the client's mistake: the validator's 400, not a 500
+    [Theory]
+    [InlineData("""{ "stock": "abc" }""")]
+    [InlineData("""{ "kind": "Ink" }""")]
+    public async Task A_Patch_Value_Of_The_Wrong_Type_Is_Refused_As_Input(string body)
+    {
+        await using var shop = await Shop.CreateServicesAsync();
+        using var scope = shop.Services.CreateScope();
+        var sender = scope.ServiceProvider.GetRequiredService<IEntitySender>();
+
+        using var patch = System.Text.Json.JsonDocument.Parse(body);
+        var ex = await Assert.ThrowsAsync<EntityInputException<Product>>(() =>
+            sender.Send(new PatchCommand<Product, int, Product, ProductInputDto>(shop.PenId, patch.RootElement)));
+
+        Assert.Equal([body.Contains("stock") ? "Stock" : "Kind"], ex.Errors.Select(x => x.Key));
+    }
+
     [Fact]
     public async Task A_Search_Counts_And_Pages()
     {

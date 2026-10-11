@@ -82,6 +82,9 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
   inline styles, images as `data:` URIs. `<span class="pageNumber"></span>` and `<span class="totalPages"></span>`
   are filled with the page number and count.
 - CSS background colours and images are left out, as a printer would.
+- Chromium fetches every URL the HTML names (images, frames, stylesheets, scripts) from the host it runs on, internal
+  addresses and cloud metadata (`169.254.169.254`) included. Convert HTML built from user input only once its URLs are
+  removed or allow-listed, or on a host whose outbound network is restricted.
 - Playwright and Puppeteer start a browser for each `Create`: one to three seconds per PDF. Gotenberg keeps Chromium
   running in its container: a one-page PDF takes about a tenth of a second once the server is warm.
 
@@ -89,8 +92,10 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 - Text renders in the fonts installed in the Gotenberg image, not the host's, so a page laid out through Playwright on
   Windows can wrap differently. Web fonts by URL or `data:` URI render alike on every backend.
 - An absolute URL in the HTML is fetched from the container, where `localhost` is the container itself. HTML built
-  from user input can make the server request internal addresses: restrict them with Gotenberg's outbound URL
-  filtering, which answers `403` for a refused URL.
+  from user input can make the server request internal addresses, cloud metadata included: Gotenberg's default deny
+  list refuses only `file:` URLs. For untrusted HTML, start the server with `--chromium-allow-list` or
+  `--chromium-deny-list` (regular expressions matched against every URL Chromium requests; a refused one answers `403`)
+  and restrict the container's outbound network.
 - A refused request throws `HttpRequestException` carrying the status code and Gotenberg's message: `400` for
   settings Chromium refuses (margins that leave no room for content), `503` for a conversion past the server's
   `--api-timeout` (30 s by default).
@@ -254,6 +259,10 @@ MiniPdf applies them per source format:
 
 Any other source — `.doc`, `.xls`, `.odt`, `.rtf`, a PDF — throws `NotSupportedException`. Every visible sheet of a
 workbook is rendered, in order.
+
+MiniPdf sets no size limit: each part is read whole into memory, so a small file whose compressed parts expand to
+gigabytes exhausts the process's memory. For uploads, cap the file's size and the summed `Length` and count of its zip
+entries before converting.
 
 ### `PdfSplitRange`
 

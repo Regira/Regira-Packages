@@ -26,9 +26,10 @@ public static class DtoExtensions
             Format = input.Format,
             Margins = input.Margins,
             HeaderHtmlContent = input.HeaderHtmlContent,
-            HeaderHeight = input.HeaderHeight,
+            // the DTO writes a missing height as 0: read it back as missing, so the backend takes its default band
+            HeaderHeight = input.HeaderHeight > 0 ? input.HeaderHeight : null,
             FooterHtmlContent = input.FooterHtmlContent,
-            FooterHeight = input.FooterHeight
+            FooterHeight = input.FooterHeight > 0 ? input.FooterHeight : null
         };
 
     public static PdfToImagesOptionsDto ToPdfImagesInput(this PdfToImagesOptions input)

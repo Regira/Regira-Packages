@@ -102,6 +102,46 @@ public class MailKitMessageObjectTests
         Assert.Throws<MailException>(() => msg.ToMimeMessage());
     }
 
+    // ReplyTo takes any IMailAddress, so its email arrives unchecked
+    [Test]
+    public void Padded_Address_And_Blank_Content_Type_Are_Read_As_Meant()
+    {
+        var msg = new MessageObject
+        {
+            From = (MailAddress)"orders@myshop.com",
+            ReplyTo = new PlainAddress(" support@myshop.com "),
+            To = { (MailRecipient)"alice@example.com" },
+            Body = "Invoice attached",
+            Attachments = [new BinaryFileItem { FileName = "invoice-42.pdf", Bytes = [37, 80, 68, 70], ContentType = "" }]
+        };
+
+        var mime = msg.ToMimeMessage();
+
+        Assert.That(mime.ReplyTo.Mailboxes.Single().Address, Is.EqualTo("support@myshop.com"));
+        Assert.That(mime.Attachments.OfType<MimePart>().Single().ContentType.MimeType, Is.EqualTo("application/pdf"));
+    }
+
+    [Test]
+    public void Unparsable_Address_Throws_MailException()
+    {
+        var msg = new MessageObject
+        {
+            From = (MailAddress)"orders@myshop.com",
+            ReplyTo = new PlainAddress("support@@myshop..com <"),
+            To = { (MailRecipient)"alice@example.com" },
+            Body = "Hi"
+        };
+
+        var ex = Assert.Throws<MailException>(() => msg.ToMimeMessage());
+        Assert.That(ex!.InnerException, Is.InstanceOf<ParseException>());
+    }
+
+    private record PlainAddress(string Email) : Regira.Office.Mail.Abstractions.IMailAddress
+    {
+        public string Email { get; set; } = Email;
+        public string? DisplayName { get; set; }
+    }
+
     private static string Format(InternetAddressList list)
         => string.Join(", ", list.Mailboxes.Select(x => string.IsNullOrEmpty(x.Name) ? x.Address : $"{x.Name} <{x.Address}>"));
 }

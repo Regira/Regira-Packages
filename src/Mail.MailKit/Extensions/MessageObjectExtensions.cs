@@ -11,7 +11,8 @@ internal static class MessageObjectExtensions
 {
     /// <summary>
     /// Maps the message to MIME. A missing sender or recipient throws here, before a connection is opened;
-    /// MailKit itself notices only after connecting and authenticating.
+    /// MailKit itself notices only after connecting and authenticating. An address or a content type MimeKit cannot
+    /// parse throws <see cref="MailException"/> too.
     /// </summary>
     internal static MimeMessage ToMimeMessage(this IMessageObject messageObject)
     {
@@ -24,11 +25,23 @@ internal static class MessageObjectExtensions
             throw new MailException("The message has no recipients") { MessageObject = messageObject };
         }
 
+        try
+        {
+            return Map(messageObject);
+        }
+        catch (ParseException ex)
+        {
+            throw new MailException($"The message is not valid. {ex.Message}", ex) { MessageObject = messageObject };
+        }
+    }
+
+    private static MimeMessage Map(IMessageObject messageObject)
+    {
         var message = new MimeMessage
         {
             Subject = messageObject.Subject ?? string.Empty
         };
-        message.From.Add(messageObject.From.ToMailboxAddress());
+        message.From.Add(messageObject.From!.ToMailboxAddress());
         foreach (var recipient in messageObject.To)
         {
             var list = recipient.RecipientType switch
@@ -57,7 +70,7 @@ internal static class MessageObjectExtensions
         {
             foreach (var file in messageObject.Attachments)
             {
-                var contentType = file.ContentType ?? ContentTypeUtility.GetContentType(file.FileName!);
+                var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? ContentTypeUtility.GetContentType(file.FileName!) : file.ContentType;
                 body.Attachments.Add(file.FileName!, file.GetBytes()!, ContentType.Parse(contentType));
             }
         }
@@ -67,5 +80,5 @@ internal static class MessageObjectExtensions
     }
 
     internal static MailboxAddress ToMailboxAddress(this IMailAddress mailAddress)
-        => new(mailAddress.DisplayName, mailAddress.Email);
+        => new(mailAddress.DisplayName, mailAddress.Email.Trim());
 }
