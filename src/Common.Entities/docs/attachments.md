@@ -241,6 +241,10 @@ An outcome the library cannot be sure of costs an orphan — a file no row names
   before it in that transaction stay. A failed save the application catches inside its transaction is undone alone:
   the earlier saves' files go as usual.
 - A transaction rolled back after a successful save keeps the new file, which no row names.
+- Deleting an owner keeps its attachments and their files, by design: the links go by the database's FK cascade, and an
+  attachment can be linked from more than one entity, so the library does not decide that it is no longer needed. A
+  background job removes the `Attachment` rows no link references, through `IEntityService<Attachment, int>` so that
+  `AttachmentFileReactor` removes each file, or the application applies a rule of its own.
 
 An application that needs a clean store sweeps it against the stored `Path` values. Without the reactor wiring, the
 primer removes the replaced and the deleted files once the save succeeds — before a transaction around it commits, so a

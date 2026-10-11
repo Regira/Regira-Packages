@@ -236,7 +236,8 @@ advance. Each conversion starts a browser of its own, which takes one to three s
   ```html
   <div style="text-align:center">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>
   ```
-- **Backgrounds.** Chromium prints as a printer would: CSS background colours and images are left out.
+- **Backgrounds.** Chromium prints as a printer would: CSS background colours and images are left out, and no
+  `HtmlInput` setting turns them on. Draw a coloured band with a border, inline SVG or an `<img>`.
 - **Untrusted HTML.** Chromium fetches every URL the HTML names — images, frames, stylesheets, scripts — from the host
   it runs on, internal addresses and cloud metadata (`169.254.169.254`) included. Convert HTML built from user input
   only once its URLs are removed or checked against an allow list, or on a host whose outbound network is restricted.
@@ -256,7 +257,9 @@ run time, or a deployment that already runs Gotenberg for Word.Gotenberg.
   built from user input can make the server request internal addresses, cloud metadata (`169.254.169.254`) included:
   Gotenberg's default deny list refuses only `file:` URLs. For untrusted HTML, start the server with
   `--chromium-allow-list` or `--chromium-deny-list` (regular expressions matched against every URL Chromium requests;
-  a refused one answers `403`) and restrict the container's outbound network.
+  a refused one answers `403`) and restrict the container's outbound network. HTML that needs nothing from the network
+  takes `--chromium-deny-list=^https?://.*`; a pattern such as `^(?!data:).*` also refuses the `file:` page Gotenberg
+  loads itself.
 - **Errors.** A refused request throws `HttpRequestException` carrying the status code and Gotenberg's message: `400`
   for settings Chromium refuses (margins that leave no room for content), `503` for a conversion past the server's
   `--api-timeout` (30 seconds by default). Raise that on the server as well as `Timeout` here for large documents: the
@@ -315,8 +318,8 @@ It applies the `DocumentInput` settings per source format:
 | `.xlsx` | `Orientation` | `Format`, `Margins` |
 | `.pptx` | — (a slide keeps the presentation's slide size) | `Format`, `Orientation`, `Margins` |
 
-Any other source — `.doc`, `.xls`, `.odt`, `.rtf`, a PDF — throws `NotSupportedException`. Every visible sheet of
-a workbook is rendered, in order.
+Any other source — `.doc`, `.xls`, `.odt`, `.rtf`, a PDF — throws `NotSupportedException`. The format is read from
+the package's parts, not from the file name or content type. Every visible sheet of a workbook is rendered, in order.
 
 Neither MiniPdf nor `PdfService` limits a document's size. Each part is read whole into memory, so a small `.xlsx`,
 `.docx` or `.pptx` whose compressed parts expand to gigabytes exhausts the process's memory. For uploads, cap the

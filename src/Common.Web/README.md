@@ -133,6 +133,7 @@ Each dictionary entry sets the component parameter of that name; the `Type` form
 ### Registration
 
 ```csharp
+using Regira.Web.HTML.Abstractions;
 using Regira.Web.HTML.RazorComponents;
 
 var services = new ServiceCollection();

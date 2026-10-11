@@ -136,7 +136,7 @@ try
 
     app.Run();
 }
-catch (Exception ex)
+catch (Exception ex) when (ex is not HostAbortedException) // dotnet ef stops the host on purpose
 {
     Log.Fatal(ex, "Application start-up failed");
 }
@@ -521,7 +521,7 @@ try
     Console.WriteLine();
     logger.LogInformation("Finished");
 }
-catch (Exception ex)
+catch (Exception ex) when (ex is not HostAbortedException) // dotnet ef stops the host on purpose
 {
     Log.Error(ex, "Host failed");
 }
@@ -620,7 +620,7 @@ try
 
     app.Run();
 }
-catch (Exception ex)
+catch (Exception ex) when (ex is not HostAbortedException) // dotnet ef stops the host on purpose
 {
     Log.Fatal(ex, "Application start-up failed");
 }
@@ -635,7 +635,8 @@ finally
 > (`Regira.Entities.Web.DependencyInjection`) — it applies cycles/nulls/enum-names (and a UTC read of request-body `DateTime`s) to **both** sets so the
 > generated schema matches the wire format (`get_package(id: "Regira.Entities", section: "entities.setup")` → P3).
 > An Entities API on mapped entity endpoints alone (`MapEntityEndpoints()`, no controllers) drops `AddControllers()`
-> and `MapControllers()` too.
+> and `MapControllers()` too, and calls `builder.Services.AddAuthorization()` instead: `AddControllers()` registered
+> the authorization services, and `app.UseAuthorization()` throws at start-up without them.
 
 > A browser SPA on `http://` is 307-redirected by `UseHttpsRedirection()`; see *Calling the API in dev*
 > (front-end `regira_modules.vue.entities` → `entities.setup`) to wire the dev SPA to this API.
@@ -692,7 +693,7 @@ try
 
     app.Run();
 }
-catch (Exception ex)
+catch (Exception ex) when (ex is not HostAbortedException) // dotnet ef stops the host on purpose
 {
     Log.Fatal(ex, "Application start-up failed");
 }
@@ -795,7 +796,7 @@ try
 
     app.Run();
 }
-catch (Exception ex)
+catch (Exception ex) when (ex is not HostAbortedException) // dotnet ef stops the host on purpose
 {
     Log.Fatal(ex, "Application start-up failed");
 }

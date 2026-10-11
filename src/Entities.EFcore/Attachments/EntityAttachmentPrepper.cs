@@ -2,6 +2,7 @@
 using Regira.Entities.Attachments.Abstractions;
 using Regira.Entities.Preppers.Abstractions;
 using Regira.Entities.Extensions;
+using Regira.Entities.EFcore.Extensions;
 
 namespace Regira.Entities.EFcore.Attachments;
 
@@ -13,6 +14,11 @@ public class EntityAttachmentPrepper<TContext, TEntityAttachment, TEntityAttachm
 {
     public override Task Prepare(TEntityAttachment item, TEntityAttachment? original, CancellationToken token = default)
     {
+        if (original == null)
+        {
+            // a new link: a negative temp id from the client is cleared, so the store assigns the key
+            DbContextExtensions.ResetTempKey<TEntityAttachment, TEntityAttachmentKey>(item);
+        }
         item.Attachment ??= original?.Attachment;
         EntityAttachmentContent.CreateFromNewContent(item);
 

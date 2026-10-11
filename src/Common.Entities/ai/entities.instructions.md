@@ -254,7 +254,7 @@ The interface adds behaviour, never the property — declare each member yoursel
 | `IArchivable` | Soft-delete — ⚠️ `DELETE /{id}` then flags the row instead of erasing it; the flagged rows are hidden by the archived query filter, auto-wired by `UseDefaults()` (Step 11); full round-trip in [`entities.patterns.md`](./entities.patterns.md) → Soft Delete | `bool IsArchived` — keep it on `TInputDto` too, or restoring is impossible |
 | `IHasTitle` | Entity has a short display name | `string? Title { get; set; }` (the interface is getter-only) |
 | `IHasDescription` | Entity has a long text field | `string? Description` |
-| `IHasCode` | Entity has a short unique code | `string? Code` |
+| `IHasCode` | Entity has a short unique code | `string? Code { get; set; }` — settable, so keep it `string?` (`[Required]` for a required code): a non-nullable `string Code = null!`, fine for the getter-only `IHasTitle`, fails CS8767 here |
 | `ISortable` | Used as a sortable child collection | `int SortOrder` |
 | `IHasNormalizedContent` | Entity uses normalized text for search | `string? NormalizedContent` + a `[Normalized]` source |
 | `IHasAttachments` | Entity can have file attachments | `[NotMapped] bool? HasAttachment`, `ICollection<TEntityAttachment>? Attachments` |
@@ -361,7 +361,7 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 - Exclude auto-generated fields (`Created`, `LastModified`, `NormalizedContent`) from `InputDto`
 - Exclude secured fields (e.g. `Password`) from DTOs
 - ⚠️ **`IsArchived` is the exception — keep it on `TInputDto`.** It reads like an auto-generated *and* server-owned flag, so it gets excluded by reflex. The write path stays archived-inclusive either way, but a DTO that cannot express the flag can never clear it, so **restore becomes impossible** — and the row is invisible meanwhile (lists hide it, `GET /{id}` 404s). Generated forms hide the field; they don't drop it. Round-trip: [`entities.patterns.md`](./entities.patterns.md) → Soft Delete
-- Server-owned fields (generated codes like `Order.Code`, computed totals, and **per-line prices** — an order/invoice line's `UnitPrice` is a textbook price-tampering vector) stay off `InputDto` and are set server-side. Declare each one `[ServerOwned]` (or `e.ServerOwned(x => x.Code, mint)` to mint on create as well) and the write path restores it from the stored row on every update — recipe below
+- Server-owned fields (generated codes like `Order.Code`, computed totals, and **per-line prices** — an order/invoice line's `UnitPrice` is a textbook price-tampering vector) stay off `InputDto` and are set server-side. Declare each one `[ServerOwned]` (or `e.ServerOwned(x => x.Code, mint)` to mint on create as well) and the write path restores it from the stored row on every update — recipe below. One of the two per field is enough: `e.ServerOwned(…, mint)` mints and protects, the attribute only protects. `UseDefaults()` registers the attribute's restore before every `For<>()`, so an entity's own prepper that recomputes the field (a total) runs after it and wins
 - When using Attachments, exclude full File paths, since the FileService accepts relative paths (identifiers)
 - Try to facilitate mapping by keeping DTO structure similar to the entity (e.g. nested related entities instead of flattening)
 - Use navigation properties in DTOs instead of flattening related entity data: this preserves structure and enables richer client-side handling (e.g. avoid `CategoryTitle`, but use `Category`=>`Title`)
@@ -551,7 +551,8 @@ written — changing the entity is a prepper's job.
 
 <!-- no-compile -->
 ```csharp
-// inline — the second form receives the request's DbContext and the write's cancellation token; async ctx => … takes neither
+// inline — the second form receives the request's DbContext, typed as the registration's TContext (db.Orders compiles),
+// and the write's cancellation token; async ctx => … takes neither
 // the write awaits an async delegate, so an error added after an await still refuses it
 e.Validate(ctx =>
 {
@@ -995,6 +996,7 @@ Rows scoped to a user/tenant, or endpoints gated by role? One more check applies
 > **Three traps:** name the token — `List(null, token: token)` — or it binds as the *search object* and filters nothing; `SaveChanges()` clears the change tracker (saved entities detach); `e.Related()` owned/join rows have no service of their own.
 
 - **Seed between `builder.Build()` and `app.Run()`.** `app.Run()` blocks until shutdown, so seeding code placed after it never executes — and the app looks empty with no error anywhere.
+- **Reactors fire for seeded rows too** — every committed save runs them, so a reactor that mails on create mails every seeded row. There is no built-in switch: a singleton flag the seeder sets around its waves, checked in the reactor's `CanReact` (`change => !seeding.IsRunning && …`), keeps the side effects out. A reactor and a seeder also run outside a request, in the host's culture, not a request's: set `CultureInfo.DefaultThreadCurrentCulture` at startup when they format dates or numbers.
 - Every `.For<>()` registers `IEntityService<TEntity, TKey>` — resolve that shape (e.g. `IEntityService<Product, int>`) in a scope for seeding/jobs, whatever the builder overload.
 - A job that wants one endpoint's answer — DTO in, re-read DTO out — sends that endpoint's request instead: [`entities.patterns.md`](./entities.patterns.md) → *Entity operations outside a controller*.
 - On that universal interface, `List`/`Count` take `object? so` **first** — a positionally-passed `CancellationToken` binds as the *search object* and silently filters nothing. Name the token: `List(null, token: token)`.
@@ -1005,7 +1007,7 @@ Rows scoped to a user/tenant, or endpoints gated by role? One more check applies
 - **Reference earlier waves by foreign key, not by navigation object.** Those rows are detached once the tracker clears, so `item.Shopper = shopper` re-adds that instance as a *new* graph member and the wave dies on `UNIQUE constraint failed: Shoppers.Id`. Read the keys you need (`.AsNoTracking()`, select the id) and assign `item.ShopperId = id`. Reserve navigation objects for children genuinely created in the same wave.
 - **Owned/join rows have no service of their own** — a collection managed by `e.Related()` (m2m join, hierarchy join) can't be seeded through the service loop. Seed it through the owning parent's navigation, or via the `DbContext` for a standalone join — see [`entities.patterns.md`](./entities.patterns.md) → *Seeding owned / join rows*.
 - **Uniqueness checks within one wave must be in-memory.** Rows still queued in the change tracker are invisible to a database query — an `AnyAsync(...)` dedupe check passes and the wave then dies on a `UNIQUE` constraint at `SaveChanges()`. Dedupe a wave with a `HashSet` of keys instead.
-- **Counts within one wave too** (capacity caps, quota fills): a service `Count()` cannot see queued rows either, and `DbSet.Local` with an `Id == 0` filter miscounts once earlier flushes assigned ids. Count pending rows with `dbContext.ChangeTracker.Entries<T>().Count(e => e.State == EntityState.Added)` plus the persisted count.
+- **Counts within one wave too** (capacity caps, quota fills): a service `Count()` cannot see queued rows either, and `DbSet.Local` with an `Id == 0` filter miscounts once earlier flushes assigned ids. Count pending rows with `dbContext.ChangeTracker.Entries<T>().Count(e => e.State == EntityState.Added)` plus the persisted count. ⚠️ `Entries<T>()` runs `DetectChanges()` over the whole tracker on every call, so a validator or prepper that counts this way per row is quadratic in the wave (minutes for ten thousand rows): keep the count in the seeding loop, or turn `ChangeTracker.AutoDetectChangesEnabled` off around the read.
 - **The tracker clears on success only.** A **failed** `SaveChanges()` (e.g. `EntityConstraintException`) leaves every entry tracked — stock EF Core semantics — so you can fix or remove the offending entity and retry the same call; entities from the failed wave are **not** silently dropped. Only a successful save clears the tracker (the deliberate deviation from stock EF Core).
 
 ---
@@ -1572,7 +1574,7 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
    `public class ProductAttachment : EntityAttachment { public ProductAttachment() => ObjectType = nameof(Product); }`.
    **One subclass per owner entity** — the class *is* the join table, and its constructor pins a single
    `ObjectType`, so a second owner needs its own subclass, `DbSet`, controller (unless its endpoints are mapped, step 4)
-   and registration. Budget it as one extra simple slot per owner, not one for the whole app.
+   and registration. Budget it as one extra simple slot per owner — simple even when the owner is complex — not one for the whole app.
 2. Implement `IHasAttachments` and `IHasAttachments<TAttachment>` on the owning entity. The typed collection
    is the ordinary property; the **non-generic** one takes the explicit implementation, casting both ways.
    Both interfaces also require `HasAttachment` — a flag, not a column (on an entity that already maps it, the
@@ -1587,9 +1589,9 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
        set => Attachments = value?.Cast<ProductAttachment>().ToArray();
    }
    ```
-3. **Owner with its own input DTO (on the controller or through `UseMapping`)? Declare the collection on it:** `public ICollection<EntityAttachmentInputDto>? Attachments { get; set; }` (or your derived attachment input DTO). Without it the convention map drops the incoming collection on every save and the sync reads that as "attachments not sent" — adds, removes and reorders through the parent are silently ignored (200 OK, no error; the `/{objectId}/attachments` sub-routes still work, which masks it). Startup validation warns. Mirror on the read DTO with `ICollection<EntityAttachmentDto>?`.
+3. **Owner with its own input DTO (on the controller, or through `UseMapping` for mapped endpoints — a controller app needs no `UseMapping`, and a mediator send names its DTO types itself)? Declare the collection on it:** `public ICollection<EntityAttachmentInputDto>? Attachments { get; set; }` (or your derived attachment input DTO). Without it the convention map drops the incoming collection on every save and the sync reads that as "attachments not sent" — adds, removes and reorders through the parent are silently ignored (200 OK, no error; the `/{objectId}/attachments` sub-routes still work, which masks it). Startup validation warns. Mirror on the read DTO with `ICollection<EntityAttachmentDto>?`.
 4. *(skip when the owner's endpoints are mapped — `MapEntityEndpoints()` serves these routes under the owner for the
-   `int`-keyed link: [`entities.patterns.md`](./entities.patterns.md) § Mapped entity endpoints)* Create a controller inheriting `EntityAttachmentControllerBase<TAttachment>` — **name it after the attachment type** (`ProductAttachmentController` or `ProductAttachmentsController` for a `ProductAttachment`; any other name makes `Uri` unresolvable, see 7) and set the class route to the **owner base path**, e.g. `[Route("products")]` (resource-relative — see the route-prefix note in §Step 13). The base controller appends the sub-routes `{objectId}/attachments`, `attachments/{id}`, `{objectId}/files`, ….
+   `int`-keyed link: [`entities.patterns.md`](./entities.patterns.md) § Mapped entity endpoints)* Create a controller inheriting `EntityAttachmentControllerBase<TAttachment>` — **name it after the attachment type** (`ProductAttachmentController` or `ProductAttachmentsController` for a `ProductAttachment`; any other name makes `Uri` unresolvable, see 7) and set the class route to the **owner base path** — the same route as the owner's controller, e.g. `[Route("products")]` (resource-relative — see the route-prefix note in §Step 13). The base controller appends the sub-routes `{objectId}/attachments`, `attachments/{id}`, `{objectId}/files`, ….
 5. Add `DbSet<Attachment>` and `DbSet<TAttachment>` to the DbContext and map **both** relationships in
    `OnModelCreating`. ⚠️ The owner side is the one EF cannot infer — `ObjectId` is not a conventional FK name, so
    left out it gets a shadow `ProductId`, every link row is saved orphaned, the owner's `Attachments` loads empty
@@ -1605,8 +1607,9 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
    - A failed save removes the file it wrote and gives the row its stored path back for a retry — except where EF does not roll the failed save back (a caller's transaction without a savepoint: `AutoSavepointsEnabled = false`, SQL Server with MARS; an ambient `TransactionScope`; `AutoTransactionBehavior.Never`): the statements before the failing one stand, so the file stays.
    - Replaced and deleted files go after the commit. A rollback to a savepoint the app makes keeps the files of every save before it in that transaction; a failed save the app catches inside its transaction is undone alone, and the earlier saves' files go as usual.
    - A transaction rolled back after a successful save leaves the new file as an orphan; an app that needs a clean store sweeps storage against the stored `Path` values.
+   - **Deleting the owner leaves its attachments, by design.** Its links go by the database's FK cascade, but the `Attachment` rows and their files stay: an attachment can be linked from more than one entity, so the library does not decide that it is no longer needed. Clean up in a background job that removes the `Attachment` rows no link references — through `IEntityService<Attachment, int>`, so `AttachmentFileReactor` removes each file after the commit — or with a rule of the app's own.
    - Without the reactor wiring, the primer removes replaced and deleted files once the save succeeds — before a surrounding transaction commits; a `SaveChanges(acceptAllChangesOnSuccess: false)` leaves them in storage.
-7. *(web apps)* Call `options.UseAttachmentUris()` (before registering entities, on the **same** `UseEntities` options instance) and register `AddHttpContextAccessor()` so attachment DTOs resolve a `Uri`: a link to the owner's mapped download when `MapEntityEndpoints()` serves it, else to the attachment controller's `GetFile` action.
+7. *(web apps)* Call `options.UseAttachmentUris()` (before registering entities, on the **same** `UseEntities` options instance) and register `AddHttpContextAccessor()` so attachment DTOs resolve a `Uri`: a link to the owner's mapped download when `MapEntityEndpoints()` serves it, else to the attachment controller's `GetFile` action. The `Uri` takes the request's host, so behind a proxy (the SPA's dev server) add `app.UseForwardedHeaders(...)` with `XForwardedHost | XForwardedProto`, or it names the API's own origin (`entities.setup` → P3).
 
 > ⚠️ **A link rule belongs in the owner's validator too.** Validators scoped to the link entity run for the
 > attachment endpoints — upload, replace, update and delete. A `POST` or `PUT` of the owner whose input carries
@@ -1666,12 +1669,24 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 
 > **`FileName` carries the client's virtual folders; storage never does.** `FileName` is the client's own
 > value and may be a path (`folder1/folder2/report.pdf`) — that is how attachments are organised. The
-> identifier is generated independently (`{Owner}/Attachments/{ObjectId}/{slug}-{guid}{ext}`), so **re-filing
+> identifier is generated independently (`{Owner}/Attachments/{ObjectId}/{slug}-{guid}{ext}`; a file sent inline
+> with an owner that is still being created lands under `0`, the id it had then, and the guid keeps it apart), so **re-filing
 > is just writing a different `FileName`**: the download URL changes, the bytes never move. Downloads use a
 > catch-all (`{objectId}/files/{*fileName}`) so a multi-segment name resolves. Empty and relative segments
 > are dropped on write, since the value is echoed into URLs.
 
-> **Reading bytes in custom code:** inject `IAttachmentFileService<Attachment, int>` and call `GetBytes(item)`. Consuming code references files by `Identifier` (the public storage key, populated when you load through the entity service); `Path` is internal and isn't mapped to DTOs — clients get a download `Uri` instead.
+> **Reading bytes in custom code:** inject `IAttachmentFileService<Attachment, int>` and call `GetBytes(item)`. Consuming code references files by `Identifier` (the public storage key, populated when you load through the entity service); `Path` is internal and isn't mapped to DTOs — clients get a download `Uri` instead. One owner's files, through the link service `HasAttachments` registered:
+>
+> <!-- no-compile -->
+> ```csharp
+> var links = await vehicleAttachments.List(new EntityAttachmentSearchObject { ObjectId = [vehicleId] }, token: token); // IEntityService<VehicleAttachment, int>
+> foreach (var link in links.Where(x => x.Attachment != null))
+> {
+>     var bytes = await files.GetBytes(link.Attachment!, token);                                                     // IAttachmentFileService<Attachment, int>
+> }
+> ```
+>
+> `GetBytes` reads the stored file for an `Attachment` loaded any way, through the `DbContext` too.
 
 > **Ordering & extending the DTOs.** Attachment order travels by **array position**, not by a client-sent
 > value: on every parent save the pipeline assigns `SortOrder = index` over the incoming collection
@@ -2003,6 +2018,7 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 
 | Problem | Likely Cause | Fix |
 |---|---|---|
+| No startup-validation lines in the log | The host runs as Production (`Hosting environment: Production`) — started without its launch profile (`dotnet run --no-launch-profile`) or published; the validation runs in Development only | Start with the launch profile or `ASPNETCORE_ENVIRONMENT=Development`, or turn it on everywhere with `o.ConfigureValidation(v => v.Enabled = true)` |
 | Normalizer not running | Interceptor not wired — no `UseDefaults()` and no `WireDbContext(NormalizerInterceptors)` | Call `UseDefaults()` (or `e.WireDbContext(DbContextWiring.NormalizerInterceptors)`) — startup validation fails fast on this in Development |
 | Primers not running | Interceptor not wired — no `UseDefaults()` and no `WireDbContext(PrimerInterceptors)` | Same as above |
 | A validator never runs | Its scope matches no registered entity (a `Related()` child is validated through its parent); the write service calls `EntityWriteService`'s constructor without validators; a custom repository does not take `IEnumerable<IEntityValidator>`; or the write path takes them and skips them — a custom repository that never calls `ValidateItem`, an override of `Remove` that skips `base.Remove` | Startup validation warns about the first three; the last one it cannot see — §Step 8 → Validators |

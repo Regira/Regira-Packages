@@ -102,7 +102,7 @@ public static class DbContextExtensions
     /// keys can carry a temp value, so string and Guid keys are deliberately left alone: there, a
     /// client-supplied key is a legitimate choice rather than a placeholder.
     /// </summary>
-    private static void ResetTempKey<TRelated, TRelatedKey>(TRelated entity)
+    internal static void ResetTempKey<TRelated, TRelatedKey>(TRelated entity)
         where TRelated : class, IEntity<TRelatedKey>
     {
         if (IsTempKey(entity.Id))
@@ -145,7 +145,7 @@ public static class DbContextExtensions
     }
 
     /// <summary>A negative signed numeric key: the placeholder a client gives a row the store has not seen.</summary>
-    private static bool IsTempKey(object? id)
+    internal static bool IsTempKey(object? id)
         // Compare the unwrapped value, not the key against its type's default: for a nullable key the default is null,
         // and Comparer<int?> sorts null FIRST — so Compare(-1, null) is positive and the guard would never fire on the
         // one key shape that most needs it. Boxing a Nullable<int> that has a value yields a boxed int, so the patterns

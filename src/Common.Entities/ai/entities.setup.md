@@ -418,7 +418,10 @@ builder.Services.AddEntityServices(builder.Configuration);
 > **Mapped entity endpoints only?** An app that serves its entities through `app.MapEntityEndpoints()` and has no
 > controller drops `AddControllers()` and `app.MapControllers()`: `ConfigureDefaultJsonOptions()` configures the
 > options alone and needs no MVC, and the mapped endpoints carry their own exception filter
-> (`entities.patterns` → *Mapped entity endpoints (no controllers)*). Keep both while any controller remains — a
+> (`entities.patterns` → *Mapped entity endpoints (no controllers)*). `AddControllers()` also registered the
+> authorization services, so add `builder.Services.AddAuthorization()` in its place: without it
+> `app.UseAuthorization()` throws `InvalidOperationException` at start-up, and a group's `.RequireAuthorization()`
+> needs both. Keep both while any controller remains — a
 > hand-written one, or the account controllers of `Regira.Security.Authentication.Web`.
 
 > **⚠️ SQLite ignores foreign keys unless the connection string enables them.** `Microsoft.Data.Sqlite` leaves

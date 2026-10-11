@@ -167,4 +167,55 @@ public class AttachmentNewContentTests
         }
         AssertStoredFile(productId);
     }
+    // a client mints negative temp ids for new rows; a link that kept one was inserted under it (SQLite) or refused
+    // as an explicit key (SQL Server)
+    private int[] StoredLinkIds(int productId)
+    {
+        using var scope = _sp.CreateScope();
+        return scope.ServiceProvider.GetRequiredService<ShopContext>().ProductAttachments.AsNoTracking()
+            .Where(x => x.ObjectId == productId).Select(x => x.Id).ToArray();
+    }
+
+    [Test]
+    public async Task A_Created_Owner_Gives_Temp_Id_Links_Store_Ids()
+    {
+        var first = NewBytesLink(); first.Id = -1;
+        var second = NestedLink(); second.Id = -2;
+
+        var productId = await AddProduct(first, second);
+
+        Assert.That(StoredLinkIds(productId), Has.Length.EqualTo(2).And.All.GreaterThan(0));
+    }
+
+    [Test]
+    public async Task An_Updated_Owner_Gives_A_Temp_Id_Link_A_Store_Id()
+    {
+        var productId = await AddProduct(NewBytesLink());
+        using (var scope = _sp.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Product, int>>();
+            var product = (await service.Details(productId))!;
+            var added = NewBytesLink(productId); added.Id = -1;
+            product.Attachments = [.. product.Attachments!, added];
+            await service.Modify(product);
+            await service.SaveChanges();
+        }
+
+        Assert.That(StoredLinkIds(productId), Has.Length.EqualTo(2).And.All.GreaterThan(0));
+    }
+
+    [Test]
+    public async Task The_Link_Service_Gives_A_Temp_Id_Link_A_Store_Id()
+    {
+        var productId = await AddProduct();
+        using (var scope = _sp.CreateScope())
+        {
+            var links = scope.ServiceProvider.GetRequiredService<IEntityService<ProductAttachment, int>>();
+            var link = NewBytesLink(productId); link.Id = -1;
+            await links.Add(link);
+            await links.SaveChanges();
+        }
+
+        Assert.That(StoredLinkIds(productId), Has.Length.EqualTo(1).And.All.GreaterThan(0));
+    }
 }

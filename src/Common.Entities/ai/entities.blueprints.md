@@ -194,6 +194,8 @@ first — pick by what the app actually queries, and mix freely:
        public int Id { get; set; }
        [Required, MaxLength(256)] public string Name { get; set; } = null!;    // person or organization — one field
        [MaxLength(128)] public string? Organization { get; set; }              // optional affiliation, plain text
+       public PartyRole Role { get; set; }                                      // an enum (Supplier, Employee, …) when one table
+                                                                                // holds several roles: filter on it in the SearchObject
        public string Title => Name;
        [MaxLength(256), Normalized(SourceProperty = nameof(Name))] public string? NormalizedTitle { get; set; }
        [MaxLength(2048)] public string? NormalizedContent { get; set; }

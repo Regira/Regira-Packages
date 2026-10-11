@@ -16,11 +16,14 @@ the provider only at registration.
 | Namespace | Types |
 |---|---|
 | `Regira.IO.Abstractions` | `IMemoryFile`, `IBinaryFile`, `IMemoryBytesFile`, `IMemoryStreamFile` — **every Office service returns `IMemoryFile`**; assembly `Regira.Common`, not an Office package |
-| `Regira.IO.Extensions` | `MemoryFileExtensions`, `BinaryFileExtensions` — `GetBytes()`, `GetStream()`, `HasPath()`. Assembly `Regira.Common` |
+| `Regira.IO.Extensions` | `MemoryFileExtensions`, `BinaryFileExtensions` — `GetBytes()`, `GetStream()`, `HasPath()`, and the factories `bytes.ToMemoryFile(contentType)` and `bytes.ToBinaryFile(contentType)`. An `IBinaryFile` is an `IMemoryFile`, not the reverse: Excel's `Read` takes an `IBinaryFile`, so convert with `ToBinaryFile()`. Assembly `Regira.Common` |
 | `Regira.Office.Models` | `FileFormat`, `PageSize`, `PageSizes`, `PageOrientation`, `Margins` |
 | `Regira.Office.MimeTypes` | `ContentTypes` |
 | `Regira.Office.Utilities` | `PageSizeUtility` |
+| `Regira.Utilities` | `DimensionsUtility` — `MmToPt(float mm, int dpi)`, `MmToIn`, `InToMm`, `ModifyDpi`: millimetres to the DPI units `Margins` and page sizes are held in; assembly `Regira.Common` |
 | `Regira.Media.Drawing.Models.Abstractions` | `IImageFile` (extends `IMemoryFile`) — what the barcode/QR and image services return; assembly `Regira.Media` |
+| `Regira.Media.Drawing.Dimensions` | `ImageSize` — `PdfToImagesOptions.Size`; assembly `Regira.Media` |
+| `Regira.Media.Drawing.Enums` | `ImageFormat` — `PdfToImagesOptions.Format`; assembly `Regira.Media` |
 
 ⚠️ `GetBytes()` is an extension in **`Regira.IO.Extensions`** — a file object with no `using` for it looks
 like it has no content accessor at all.
@@ -32,7 +35,7 @@ like it has no content accessor at all.
 | Namespace | Types |
 |---|---|
 | `Regira.Office.PDF.Abstractions` | `IPdfService`, `IHtmlToPdfService`, `IDocumentToPdfService`, `IPdfEditor`, `IPdfMerger`, `IPdfSplitter`, `IPdfTextExtractor`, `IPdfTextService`, `IPdfImageService`, `IImagesToPdfService`, `IPdfToImageService`, `IPdfToImageAsyncService`, `IPdfPrinter`, `PdfInputBase` |
-| `Regira.Office.PDF.Models` | `HtmlInput`, `DocumentInput`, `ImagesInput`, `PdfSplitRange`, `PdfToImagesOptions` |
+| `Regira.Office.PDF.Models` | `HtmlInput`, `DocumentInput`, `ImagesInput`, `PdfSplitRange`, `PdfToImagesOptions` (its `Size` and `Format` types: see *Shared across every module*) |
 | `Regira.Office.PDF.Defaults` | `PdfDefaults` |
 | `Regira.Office.PDF.Drawing` | `PdfImageCreator`, `PdfToImageLayerOptions` |
 | `Regira.Office.PDF.Printer` | `PdfPrinterInput` |

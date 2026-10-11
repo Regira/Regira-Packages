@@ -140,7 +140,7 @@ edited by users, deployed as files — need RazorLight instead.
 ```csharp
 Task<string> Render(Type componentType, IDictionary<string, object?>? parameters = null);
 
-// Extensions
+// Extensions — HtmlComponentRendererExtensions, in Regira.Web.HTML.Abstractions beside the interface
 Task<string> Render<TComponent>(IDictionary<string, object?>? parameters = null);
 Task<string> Render<TComponent, TModel>(TModel model);   // sets the component's Model parameter
 ```
@@ -150,6 +150,7 @@ Each dictionary entry sets the component parameter of that name. The `Type` form
 ### Registration
 
 ```csharp
+using Regira.Web.HTML.Abstractions;
 using Regira.Web.HTML.RazorComponents;
 
 services.AddTransient<IHtmlComponentRenderer, RazorComponentRenderer>();
@@ -196,7 +197,8 @@ rather than taking them for MVC views. `PreserveCompilationContext` is not neede
 - **Layouts.** `@layout` has no effect. A shared document frame is a component with a `ChildContent` parameter that
   wraps the content.
 - **HTML only.** No `NavigationManager`, no event handlers, no render modes, no JavaScript interop.
-- **Culture.** The caller's `CurrentCulture`, so `UseRequestCulture` applies to the rendered HTML.
+- **Culture.** The caller's `CurrentCulture`, so `UseRequestCulture` applies to the rendered HTML. A reactor, job or
+  seeder runs outside a request, in the host's culture: set the culture it should render in around the call.
 - **Whitespace.** Whitespace between elements in code blocks is trimmed; `@preservewhitespace true` keeps it.
 - **Exceptions** pass through unwrapped: the template's own, and `InvalidOperationException` for a parameter the
   component does not declare or an `@inject` service the provider cannot resolve.

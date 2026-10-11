@@ -215,7 +215,7 @@ return await this.Details<CreditRequest, CreditRequestDto>(id) ?? NotFound();   
 — *Role-gated transitions* is its sub-section.
 
 ### React to a committed change (status pipelines, mail, jobs)
-<!-- how_to: key=after-commit aliases=reactor,reactors,react,after-save,aftersave,committed,commit,side-effect,side-effects,event,events,trigger,pipeline,notify,notification,mail,hangfire,background-job,status-changed -->
+<!-- how_to: key=after-commit aliases=reactor,reactors,react,after-save,aftersave,committed,commit,side-effect,side-effects,event,events,trigger,pipeline,notify,notification,mail,email,send,sends,hangfire,background-job,status-changed -->
 What must *follow* a change — mail the customer, start a follow-up workflow, enqueue a background job — is a
 **reactor**. It runs once the save is committed (never for a failed save or a rolled-back transaction), on
 every write path that reaches the row — CRUD PATCH, a domain action, an import, a raw `DbContext` writer:
@@ -485,8 +485,12 @@ On `net10.0` the two opt-ins suspend the archived filter **by name** and nothing
 Flip one field (e.g. `IsActive`) without a full update: expose it on `TInputDto` and let the base `PATCH /{id}` map only the supplied fields — no custom action needed.
 
 ```bash
-curl -X PATCH {base}/xs/{id} -H "Content-Type: application/json" -d '{ "isActive": false }'
+curl -X PATCH {base}/xs/{id} -H "Content-Type: application/merge-patch+json" -d '{ "isActive": false }'
 ```
+
+The body is a JSON merge patch (RFC 7386): the fields given change, `null` clears one, and an owned collection left
+out stays as it is. The action reads the body itself, so `application/json` is accepted too. A `@regira/modules`
+client sends it with `service.patch(id, { isActive: false })` (front-end `entities.patterns` → *State toggle*).
 <!-- no-compile -->
 ```csharp
 // Server-side (seeding/jobs) — there is no service.Patch; load, flip, Modify, persist:
@@ -890,14 +894,16 @@ public class PriceImport(IEntitySender sender)
   ran. A patch's merged input is always checked.
 - **`PatchCommand` without `SerializerOptions`** merges with `JsonSerializerDefaults.Web`, cycles ignored, enums by
   name or number. The endpoints pass the app's JSON options; a job whose patch relies on a converter of the app's own
-  passes them too.
+  passes them too — `IOptions<Microsoft.AspNetCore.Mvc.JsonOptions>.Value.JsonSerializerOptions`, or
+  `Microsoft.AspNetCore.Http.Json.JsonOptions` for minimal APIs. The patch's keys are the input DTO's JSON names
+  (camelCase under `ConfigureDefaultJsonOptions()`).
 - **One entity per request.** A bulk write or a seed of many rows stays on `IEntityService` with one `SaveChanges()`
   (§Bulk insert / update).
 - In a domain action, `this.Details<TEntity, TDto>(id)` (§Domain actions on an entity resource) already sends a
   `DetailsQuery`.
 
-Below: *Replacing one operation for one entity*, *Behaviours around every operation*, *Dispatching through MediatR*
-and *A mediator library without an adapter*.
+Below: *Replacing one operation for one entity*, *Several sends in one transaction*, *Behaviours around every
+operation*, *Dispatching through MediatR* and *A mediator library without an adapter*.
 
 ### Replacing one operation for one entity
 
@@ -1041,6 +1047,53 @@ public static class ShopConfiguration
   it unless it is a `GET`.
 - **The endpoint binds its own parameters.** The mapped endpoints' query binder is not public, so take what the
   endpoint needs as parameters (`q`, `page`, `pageSize` above) or `[AsParameters]` of a type of the app's own.
+
+### Several sends in one transaction
+
+Each send saves on its own, in EF's own transaction. A unit of work spanning several sends — an assignment that
+updates the asset and adds an assignment row — is the application's: open the transaction on the request's
+`DbContext`, inside the execution strategy, and send inside it.
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Requests;
+
+public class Shelf : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } public int Stock { get; set; } }
+public class ShelfDto { public int Id { get; set; } public string? Title { get; set; } public int Stock { get; set; } }
+public class ShelfInputDto { public int Id { get; set; } public string? Title { get; set; } public int Stock { get; set; } }
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options);
+
+// the context type AddDbContext registered — DI resolves AppDbContext, never the base DbContext — and the one the entity
+// services of this scope write through
+public class StockMove(AppDbContext db, IEntitySender sender)
+{
+    public async Task Move(ShelfInputDto from, ShelfInputDto to, CancellationToken token)
+    {
+        // a retrying strategy (EnableRetryOnFailure) replays the whole unit, so the transaction starts inside it
+        await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            await using var tx = await db.Database.BeginTransactionAsync(token);
+            await sender.Send(new SaveCommand<Shelf, int, ShelfDto, ShelfInputDto>(from), token);
+            await sender.Send(new SaveCommand<Shelf, int, ShelfDto, ShelfInputDto>(to), token);
+            await tx.CommitAsync(token);
+        });
+    }
+}
+```
+
+The handlers resolve their services from the scope the sender came from, so every send writes through that same
+`DbContext` and joins its transaction — and a later send's preppers and validators see the rows an earlier one saved.
+A `PatchCommand` in such a unit builds its patch with the app's JSON options, the ones it passes along:
+
+```csharp
+// options: IOptions<Microsoft.AspNetCore.Mvc.JsonOptions>.Value.JsonSerializerOptions (minimal APIs: Http.Json.JsonOptions)
+// var patch = JsonSerializer.SerializeToElement(new { endDate = DateTime.UtcNow }, options);
+// await sender.Send(new PatchCommand<Assignment, int, AssignmentDto, AssignmentInputDto>(id, patch, options), token);
+```
+ A send that throws leaves the transaction uncommitted, and disposing `tx`
+rolls back the sends before it. Reactors wait for `CommitAsync`, and a rolled-back unit fires none (*Reactors* in
+`entities.instructions`).
 
 ### Behaviours around every operation
 
@@ -1822,6 +1875,31 @@ Three consequences follow from the child owning the write:
   Attaching an intervention to an invoice therefore has to save the invoice too, or the total lags.
 - **Seeding needs a second pass over the parents.** At create time the total is necessarily `0`, so add a
   final wave that re-`Modify()`s every parent purely to re-run this hook — see §Bulk insert / update.
+- **Settle it from the child with a reactor.** On the child's registration, re-save the parents a committed change
+  touched — the old one too when the FK moved — so the prepper above re-sums them:
+
+  <!-- no-compile -->
+  ```csharp
+  e.React(
+      change => change.Kind != EntityChangeKind.Modified || change.HasChanged(x => x.InvoiceId) || change.HasChanged(x => x.TotalCost),
+      async (change, services, token) =>
+      {
+          var db = services.GetRequiredService<AppDbContext>();
+          var invoices = services.GetRequiredService<IEntityService<Invoice, int>>();
+          foreach (var id in new[] { change.Entity.InvoiceId, change.Original?.InvoiceId }.OfType<int>().Distinct())
+          {
+              // the bare row, detached and without navigations: List and Details apply the registered includes, and an
+              // included to-one would ride into Modify as a graph to attach
+              var invoice = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, token);
+              if (invoice != null) await invoices.Modify(invoice, token);
+          }
+          await invoices.SaveChanges(token);
+      });
+  ```
+
+  The reactor runs after the child's save committed, in a scope of its own, so the parent's save is a second
+  commit: a failure there is logged and the child's save stands. With it registered, seeding needs no second pass
+  over the parents: seed the parents first, and each child wave settles them.
 - ⚠️ **A query filter on the child also hides its rows from this recompute.** A dependent you query directly
   carries `HasQueryFilter(x => !x.Parent!.IsArchived)` (§Step 11) — and that filter applies here too, while
   the parent is *still archived at the moment the prepper runs*. A restore (`PATCH {"isArchived": false}`)
@@ -1886,6 +1964,24 @@ Two constraints come with the shape:
   keep the index and let a genuine collision surface as a 409.
 
 Stamp from a primer exactly as above: mint on `Added`, restore from `entry.OriginalValues` on `Modified`.
+
+<!-- no-compile -->
+```csharp
+public class RequestCodePrimer(RequestCodeGenerator codes) : EntityPrimerBase<Request>
+{
+    public override async Task PrepareAsync(Request entity, EntityEntry entry, CancellationToken token = default)
+    {
+        if (entry.State == EntityState.Added && string.IsNullOrEmpty(entity.Code))
+            entity.Code = await codes.Next(DateTime.UtcNow.Year);                 // create — mint
+        else if (entry.State == EntityState.Modified)
+            entity.Code = (string?)entry.OriginalValues[nameof(entity.Code)];      // update — the stored code, whatever the body said
+    }
+}
+// Registration: services.AddSingleton<RequestCodeGenerator>(); e.AddPrimer<RequestCodePrimer>();
+```
+
+The restore holds on the service's `Modify` path too: it tracks the stored row's values as the entry's originals, so
+`OriginalValues` is the stored code even for an entity that arrived detached.
 The primer is also what keeps the sequence gapless: it runs inside `SaveChanges()`, after the validators, so a
 create they refuse uses no number. Minted in a prepper or with `e.ServerOwned(x => x.Code, mint)`, which run
 before the validators, the refused create has already taken its number, and the next one skips it. Only a save that

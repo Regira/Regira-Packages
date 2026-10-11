@@ -11,7 +11,7 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 | `Regira.Office.PDF` | HTML→PDF, Office documents (Word, Excel, PowerPoint)→PDF, PDF operations (merge/split/extract), printing |
 
 **Related:**
-- **Media / Drawing** — `IImageService` required by `PdfPig.PdfService` (and `DocNET.PdfManager`); `IImageFile` ↔ PDF conversion. `get_package(id: "Regira.Media", section: "media.instructions")`, or `media.instructions.md` locally.
+- **Media / Drawing** — `IImageService` required by `PdfPig.PdfService` (and `DocNET.PdfManager`): `Regira.Drawing.SkiaSharp.Services.ImageService` from package `Regira.Drawing.SkiaSharp`, registered with `services.AddSingleton<IImageService, Regira.Drawing.SkiaSharp.Services.ImageService>()`; `IImageFile` ↔ PDF conversion. `get_package(id: "Regira.Media", section: "media.instructions")`, or `media.instructions.md` locally.
 - **IO.Storage** — `IMemoryFile` used for PDF input/output. `get_package(id: "Regira.IO.Storage", section: "io.storage.instructions")`, or `io.storage.instructions.md` locally.
 
 ---
@@ -58,7 +58,7 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 | `PDF.Gotenberg` | Gotenberg server (Chromium) | ✓ full | — | — | — | **Needs a running Gotenberg server** (`gotenberg/gotenberg:8`); no browser in the application and nothing downloaded at run time |
 | `PDF.PdfPig` | PdfPig + PDFtoImage | — | — | merge, split, img↔pdf, text | — | PdfPig is fully managed; page images render through PDFtoImage over PDFium, which ships native binaries for Windows, Linux and macOS (x64 and arm64). On Linux it carries SkiaSharp's dependency-free native library; an application that adds `SkiaSharp.NativeAssets.Linux` itself gets that one instead, which needs `libfontconfig1` |
 | `PDF.DocNET` | Docnet.Core | — | — | merge, split, img↔pdf, text | — | **Deprecated.** Docnet.Core has had no release since 2.6.0 (2023) and bundles a PDFium build from 2022, which parses every PDF it is given — a risk for uploaded files. Managed wrapper over a native library — the RID must be one `Docnet.Core` ships binaries for |
-| `PDF.MiniPdf` | MiniPdf | — | ✓ docx, xlsx, pptx | — | — | Managed and in-process: no Office, server or browser. MiniPdf lays documents out itself, so a complex layout comes out less faithful than through LibreOffice or Word. Text renders in the host's system fonts — on a host with few (a container), register TrueType fonts once at startup with `MiniSoftware.MiniPdf.RegisterFont`, a registration for the whole process |
+| `PDF.MiniPdf` | MiniPdf | — | ✓ docx, xlsx, pptx | — | — | Managed and in-process: no Office, server or browser. MiniPdf lays documents out itself, so a complex layout comes out less faithful than through LibreOffice or Word. Reported to render reliably: tables (cell shading included) and paragraphs of one run; paragraph shading, paragraph borders and paragraphs mixing runs can land off — build bands and columns as tables. Text renders in the host's system fonts — on a host with few (a container), register TrueType fonts once at startup with `MiniSoftware.MiniPdf.RegisterFont`, a registration for the whole process |
 | `PDF.Spire` | FreeSpire.PDF | — | — | merge, split, img, text | ✓ | The **free** edition: loading or creating a PDF of more than **ten pages** throws (a merge whose result passes ten included), and `ToImages` renders only the first **three** pages, returning blank images for the rest |
 | `PDF.PDFtoPrinter` | PDFtoPrinter | — | — | — | ✓ (Win) | Drives an external printing utility |
 | `PDF.PockyBum522` | SimpleFreePdfPrinter | — | — | — | ✓ (Win) | Targets `net*-windows` — **will not build** on a non-Windows TFM |
@@ -77,11 +77,14 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 **Chromium behaviour** (`PDF.MsPlaywright`, `PDF.Puppeteer` and `PDF.Gotenberg`):
 - `Format` and `Orientation` set the paper (A0–A10); the CSS `@page` size is not used. `Margins` are in units of `DPI`.
 - The header takes a band of `HeaderHeight` mm below the top margin and the footer `FooterHeight` mm above the bottom
-  margin (45 pt and 35 pt when `null`), between the left and right margins; the body stays clear of both bands.
+  margin (45 pt and 35 pt when `null`), between the left and right margins; the body stays clear of both bands. Body
+  height = page height − top margin − bottom margin − the header band (when `HeaderHtmlContent` is set) − the footer band
+  (when `FooterHtmlContent` is set): size one-page content (a badge) to that, or it runs onto a second page.
 - A header or footer is rendered on its own: the page's stylesheets do not reach it and it loads nothing by URL —
   inline styles, images as `data:` URIs. `<span class="pageNumber"></span>` and `<span class="totalPages"></span>`
   are filled with the page number and count.
-- CSS background colours and images are left out, as a printer would.
+- CSS background colours and images are left out, as a printer would, and no `HtmlInput` setting turns them on:
+  draw a coloured band with a border, inline SVG or an `<img>`.
 - Chromium fetches every URL the HTML names (images, frames, stylesheets, scripts) from the host it runs on, internal
   addresses and cloud metadata (`169.254.169.254`) included. Convert HTML built from user input only once its URLs are
   removed or allow-listed, or on a host whose outbound network is restricted.
@@ -95,7 +98,9 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
   from user input can make the server request internal addresses, cloud metadata included: Gotenberg's default deny
   list refuses only `file:` URLs. For untrusted HTML, start the server with `--chromium-allow-list` or
   `--chromium-deny-list` (regular expressions matched against every URL Chromium requests; a refused one answers `403`)
-  and restrict the container's outbound network.
+  and restrict the container's outbound network. HTML that needs nothing from the network takes
+  `--chromium-deny-list=^https?://.*`; a pattern such as `^(?!data:).*` also refuses the `file:` page Gotenberg loads
+  itself.
 - A refused request throws `HttpRequestException` carrying the status code and Gotenberg's message: `400` for
   settings Chromium refuses (margins that leave no room for content), `503` for a conversion past the server's
   `--api-timeout` (30 s by default).
@@ -112,7 +117,7 @@ reset it (`body{margin:0}`) to fill the band — and shows no page numbers. Ever
 to its own part, so text read per page from a SelectPdf PDF (`GetTextPerPage`, `RemoveEmptyPages`) is the whole
 document's on every page.
 
-**PdfPig behaviour** (`Regira.Office.PDF.PdfPig.PdfService`, constructed with an `IImageService`):
+**PdfPig behaviour** (`Regira.Office.PDF.PdfPig.PdfService`, constructed with an `IImageService` — `Regira.Drawing.SkiaSharp.Services.ImageService`, package `Regira.Drawing.SkiaSharp`):
 - `ImagesToPdf` puts each image on a page of its own, of the input's `Format` and `Orientation` (A4 portrait by
   default), centred horizontally between the `Margins` and starting at the top margin, at one pixel per `DPI` unit and
   scaled down when it does not fit — never up.
@@ -237,7 +242,7 @@ Composite: `IPdfEditor + IPdfImageService + IPdfTextService`. Implemented by `PD
 | `FooterHeight` | `int?` | `null` | Footer height in mm; `null` is 35 pt |
 | `Format` | `PageSize` | `A4` | Paper size |
 | `Orientation` | `PageOrientation` | `Portrait` | Portrait / Landscape |
-| `Margins` | `Margins` | `10mm` all | Page margins, in units of `DPI`; `Margins.ModifyDpi(srcDpi, targetDpi)` measures them at another |
+| `Margins` | `Margins` | 10 mm all, held in units of `DPI` (37.8 at 96) | Page margins, in units of `DPI` — from millimetres with `DimensionsUtility.MmToPt(10f, dpi)` (`Regira.Utilities`, package `Regira.Common`), a `float` (an `int` literal is ambiguous with the `Size2D` overload, CS0121); `Margins.ModifyDpi(srcDpi, targetDpi)` measures them at another |
 | `DPI` | `int` | `96` | Units per inch of `Margins` |
 
 ### `DocumentInput`
@@ -257,8 +262,8 @@ MiniPdf applies them per source format:
 | `.xlsx` | `Orientation` | `Format`, `Margins` |
 | `.pptx` | — (a slide keeps the presentation's slide size) | `Format`, `Orientation`, `Margins` |
 
-Any other source — `.doc`, `.xls`, `.odt`, `.rtf`, a PDF — throws `NotSupportedException`. Every visible sheet of a
-workbook is rendered, in order.
+Any other source — `.doc`, `.xls`, `.odt`, `.rtf`, a PDF — throws `NotSupportedException`. The format is read from
+the package's parts, not from the file name or content type. Every visible sheet of a workbook is rendered, in order.
 
 MiniPdf sets no size limit: each part is read whole into memory, so a small file whose compressed parts expand to
 gigabytes exhausts the process's memory. For uploads, cap the file's size and the summed `Length` and count of its zip
@@ -317,7 +322,8 @@ IMemoryFile reportPdf = await converter.Create(new DocumentInput
     Format   = PageSize.A4
 });
 
-// Merge PDFs (PdfPig)
+// Merge PDFs (PdfPig) — its IImageService comes from Regira.Drawing.SkiaSharp
+IImageService imageService = new Regira.Drawing.SkiaSharp.Services.ImageService();
 IPdfMerger merger = new Regira.Office.PDF.PdfPig.PdfService(imageService);
 IMemoryFile merged = (await merger.Merge([pdf1, pdf2, pdf3]))!;
 

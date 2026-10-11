@@ -103,7 +103,7 @@ The non-generic `ExcelSheet` is `ExcelSheet<object>`.
 // Construct directly (no DI extensions — pick any implementation)
 IExcelService excel = new Regira.Office.Excel.MiniExcel.ExcelManager();
 
-// Read all sheets
+// Read all sheets — from an IBinaryFile: bytes.ToBinaryFile(contentType), not ToMemoryFile() (an IMemoryFile is no IBinaryFile, CS1503)
 IBinaryFile file = bytes.ToBinaryFile();
 var sheets       = await excel.Read(file);
 foreach (var sheet in sheets)

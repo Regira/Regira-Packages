@@ -47,9 +47,11 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
 
         if (original == null)
         {
-            // an owner inserted with its links: they are tracked with it, and new bytes need an attachment to hold them
+            // an owner inserted with its links: they are tracked with it, and new bytes need an attachment to hold them.
+            // A negative temp id from the client is cleared, as Related() clears it, so the store assigns the key
             foreach (var link in modifiedItems)
             {
+                DbContextExtensions.ResetTempKey<TEntityAttachment, TEntityAttachmentKey>(link);
                 EntityAttachmentContent.CreateFromNewContent(link);
             }
         }
@@ -66,6 +68,7 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
             var relatedItemsToDelete = originalItems.Where(o => modifiedItems.All(m => m.Id != null && m.Id.Equals(o.Id) != true)).ToArray();
             foreach (var entity in relatedItemsToAdd)
             {
+                DbContextExtensions.ResetTempKey<TEntityAttachment, TEntityAttachmentKey>(entity);
                 EntityAttachmentContent.CreateFromNewContent(entity);
                 // Only add when attachment has content
                 if (entity.Attachment?.HasContent() == true)

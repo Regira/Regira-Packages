@@ -71,15 +71,15 @@ Task<IMailResponse> Send(IMessageObject message, CancellationToken cancellationT
 
 ### `IMessageObject` / `MessageObject`
 
-| Property | Type | Default | Description |
-|---|---|---|---|
-| `From` | `IMailAddress?` | `null` | Sender address |
-| `To` | `ICollection<IMailRecipient>` | `[]` | Recipients (To / Cc / Bcc) |
-| `ReplyTo` | `IMailAddress?` | `null` | Reply-To address |
-| `Subject` | `string?` | `null` | Email subject |
-| `Body` | `string?` | `null` | Message body |
-| `IsHtml` | `bool` | `true` | HTML vs plain text |
-| `Attachments` | `ICollection<INamedFile>?` | `null` | File attachments |
+| Property | Type on `IMessageObject` | Type on `MessageObject` | Default | Description |
+|---|---|---|---|---|
+| `From` | `IMailAddress?` | `MailAddress?` | `null` | Sender address |
+| `To` | `ICollection<IMailRecipient>` | `ICollection<MailRecipient>` | `[]` | Recipients (To / Cc / Bcc) |
+| `ReplyTo` | `IMailAddress?` | `IMailAddress?` | `null` | Reply-To address |
+| `Subject` | `string?` | `string?` | `null` | Email subject |
+| `Body` | `string?` | `string?` | `null` | Message body |
+| `IsHtml` | `bool` | `bool` | `true` | HTML vs plain text |
+| `Attachments` | `ICollection<INamedFile>?` | `ICollection<BinaryFileItem>?` | `null` | File attachments |
 
 ### `IMailAddress` / `MailAddress`
 
@@ -138,7 +138,7 @@ var bcc = new MailRecipient { Email = "carol@example.com", RecipientType = Recip
 |---|---|---|---|
 | `Host` | `string` | — | SMTP server host name |
 | `Port` | `int` | `587` | SMTP port |
-| `Security` | `SecureSocketOptions` (`MailKit.Security`) | `StartTls` | TLS mode; binds from configuration by name (`"SslOnConnect"`) |
+| `Security` | `SecureSocketOptions` (`MailKit.Security`) | `StartTls` | TLS mode; a configuration binder reads it by name (`"SslOnConnect"`) — `services.AddMailKit(cfg => configuration.GetSection("Mail:Smtp").Bind(cfg))` |
 | `UserName` | `string?` | `null` | SMTP AUTH user; leave empty for a server that takes mail without AUTH |
 | `Password` | `string?` | `null` | SMTP AUTH password |
 | `Timeout` | `int` | `120000` | Per SMTP command, in milliseconds |
@@ -181,7 +181,9 @@ services.AddMailKit(cfg =>
     cfg.Port     = int.Parse(configuration["Mail:Smtp:Port"] ?? "587");
     cfg.UserName = configuration["Mail:Smtp:UserName"];
     cfg.Password = configuration["Mail:Smtp:Password"];
+    // a local test server (Mailpit, port 1025) speaks no TLS: cfg.Security = MailKit.Security.SecureSocketOptions.None
 });
+// or the whole section, Security by name included: services.AddMailKit(cfg => configuration.GetSection("Mail:Smtp").Bind(cfg));
 ```
 
 Each extension method registers `IMailService` as a transient service.

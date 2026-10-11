@@ -345,7 +345,9 @@ CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, ob
   lines. A key that names no list of rows — a missing key, a `GlobalParameters` entry, a field holding one value —
   gives no rows, and the optional `{{else}}` part is written instead.
 - Inside a loop, `{{Field}}` reads the current row, then the rows of the loops around it, innermost first, regardless
-  of case. A field none of them has is left for `GlobalParameters`, so `{{Currency}}` still reaches a global value.
+  of case. A field none of them has is left for `GlobalParameters`, so `{{Currency}}` still reaches a global value, and a
+  row's field may share a global key's name (`Status` on each row and globally): inside the loop the row's value wins.
+  Word.Mini's one-namespace rule is about its collection tables, not loops.
   `{{ row_number }}` is the current row's position, from 1.
 - `{{#if Key}}` inside a loop reads the same rows first, then the input, so it decides per row.
 - A row's value is written as text, with `ToString()`, a line ending becoming a line break, as a global one is; an

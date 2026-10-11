@@ -226,7 +226,8 @@ Modules with multiple provider packages, such as `Office.PDF` or `Office.Excel`,
 Regira's browser front-end is a separate **npm / TypeScript** family published from the `Regira-Modules`
 repo (ids like `regira_modules.vue.entities`) — not the .NET packages above. For a **Vue 3 SPA / admin
 UI / CRUD client**, load the **front-end consumer bootstrap** and follow its reading order:
-`get_package id="regira_modules" section="frontend.bootstrap"` (or `list_packages category="vue"`).
+`get_bootstrap_guide(platform: "frontend")` — the same guide as `get_package id="regira_modules" section="frontend.bootstrap"`
+(or `list_packages category="vue"`).
 
 The front-end **default is a full, scalable SPA** using the complete `regira` package (full plugin
 stack + per-entity slice + app shell); only build a headless/lean/demo variant when the user explicitly asks
