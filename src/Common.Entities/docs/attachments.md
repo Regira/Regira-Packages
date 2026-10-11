@@ -4,7 +4,17 @@ The Attachments module contains 2 main components:
 - Attachment: *represents a file stored in the system*
 - EntityAttachment: *links an Attachment to an entity (e.g. Product, Article, ...)*
 
-All `EntityAttachments` are linked to the same `Attachment`.
+Every `EntityAttachment` links to the same `Attachment` entity, whichever entity owns it:
+
+```mermaid
+flowchart LR
+    product["Product"] -- "Attachments<br/>(ObjectId)" --> pa["ProductAttachment<br/>ObjectType = Product"]
+    article["Article"] -- "Attachments<br/>(ObjectId)" --> aa["ArticleAttachment<br/>ObjectType = Article"]
+    pa -- AttachmentId --> att[("Attachment<br/>one table for every owner")]
+    aa -- AttachmentId --> att
+    att -- file content --> afs["AttachmentFileService"]
+    afs --> fs["IFileService<br/>file system · Azure Blob · SFTP"]
+```
 
 ## Attachment
 

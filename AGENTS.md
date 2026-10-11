@@ -104,6 +104,10 @@ Two layers that never refer to each other: `ai/` for AI agents, `README.md` + `d
   whole site build. A page that shows either wraps everything below its H1 in a `raw` block hidden in
   HTML comments — copy the second and the last line of `src/Common.Web/README.md`; this file cannot spell
   them out for the same reason. The H1 stays the file's first line (no BOM): Pages takes the title from it.
+- **Diagrams** are ```` ```mermaid ```` fences in a `docs/` page: github.com renders them natively and
+  `_includes/head-custom.html` renders them on the Pages site. Keep them out of a README, whose fence nuget.org shows
+  as source. In a label, type arguments in angle brackets read as HTML and vanish, so write `IEntityService`, not
+  its generic form.
 
 ### Ship the shape, not the case that reported it
 

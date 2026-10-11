@@ -22,6 +22,10 @@ Samples:
 })
 ```
 
+The wrapper takes the entity's repository, `IEntityRepository<…>`, as its inner service — see
+[Services → Replacing the repository for one entity](services.md#replacing-the-repository-for-one-entity), which
+also covers a repository of its own with `HasRepository`.
+
 Possible overrides:
 
 <!-- no-compile -->
@@ -448,7 +452,10 @@ public class OrderValidator : AbstractValidator<Order>
 {
     public OrderValidator(AppDbContext db)
     {
-        RuleFor(x => x.Code).NotEmpty().MaximumLength(20);
+        // Code's shape (required, length) is the input DTO's DataAnnotations; the rule here needs the other rows
+        RuleFor(x => x.Code)
+            .MustAsync(async (order, code, ct) => !await db.Orders.AnyAsync(o => o.Code == code && o.Id != order.Id, ct))
+            .WithMessage("Code is taken");
         // db sees every row: with scoped reads, check through the filtered read service (services.md → Entity Validators)
         RuleFor(x => x.CustomerId)
             .MustAsync((id, ct) => db.Customers.AnyAsync(c => c.Id == id, ct))

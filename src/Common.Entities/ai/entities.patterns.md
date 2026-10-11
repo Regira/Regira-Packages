@@ -874,7 +874,7 @@ public class Product : IEntityWithSerial
 public class ProductDto { public int Id { get; set; } public string? Title { get; set; } public decimal Price { get; set; } }
 public class ProductInputDto { public int Id { get; set; } [Required, MaxLength(100)] public string? Title { get; set; } public decimal Price { get; set; } }
 
-public class PriceImport(IEntitySender sender)
+public class PriceImporter(IEntitySender sender)
 {
     // checks the input's DataAnnotations, saves, re-reads and maps — what POST /products answers
     public async Task<ProductDto?> Import(ProductInputDto input, CancellationToken token)
@@ -1319,7 +1319,7 @@ app.MapEntityEndpoints().RequireAuthorization();   // GET/POST products, PUT/PAT
 - **Write authorization** is a policy on the group, not a controller filter: §Role-gated write authorization filter →
   *On mapped endpoints*.
 
-## Input validation with FluentValidation
+## Validators with FluentValidation
 
 `Regira.Entities.Validation.FluentValidation` runs `AbstractValidator<T>` rules as the write pipeline's validator
 stage (entities.instructions §Step 8 → Validators): after every prepper, on `DELETE` too, with every error in one 400.
@@ -1369,7 +1369,10 @@ public class OrderValidator : AbstractValidator<Order>
 {
     public OrderValidator(AppDbContext db)
     {
-        RuleFor(x => x.Code).NotEmpty().MaximumLength(20);
+        // other rows: Code's shape (required, length) is the input DTO's DataAnnotations, checked before the preppers
+        RuleFor(x => x.Code)
+            .MustAsync(async (order, code, ct) => !await db.Orders.AnyAsync(o => o.Code == code && o.Id != order.Id, ct))
+            .WithMessage("Code is taken");
 
         // db sees every row: with scoped reads, check through the filtered read service (entities.instructions §Step 8 → Validators)
         RuleFor(x => x.CustomerId)

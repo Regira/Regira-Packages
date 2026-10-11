@@ -656,7 +656,7 @@ extra rows for a delete in an override of `RemoveItem`, which runs once the vali
 warns about a write path that cannot run the validators in scope.
 
 **FluentValidation** — package `Regira.Entities.Validation.FluentValidation` runs `AbstractValidator`s in this stage,
-under the same scope rule: [`entities.patterns.md`](./entities.patterns.md) → Input validation with FluentValidation.
+under the same scope rule: [`entities.patterns.md`](./entities.patterns.md) → Validators with FluentValidation.
 ⚠️ An `AbstractValidator<T>` runs only when a write service saves a `T`. One for a `Related()` child
 (`AbstractValidator<OrderLine>`) or for an input DTO is registered by the assembly scan and **never runs, with no
 startup warning** — validate children from the parent: `RuleForEach(x => x.Lines).ChildRules(...)` or

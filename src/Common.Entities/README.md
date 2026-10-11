@@ -66,12 +66,13 @@ Assuming a `Repository` with a `DbContext` is being used.
 
 **Write Pipeline:**
 
-1. Input
+1. Input (+DataAnnotations of the input DTO)*
 1. Mapping (+AfterInput)*
 1. Preppers (Repository)
 1. Validators (Repository)
 1. SaveChanges (DbContext)
    1. Primers (Interceptors)
+   1. Normalizers (Interceptors)
    1. Submit changes
 1. Reactors (after the commit)
 
@@ -81,10 +82,13 @@ Assuming a `Repository` with a `DbContext` is being used.
 - **QueryBuilders**: Build IQueryable based on SearchObject, SortBy & Includes
 - **Processors**: Modify entities after fetching (e.g. setting non-mapped properties)
 - **Preppers**: Executed by the Repository before saving to prepare entities
-- **Validators**: Executed by the Repository after every prepper, and on delete, to refuse a write with one 400 holding every error (FluentValidation plugs in through `Regira.Entities.Validation.FluentValidation`)
+- **Validators**: Executed by the Repository after every prepper, and on delete, to refuse a write with one 400 holding every error — the rules the input alone cannot tell, on the prepared entity, the stored row or other rows (FluentValidation plugs in through `Regira.Entities.Validation.FluentValidation`)
 - **Primers**: run by an EF Core `SaveChangesInterceptor` when the DbContext executes SaveChanges
+- **Normalizers**: fill the normalized search columns, in the same SaveChanges
 - **Reactors**: Run once the save is committed, in a DI scope of their own (e.g. sending mail, starting a follow-up workflow when a status changes)
 - **AfterMapper**: Decorates DTOs or Entities after Mapper completes (e.g. calculating URIs)
+
+Diagrams of both pipelines and of the services behind them: [Services → Service Layer Architecture](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/services.html#service-layer-architecture).
 
 ## Dependency Injection
 

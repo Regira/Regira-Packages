@@ -266,6 +266,17 @@ minimal-API endpoint of the application's own — sends the same requests and ge
 defaults, the archived-inclusive lookup of an update, the re-read after a save, the DTO mapping and the result
 envelope. `UseEntities()` registers the sender.
 
+```mermaid
+flowchart LR
+    ctrl["EntityControllerBase"] --> sender["IEntitySender"]
+    mapped["MapEntityEndpoints()"] --> sender
+    own["Job · importer ·<br/>endpoint of your own"] --> sender
+    sender --> behaviors["Pipeline behaviours"]
+    behaviors --> handler["Request handler<br/>default or your own"]
+    handler --> service["IEntityService"]
+    handler --> mapper["IEntityMapper"]
+```
+
 ```csharp
 using Regira.Entities.Mediator.Abstractions;
 using Regira.Entities.Mediator.Requests;
@@ -278,7 +289,7 @@ public class Product : IEntityWithSerial
 public class ProductDto { public int Id { get; set; } public string? Title { get; set; } }
 public class ProductInputDto { public int Id { get; set; } [Required] public string? Title { get; set; } }
 
-public class ProductImport(IEntitySender sender)
+public class ProductImporter(IEntitySender sender)
 {
     public async Task<ProductDto?> Import(ProductInputDto input, CancellationToken token)
     {
