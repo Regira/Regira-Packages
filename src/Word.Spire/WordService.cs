@@ -274,7 +274,7 @@ public class WordService : IWordService
                     var tables = sectionTreeItem.FindAllTables();
                     foreach (var table in tables)
                     {
-                        if (originalWidth / table.Width - 1 < .1)
+                        if (TableScaling.SpansTextWidth(originalWidth, table.Width))
                         {
                             table.AutoFit(AutoFitBehaviorType.AutoFitToWindow);
                         }
@@ -384,54 +384,26 @@ public class WordService : IWordService
         }
     }
     protected internal void AddHeader(Document doc, Document headerDoc, HeaderFooterType type)
-    {
-        // try find content in same type
-        var srcHeader = headerDoc.GetHeader(type);
-        // look for content in default type
-        if (type != HeaderFooterType.Default && IsEmpty(srcHeader))
-        {
-            srcHeader = headerDoc.GetHeader();
-        }
-        // get content from header, or when empty from body
-        var childObjects = srcHeader.ChildObjects.Count > 0
-            ? srcHeader.ChildObjects
-            : headerDoc.Sections[0].Body.ChildObjects;
-
-        var docHeader = doc.GetHeader(type);
-        docHeader.ReplaceChildObjects(childObjects);
-
-        if (type == HeaderFooterType.FirstPage)
-        {
-            var section = doc.Sections[0];
-            section.PageSetup.DifferentFirstPageHeaderFooter = true;
-        }
-        else if (type == HeaderFooterType.Even)
-        {
-            // even-page stories only render once the document tells odd and even pages apart
-            doc.Sections[0].PageSetup.DifferentOddAndEvenPagesHeaderFooter = true;
-        }
-    }
+        => AddStory(doc, headerDoc, type, (d, t) => d.GetHeader(t));
     protected internal void AddFooter(Document doc, Document footerDoc, HeaderFooterType type)
+        => AddStory(doc, footerDoc, type, (d, t) => d.GetFooter(t));
+    private void AddStory(Document doc, Document storyDoc, HeaderFooterType type, Func<Document, HeaderFooterType, HeaderFooter> story)
     {
-        // try find content in same type
-        var srcFooter = footerDoc.GetFooter(type);
-        // look for content in default type
-        if (type != HeaderFooterType.Default && IsEmpty(srcFooter))
+        var source = story(storyDoc, type);
+        // fall back to the default story, then to the body
+        if (type != HeaderFooterType.Default && IsEmpty(source))
         {
-            srcFooter = footerDoc.GetFooter();
+            source = story(storyDoc, HeaderFooterType.Default);
         }
-        // get content from header, or when empty from body
-        var childObjects = srcFooter.ChildObjects.Count > 0
-            ? srcFooter.ChildObjects
-            : footerDoc.Sections[0].Body.ChildObjects;
+        var childObjects = source.ChildObjects.Count > 0
+            ? source.ChildObjects
+            : storyDoc.Sections[0].Body.ChildObjects;
 
-        var docFooter = doc.GetFooter(type);
-        docFooter.ReplaceChildObjects(childObjects);
+        story(doc, type).ReplaceChildObjects(childObjects);
 
         if (type == HeaderFooterType.FirstPage)
         {
-            var section = doc.Sections[0];
-            section.PageSetup.DifferentFirstPageHeaderFooter = true;
+            doc.Sections[0].PageSetup.DifferentFirstPageHeaderFooter = true;
         }
         else if (type == HeaderFooterType.Even)
         {

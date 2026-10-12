@@ -7,6 +7,7 @@ public static class DateTimeUtility
     /// </summary>
     /// <param name="secondsSince1970">The number of seconds elapsed since January 1, 1970 (UTC).</param>
     /// <returns>A <see cref="DateTime"/> object representing the local time equivalent of the provided Unix timestamp.</returns>
+    [Obsolete("Use DateTimeOffset.FromUnixTimeSeconds(seconds).LocalDateTime. Will be removed in v7.")]
     public static DateTime FromUnix(double secondsSince1970)
     {
         // https://stackoverflow.com/questions/249760/how-can-i-convert-a-unix-timestamp-to-datetime-and-vice-versa#answer-250400

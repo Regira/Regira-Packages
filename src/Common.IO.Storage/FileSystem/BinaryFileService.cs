@@ -87,7 +87,8 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
                     .Select(dirUri => FileNameUtility.GetRelativeUri(dirUri, Root));
                 if (so.Extensions != null)
                 {
-                    folders = folders.Where(d => fileList?.Any(f => f.StartsWith(d)) == true);
+                    // a folder holds a file below it: dir2.1 holds nothing of dir2.10
+                    folders = folders.Where(d => fileList?.Any(f => f.StartsWith(d + Path.DirectorySeparatorChar)) == true);
                 }
                 result = result.Concat(folders);
             }
@@ -101,46 +102,9 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
 #if NET10_0_OR_GREATER
     public async IAsyncEnumerable<string> ListAsync(FileSearchObject? so = null)
     {
-        // iterator body is deferred — connects (and surfaces failures) on first MoveNextAsync, not at the call
-        _communicator?.EnsureConnected();
-        so ??= new FileSearchObject();
-
-        var folderUri = so.FolderUri ?? "";
-        var recursive = so.Recursive;
-        var extensions = "*";
-
-        var listFiles = so.Type == FileEntryTypes.All || so.Type == FileEntryTypes.Files;
-        var listDirectories = so.Type == FileEntryTypes.All || so.Type == FileEntryTypes.Directories;
-
-        var searchOptions = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-        var absoluteFolderUri = ResolveUri(folderUri);
-
-        if (Directory.Exists(absoluteFolderUri))
+        foreach (var identifier in await List(so))
         {
-            // Enumerate files
-            if (listFiles)
-            {
-                var files = Directory.EnumerateFiles(absoluteFolderUri, extensions, searchOptions)
-                    .Select(fileUri => FileNameUtility.GetRelativeUri(fileUri, Root))
-                    .Where(f => so.Extensions == null || so.Extensions.Any(e => e.TrimStart('*') == Path.GetExtension(f)));
-
-                foreach (var file in files)
-                {
-                    yield return file;
-                }
-            }
-
-            // Enumerate directories
-            if (listDirectories)
-            {
-                var directories = Directory.EnumerateDirectories(absoluteFolderUri, "*", searchOptions)
-                    .Select(dirUri => FileNameUtility.GetRelativeUri(dirUri, Root));
-
-                foreach (var directory in directories)
-                {
-                    yield return directory;
-                }
-            }
+            yield return identifier;
         }
     }
 #endif

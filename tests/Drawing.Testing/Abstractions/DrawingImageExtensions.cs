@@ -72,6 +72,20 @@ public static class DrawingImageExtensions
         //rotatedL.Save(target90L);
         await service.SaveImage(rotatedL, "img-1-90left.jpg");
     }
+    /// <summary>At an angle that is not a right angle the canvas is the rotated image's bounding box, to the pixel.</summary>
+    public static async Task Test_RotateImage45(this IImageService service)
+    {
+        using var image = await service.ReadImage("img-1.jpg");
+        using var rotated = await service.Rotate(image, 45);
+        var side = (image.Size!.Value.Width + image.Size!.Value.Height) * Math.Sqrt(0.5);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(rotated.Size!.Value.Width, Is.EqualTo(side).Within(1));
+            Assert.That(rotated.Size!.Value.Height, Is.EqualTo(side).Within(1));
+        });
+        await service.SaveImage(rotated, "img-1-45.jpg");
+    }
     public static async Task Test_CropRect(this IImageService service, string filename)
     {
         using var image = await service.ReadImage(filename);

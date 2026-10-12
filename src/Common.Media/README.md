@@ -284,7 +284,6 @@ using var img = await imageService.CreateTextImage("Hello World");   // implicit
 | **Cross-platform** | ✓ (Win / Linux / macOS) | Windows only |
 | **Default resize quality** | 80 | 100 |
 | **EXIF auto-rotate** | – | ✓ |
-| **Printing support** | – | ✓ (`PrintUtility`) |
 | **Engine** | Google Skia | GDI+ (`System.Drawing.Common`) |
 
 Both implement `IImageService` and are interchangeable in consuming code.

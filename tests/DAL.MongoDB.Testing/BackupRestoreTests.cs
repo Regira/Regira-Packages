@@ -41,6 +41,7 @@ public class BackupRestoreTests
         var settings = Settings();
         settings.UriOptions.Add(new KeyValuePair<string, string>("tlsCertificateKeyFilePassword", "key-secret"));
         settings.UriOptions.Add(new KeyValuePair<string, string>("authMechanismProperties", "AWS_SESSION_TOKEN:token-secret"));
+        settings.UriOptions.Add(new KeyValuePair<string, string>("proxyPassword", "proxy-secret"));
         var process = new ToolStandIn { DumpPayload = [1, 2, 3] };
         var logger = new CapturingLogger<MongoBackupService>();
 
@@ -48,11 +49,11 @@ public class BackupRestoreTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(process.Arguments, Does.Not.Contain("key-secret").And.Not.Contain("token-secret"));
+            Assert.That(process.Arguments, Does.Not.Contain("key-secret").And.Not.Contain("token-secret").And.Not.Contain("proxy-secret"));
             Assert.That(logger.Messages, Is.Not.Empty);
-            Assert.That(string.Join("\n", logger.Messages), Does.Not.Contain("key-secret").And.Not.Contain("token-secret").And.Not.Contain(Password));
+            Assert.That(string.Join("\n", logger.Messages), Does.Not.Contain("key-secret").And.Not.Contain("token-secret").And.Not.Contain("proxy-secret").And.Not.Contain(Password));
             // the tool still gets them
-            Assert.That(process.ConfigFileContents, Does.Contain("tlsCertificateKeyFilePassword=key-secret").And.Contain("token-secret"));
+            Assert.That(process.ConfigFileContents, Does.Contain("tlsCertificateKeyFilePassword=key-secret").And.Contain("token-secret").And.Contain("proxy-secret"));
         });
     }
 

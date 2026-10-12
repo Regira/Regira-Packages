@@ -2,6 +2,7 @@
 
 namespace Regira.Invoicing.Billit.Models.Contacts;
 
+[Obsolete("Nothing in Regira.Invoicing.Billit reads or writes it. Will be removed in v7.")]
 public class CounterPartyDto
 {
     public int PartyId { get; set; }

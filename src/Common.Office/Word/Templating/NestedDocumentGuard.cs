@@ -1,5 +1,6 @@
-namespace Regira.Office.Word.Aspose.Internal;
+namespace Regira.Office.Word.Templating;
 
+// Called by the Spire, Syncfusion and Aspose Word backends through InternalsVisibleTo: once they are published, its signatures stay, as ConditionalBlocks' do.
 /// <summary>
 /// Bounds how deeply document builds nest — nested document parameters, headers and footers each build a document
 /// inside the one being built — so a template that includes itself fails instead of recursing without end.

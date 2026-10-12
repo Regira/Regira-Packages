@@ -133,14 +133,19 @@ public static class QueryExtensions
             .FilterLastModified(minModified, maxModified);
 
     /// <summary>
-    /// Filters on <see cref="IHasStartEndDate"/>. With <see cref="DateTimeDefaults.UseUtc"/> enabled (default),
-    /// the input date is normalized to UTC, matching the stored values.<br />
+    /// Filters on <see cref="IHasStartEndDate"/>: the rows active on <paramref name="date"/>, every row without one. With
+    /// <see cref="DateTimeDefaults.UseUtc"/> enabled (default), the input date is normalized to UTC, matching the stored values.<br />
     /// For pure calendar semantics (no time component) prefer <see cref="DateOnly"/> properties over <see cref="IHasStartEndDate"/>.
     /// </summary>
     public static IQueryable<TEntity> FilterIsActiveOn<TEntity>(this IQueryable<TEntity> query, DateTime? date)
         where TEntity : IHasStartEndDate
     {
-        DateTime? value = date.HasValue ? NormalizeDate(date.Value) : null;
+        if (!date.HasValue)
+        {
+            return query;
+        }
+
+        DateTime? value = NormalizeDate(date.Value);
         return query.Where(x => (x.StartDate == null || x.StartDate <= value) && (x.EndDate == null || x.EndDate >= value));
     }
 

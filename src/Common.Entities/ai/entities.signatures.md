@@ -613,7 +613,7 @@ public static class QueryExtensions
     public static IQueryable<TEntity> FilterIds<TEntity, TKey>(this IQueryable<TEntity> query, ICollection<TKey>? ids);
     public static IQueryable<TEntity> FilterExclude<TEntity, TKey>(this IQueryable<TEntity> query, ICollection<TKey>? ids);
 
-    // Requires IHasStartEndDate — rows whose period contains `date`; a null bound is treated as open.
+    // Requires IHasStartEndDate — rows whose period contains `date`; a null bound is treated as open, a null date filters nothing.
     // The only built-in helper for the date interfaces, and you call it yourself (no global filter).
     public static IQueryable<TEntity> FilterIsActiveOn<TEntity>(this IQueryable<TEntity> query, DateTime? date);
 
@@ -2086,9 +2086,8 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
 `ValidationProblemDetails` (`errors`, and `errorDetails` with each error's args), 409 for
 `EntityConstraintException` and `EntityConcurrencyException` — so a **hand-written** action returns
 what the generated ones do.
-Catch the non-generic base if you handle it yourself: the generated write actions catch their own closed
-generic, which misses the one a prepper threw for a related entity (`EntityInputException<Product>` inside
-an `Order` write).
+Catch the non-generic base if you handle it yourself: a `catch` on one closed generic misses the one a prepper
+threw for a related entity (`EntityInputException<Product>` inside an `Order` write).
 
 `InputErrors` is initialized, so both forms work — a nested initializer for a fixed set, indexer assignment for a map you build.
 An error with args goes into `Errors` itself. `ctx.AddError(key, message, args?)` in a validator is the other way in;

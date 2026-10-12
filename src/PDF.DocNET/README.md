@@ -2,7 +2,7 @@
 
 PDF backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/), built on [Docnet.Core](https://www.nuget.org/packages/Docnet.Core). `PdfManager` implements `IPdfService`: merge, split, page count and page removal, text extraction, and conversion between images and PDF.
 
-This package is deprecated: new applications use [Regira.Office.PDF.PdfPig](https://regira.github.io/Regira-Packages/src/PDF.PdfPig/), which implements the same `IPdfService`. Docnet.Core has had no release since 2.6.0 (2023) and bundles a PDFium build from 2022; PDFium parses every PDF it is given, so an outdated build is a risk for uploaded files.
+This package is deprecated: new applications use [Regira.Office.PDF.PdfPig](https://regira.github.io/Regira-Packages/src/PDF.PdfPig/), which implements the same `IPdfService`. Docnet.Core has had no release since 2.6.0 (2023) and bundles a PDFium build from 2022; PDFium parses every PDF it is given, so an outdated build is a risk for uploaded files. It takes fixes for crashes, data loss and security holes only.
 
 ## Installation
 

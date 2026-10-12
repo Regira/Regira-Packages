@@ -3,6 +3,7 @@ using Regira.Invoicing.Billit.Models.Identifiers;
 
 namespace Regira.Invoicing.Billit.Models.Registrations;
 
+[Obsolete("Nothing in Regira.Invoicing.Billit reads or writes it. Will be removed in v7.")]
 public class RegistrationInput
 {
     public string? TaxIdentifier { get; set; }

@@ -65,7 +65,7 @@ SQL Server writes and reads the `.bak` file itself: on its own file system, unde
 | On another machine, folder shared | `D:\SqlBackups` | `\\db01\SqlBackups` |
 | In a Linux container (`-v C:\sqlbackups:/var/opt/mssql/backup`) | `/var/opt/mssql/backup` | `C:\sqlbackups` |
 
-The instance's own backup folder (`MSSQL\Backup`) usually admits only the service account and administrators, so an application can rarely read it. Every call uses a new file and deletes it afterwards; a file this process cannot delete is left in place with a logged warning. When a backup cannot be read because `LocalBackupDirectory` does not lead to it, SQL Server is asked to delete the file itself (`xp_delete_files`, or `xp_delete_file` before SQL Server 2019), which needs `sysadmin`; without it, the warning names the file left on the server.
+The instance's own backup folder (`MSSQL\Backup`) usually admits only the service account and administrators, so an application can rarely read it. Every call uses a new file and deletes it afterwards; a file this process cannot delete is left in place with a logged warning. When a backup cannot be read because `LocalBackupDirectory` does not lead to it, the `IOException` names the file SQL Server wrote in `BackupDirectory`, which this process cannot delete either.
 
 ### Backup
 
@@ -75,7 +75,7 @@ The instance's own backup folder (`MSSQL\Backup`) usually admits only the servic
 
 `Restore(file)` connects through `master` and creates the target database from the backup:
 
-- An existing target database throws, unless `Overwrite = true`: then it is taken offline, rolling back its open sessions, and dropped. That happens only after SQL Server has read the backup's file list, so a file it cannot open never costs you the existing database. Offline, no application can reconnect before the drop; SQL Server keeps an offline database's files, and the restore overwrites them where they sit at the paths below — a file elsewhere is named in a logged warning.
+- An existing target database throws, unless `Overwrite = true`: then it is taken offline, rolling back its open sessions, and dropped. That happens only after SQL Server has read the backup's file list, so a file it cannot open never costs you the existing database. Offline, no application can reconnect before the drop; SQL Server keeps an offline database's files, and the restore overwrites them where they sit at the paths below; a file elsewhere is left where it is.
 - The data and log files go to the server's default data and log directories, named after the target database (`shop_staging.mdf`, `shop_staging_log.ldf`), so a backup restores under a new name beside its source.
 - A planned file that belongs to another database — one renamed, or taken offline — fails the restore before anything is dropped. A target that did not exist is restored without `REPLACE`, so a stray file at a planned path fails the restore rather than being overwritten.
 

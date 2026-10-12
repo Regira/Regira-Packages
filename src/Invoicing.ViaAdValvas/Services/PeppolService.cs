@@ -1,5 +1,5 @@
 ﻿using Regira.Invoicing.ViaAdValvas.Config;
-using Regira.Invoicing.ViaAdValvas.Helpers;
+using Regira.Invoicing.Peppol;
 using Regira.Invoicing.ViaAdValvas.Models;
 using Regira.Serializing.Abstractions;
 using System.Xml.Linq;
@@ -53,7 +53,7 @@ public class PeppolService(GatewaySettings settings, ISerializer serializer)
         var referenceId = doc.GetReferenceId();
         var receiverId = $"{doc.GetRecipientSchemeId()}:{doc.GetRecipientId()}";
         var date = DateTime.Now;
-        var seal = SealUtility.Generate(settings.SecretKey, settings.Token, date, settings.SenderID, referenceId);
+        var seal = Helpers.SealUtility.Generate(settings.SecretKey, settings.Token, date, settings.SenderID, referenceId);
 
         var isCreditNote = doc.Root?.Name.LocalName == "CreditNote";
 

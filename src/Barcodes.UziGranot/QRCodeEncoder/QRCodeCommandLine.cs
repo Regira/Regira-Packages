@@ -41,6 +41,7 @@ namespace QRCodeEncoderLibrary;
 /// <summary>
 /// Command line class
 /// </summary>
+[Obsolete("The vendored library's console-application helper; QRCodeService does not use it. Will be removed in v7.")]
 public static class QRCodeCommandLine
 {
     /// <summary>

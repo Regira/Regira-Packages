@@ -1,3 +1,4 @@
+#pragma warning disable CS0618 // the typed service providers are obsolete
 using Microsoft.Extensions.DependencyInjection;
 using Regira.System.Hosting.DependencyInjection;
 

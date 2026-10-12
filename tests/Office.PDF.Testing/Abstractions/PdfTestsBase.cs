@@ -14,10 +14,10 @@ namespace Office.PDF.Testing.Abstractions;
 /// Shared scenarios for the backends of PDF operations: text, merging, splitting, removing pages, page images and
 /// images to PDF.
 /// <para>
-/// A backend fixture is marked <see cref="PdfFixtureAttribute"/> and gets every scenario whose
-/// <see cref="NeedsAttribute">needs</see> its backend type implements. It declares the limits of a free edition
-/// (<see cref="MaxPages"/>, <see cref="RenderedPages"/>), and overrides a scenario only where its backend documents a
-/// different behaviour, restating the scenario's attributes when it does.
+/// A backend fixture gets every scenario, and a scenario calling a PDF interface its backend does not implement is
+/// ignored (<see cref="Service{T}"/>). It declares the limits of a free edition (<see cref="MaxPages"/>,
+/// <see cref="RenderedPages"/>), and overrides a scenario only where its backend documents a different behaviour,
+/// restating the scenario's attributes when it does.
 /// </para>
 /// <para>
 /// A scenario reads what it produced with <see cref="PdfFacts"/> or <see cref="ImageFacts"/>, never with the backend
@@ -59,6 +59,10 @@ public abstract class PdfTestsBase<TBackend>(TBackend backend, string outputFold
 
     protected TBackend Backend { get; } = backend;
 
+    /// <summary>The backend as the PDF interface a scenario calls; a backend that does not implement it ignores the scenario.</summary>
+    protected T Service<T>() where T : class
+        => Backend as T ?? throw new IgnoreException($"{typeof(TBackend).FullName} does not implement {typeof(T).Name}.");
+
     /// <summary>The most pages a PDF the backend reads or writes may have; a scenario's inputs and results stay within it.</summary>
     protected virtual int MaxPages => int.MaxValue;
     /// <summary>The pages <c>ToImages</c> renders; a page past it comes out blank.</summary>
@@ -68,58 +72,58 @@ public abstract class PdfTestsBase<TBackend>(TBackend backend, string outputFold
     private const double Inked = 0.005;
 
 
-    [Test, Needs(typeof(IPdfTextExtractor))]
+    [Test]
     public async Task GetText_Reads_Every_Word_In_Order()
     {
-        var text = await ((IPdfTextExtractor)Backend).GetText(ReadAsset(TwoPages));
+        var text = await Service<IPdfTextExtractor>().GetText(ReadAsset(TwoPages));
 
         // the words and their order; how a backend breaks lines and spaces words differs
         Assert.That(Words(text), Is.EqualTo(Words(TwoPagesText)));
     }
 
-    [Test, Needs(typeof(IPdfTextService))]
+    [Test]
     public async Task GetTextPerPage_Reads_Each_Page()
     {
         var input = InputFacts(NinePages);
 
-        var texts = await ((IPdfTextService)Backend).GetTextPerPage(ReadAsset(NinePages));
+        var texts = await Service<IPdfTextService>().GetTextPerPage(ReadAsset(NinePages));
 
         // each page's own characters; the order a reader takes a page's lines in differs (a page number first or last)
         Assert.That(texts.Select(Characters), Is.EqualTo(input.PageTexts.Select(Characters)));
     }
 
-    [Test, Needs(typeof(IPdfTextService))]
+    [Test]
     public async Task RemoveEmptyPages_Keeps_The_Pages_With_Text()
     {
         var input = InputFacts(WithEmptyPages);
         Assert.That(input.PageTexts, Has.Some.Empty, "the input has empty pages");
 
-        using var result = await ((IPdfTextService)Backend).RemoveEmptyPages(ReadAsset(WithEmptyPages));
+        using var result = await Service<IPdfTextService>().RemoveEmptyPages(ReadAsset(WithEmptyPages));
 
         var output = await ReadPdf(result);
         Assert.That(output.PageTexts, Is.EqualTo(input.PageTexts.Where(text => text.Length > 0)));
     }
 
-    [Test, Needs(typeof(IPdfTextService))]
+    [Test]
     public async Task RemoveEmptyPages_Leaves_A_Pdf_Without_Them()
     {
         var input = InputFacts(NinePages);
 
-        using var result = await ((IPdfTextService)Backend).RemoveEmptyPages(ReadAsset(NinePages));
+        using var result = await Service<IPdfTextService>().RemoveEmptyPages(ReadAsset(NinePages));
 
         var output = await ReadPdf(result);
         Assert.That(output.PageTexts, Is.EqualTo(input.PageTexts));
     }
 
 
-    [Test, Needs(typeof(IPdfMerger))]
+    [Test]
     public async Task Merge_Keeps_Each_Pages_Text_In_Order()
     {
         var names = WithinMaxPages(MergeInputs);
         Assert.That(names, Has.Length.GreaterThan(2), "the merge has inputs to merge");
         var inputs = names.Select(InputFacts).ToList();
 
-        using var merged = await ((IPdfMerger)Backend).Merge(names.Select(ReadAsset).ToList());
+        using var merged = await Service<IPdfMerger>().Merge(names.Select(ReadAsset).ToList());
 
         var output = await ReadPdf(merged);
         var inputPages = inputs.SelectMany(input => input.Pages).ToList();
@@ -127,10 +131,10 @@ public abstract class PdfTestsBase<TBackend>(TBackend backend, string outputFold
         Assert.That(output.Pages.Select(Size), Is.EqualTo(inputPages.Select(Size)));
     }
 
-    [Test, Needs(typeof(IPdfMerger))]
+    [Test]
     public async Task Merge_Nothing_Gives_Null()
     {
-        var merged = await ((IPdfMerger)Backend).Merge([]);
+        var merged = await Service<IPdfMerger>().Merge([]);
 
         Assert.That(merged, Is.Null);
     }
@@ -138,10 +142,9 @@ public abstract class PdfTestsBase<TBackend>(TBackend backend, string outputFold
 
     [TestCase(TwoPages)]
     [TestCase(NinePages)]
-    [Needs(typeof(IPdfSplitter))]
     public async Task GetPageCount_Counts_The_Pages(string filename)
     {
-        var count = await ((IPdfSplitter)Backend).GetPageCount(ReadAsset(filename));
+        var count = await Service<IPdfSplitter>().GetPageCount(ReadAsset(filename));
 
         Assert.That(count, Is.EqualTo(InputFacts(filename).PageCount));
     }
@@ -150,13 +153,12 @@ public abstract class PdfTestsBase<TBackend>(TBackend backend, string outputFold
     [TestCase("1-4,6-8")]
     [TestCase("2,5-")]
     [TestCase("1-9")]
-    [Needs(typeof(IPdfSplitter))]
     public async Task Split_Keeps_The_Pages_Of_Each_Range(string ranges)
     {
         var input = InputFacts(NinePages);
         var splitRanges = Ranges(ranges);
 
-        var parts = (await ((IPdfSplitter)Backend).Split(ReadAsset(NinePages), splitRanges)).ToList();
+        var parts = (await Service<IPdfSplitter>().Split(ReadAsset(NinePages), splitRanges)).ToList();
 
         Assert.That(parts, Has.Count.EqualTo(splitRanges.Length));
         for (var i = 0; i < parts.Count; i++)
@@ -169,14 +171,14 @@ public abstract class PdfTestsBase<TBackend>(TBackend backend, string outputFold
         }
     }
 
-    [Test, Needs(typeof(IPdfSplitter), typeof(IPdfMerger))]
+    [Test]
     public async Task Split_Then_Merge_Keeps_The_Pages_In_Order()
     {
         var input = InputFacts(NinePages);
         var splitRanges = Ranges("2-4,6-7,9");
 
-        var parts = (await ((IPdfSplitter)Backend).Split(ReadAsset(NinePages), splitRanges)).ToList();
-        using var merged = await ((IPdfMerger)Backend).Merge(parts);
+        var parts = (await Service<IPdfSplitter>().Split(ReadAsset(NinePages), splitRanges)).ToList();
+        using var merged = await Service<IPdfMerger>().Merge(parts);
         parts.ForEach(part => part.Dispose());
 
         var output = await ReadPdf(merged);
@@ -188,11 +190,13 @@ public abstract class PdfTestsBase<TBackend>(TBackend backend, string outputFold
     [TestCase(8, 20)]
     [TestCase(5, 3)]
     [TestCase(10, null)]
-    [Needs(typeof(IPdfSplitter))]
     public async Task Split_Refuses_A_Range_Outside_The_Document(int start, int? end)
     {
+        // outside the assertion, so a backend without a splitter ignores the scenario rather than fail it
+        var splitter = Service<IPdfSplitter>();
+
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
-            ((IPdfSplitter)Backend).Split(ReadAsset(NinePages), [new PdfSplitRange { Start = 2, End = 3 }, new PdfSplitRange { Start = start, End = end }]));
+            splitter.Split(ReadAsset(NinePages), [new PdfSplitRange { Start = 2, End = 3 }, new PdfSplitRange { Start = start, End = end }]));
     }
 
 
@@ -202,45 +206,44 @@ public abstract class PdfTestsBase<TBackend>(TBackend backend, string outputFold
     [TestCase("9")]
     [TestCase("2,3")]
     [TestCase("5,3,3")]
-    [Needs(typeof(IPdfEditor))]
     public async Task RemovePages_Keeps_The_Other_Pages_In_Order(string pages)
     {
         var input = InputFacts(NinePages);
         var toRemove = pages.Split(',').Select(int.Parse).ToArray();
 
-        using var result = await ((IPdfEditor)Backend).RemovePages(ReadAsset(NinePages), toRemove);
+        using var result = await Service<IPdfEditor>().RemovePages(ReadAsset(NinePages), toRemove);
 
         var output = await ReadPdf(result);
         var kept = Enumerable.Range(1, input.PageCount).Except(toRemove);
         Assert.That(output.PageTexts, Is.EqualTo(kept.Select(page => input.PageTexts[page - 1])));
     }
 
-    [Test, Needs(typeof(IPdfEditor))]
+    [Test]
     public async Task RemovePages_Ignores_Pages_That_Do_Not_Exist()
     {
         var input = InputFacts(NinePages);
 
-        using var result = await ((IPdfEditor)Backend).RemovePages(ReadAsset(NinePages), [0, 3, 10]);
+        using var result = await Service<IPdfEditor>().RemovePages(ReadAsset(NinePages), [0, 3, 10]);
 
         var output = await ReadPdf(result);
         Assert.That(output.PageTexts, Is.EqualTo(input.PageTexts.Where((_, i) => i != 2)));
     }
 
-    [Test, Needs(typeof(IPdfEditor))]
+    [Test]
     public async Task RemovePages_Every_Page_Gives_Null()
     {
-        var result = await ((IPdfEditor)Backend).RemovePages(ReadAsset(NinePages), Enumerable.Range(1, 9));
+        var result = await Service<IPdfEditor>().RemovePages(ReadAsset(NinePages), Enumerable.Range(1, 9));
 
         Assert.That(result, Is.Null);
     }
 
 
-    [Test, Needs(typeof(IPdfToImageService))]
+    [Test]
     public async Task ToImages_Renders_Each_Page()
     {
         var input = InputFacts(NinePages);
 
-        var images = await ((IPdfToImageService)Backend).ToImages(ReadAsset(NinePages));
+        var images = await Service<IPdfToImageService>().ToImages(ReadAsset(NinePages));
 
         Assert.That(images, Has.Count.EqualTo(input.PageCount));
         for (var i = 0; i < images.Count; i++)
@@ -256,13 +259,12 @@ public abstract class PdfTestsBase<TBackend>(TBackend backend, string outputFold
 
     [TestCase(480, 600)]
     [TestCase(600, 480)]
-    [Needs(typeof(IPdfToImageService))]
     public async Task ToImages_Fit_The_Size_Either_Way_Round(int width, int height)
     {
         var input = InputFacts(TwoPages);
         var size = new ImageSize(width, height);
 
-        var images = await ((IPdfToImageService)Backend).ToImages(ReadAsset(TwoPages), new PdfToImagesOptions { Size = size });
+        var images = await Service<IPdfToImageService>().ToImages(ReadAsset(TwoPages), new PdfToImagesOptions { Size = size });
 
         Assert.That(images, Has.Count.EqualTo(input.PageCount));
         for (var i = 0; i < images.Count; i++)
@@ -274,10 +276,9 @@ public abstract class PdfTestsBase<TBackend>(TBackend backend, string outputFold
 
     [TestCase(ImageFormat.Png, "image/png")]
     [TestCase(ImageFormat.Jpeg, "image/jpeg")]
-    [Needs(typeof(IPdfToImageService))]
     public async Task ToImages_Are_The_Format_Asked_For(ImageFormat format, string contentType)
     {
-        var images = await ((IPdfToImageService)Backend).ToImages(ReadAsset(TwoPages), new PdfToImagesOptions { Format = format });
+        var images = await Service<IPdfToImageService>().ToImages(ReadAsset(TwoPages), new PdfToImagesOptions { Format = format });
 
         Assert.That(images, Has.Count.EqualTo(2));
         for (var i = 0; i < images.Count; i++)
@@ -299,12 +300,11 @@ public abstract class PdfTestsBase<TBackend>(TBackend backend, string outputFold
     [TestCase("img-1.jpg,img-2.jpg,img-3.jpg,img-4.jpg", PageSize.A4, PageOrientation.Portrait)]
     [TestCase("lion.png,horse.png", PageSize.A4, PageOrientation.Landscape)]
     [TestCase("img-1.jpg,lion.png", PageSize.A5, PageOrientation.Portrait)]
-    [Needs(typeof(IImagesToPdfService))]
     public virtual async Task ImagesToPdf_Puts_Each_Image_On_A_Page_Of_Its_Own(string images, PageSize format, PageOrientation orientation)
     {
         var input = new ImagesInput { Images = ReadImages(images), Format = format, Orientation = orientation };
 
-        using var pdf = await ((IImagesToPdfService)Backend).ImagesToPdf(input);
+        using var pdf = await Service<IImagesToPdfService>().ImagesToPdf(input);
 
         var output = await ReadPdf(pdf);
         var page = PageSizeUtility.GetPageSizeDimension(format, orientation: orientation);
@@ -324,10 +324,10 @@ public abstract class PdfTestsBase<TBackend>(TBackend backend, string outputFold
         }
     }
 
-    [Test, Needs(typeof(IImagesToPdfService))]
+    [Test]
     public async Task ImagesToPdf_Without_Images_Gives_Null()
     {
-        var pdf = await ((IImagesToPdfService)Backend).ImagesToPdf(new ImagesInput());
+        var pdf = await Service<IImagesToPdfService>().ImagesToPdf(new ImagesInput());
 
         Assert.That(pdf, Is.Null);
     }

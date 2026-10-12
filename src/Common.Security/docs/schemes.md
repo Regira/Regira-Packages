@@ -40,7 +40,7 @@ capture a request that the bearer scheme could have served.
 | `Rules` | `IList<SchemeForwardRule>` | `[]` | Extra rules, added before the built-in ones |
 | `UseDefaultRules` | `bool` | `true` | Whether to include the bearer, API-key, and cookie rules |
 
-Build rules with `SchemeForwardRules.Bearer(scheme)`, `.Basic(scheme)`, `.ApiKey(scheme)`,
+Build rules with `SchemeForwardRules.Bearer(scheme)`, `.ApiKey(scheme)`,
 `.Cookie(scheme, cookieName)`, or `new SchemeForwardRule(order, scheme, context => …)`.
 
 Because the policy scheme authenticates nothing, no document transformer declares it — register the operation

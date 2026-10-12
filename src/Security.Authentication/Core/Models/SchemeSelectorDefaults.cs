@@ -10,6 +10,7 @@ public static class SchemeSelectorDefaults
     /// <summary>Order of the built-in rules, spaced so a custom rule can be slotted between them.</summary>
     public const int BearerOrder = 20;
 
+    [Obsolete("No Basic authentication handler ships. Will be removed in v7.")]
     public const int BasicOrder = 30;
     public const int ApiKeyOrder = 50;
     public const int CookieOrder = 60;

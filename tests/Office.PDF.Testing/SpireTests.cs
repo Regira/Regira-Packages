@@ -9,7 +9,7 @@ namespace Office.PDF.Testing;
 /// within the limits of FreeSpire.PDF's free edition, which the tests below pin: a vendor upgrade that moves them
 /// fails here, and the guides that state them need updating.
 /// </summary>
-[PdfFixture]
+[TestFixture]
 [SupportedOSPlatform("windows")]
 public class SpireTests() : PdfTestsBase<PdfManager>(new PdfManager(), "Spire")
 {

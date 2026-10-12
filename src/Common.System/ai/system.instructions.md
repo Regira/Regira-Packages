@@ -127,8 +127,8 @@ Generates `install.bat` / `uninstall.bat` scripts using `sc.exe`.
   as written. Quote a value that can hold spaces or quotes, escaping a `"` as `\"`.
 - `waitForOutput: true` fills `IProcessOutput.Output` and `Error`; both pipes are drained at the same time, so a
   tool that logs to stderr cannot stall the call. Without it neither is kept.
-- A custom `IProcessHelper` that does not override the `environment` overloads: `ExecuteCommand` sets the
-  variables in its script (batch syntax), and `ExecuteFile` throws `NotSupportedException` rather than drop them.
+- A custom `IProcessHelper` that does not override the `environment` overloads: both throw
+  `NotSupportedException` when given variables, rather than drop them or write them into a command.
 - There is no timeout: the call returns when the process exits.
 
 <!-- no-compile -->

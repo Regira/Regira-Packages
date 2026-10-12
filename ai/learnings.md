@@ -92,6 +92,7 @@ Lessons that keep coming back; the entries below lean on them instead of restati
 - **A startup check is for what fails silently.** A finding that is loud at the first request (a 500, a 409 on every update) is a troubleshooting row, not a check: the initializer heuristics and the delete-cycle check went. A check whose resolution throws is skipped by the runner with one warning, and a context the checks cannot resolve is reported once, rather than each check catching and rewording its own failures. Resolving a context is not enough: one configured with no database provider resolves, then throws at `.Model`, so the shared resolution reads the model and options too, and the runner keeps what a check reported before it threw. *(2026-10-12)*
 - **A link's attachment may have other links.** A new link may name an attachment its owner links already, so two links can share one, and the link's FK cascades: deleting the attachment along with one link, or with its replacement, deletes the other link and the file. Delete it only when no other link names it, judged once every link of the save is prepared (a new link of the same save is not stored yet). *(2026-10-12)*
 - **`ChangeTracker.Clear()` leaves the entries it drops reporting their last state.** An `EntityEntry` held across `Clear()` still says `Deleted`, and no `StateChanged` is raised, while one a save accepted says `Detached`. So "the entry is `Detached`" tells a delete the save wrote from one the caller dropped, as "`Unchanged`, holding the written value" does for an update. *(2026-10-10)*
+- **Map the write pipeline's refusals on the controller bases, not inside the helpers.** `[EntityConstraintConflict]` on both `EntityControllerBase` roots gives a hand-written action on an entity controller the same 400 and 409s as the generated ones, with no app-wide filter; a `catch` in `ControllerExtensions` covered only the helper calls. *(2026-10-12)*
 
 ## Security and authentication
 
@@ -194,7 +195,7 @@ Lessons that keep coming back; the entries below lean on them instead of restati
 
 - **`IProcessHelper.ExecuteCommand` writes the command to a temporary `.bat`, which makes it wrong for secrets or `%`.** The arguments sit on disk, and cmd expands `%…%` even inside quotes.
   - `ExecuteFile(filename, waitForOutput, arguments)` starts the executable directly, with no file and no shell.
-  - A secret belongs in the process environment, never in the command text. The overload that takes variables is a default interface method, and it sets them in the script rather than dropping them.
+  - A secret belongs in the process environment, never in the command text. The overloads that take variables are default interface methods: an implementation that does not override them throws when given variables, rather than dropping them or writing them into a command.
   - `waitForOutput` defaults to false, which leaves `Error` null in failure messages, so turn it on. Since `Regira.System` 6.3.0, both streams are drained concurrently.
   - `ExecuteCommand` writes `@echo off`, so captured output does not echo the script's lines.
   - `pg_dump` reads `PGPASSWORD`. `mongodump` and `mongorestore` read no variable and prompt on the console, so their only channel off the command line is a `--config` YAML file (Database Tools 100.3.0+).
@@ -203,8 +204,10 @@ Lessons that keep coming back; the entries below lean on them instead of restati
 - **`pg_dump --schema` takes a pattern, not a name.** Unquoted names fold to lower case, and `*`, `?` and `.` act as wildcards and separators. A pattern that matches nothing is skipped and the dump still exits 0. Pass `"Sales"` with embedded quotes doubled, and add `--strict-names`. *(2026-09-16)*
 - **The MongoDB tools' `--config` file must carry the URI as well as the password.** TLS key passwords and `AWS_SESSION_TOKEN` are connection-string options, so a URI on the command line leaks them. A username without a password makes the tools prompt, and a redirected stdin cannot answer. Refuse that up front, except for mechanisms that take no password. *(2026-09-16)*
 - **`RESTORE … WITH REPLACE` silently overwrites an offline database's files.** Compare the planned physical names with `sys.master_files` first. Use `REPLACE` only when the target database existed. *(2026-09-16)*
-- **Use `sys.xp_delete_files` (SQL Server 2019+), because `xp_delete_file` refuses current backups.** Both need `sysadmin`, so cleanup is best effort with a logged fallback. Guard on `OBJECT_ID(N'master.sys.xp_delete_files')`, and read the outcome back with `xp_fileexist` rather than trusting "no error". *(2026-09-16)*
+- **A backup file this process cannot read stays where SQL Server wrote it.** Deleting it from the server needs `sysadmin` (`xp_delete_files`), which an application's login rarely has, so the `IOException` names the file left in `BackupDirectory` instead. *(2026-10-12)*
 - **Take a database away with `SET OFFLINE`, not `SINGLE_USER` then `DROP`.** `SINGLE_USER WITH ROLLBACK IMMEDIATE` leaves the one session free for anyone between the two statements. The cost of `OFFLINE`: SQL Server keeps an offline database's files when it drops it. A restore `WITH REPLACE` to the same paths overwrites them, and other files stay on disk. *(2026-09-16)*
+
+- **`NpgsqlConnectionStringBuilder.ContainsKey` answers true for every keyword Npgsql knows, not for the ones the string holds.** To tell whether a connection string gives a `Port`, parse it with a plain `DbConnectionStringBuilder`; MySqlConnector's builder reports presence itself. *(2026-10-12)*
 
 ## Other packages
 
@@ -223,6 +226,9 @@ Lessons that keep coming back; the entries below lean on them instead of restati
 - **A runtime-compiled template is an assembly that is never unloaded, so cache it by what determines the compile.** Both Razor parsers key a process-wide cache on the template text (RazorEngineCore also on `HtmlEncode`). A per-call key (a GUID) or a per-instance cache leaks one assembly per call, about 50 ms and 0.1–0.2 MB each. A RazorLight key is a cache key and nothing more: a fixed key given another text renders the first template. Test it by counting `AppDomain.CurrentDomain.GetAssemblies()` in a `NonParallelizable` fixture.
 
   *(2026-10-08)*
+
+- **`CultureInfo.GetCultureInfo` returns a cached, read-only instance.** Set a request's culture from `new CultureInfo(found.Name)`, or code adjusting `CurrentCulture.NumberFormat` downstream throws. *(2026-10-12)*
+- **GDI+ fails to draw an image turned by a negative right angle.** `Graphics.DrawImage` under `RotateTransform(-90)` throws "An object could not be created"; the same turn as `270` draws. `GdiUtility.Rotate` normalizes the angle to 0–359 first. *(2026-10-12)*
 
 ## Open framework asks
 

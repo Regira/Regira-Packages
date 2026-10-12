@@ -18,6 +18,12 @@
   <ItemGroup>
     <ProjectReference Include="..\Common\Common.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Regira.IO.Storage.Azure" />
+    <InternalsVisibleTo Include="Regira.IO.Storage.GitHub" />
+    <InternalsVisibleTo Include="Regira.IO.Storage.SSH" />
+    <InternalsVisibleTo Include="IO.Testing" />
+  </ItemGroup>
   <!-- MSBuild targets — auto-imported into consuming builds via NuGet buildTransitive -->
   <ItemGroup>
     <None Include="build\Regira.IO.Storage.props" Pack="true" PackagePath="buildTransitive\" />

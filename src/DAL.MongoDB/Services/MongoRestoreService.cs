@@ -43,7 +43,8 @@ public class MongoRestoreService(MongoOptions options, IProcessHelper processHel
                     ConfigPath = configFile.FilePath
                 })!;
 
-            logger?.LogDebug("Restoring backup to {Uri} with {ProcessPath} {Arguments}", settings.BuildRedactedConnectionString(), _restoreProcessPath, args);
+            // the host and the database only: any option of the URI can carry a secret
+            logger?.LogDebug("Restoring backup to {Database} on {Host} with {ProcessPath} {Arguments}", settings.DatabaseName, settings.Host, _restoreProcessPath, args);
 
             // execute restore process, capturing what the tool has to say: without it a failure reports an exit code and nothing else
             var output = processHelper.ExecuteFile(_restoreProcessPath, waitForOutput: true, arguments: args);

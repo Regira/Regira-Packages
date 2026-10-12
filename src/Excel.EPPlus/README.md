@@ -2,6 +2,8 @@
 
 Excel backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/), built on [EPPlus](https://www.nuget.org/packages/EPPlus) 4. `ExcelManager` implements `IExcelService`, reading and writing rows as dictionaries. Of the four Excel backends it is the only one that writes a `DataSet` and takes a per-cell `TransformData` callback.
 
+This package is deprecated: EPPlus 4 is the last release under a free licence and receives no fixes upstream, and this package takes fixes for crashes, data loss and security holes only. Use [Regira.Office.Excel.MiniExcel](https://regira.github.io/Regira-Packages/src/Excel.MiniExcel/) or [Regira.Office.Excel.ClosedXML](https://regira.github.io/Regira-Packages/src/Excel.ClosedXML/) for anything else.
+
 ## Installation
 
 ```xml

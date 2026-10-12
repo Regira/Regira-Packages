@@ -10,6 +10,7 @@ using Regira.Security.Authentication.ApiKey.Models;
 
 namespace Regira.Security.Authentication.Web.OpenApi.Transformers;
 
+[Obsolete("Use AuthenticationSchemeDocumentTransformer, which declares every registered scheme with its configured header. Will be removed in v7.")]
 public class ApiKeySecurityDocumentTransformer(IAuthenticationSchemeProvider authenticationSchemeProvider) : IOpenApiDocumentTransformer
 {
     public async Task TransformAsync(OpenApiDocument document, OpenApiDocumentTransformerContext context, CancellationToken cancellationToken)

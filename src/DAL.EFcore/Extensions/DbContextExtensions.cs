@@ -78,6 +78,7 @@ public static class DbContextExtension
             .Select(d => (IInterceptor)sp.GetRequiredService(d.ServiceType));
         return optionsBuilder.AddInterceptors(interceptors);
     }
+    [Obsolete("Use EF Core's own AddInterceptors. Will be removed in v7.")]
     public static DbContextOptionsBuilder AddInterceptors(this DbContextOptionsBuilder optionsBuilder, Func<IEnumerable<IInterceptor>> factory)
         => optionsBuilder.AddInterceptors(factory());
 

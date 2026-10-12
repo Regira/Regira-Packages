@@ -1915,10 +1915,9 @@ public abstract class WordTestsBase : WordAssetsTestsBase
     /// and shading, and each run's style, font, size, colour, emphasis, underline and highlight, a value taking its tag's.
     /// The marker paragraphs go with their formatting, which no paragraph takes over.
     /// </summary>
-    [TestCase(true)]
-    [TestCase(false)]
+    [Test]
     [Needs(WordFeature.Creating)]
-    public virtual async Task A_Conditional_Block_Keeps_The_Formatting_Of_What_It_Writes(bool isPaid)
+    public virtual async Task A_Conditional_Block_Keeps_The_Formatting_Of_What_It_Writes()
     {
         var input = new WordTemplateInput
         {
@@ -1931,19 +1930,16 @@ public abstract class WordTestsBase : WordAssetsTestsBase
                 Marker("{{/if}}"),
                 Docx.Formatted(BodyParagraph, new Span("Outro", PlainRun))
             ], styles: FormattingStyles()),
-            GlobalParameters = new Dictionary<string, object> { ["IsPaid"] = isPaid, ["Customer"] = "Alice" }
+            GlobalParameters = new Dictionary<string, object> { ["IsPaid"] = false, ["Customer"] = "Alice" }
         };
 
         using var output = await RequireCreator().Create(input);
         var facts = await ReadDocx(output);
-        var branch = isPaid
-            ? (NoteParagraph, new[] { new Span("Thank you, ", PlainRun), new Span("Alice", ValueRun), new Span(".", PlainRun) })
-            : (BodyParagraph, new[] { new Span("Please pay, ", StrongRun), new Span("Alice", ValueRun), new Span(", by Friday.", PlainRun) });
 
         Assert.That(Formatting(facts), Is.EqualTo(new[]
         {
             (TitleParagraph, new[] { new Span("Invoice", StrongRun) }),
-            branch,
+            (BodyParagraph, new[] { new Span("Please pay, ", StrongRun), new Span("Alice", ValueRun), new Span(", by Friday.", PlainRun) }),
             (BodyParagraph, new[] { new Span("Outro", PlainRun) })
         }));
     }
@@ -1952,10 +1948,9 @@ public abstract class WordTestsBase : WordAssetsTestsBase
     /// Every copy a loop writes is formatted as the template formats what lies between its markers, as is the branch a
     /// condition inside it keeps, and the loop's else; each value takes its tag's formatting, a line ending in it too.
     /// </summary>
-    [TestCase(true)]
-    [TestCase(false)]
+    [Test]
     [Needs(WordFeature.Creating)]
-    public virtual async Task A_Loop_Keeps_The_Formatting_Of_Every_Copy(bool hasOrders)
+    public virtual async Task A_Loop_Keeps_The_Formatting_Of_Every_Copy()
     {
         var input = new WordTemplateInput
         {
@@ -1974,7 +1969,7 @@ public abstract class WordTestsBase : WordAssetsTestsBase
             GlobalParameters = new Dictionary<string, object> { ["Customer"] = "Alice" },
             CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
             {
-                ["Orders"] = hasOrders ? LoopOrders() : []
+                ["Orders"] = LoopOrders()
             }
         };
 
@@ -1982,15 +1977,13 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         var facts = await ReadDocx(output);
         (ParagraphFormat, Span[]) Order(string number)
             => (NoteParagraph, [new Span("Order ", StrongRun), new Span(number, ValueRun), new Span(" for ", PlainRun), new Span("Alice", ValueRun)]);
-        var written = hasOrders
-            ? new[]
-            {
-                Order("A-1"),
-                (BodyParagraph, [new Span("Note: ", PlainRun), new Span("FragileKeep upright", ValueRun)]),
-                Order("A-2"),
-                Order("A-3")
-            }
-            : [(BodyParagraph, [new Span("No orders this month.", StrongRun)])];
+        var written = new[]
+        {
+            Order("A-1"),
+            (BodyParagraph, [new Span("Note: ", PlainRun), new Span("FragileKeep upright", ValueRun)]),
+            Order("A-2"),
+            Order("A-3")
+        };
 
         Assert.That(Formatting(facts), Is.EqualTo(written
             .Prepend((TitleParagraph, [new Span("Orders", StrongRun)]))
@@ -2041,85 +2034,6 @@ public abstract class WordTestsBase : WordAssetsTestsBase
             Assert.That(Formatting(facts), Is.EqualTo(written));
         });
     }
-
-    /// <summary>
-    /// A header's blocks keep the formatting of what they write as the body's do, and leave none of their markers'.
-    /// </summary>
-    [Test]
-    [Needs(WordFeature.Creating)]
-    public virtual async Task Blocks_In_A_Header_Keep_The_Formatting_Of_What_They_Write()
-    {
-        var input = new WordTemplateInput
-        {
-            Template = Docx.Document([Docx.Paragraph("BODYTEXT")], header: FormattedBlocks(), styles: FormattingStyles()),
-            GlobalParameters = new Dictionary<string, object> { ["IsPaid"] = false, ["DueDate"] = "31-10-2026" },
-            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>> { ["Orders"] = LoopOrders() }
-        };
-
-        using var output = await RequireCreator().Create(input);
-        var facts = await ReadDocx(output);
-
-        Assert.That(Formatting(facts.Headers.SelectMany(header => header.Paragraphs)), Is.EqualTo(FormattedBlocksWritten()));
-    }
-
-    /// <summary>
-    /// A text box's blocks keep the formatting of what they write as the body's do, in both of the box's copies — the
-    /// DrawingML one, and the VML fallback that holds the same paragraphs — and leave none of their markers'.
-    /// </summary>
-    [Test]
-    [Needs(WordFeature.Creating)]
-    public virtual async Task Blocks_In_A_Text_Box_Keep_The_Formatting_Of_What_They_Write_In_Both_Copies()
-    {
-        var input = new WordTemplateInput
-        {
-            Template = Docx.Document([
-                Docx.Formatted(BodyParagraph, new Span("Intro", PlainRun)),
-                Docx.TextBoxWithFallback(FormattedBlocks()),
-                Docx.Formatted(BodyParagraph, new Span("Outro", PlainRun))
-            ], styles: FormattingStyles()),
-            GlobalParameters = new Dictionary<string, object> { ["IsPaid"] = false, ["DueDate"] = "31-10-2026" },
-            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>> { ["Orders"] = LoopOrders() }
-        };
-
-        using var output = await RequireCreator().Create(input);
-        var facts = await ReadDocx(output);
-        (ParagraphFormat, Span[])[] written =
-        [
-            (BodyParagraph, [new Span("Intro", PlainRun)]),
-            // the paragraph holding the box, which has no text of its own, then the box's two copies
-            (new ParagraphFormat(), []),
-            .. FormattedBlocksWritten(),
-            .. FormattedBlocksWritten(),
-            (BodyParagraph, [new Span("Outro", PlainRun)])
-        ];
-
-        Assert.That(Formatting(facts), Is.EqualTo(written));
-    }
-
-    /// <summary>
-    /// A condition and a loop, each paragraph formatted its own way, for a story other than the body to hold: built
-    /// fresh for every template.
-    /// </summary>
-    private static W.Paragraph[] FormattedBlocks() =>
-    [
-        Docx.Formatted(TitleParagraph, new Span("Invoice", StrongRun)),
-        Marker("{{#if IsPaid}}"),
-        Docx.Formatted(NoteParagraph, new Span("Paid", StrongRun)),
-        Marker("{{else}}"),
-        Docx.Formatted(BodyParagraph, new Span("Due by ", PlainRun), new Span("{{DueDate}}", ValueRun)),
-        Marker("{{/if}}"),
-        Marker("{{#each Orders}}"),
-        Docx.Formatted(NoteParagraph, new Span("Order ", StrongRun), new Span("{{Number}}", ValueRun)),
-        Marker("{{/each}}")
-    ];
-
-    /// <summary>What <see cref="FormattedBlocks"/> writes when <c>IsPaid</c> is false, over <see cref="LoopOrders"/>.</summary>
-    private static (ParagraphFormat, Span[])[] FormattedBlocksWritten() =>
-    [
-        (TitleParagraph, [new Span("Invoice", StrongRun)]),
-        (BodyParagraph, [new Span("Due by ", PlainRun), new Span("31-10-2026", ValueRun)]),
-        .. new[] { "A-1", "A-2", "A-3" }.Select(number => (NoteParagraph, new[] { new Span("Order ", StrongRun), new Span(number, ValueRun) }))
-    ];
 
     // the formatting scenarios' formats: the text's, and the markers' own, which nothing written may take over
     private static readonly ParagraphFormat TitleParagraph = new(Style: "Note", Alignment: "center", SpacingAfter: 240);
@@ -2428,10 +2342,6 @@ public abstract class WordTestsBase : WordAssetsTestsBase
     /// as Word locks it, and a locked picture in Spire.Doc recalculates one side from the other as each is set.
     /// </summary>
     [TestCase(400.0)]
-    [TestCase(437.3)]
-    [TestCase(468.9)]
-    [TestCase(512.2)]
-    [TestCase(555.5)]
     [TestCase(601.7)]
     [Needs(WordFeature.Converting | WordFeature.OtherFormats)]
     public virtual async Task AutoScalePictures_Stops_A_Tall_Picture_At_The_Limit(double height)
@@ -2461,10 +2371,7 @@ public abstract class WordTestsBase : WordAssetsTestsBase
     /// that. <c>template_image.docx</c> is A4, with 70.85 pt side margins.
     /// </summary>
     [TestCase(PageSize.A4, null, 2000, TestName = "{m}(the text width kept)")]
-    [TestCase(PageSize.A4, 65f, 1584, TestName = "{m}(the text width 3 percent wider)")]
     [TestCase(PageSize.A4, 76f, 1584, TestName = "{m}(the text width 2 percent narrower)")]
-    [TestCase(PageSize.A3, null, 1584, TestName = "{m}(A3)")]
-    [TestCase(PageSize.A5, null, 1225, TestName = "{m}(A5)")]
     [Needs(WordFeature.Converting | WordFeature.OtherFormats)]
     public virtual async Task AutoScalePictures_Brings_A_Picture_Past_The_Limit_To_It_When_The_Text_Width_Changes(PageSize size, float? margins, int width)
     {

@@ -272,6 +272,7 @@ public static class DictionaryUtility
     /// </summary>
     /// <param name="source">The source dictionary to filter.</param>
     /// <returns>A new dictionary containing only the entries with non-null values from the source dictionary.</returns>
+    [Obsolete("Nothing in the Regira packages uses it. Will be removed in v7.")]
     public static IDictionary<string, object> NonNullable(this IDictionary<string, object?> source)
         => source.Where(x => x.Value != null).ToDictionary(x => x.Key, x => x.Value!);
 

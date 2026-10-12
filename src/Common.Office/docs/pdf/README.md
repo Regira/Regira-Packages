@@ -172,7 +172,7 @@ Composite: `IPdfEditor + IPdfImageService + IPdfTextService`. Implemented by Pdf
 | `FooterHeight` | `int?` | `null` | Footer height in mm; `null` is 35 pt |
 | `Format` | `PageSize` | `A4` | Paper size |
 | `Orientation` | `PageOrientation` | `Portrait` | Portrait / Landscape |
-| `Margins` | `Margins` | `10mm` all | Page margins, in units of `DPI`; `Margins.ModifyDpi` measures them at another |
+| `Margins` | `Margins` | `10mm` all | Page margins, in units of `DPI`; `Margins.ModifyDpi` measures them at another. A `float[]` gives one value for every side, two for left and right then top and bottom, three for top, left and right, bottom, four for top, right, bottom, left |
 | `DPI` | `int` | `96` | Units per inch of `Margins` |
 
 ### DocumentInput
@@ -361,7 +361,7 @@ var pdf = new Regira.Office.PDF.PdfPig.PdfService(imageService);
 
 Implements `IPdfService` on [Docnet.Core](https://www.nuget.org/packages/Docnet.Core), which has had no release since
 2.6.0 (2023) and bundles a PDFium build from 2022. PDFium parses every PDF it is given, so an outdated build is a risk
-for uploaded files; use PdfPig. `ImagesToPdf` makes each page the size of its image: the image is scaled down to fit
+for uploaded files; use PdfPig. It takes fixes for crashes, data loss and security holes only. `ImagesToPdf` makes each page the size of its image: the image is scaled down to fit
 the format's page less its margins, measured in units of `DPI`, and the page takes that many points. Requires
 `IImageService` in the constructor.
 

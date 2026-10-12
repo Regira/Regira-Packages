@@ -171,7 +171,7 @@ Task<bool>                Exists(string identifier)
 Task<byte[]?>             GetBytes(string identifier)
 Task<Stream?>             GetStream(string identifier)
 Task<IEnumerable<string>> List(FileSearchObject? so = null)
-IAsyncEnumerable<string>  ListAsync(FileSearchObject? so = null)  // NET10+
+IAsyncEnumerable<string>  ListAsync(FileSearchObject? so = null)  // NET10+; what List returns, once List has read it all
 ```
 
 ### Write
@@ -219,7 +219,7 @@ var images = await storage.List(new FileSearchObject
     Type       = FileEntryTypes.Files
 });
 
-// Streaming variant (NET10+)
+// The same identifiers as List, in its order, after the whole listing is read (NET10+)
 await foreach (var image in storage.ListAsync(new FileSearchObject
 {
     FolderUri  = "products/",

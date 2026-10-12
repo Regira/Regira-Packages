@@ -94,10 +94,10 @@ public class EntityInputException<T>(string message, Exception? innerException =
 }
 ```
 
-Throw the generic form; **catch the non-generic base**. The generated write actions catch their own closed
-`EntityInputException<TEntity>`, so one a prepper threw for a *related* entity
-(`EntityInputException<Product>` during an `Order` write) is not theirs to handle. The base is what
-`EntityExceptionFilter` matches, and what a hand-written `catch` should match too.
+Throw the generic form; **catch the non-generic base**. A `catch` on the closed `EntityInputException<TEntity>`
+misses one a prepper threw for a *related* entity (`EntityInputException<Product>` during an `Order` write).
+The base is what `EntityExceptionFilter` and `[EntityConstraintConflict]` match, and what a hand-written
+`catch` should match too.
 
 
 ### Constraint Exceptions
@@ -119,10 +119,9 @@ public class EntityConstraintException(string message, Exception? innerException
 ```
 
 - **Every web write surface returns 409 Conflict** with `ClientMessage` as the `ProblemDetails` detail —
-  hand-written actions included, through the application-wide `EntityExceptionFilter` that
-  `ConfigureDefaultJsonOptions()` registers. The controller helpers (`ControllerExtensions.Save`/`Delete`)
-  and the `[EntityConstraintConflict]` attribute on the attachment controller bases catch it first and emit
-  the same body. The provider's constraint message is logged server-side (warning) by the write service.
+  hand-written actions included: the entity and attachment controller bases carry `[EntityConstraintConflict]`,
+  and the application-wide `EntityExceptionFilter` that `ConfigureDefaultJsonOptions()` registers covers every
+  other controller with the same body. The provider's constraint message is logged server-side (warning) by the write service.
 - **Direct callers** (seeding, jobs, custom services): `IEntityService.SaveChanges()` throws
   `EntityConstraintException` for a constraint failure and lets only transient faults through as
   `DbUpdateException`; `DbContext.SaveChanges()` throws EF's `DbUpdateException` for both. `Message` is the same
@@ -173,8 +172,8 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
   application-owned token you declare yourself needs a primer of your own, or two clients holding the same value
   both pass.
 - **Every web write surface returns 409 Conflict** with a `ProblemDetails` titled "Concurrency conflict" —
-  distinct from the constraint 409 — through the same `EntityExceptionFilter`, controller helpers and
-  `[EntityConstraintConflict]` attribute.
+  distinct from the constraint 409 — through the same `[EntityConstraintConflict]` attribute and
+  `EntityExceptionFilter`.
 - **Direct callers** (seeding, jobs, custom services): `IEntityService.SaveChanges()` throws
   `EntityConcurrencyException`, with EF's exception inside; `DbContext.SaveChanges()` throws EF's
   `DbUpdateConcurrencyException` itself. A failed save keeps the change tracker; reload and retry in a fresh scope.

@@ -10,7 +10,7 @@ namespace Regira.Utilities;
 public static class StringUtility
 {
     // https://stackoverflow.com/questions/249087/how-do-i-remove-diacritics-accents-from-a-string-in-net#answer-34272324
-    private static Dictionary<string, string> ForeignCharacterMappings => new()
+    private static readonly Dictionary<string, string> ForeignCharacterMappings = new()
     {
         {"äæǽ", "ae"},
         {"öœ", "oe"},
@@ -102,15 +102,15 @@ public static class StringUtility
         {"Я", "Ya"},
         {"я", "ya"},
     };
-    private static Dictionary<char, string> ForeignCharacters => new(ForeignCharacterMappings
+    private static readonly Dictionary<char, string> ForeignCharacters = ForeignCharacterMappings
         .SelectMany(p => p.Key.Select(key => new KeyValuePair<char, string>(key, p.Value)))
-        .ToDictionary(x => x.Key, v => v.Value)
-    );
+        .ToDictionary(x => x.Key, v => v.Value);
     /// <summary>
     /// Splits the input string into an array of substrings based on spaces, while preserving quoted segments as single elements.
     /// </summary>
     /// <param name="input">The input string to be split.</param>
     /// <returns>An array of substrings obtained by splitting the input string on spaces, with quoted segments preserved as single elements.</returns>
+    [Obsolete("Nothing in the Regira packages uses it. Will be removed in v7.")]
     public static string[] SplitOnSpace(string input)
     {
         var segments = Regex.Matches(input, @"[\""].+?[\""]|[^ ]+")
@@ -234,6 +234,7 @@ public static class StringUtility
     /// <remarks>
     /// This method splits the input string by spaces and takes the first character of each word to form the initials.
     /// </remarks>
+    [Obsolete("Nothing in the Regira packages uses it. Will be removed in v7.")]
     public static string? GetInitials(this string? input)
         => string.IsNullOrWhiteSpace(input) ? input : string.Join("", input.Split(' ').Select(s => s.First()));
     /// <summary>
@@ -292,9 +293,9 @@ public static class StringUtility
         var sb = new StringBuilder();
         foreach (var c in chars)
         {
-            if (ForeignCharacters.ContainsKey(c))
+            if (ForeignCharacters.TryGetValue(c, out var replacement))
             {
-                sb.Append(ForeignCharacters[c]);
+                sb.Append(replacement);
             }
             else
             {
@@ -333,6 +334,7 @@ public static class StringUtility
     /// The cleaned-up string with leading and trailing whitespace removed, or <c>null</c> if the input is empty
     /// and <paramref name="nullWhenEmpty"/> is <c>true</c>.
     /// </returns>
+    [Obsolete("Nothing in the Regira packages uses it. Will be removed in v7.")]
     public static string? CleanUp(this string? input, bool nullWhenEmpty = true)
     {
         if (input == null || nullWhenEmpty && input == string.Empty)
@@ -389,6 +391,7 @@ public static class StringUtility
     /// <remarks>
     /// The generated string is suitable for use in scenarios requiring secure random values, such as tokens or keys.
     /// </remarks>
+    [Obsolete("Use RandomNumberGenerator.GetBytes with Convert.ToBase64String. Will be removed in v7.")]
     public static string GenerateRandomString(int length = 32)
     {
         var randomNumber = new byte[length];

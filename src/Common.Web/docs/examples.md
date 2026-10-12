@@ -69,33 +69,29 @@ The keys are the JSON serializer's camel-cased property names. `HtmlEncode` enco
 
 ---
 
-## Example 3: Global exception handling middleware
+## Example 3: Exceptions and culture with ASP.NET Core's middleware
 
-Add structured error logging without exposing internals to the API consumer.
+Log unhandled exceptions without exposing internals to the API consumer, and read a `?culture=` parameter on every
+request.
 
 ```csharp
 // Program.cs
-services.AddGlobalExceptionHandling();
-app.UseGlobalExceptionHandling();
+services.AddProblemDetails();
+
+app.UseExceptionHandler();
+app.UseRequestLocalization(options => options
+    .SetDefaultCulture("en")
+    .AddSupportedCultures("en", "fr-BE")
+    .AddSupportedUICultures("en", "fr-BE"));
+
+// GET /api/dates?culture=fr-BE  → CultureInfo is fr-BE for this request
 ```
 
-All uncaught exceptions now return a clean 500 and are logged to `ILogger<GlobalExceptionHandler>`.
+An uncaught exception is logged and answered with a 500 problem response.
 
 ---
 
-## Example 4: Culture from query string
-
-Support multi-language APIs by reading a `?culture=` parameter on every request.
-
-```csharp
-app.UseRequestCulture();
-
-// GET /api/dates?culture=fr-BE  → CultureInfo is set to fr-BE for this request
-```
-
----
-
-## Example 5: Background export queue
+## Example 4: Background export queue
 
 Queue a long report generation task and return an accepted status immediately. The queue itself ships in
 `Regira.System.Hosting` — its API reference is in
@@ -142,7 +138,7 @@ public IActionResult GetStatus(string taskId, IBackgroundTaskManager<ReportTask>
 
 ---
 
-## Example 6: Render an invoice component
+## Example 5: Render an invoice component
 
 The invoice of Example 1 as a Razor component. It compiles with the application, so a misspelt property fails the build, and the first request renders without compiling anything.
 

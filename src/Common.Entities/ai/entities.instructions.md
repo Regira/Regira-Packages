@@ -1734,9 +1734,9 @@ reasons that call is not optional. MVC filters do not run on minimal-API endpoin
 `.AddEndpointFilter<EntityExceptionEndpointFilter>()`.
 
 > **Catching it yourself** — to add context, or to convert it — catch the **non-generic base**
-> `EntityInputException`. The generated write actions catch their own closed generic, so an
-> `EntityInputException<Product>` thrown by a prepper during an `Order` write escapes them; the base is what
-> the filter matches, and what your own `catch` should. Worked example:
+> `EntityInputException`. A `catch` on one closed generic misses an `EntityInputException<Product>` thrown by a
+> prepper during an `Order` write; the base is what the filter and `[EntityConstraintConflict]` match, and what
+> your own `catch` should. Worked example:
 > [`entities.patterns.md`](./entities.patterns.md) § Domain actions on an entity resource.
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — Order + OrderLine entities (the order-lines validator in `AddOrders`)
@@ -1912,7 +1912,7 @@ own endpoint.
 | `IHasObjectId<TKey>` | `ObjectId (TKey)` | Attachments |
 | `IHasAttachments` | `HasAttachment, Attachments` | Attachments module |
 
-> **The date interfaces are contracts, not automatic filtering.** `StartDate`/`EndDate` are **nullable** (implementing them with non-nullable `DateTime` fails `CS0738`), and **no global filter** consumes them — nothing narrows a query for you. There is one built-in helper you call yourself: `query.FilterIsActiveOn(date)` (`Regira.Entities.EFcore.Extensions.QueryExtensions`, constrained to `IHasStartEndDate`), which matches rows whose period contains `date`, treating either bound as open when null. If your period is mandatory, plain non-nullable `Start`/`End` properties of your own are the better fit — and then the range filter is yours to write.
+> **The date interfaces are contracts, not automatic filtering.** `StartDate`/`EndDate` are **nullable** (implementing them with non-nullable `DateTime` fails `CS0738`), and **no global filter** consumes them — nothing narrows a query for you. There is one built-in helper you call yourself: `query.FilterIsActiveOn(date)` (`Regira.Entities.EFcore.Extensions.QueryExtensions`, constrained to `IHasStartEndDate`), which matches rows whose period contains `date`, treating either bound as open when null; a null `date` filters nothing, as every other `FilterX(null)`. If your period is mandatory, plain non-nullable `Start`/`End` properties of your own are the better fit — and then the range filter is yours to write.
 
 > **Nullability convention:** `IHasCode`/`IHasTitle`/`IHasDescription`/`IHasNormalizedContent` declare their strings as `string?` — a contract convention, not enforcement. Need non-null? Add `[Required]` on the implementing property; the `string?` declaration stays — ❌ `public string Code { get; set; } = null!;` narrows the interface setter and warns `CS8767`, ✅ `[Required] public string? Code { get; set; }`.
 

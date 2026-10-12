@@ -15,8 +15,9 @@ namespace Regira.Entities.Web.Controllers;
 /// <summary>
 /// The generated actions' implementation, also for a hand-written action: each helper sends the matching request of
 /// <c>Regira.Entities.Mediator</c> through the <see cref="IEntitySender"/> and answers with its result — <c>null</c> when
-/// the entity does not exist, so the caller picks the 404. The write helpers answer a refused write with 400 and a
-/// constraint or concurrency conflict with 409, with or without the exception filter.
+/// the entity does not exist, so the caller picks the 404. A write helper throws what the write pipeline refuses:
+/// <see cref="EntityConstraintConflictAttribute"/> on the entity controller bases, or <see cref="EntityExceptionFilter"/>
+/// application-wide, answers a refused write with 400 and a constraint or concurrency conflict with 409.
 /// </summary>
 public static class ControllerExtensions
 {
@@ -166,27 +167,10 @@ public static class ControllerExtensions
     }
 
     /// <summary>
-    /// Sends a write and maps what the write pipeline refuses — a 400 like a validator's, a 409 for a constraint or a
-    /// concurrency conflict — whether or not the exception filter is registered.
+    /// Sends a write. What the write pipeline refuses is mapped by <see cref="EntityConstraintConflictAttribute"/> on
+    /// the entity controller bases, or by <see cref="EntityExceptionFilter"/> application-wide.
     /// </summary>
     private static async Task<ActionResult<TResult>?> Write<TEntity, TResult>(this ControllerBase ctrl, IEntityRequest<TResult> request)
         where TResult : class
-    {
-        try
-        {
-            return Ok(await ctrl.Sender().Send(request));
-        }
-        catch (EntityInputException<TEntity> ex)
-        {
-            return ex.ToBadRequest(ctrl.HttpContext);
-        }
-        catch (EntityConstraintException)
-        {
-            return ctrl.Conflict(EntityConstraintProblem.Create());
-        }
-        catch (EntityConcurrencyException)
-        {
-            return ctrl.Conflict(EntityConcurrencyProblem.Create());
-        }
-    }
+        => Ok(await ctrl.Sender().Send(request));
 }

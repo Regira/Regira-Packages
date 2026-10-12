@@ -32,6 +32,8 @@ public abstract class ImageTestsBase(IImageService imageService)
     public Task RotateImage90Right() => imageService.Test_RotateImage90Right();
     [Test]
     public Task RotateImage90Left() => imageService.Test_RotateImage90Left();
+    [Test]
+    public Task RotateImage45() => imageService.Test_RotateImage45();
 
     [TestCase("img-1.jpg")]
     [TestCase("img-2.jpg")]

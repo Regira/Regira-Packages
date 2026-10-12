@@ -146,8 +146,6 @@ one, without which a generated client cannot tell a public endpoint from a guard
 |---|---|---|
 | `AuthenticationSchemeDocumentTransformer` | `AddDocumentTransformer<…>()` | `components.securitySchemes` for **every** registered scheme, from the descriptor each contributes at registration |
 | `SecurityRequirementOperationTransformer` | `AddOperationTransformer<…>()` | a per-operation `security` requirement, resolving a forwarding policy scheme to the schemes behind it |
-| `BearerSecuritySchemeTransformer` | `AddDocumentTransformer<…>()` | the `Bearer` scheme alone — superseded, and safe to register alongside |
-| `ApiKeySecurityDocumentTransformer` | `AddDocumentTransformer<…>()` | the API-key scheme alone — superseded, and safe to register alongside |
 
 Cookie has no dedicated OpenAPI security type; it is emitted as an API key with `in: cookie`, the accepted
 convention. Adding a scheme needs no transformer change.

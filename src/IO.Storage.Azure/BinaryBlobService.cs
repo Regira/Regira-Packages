@@ -101,40 +101,9 @@ public class BinaryBlobService(AzureCommunicator communicator) : IFileService
 #if NET10_0_OR_GREATER
     public async IAsyncEnumerable<string> ListAsync(FileSearchObject? so = null)
     {
-        so ??= new FileSearchObject();
-        await communicator.Open();
-
-        var recursive = so.Recursive;
-        var relativeFolderUri = FileNameUtility.GetRelativeUri(so.FolderUri, Root);
-        var excludedFolders = GetFolders(relativeFolderUri).Concat(new[] { relativeFolderUri }).ToHashSet();
-        var yieldedFolders = new HashSet<string>();
-
-        await foreach (var blob in ListBlobs(so))
+        foreach (var identifier in await List(so))
         {
-            var blobIdentifier = FileNameUtility.GetRelativeUri(blob.Name, Root);
-            var blobFolder = FileNameUtility.GetRelativeFolder(blobIdentifier, Root) ?? string.Empty;
-            var matchesExtension = so.Extensions == null || so.Extensions.Any(e => e.TrimStart('*') == Path.GetExtension(blobIdentifier));
-            var inScope = recursive || blobFolder == relativeFolderUri;
-
-            if (so.Type != FileEntryTypes.Directories && inScope && matchesExtension)
-                yield return blobIdentifier;
-
-            // Mirror sync List: derive folders from all blobs when no extension filter,
-            // or from in-scope matching blobs when an extension filter is set.
-            var usedForFolderDerivation = so.Extensions == null || (inScope && matchesExtension);
-            if (so.Type != FileEntryTypes.Files && usedForFolderDerivation)
-            {
-                foreach (var folder in GetFolders(blobIdentifier))
-                {
-                    var folderParent = FileNameUtility.GetRelativeFolder(folder, Root) ?? string.Empty;
-                    if (!excludedFolders.Contains(folder)
-                        && (recursive || folderParent == relativeFolderUri)
-                        && yieldedFolders.Add(folder))
-                    {
-                        yield return folder;
-                    }
-                }
-            }
+            yield return identifier;
         }
     }
 #endif

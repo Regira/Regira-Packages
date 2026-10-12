@@ -11,6 +11,7 @@ using RegiraPageOrientation = Regira.Office.Models.PageOrientation;
 using Wp = DocumentFormat.OpenXml.Drawing.Wordprocessing;
 using WordPageSizes = Regira.Office.Word.Layout.WordPageSizes;
 using PictureScaling = Regira.Office.Word.Layout.PictureScaling;
+using TableScaling = Regira.Office.Word.Layout.TableScaling;
 
 namespace Regira.Office.Word.Gotenberg.Internal;
 
@@ -171,8 +172,7 @@ internal static class OpenXmlPageSetup
             ? dxa
             : grid.Sum(column => TryParse(column.Width?.Value, out var w) ? w : 0);
 
-        // the Word.Spire rule: leave a table alone when it is more than 10% narrower than the text width
-        if (width <= 0 || originalWidth / width - 1 >= .1)
+        if (!TableScaling.SpansTextWidth(originalWidth, width))
         {
             return;
         }

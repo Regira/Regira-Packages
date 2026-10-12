@@ -15,11 +15,6 @@
     <Description>Barcode generation using the UziGranot library for Regira Office.</Description>
     <PackageTags>regira;office;barcodes;uzigranot;windows</PackageTags>
   </PropertyGroup>
-  <!--<ItemGroup>
-        <PackageReference Include="QRCodeDecoder" Version="0.1.0" />
-        <PackageReference Include="QRCodeEncoder" Version="0.1.0" />
-        <PackageReference Include="QRCodeFixer" Version="0.1.0" />
-    </ItemGroup>-->
   <ItemGroup>
     <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
     <ProjectReference Include="..\Drawing.GDI\Drawing.GDI.csproj" />

@@ -1081,7 +1081,7 @@ public class CountryController : EntityControllerBase<Country, string, SearchObj
 
 ### Gotchas
 
-- You own everything the pipeline normally does: apply `Q`, ordering and `PagingInfo` yourself (`PageQuery`/`PageItems` from `Regira.DAL.Paging`); registered query builders/processors don't run against in-memory data.
+- You own everything the pipeline normally does: apply `Q`, ordering and `PagingInfo` yourself (`PageQuery` from `Regira.DAL.Paging`, or `PageItems` from `Regira.Utilities`); registered query builders/processors don't run against in-memory data.
 - Ranked matching beats plain `Contains` for picker UX — weight exact code/name matches above prefix above substring, and boost the caller's own country (`IHasDefault`).
 - Write endpoints exist on the controller but return 500 from the `NotImplementedException` — add `[ApiExplorerSettings(IgnoreApi = true)]` overrides or authorization if that surface bothers you; the reference apps simply never call them.
 

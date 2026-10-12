@@ -16,11 +16,6 @@
     <PackageTags>regira;payments;mollie;gateway</PackageTags>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Remove="Abstractions\**" />
-    <EmbeddedResource Remove="Abstractions\**" />
-    <None Remove="Abstractions\**" />
-  </ItemGroup>
-  <ItemGroup>
     <PackageReference Include="Mollie.Api" Version="5.1.0" />
   </ItemGroup>
   <ItemGroup>

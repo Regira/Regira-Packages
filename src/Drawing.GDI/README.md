@@ -1,6 +1,6 @@
 # Regira.Drawing.GDI
 
-GDI+ image backend for [Regira Drawing](https://regira.github.io/Regira-Packages/src/Common.Media/), built on [System.Drawing.Common](https://www.nuget.org/packages/System.Drawing.Common). `ImageService` (`Regira.Drawing.GDI.Services`) implements `IImageService`. It is the Windows-only alternative to the preferred, cross-platform `Regira.Drawing.SkiaSharp`, and the only backend with printing support (`PrintUtility`).
+GDI+ image backend for [Regira Drawing](https://regira.github.io/Regira-Packages/src/Common.Media/), built on [System.Drawing.Common](https://www.nuget.org/packages/System.Drawing.Common). `ImageService` (`Regira.Drawing.GDI.Services`) implements `IImageService`. It is the Windows-only alternative to the preferred, cross-platform `Regira.Drawing.SkiaSharp`.
 
 ## Installation
 

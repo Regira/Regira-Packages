@@ -25,7 +25,7 @@ public class JwtStartup
         // AddOpenApi and the package's transformers exist on .NET 10 only; the rest of the host runs on .NET 8 too.
         services.AddOpenApi(options =>
         {
-            options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
+            options.AddDocumentTransformer<AuthenticationSchemeDocumentTransformer>();
             options.AddOperationTransformer<SecurityRequirementOperationTransformer>();
         });
 #endif

@@ -6,6 +6,7 @@ using Regira.IO.Models;
 using Regira.IO.Storage.Compression;
 using System.Net.Http.Json;
 using System.Xml.Linq;
+using Regira.Invoicing.Peppol;
 
 namespace Regira.Invoicing.Billit.Services;
 
@@ -18,8 +19,8 @@ public interface IFileManager
 }
 public class FileManager(IHttpClientFactory clientFactory) : IFileManager
 {
-    private readonly XNamespace nsCac = "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2";
-    private readonly XNamespace nsCbc = "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2";
+    private readonly XNamespace nsCac = PeppolNamespaces.CAC;
+    private readonly XNamespace nsCbc = PeppolNamespaces.CBC;
     private const string Path = "/v1/files";
     private readonly HttpClient _client = clientFactory.CreateClient(BillitConstants.HttpClientName);
 

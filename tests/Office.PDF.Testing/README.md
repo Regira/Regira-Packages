@@ -10,9 +10,9 @@ Word, Excel and PowerPoint to PDF, and [PDF.SelectPdf](../../src/PDF.SelectPdf/R
 
 - **Shared scenarios.** `Abstractions/PdfTestsBase` holds the scenarios of the PDF operations: text, merging,
   splitting, removing pages, page images and images to PDF, edges included — merging nothing, a split range outside the
-  document, removing every page. A backend fixture is marked `[PdfFixture]` and gets every scenario whose `[Needs]` its
-  backend type implements, so Spire, which has no `IPdfEditor`, gets no page removal; a scenario a backend cannot run
-  does not appear in the results. A fixture declares the limits of a free edition (`MaxPages`, `RenderedPages`) and
+  document, removing every page. A backend fixture gets every scenario, and a scenario calls the backend through
+  `Service<T>()`, which ignores it when the backend does not implement that interface: Spire, which has no
+  `IPdfEditor`, shows the page removals as ignored. A fixture declares the limits of a free edition (`MaxPages`, `RenderedPages`) and
   overrides a scenario only where its backend documents another behaviour: DocNET's page per image.
   `Abstractions/HtmlToPdfTestsBase` holds the HTML-to-PDF scenarios every `IHtmlToPdfService` runs: page size,
   orientation, margins, header and footer placement, and a template filled with parameters.

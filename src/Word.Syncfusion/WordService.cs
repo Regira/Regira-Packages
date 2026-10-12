@@ -357,7 +357,7 @@ public class WordService : IWordService
             {
                 foreach (var table in section.Body.FindAllTables())
                 {
-                    if (originalWidth / table.Width - 1 >= .1)
+                    if (!TableScaling.SpansTextWidth(originalWidth, table.Width))
                     {
                         // narrower than the page: leave it at its designed width
                         continue;
@@ -444,38 +444,22 @@ public class WordService : IWordService
     }
 
     protected internal void AddHeader(WordDocument doc, WordDocument headerDoc, HeaderFooterType type)
-    {
-        var source = headerDoc.GetHeader(type);
-        // fall back to the default header, then to the body
-        if (type != HeaderFooterType.Default && source.IsEmpty())
-        {
-            source = headerDoc.GetHeader();
-        }
-        var content = source.ChildEntities.Count > 0 ? source.ChildEntities : headerDoc.Sections[0].Body.ChildEntities;
-
-        doc.GetHeader(type).ReplaceChildEntities(content);
-
-        if (type == HeaderFooterType.FirstPage)
-        {
-            doc.Sections[0].PageSetup.DifferentFirstPage = true;
-        }
-        else if (type == HeaderFooterType.Even)
-        {
-            // even-page stories only render once the document tells odd and even pages apart
-            doc.Sections[0].PageSetup.DifferentOddAndEvenPages = true;
-        }
-    }
+        => AddStory(doc, headerDoc, type, (d, t) => d.GetHeader(t));
 
     protected internal void AddFooter(WordDocument doc, WordDocument footerDoc, HeaderFooterType type)
+        => AddStory(doc, footerDoc, type, (d, t) => d.GetFooter(t));
+
+    private static void AddStory(WordDocument doc, WordDocument storyDoc, HeaderFooterType type, Func<WordDocument, HeaderFooterType, WTextBody> story)
     {
-        var source = footerDoc.GetFooter(type);
+        var source = story(storyDoc, type);
+        // fall back to the default story, then to the body
         if (type != HeaderFooterType.Default && source.IsEmpty())
         {
-            source = footerDoc.GetFooter();
+            source = story(storyDoc, HeaderFooterType.Default);
         }
-        var content = source.ChildEntities.Count > 0 ? source.ChildEntities : footerDoc.Sections[0].Body.ChildEntities;
+        var content = source.ChildEntities.Count > 0 ? source.ChildEntities : storyDoc.Sections[0].Body.ChildEntities;
 
-        doc.GetFooter(type).ReplaceChildEntities(content);
+        story(doc, type).ReplaceChildEntities(content);
 
         if (type == HeaderFooterType.FirstPage)
         {

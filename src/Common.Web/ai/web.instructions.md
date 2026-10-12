@@ -197,7 +197,7 @@ rather than taking them for MVC views. `PreserveCompilationContext` is not neede
 - **Layouts.** `@layout` has no effect. A shared document frame is a component with a `ChildContent` parameter that
   wraps the content.
 - **HTML only.** No `NavigationManager`, no event handlers, no render modes, no JavaScript interop.
-- **Culture.** The caller's `CurrentCulture`, so `UseRequestCulture` applies to the rendered HTML. A reactor, job or
+- **Culture.** The caller's `CurrentCulture`, so `UseRequestLocalization()` applies to the rendered HTML. A reactor, job or
   seeder runs outside a request, in the host's culture: set the culture it should render in around the call.
 - **Whitespace.** Whitespace between elements in code blocks is trimmed; `@preservewhitespace true` keeps it.
 - **Exceptions** pass through unwrapped: the template's own, and `InvalidOperationException` for a parameter the
@@ -219,20 +219,18 @@ rather than taking them for MVC views. `PreserveCompilationContext` is not neede
 
 ## Common.Web Middleware
 
-### Global Exception Handling
+### Exceptions and Request Culture
+
+ASP.NET Core's own middleware: `AddProblemDetails()` with `UseExceptionHandler()` for unhandled exceptions, and
+`UseRequestLocalization()` for the culture of a request (`?culture=`, a cookie or `Accept-Language`).
 
 ```csharp
-services.AddGlobalExceptionHandling();
-app.UseGlobalExceptionHandling();
-```
-
-### Request Culture
-
-Sets `CultureInfo.CurrentCulture` from a `culture` query parameter or route value.
-
-```csharp
-app.UseRequestCulture();
-// GET /api/products?culture=nl-BE  → sets nl-BE culture
+services.AddProblemDetails();
+app.UseExceptionHandler();
+app.UseRequestLocalization(options => options
+    .SetDefaultCulture("en")
+    .AddSupportedCultures("en", "nl-BE")
+    .AddSupportedUICultures("en", "nl-BE"));
 ```
 
 ### Central Route Prefix

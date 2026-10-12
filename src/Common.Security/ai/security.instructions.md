@@ -42,18 +42,10 @@ string Encrypt(string plainText, string? key = null);
 string Decrypt(string encryptedText, string? key = null);
 ```
 
-### `SymmetricEncrypter` — AES-256, static key
+### `SymmetricEncrypter` — obsolete, decrypting only
 
-Fast. Same key always produces the same ciphertext. Use for non-sensitive reversible encoding.
-
-```csharp
-using Regira.Security.Encryption; // SymmetricEncrypter
-using Regira.Security.Core;       // CryptoOptions
-
-var enc = new SymmetricEncrypter(new CryptoOptions { Secret = "my-app-key" });
-string cipher = enc.Encrypt("sensitive value");
-string plain  = enc.Decrypt(cipher);
-```
+AES-256 with a key and vector derived from the secret alone, so a value always encrypts to the same ciphertext. Keep it
+only to decrypt what it encrypted; encrypt new values with `AesEncrypter`.
 
 ### `AesEncrypter` — AES with random salt
 
@@ -110,9 +102,9 @@ string stored = hasher.Hash("myPassword123");
 bool ok       = hasher.Verify("myPassword123", stored);
 ```
 
-### `SimpleHasher` — double-SHA
+### `SimpleHasher` — obsolete
 
-Fast but weaker. Use for non-password data only (e.g. cache keys, checksums).
+A double SHA with a fixed salt, compared in variable time. Use `Hasher` (PBKDF2), or BCrypt for passwords.
 
 ---
 
@@ -122,7 +114,7 @@ Fast but weaker. Use for non-password data only (e.g. cache keys, checksums).
 |---|---|
 | User passwords | `BCryptNet.Hasher` |
 | General data hashing with security | `Hasher` (PBKDF2) |
-| Cache keys / non-security checksums | `SimpleHasher` |
+| Cache keys / non-security checksums | `SHA256.HashData` (.NET) |
 
 ---
 
@@ -810,7 +802,7 @@ A host serving **both** browsers and API clients should set `ChallengeScheme` de
 other kind of caller gets the wrong answer to a missing credential. Where the two must differ, name the scheme per
 endpoint with `[Authorize(AuthenticationSchemes = …)]`.
 
-Add a rule with `SchemeForwardRules.Bearer(scheme)` / `.Basic(scheme)` / `.ApiKey(scheme)` /
+Add a rule with `SchemeForwardRules.Bearer(scheme)` / `.ApiKey(scheme)` /
 `.Cookie(scheme, cookieName)`, or construct `new SchemeForwardRule(order, scheme, context => …)`. A rule's
 predicate decides *which handler gets the chance* — it must not authenticate anything, and a false positive
 costs the request its other options.
@@ -835,9 +827,6 @@ a scheme needs no transformer change. A descriptor naming a scheme that was neve
 breaking the document: the selector's scheme authenticates nothing and is declared by nobody, so the transformer
 resolves it to the schemes behind it through `IAuthenticationSchemeExpander` (registered by `AddSchemeSelector`)
 and emits one requirement per real scheme — OR semantics, the caller needs any one of them.
-
-`BearerSecuritySchemeTransformer` and `ApiKeySecurityDocumentTransformer` still work and may be registered
-alongside; all three insert with `TryAdd`, so the result is the same.
 
 Cookie has no dedicated OpenAPI security type — it is emitted as an API key with `in: cookie`, which is the
 accepted convention.
@@ -1076,9 +1065,9 @@ services.AddOptions<AccountEmailOptions>()
 |---|---|
 | `IHasher` | `Regira.Security.Abstractions` |
 | `Hasher` (PBKDF2) | `Regira.Security.Hashing` |
-| `SimpleHasher` (double-SHA) | `Regira.Security.Hashing` |
+| `SimpleHasher` (obsolete) | `Regira.Security.Hashing` |
 | `IEncrypter` | `Regira.Security.Encryption` |
-| `SymmetricEncrypter` | `Regira.Security.Encryption` |
+| `SymmetricEncrypter` (obsolete, decrypting only) | `Regira.Security.Encryption` |
 | `AesEncrypter` | `Regira.Security.Encryption` |
 | `CryptoOptions` | `Regira.Security.Core` |
 
@@ -1114,7 +1103,7 @@ services.AddOptions<AccountEmailOptions>()
 | `RefreshTokenService` / `InMemoryRefreshTokenStore` | `Regira.Security.Authentication.Jwt.Services` |
 | `AddRefreshTokens()` / `AddRefreshTokenStore<T>()` (extensions) | `Regira.Security.Authentication.Jwt.Extensions` |
 | `BearerValidationOptions` | `Regira.Security.Authentication.Jwt.Models` |
-| `EntraIdOptions` / `EntraIdDefaults` | `Regira.Security.Authentication.Jwt.Models` |
+| `EntraIdOptions` / `EntraIdOptionsBase` / `EntraIdDefaults` | `Regira.Security.Authentication.Jwt.Models` |
 | `AddBearerAuthentication()` / `AddEntraIdBearer()` (extensions) | `Regira.Security.Authentication.Jwt.Extensions` |
 | `OidcAuthOptions` / `EntraIdSignInOptions` | `Regira.Security.Authentication.OpenIdConnect.Models` |
 | `AddOidcAuthentication()` / `AddEntraIdSignIn()` (extensions) | `Regira.Security.Authentication.OpenIdConnect.Extensions` |

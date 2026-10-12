@@ -3,7 +3,7 @@
 namespace Regira.Office.Models;
 
 /// <summary>
-/// Margin in points
+/// Margins in points; <c>ImagePrintInputModel</c> reads them in hundredths of an inch.
 /// </summary>
 public class Margins : IEquatable<Margins>
 {
@@ -34,6 +34,9 @@ public class Margins : IEquatable<Margins>
     {
         return new[] { margin };
     }
+    /// <summary>
+    /// The margins an array gives: one value for every side, two for left and right then top and bottom, three for top, left and right, bottom, four for top, right, bottom, left. Two values are not CSS's order, which puts top and bottom first.
+    /// </summary>
     public static implicit operator Margins(float[] margins)
     {
         if ((margins.Length) <= 0)

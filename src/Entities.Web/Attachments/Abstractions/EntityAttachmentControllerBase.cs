@@ -47,17 +47,10 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
     [HttpPut("{objectId}/attachments/{id}")]
     public virtual async Task<ActionResult<SaveResult<TDto>>?> Update([FromRoute] int objectId, [FromRoute] int id, [FromBody] TInputDto model)
     {
-        try
-        {
-            // the route is authoritative — the body can neither target another row nor reparent it
-            // MVC has validated the body by then, as for SaveCommand
-            var result = await Sender.Send(new UpdateAttachmentCommand<TEntity, TDto, TInputDto>(objectId, id, model, ValidateInput: false));
-            return result == null ? NotFound() : Ok(result);
-        }
-        catch (EntityInputException<TEntity> ex)
-        {
-            return ex.ToBadRequest(HttpContext);
-        }
+        // the route is authoritative — the body can neither target another row nor reparent it
+        // MVC has validated the body by then, as for SaveCommand
+        var result = await Sender.Send(new UpdateAttachmentCommand<TEntity, TDto, TInputDto>(objectId, id, model, ValidateInput: false));
+        return result == null ? NotFound() : Ok(result);
     }
 
     // Delete
@@ -87,29 +80,13 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
     // Upload
     [HttpPost("{objectId}/files")]
     public virtual async Task<ActionResult<SaveResult<TDto>>> Add([FromRoute] int objectId, IFormFile file, [FromForm] TInputDto model)
-    {
-        try
-        {
-            // the route creates a link: an Id in the form cannot turn the upload into a write to another one
-            return Ok(await Sender.Send(new UploadAttachmentCommand<TEntity, TDto, TInputDto>(objectId, model, file.ToNamedFile(), ValidateInput: false)));
-        }
-        catch (EntityInputException<TEntity> ex)
-        {
-            return ex.ToBadRequest(HttpContext);
-        }
-    }
+        // the route creates a link: an Id in the form cannot turn the upload into a write to another one
+        => Ok(await Sender.Send(new UploadAttachmentCommand<TEntity, TDto, TInputDto>(objectId, model, file.ToNamedFile(), ValidateInput: false)));
     [HttpPut("{objectId}/files/{id}")]
     public virtual async Task<ActionResult<SaveResult<TDto>>> Modify([FromRoute] int objectId, [FromRoute] int id, IFormFile file)
     {
-        try
-        {
-            var result = await Sender.Send(new ReplaceAttachmentFileCommand<TEntity, TDto>(objectId, id, file.ToNamedFile()));
-            return result == null ? NotFound() : Ok(result);
-        }
-        catch (EntityInputException<TEntity> ex)
-        {
-            return ex.ToBadRequest(HttpContext);
-        }
+        var result = await Sender.Send(new ReplaceAttachmentFileCommand<TEntity, TDto>(objectId, id, file.ToNamedFile()));
+        return result == null ? NotFound() : Ok(result);
     }
 
     private IEntitySender Sender => HttpContext.RequestServices.GetEntitySender();

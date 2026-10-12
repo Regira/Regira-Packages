@@ -6,6 +6,7 @@ using Regira.Security.Utilities;
 
 namespace Regira.Security.Encryption;
 
+[Obsolete("Its key and vector come from the secret alone, so a value always encrypts to the same text. Encrypt with AesEncrypter; keep this class only to decrypt what it encrypted.")]
 public class SymmetricEncrypter : IEncrypter
 {
     private readonly byte[] _defaultKey = new byte[32];

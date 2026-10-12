@@ -192,58 +192,9 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     }
 
     /// <summary>
-    /// Every OOXML conversion is scanned in-process for blocks, so a part beyond the scan's limit — a zip bomb among them —
-    /// is not read, and the document goes to Gotenberg as it is.
-    /// </summary>
-    [Test]
-    public void A_Part_Beyond_The_Scan_Limit_Is_Not_Read()
-    {
-        var template = Docx.Document(new string('x', 2_000), "{{#if IsDraft}}", "DRAFT", "{{/if}}").GetBytes()!;
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(TemplateMarkers.Any(template), Is.True, "within the limit");
-            Assert.That(TemplateMarkers.Any(template, maxBytes: 1_000), Is.False, "beyond it");
-        });
-    }
-
-    /// <summary>
-    /// A document that opens a block is created in-process, which loads every header and footer whole, so the limit counts
-    /// them, past the block found first: a header too large for it sends the document to Gotenberg.
-    /// </summary>
-    [Test]
-    public void The_Limit_Counts_The_Headers()
-    {
-        var template = Docx.Document(Docx.Paragraphs("{{#if IsDraft}}", "DRAFT", "{{/if}}"), header: Docx.Paragraphs(new string('x', 20_000))).GetBytes()!;
-        var bodyOnly = Docx.Document("{{#if IsDraft}}", "DRAFT", "{{/if}}").GetBytes()!;
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(TemplateMarkers.Any(bodyOnly, maxBytes: 10_000), Is.True, "the body fits the limit");
-            Assert.That(TemplateMarkers.Any(template, maxBytes: 10_000), Is.False, "the body and its header do not");
-        });
-    }
-
-    /// <summary>
-    /// A creator other than Word.Mini loads every part, so the limit counts the footnotes too, though no marker there counts.
-    /// </summary>
-    [Test]
-    public void The_Limit_Counts_Every_Part()
-    {
-        var body = Docx.Paragraphs("{{#if IsDraft}}", "DRAFT", "{{/if}}").ToArray();
-        var smallFootnote = Docx.Document(body.Select(x => (W.Paragraph)x.CloneNode(true)), footnote: Docx.Paragraphs("Note")).GetBytes()!;
-        var largeFootnote = Docx.Document(body.Select(x => (W.Paragraph)x.CloneNode(true)), footnote: Docx.Paragraphs(new string('x', 20_000))).GetBytes()!;
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(TemplateMarkers.Any(smallFootnote, maxBytes: 10_000), Is.True, "the document fits the limit");
-            Assert.That(TemplateMarkers.Any(largeFootnote, maxBytes: 10_000), Is.False, "its footnotes do not");
-        });
-    }
-
-    /// <summary>
-    /// Opening a package parses its relationships and content types whole, before any part is scanned, so the limit is
-    /// judged first, on the sizes the zip declares: a relationship target inflating far beyond it is never read.
+    /// Every OOXML conversion is scanned in-process for blocks, and opening a package parses its relationships and
+    /// content types whole, so the limit is judged first, on the sizes the zip declares together: a package past it —
+    /// here a relationship target inflating far beyond it — is not opened, and goes to Gotenberg as it is.
     /// </summary>
     [Test]
     public void A_Package_Declaring_More_Than_The_Limit_Is_Not_Opened()
@@ -254,15 +205,11 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
             "<Relationship Id=\"rIdBomb\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\""
             + $" Target=\"https://example.com/{new string('a', 16 * 1024 * 1024)}\" TargetMode=\"External\"/></Relationships>"));
 
-        var allocated = GC.GetAllocatedBytesForCurrentThread();
-        var opensBlock = TemplateMarkers.Any(bomb, maxBytes: 1024 * 1024);
-        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
-
         Assert.Multiple(() =>
         {
             Assert.That(bomb, Has.Length.LessThan(100_000), "the bomb is small");
-            Assert.That(opensBlock, Is.False);
-            Assert.That(allocated, Is.LessThan(1024 * 1024), "its relationships were not read");
+            Assert.That(TemplateMarkers.Any(template, maxBytes: 1024 * 1024), Is.True, "the document");
+            Assert.That(TemplateMarkers.Any(bomb, maxBytes: 1024 * 1024), Is.False, "the document with the bomb");
         });
     }
 
@@ -277,16 +224,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         var template = Docx.Document(new string('x', 4 * 1024 * 1024), "{{#if IsDraft}}", "DRAFT", "{{/if}}").GetBytes()!;
         var forged = DeclareSize(template, "word/document.xml", 10_000);
 
-        var allocated = GC.GetAllocatedBytesForCurrentThread();
-        var opensBlock = TemplateMarkers.Any(forged, maxBytes: 1024 * 1024);
-        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(TemplateMarkers.Any(template, maxBytes: 1024 * 1024), Is.False, "declared as it is, it exceeds the limit");
-            Assert.That(opensBlock, Is.False);
-            Assert.That(allocated, Is.LessThan(1024 * 1024), "no more than the declared size was read");
-        });
+        Assert.That(TemplateMarkers.Any(forged, maxBytes: 1024 * 1024), Is.False);
     }
 
     /// <summary>

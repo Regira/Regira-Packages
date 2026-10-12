@@ -444,10 +444,11 @@ builder.Services.AddEntityServices(builder.Configuration);
 >
 > **The second reason to call it: the entity exceptions.** It also registers `EntityExceptionFilter`, which
 > maps `EntityInputException` → **400** (its `Errors` as a `ValidationProblemDetails`) and `EntityConstraintException` →
-> **409** for *every* MVC action. Without it that mapping reaches only the generated write actions, so a
-> hand-written domain action on an entity controller — `POST {id}/approve` and its kind — answers a rule
-> breach with a 500 and a stack trace. `MapEntityExceptions()` registers the filter on its own for a host
-> that configures its JSON itself.
+> **409** for *every* MVC action. The entity controller bases carry the same mapping (`[EntityConstraintConflict]`),
+> so their actions answer a rule breach with a 400 without it, a hand-written domain action such as
+> `POST {id}/approve` included; on any other controller, a `ControllerExtensions` helper (`this.Save(…)`) answers it
+> with a 500 and a stack trace unless the filter is registered. `MapEntityExceptions()` registers the filter on its
+> own for a host that configures its JSON itself.
 
 > **DbContext wiring is automatic.** `UseEntities<TContext>(e => e.UseDefaults())` contributes the
 > primer/normalizer/auto-truncate interceptors, the UTC date convention, the archived query filter and the

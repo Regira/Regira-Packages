@@ -24,7 +24,7 @@ namespace Regira.Security.Authentication.Web.OpenApi.Transformers;
 /// need it. Without a per-operation requirement a generated client cannot tell a public endpoint from a
 /// guarded one, and the document reads as if the whole API were anonymous. Register it alongside them:
 /// <code>
-/// options.AddDocumentTransformer&lt;BearerSecuritySchemeTransformer&gt;();
+/// options.AddDocumentTransformer&lt;AuthenticationSchemeDocumentTransformer&gt;();
 /// options.AddOperationTransformer&lt;SecurityRequirementOperationTransformer&gt;();
 /// </code>
 /// </para>

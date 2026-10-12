@@ -10,7 +10,7 @@ namespace Office.PDF.Testing;
 /// PDF.DocNET runs every shared scenario in <see cref="PdfTestsBase{TBackend}"/>; below is what it does differently,
 /// and its merge by file path.
 /// </summary>
-[PdfFixture]
+[TestFixture]
 public class DocNETTests() : PdfTestsBase<PdfManager>(new PdfManager(new ImageService()), "DocNET")
 {
     /// <summary>

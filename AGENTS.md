@@ -123,6 +123,11 @@ general shape behind it.
   in the general guide, with a short pointer where readers arrive from.
 - **Test fixtures are examples too** — reuse the guide's example names so the two read as one thing.
 
+### Deprecated backends
+
+`Excel.EPPlus` and `PDF.DocNET` take fixes for crashes, data loss and security holes only. Any other gap becomes an ignored test
+that says why, and a line in the backend's docs.
+
 ---
 
 ## Versioning & releases

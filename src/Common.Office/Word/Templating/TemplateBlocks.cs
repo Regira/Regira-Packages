@@ -61,6 +61,14 @@ internal static class TemplateBlocks
     public static bool OpensBlock(string? text)
         => Clean(text) is { } clean && (IfMarker.IsMatch(clean) || EachMarker.IsMatch(clean));
 
+    /// <summary>Whether the paragraph text opens a condition — <c>{{#if Key}}</c> or <c>{{#if !Key}}</c> and nothing else.</summary>
+    public static bool OpensCondition(string? text)
+        => Clean(text) is { } clean && IfMarker.IsMatch(clean);
+
+    /// <summary>Whether the paragraph text opens or closes a loop — <c>{{#each Key}}</c> or <c>{{/each}}</c> and nothing else.</summary>
+    public static bool IsLoopMarker(string? text)
+        => Clean(text) is { } clean && (EachMarker.IsMatch(clean) || EndEachMarker.IsMatch(clean));
+
     /// <summary>
     /// Whether the text holds a marker — the test a backend runs on every paragraph of a document that uses blocks,
     /// to find the containers that need resolving.

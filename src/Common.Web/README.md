@@ -171,7 +171,7 @@ The `.razor` files compile in the consuming project, which needs the Razor SDK: 
 - **Components.** Child components and generic components (`@typeparam`) render.
 - **Layouts.** `@layout` has no effect. A shared document frame is a component with a `ChildContent` parameter that wraps the content.
 - **HTML only.** No `NavigationManager`, no event handlers, no render modes, no JavaScript interop.
-- **Culture.** The caller's `CurrentCulture`, so `UseRequestCulture` applies to the rendered HTML.
+- **Culture.** The caller's `CurrentCulture`, so `UseRequestLocalization()` applies to the rendered HTML.
 - **Whitespace.** Whitespace between elements in code blocks is trimmed; `@preservewhitespace true` keeps it.
 - **Exceptions** pass through unwrapped: the template's own, and `InvalidOperationException` for a parameter the component does not declare or an `@inject` service the provider cannot resolve.
 - **Memory.** Each call renders on its own `HtmlRenderer` and disposes it, so nothing is retained between calls.
@@ -180,25 +180,20 @@ The `.razor` files compile in the consuming project, which needs the Razor SDK: 
 
 ## Common.Web Utilities
 
-### GlobalExceptionHandlingMiddleware
+### Exceptions and request culture
 
-Catches unhandled exceptions and logs them without exposing internals to the caller.
+ASP.NET Core's own middleware covers both. `AddProblemDetails()` with `UseExceptionHandler()` logs an unhandled exception and answers a 500 problem response without its details; `UseRequestLocalization()` sets the request's culture from `?culture=`, a cookie or `Accept-Language`, among the cultures the app supports.
 
 ```csharp
 var builder = WebApplication.CreateBuilder();
-builder.Services.AddGlobalExceptionHandling();
+builder.Services.AddProblemDetails();
 
 var app = builder.Build();
-app.UseGlobalExceptionHandling();
-```
-
-### RequestCultureMiddleware
-
-Sets `CultureInfo.CurrentCulture` from a `culture` route value or query parameter.
-
-```csharp
-var app = WebApplication.Create();
-app.UseRequestCulture();
+app.UseExceptionHandler();
+app.UseRequestLocalization(options => options
+    .SetDefaultCulture("en")
+    .AddSupportedCultures("en", "nl-BE", "fr-BE")
+    .AddSupportedUICultures("en", "nl-BE", "fr-BE"));
 // Request: GET /api/products?culture=nl-BE  → sets nl-BE culture
 ```
 

@@ -3,6 +3,7 @@ using System.Drawing.Printing;
 
 namespace Regira.Drawing.GDI.Utilities;
 
+[Obsolete("Print with Regira.Printing.GDI. Will be removed in v7.")]
 public static class PrintUtility
 {
     public static void Print(Image image, PageSettings pageSettings, PrinterSettings printerSettings)

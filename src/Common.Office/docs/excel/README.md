@@ -88,7 +88,7 @@ Non-generic `ExcelSheet` is `ExcelSheet<object>`.
 All four backends read and write the untyped sheet the same way:
 
 - **Reading** — row 1 holds the keys. A blank header becomes `Column{n}`, its column number; a key taken already — compared case-insensitively, as keys are on write — becomes the first free `{key}_2`, `{key}_3`, …, from the left: `Value`, `Value`, `Value_2` reads as `Value`, `Value_2`, `Value_2_2`. A sheet without rows reads as an empty `Data`.
-- **Writing** — the header row holds every key the sheet's rows use, compared case-insensitively, spelled as it first appears and in that order; a row holding two keys that differ only in case (`Id` beside `ID`) throws `ArgumentException`; a row without a key gets an empty cell, and each cell keeps its own value's type. A sheet whose `Data` is empty or `null` is written empty; the typed `ExcelManager<T>` still writes its header row. A property holding an object is written as the object's `ToString()`. NpoiMapper hands rows that are objects rather than dictionaries to Npoi.Mapper, which leaves such a property out.
+- **Writing** — the header row holds every key the sheet's rows use, compared case-insensitively, spelled as it first appears and in that order; a row holding two keys that differ only in case (`Id` beside `ID`) throws `ArgumentException`; a row without a key gets an empty cell, and each cell keeps its own value's type. A sheet whose `Data` is empty or `null` is written empty; the typed `ExcelManager<T>` still writes its header row. A property holding an object is written as the object's `ToString()`. NpoiMapper's untyped `ExcelManager` writes object rows this way too, without Npoi.Mapper's attributes; its typed `ExcelManager<T>` maps through Npoi.Mapper.
 - **Sheet names** — a sheet without a `Name` becomes `Sheet-{n}` (`Sheet {n}` on EPPlus), skipping the names already taken. A name Excel refuses throws `ArgumentException`: empty, longer than 31 characters, holding `:` `\` `/` `?` `*` `[` `]`, starting or ending with an apostrophe, `History`, or used twice (compared case-insensitively). EPPlus checks the table names of a `DataSet` the same way.
 
 ## Configuration
@@ -100,7 +100,7 @@ All four implementations accept an `Options` object with a `DateFormat`: the Exc
 | ClosedXML | `string?` | `null` — ClosedXML's date format | every `DateTime` cell |
 | EPPlus | `string` | `"yyyy/MM/dd"` | every `DateTime` cell |
 | MiniExcel | `string?` | ignored — Excel's built-in date format | — |
-| NpoiMapper | `string` | `"yyyy-MM-dd hh:mm:ss"` | every `DateTime` cell of a dictionary row |
+| NpoiMapper | `string` | `"yyyy-MM-dd hh:mm:ss"` | every `DateTime` cell of the untyped `ExcelManager` |
 
 EPPlus adds one extra option:
 
@@ -125,7 +125,7 @@ Simple and stable. Returns rows as `Dictionary<string, object?>`. No generic sup
 
 ### EPPlus
 
-**Deprecated.** Locked at EPPlus **4.5.3.3**, the last release under a free licence (v5+ is commercial). nuget.org marks that release as legacy and it receives no fixes; it depends on `System.Drawing.Common`, which throws on non-Windows from .NET 6 on, so treat the backend as Windows-only. It is the only backend that writes a `DataSet` directly and takes a `TransformData` callback for per-cell value transformation — use it for those alone, and MiniExcel or ClosedXML otherwise.
+**Deprecated.** Locked at EPPlus **4.5.3.3**, the last release under a free licence (v5+ is commercial). nuget.org marks that release as legacy and it receives no fixes; it depends on `System.Drawing.Common`, which throws on non-Windows from .NET 6 on, so treat the backend as Windows-only. It is the only backend that writes a `DataSet` directly and takes a `TransformData` callback for per-cell value transformation — use it for those alone, and MiniExcel or ClosedXML otherwise. It takes fixes for crashes, data loss and security holes only.
 
 ```csharp
 // Write from a DataSet
@@ -148,7 +148,7 @@ var products = sheets.First().Data!;            // ICollection<Product>
 
 ### NpoiMapper
 
-Uses Npoi.Mapper for property-to-column binding. Also has a generic `ExcelManager<T>`. Good for scenarios where column names match property names (or are annotated).
+Its generic `ExcelManager<T>` uses Npoi.Mapper for property-to-column binding: good for scenarios where column names match property names (or are annotated). The untyped `ExcelManager` writes rows as the other backends do.
 
 NPOI is pinned to exactly **2.7.1**. From 2.8.0 its binaries on nuget.org carry an Open Source Maintenance Fee agreement that requires a paid subscription from organisations with annual revenue of US$10,000 or more. Keep NPOI out of your own package references: a direct reference to 2.8 or later overrides the pin with only a restore warning (NU1608), and brings the application under that agreement.
 

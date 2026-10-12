@@ -100,56 +100,9 @@ public class GitHubService(GitHubCommunicator communicator, ISerializer serializ
 #if NET10_0_OR_GREATER
     public async IAsyncEnumerable<string> ListAsync(FileSearchObject? so = null)
     {
-        var folderPath = so?.FolderUri?.TrimStart(@"\/".ToCharArray());
-        var listUri = string.IsNullOrEmpty(folderPath) ? Root.TrimEnd('/') : folderPath;
-        var response = await communicator.Client.GetAsync(listUri);
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        foreach (var identifier in await List(so))
         {
-            yield break;
-        }
-        response.EnsureSuccessStatusCode();
-        var content = await response.Content.ReadAsStringAsync();
-        var items = serializer.Deserialize<GitHubItem[]>(content)!;
-
-        foreach (var item in items)
-        {
-            if (item.Type == GitHubItemType.Dir)
-            {
-                if (so == null || so.Type == FileEntryTypes.All || so.Type == FileEntryTypes.Directories)
-                {
-                    if (so?.Extensions == null)
-                    {
-                        var folder = item.Url.Split('?').First().TrimEnd('/') + "/";
-                        yield return folder;
-                    }
-                }
-                if (so?.Recursive == true)
-                {
-                    var dirSo = new FileSearchObject
-                    {
-                        FolderUri = $"{so.FolderUri}/{item.Name}".Trim(@"\/".ToCharArray()),
-                        Type = so.Type,
-                        Extensions = so.Extensions,
-                        Recursive = true
-                    };
-                    await foreach (var dirFile in ListAsync(dirSo))
-                    {
-                        yield return dirFile;
-                    }
-                }
-            }
-
-            if (item.Type == GitHubItemType.File)
-            {
-                if (so == null || so.Type == FileEntryTypes.All || so.Type == FileEntryTypes.Files)
-                {
-                    if (so == null || (so.Extensions?.Count ?? 0) == 0 || so.Extensions?.Any(e => item.Name.EndsWith(e, StringComparison.InvariantCultureIgnoreCase)) == true)
-                    {
-                        var identifier = GetIdentifier(item.Url);
-                        yield return identifier;
-                    }
-                }
-            }
+            yield return identifier;
         }
     }
 #endif

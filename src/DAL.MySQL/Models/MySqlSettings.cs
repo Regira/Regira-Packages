@@ -1,85 +1,95 @@
-﻿using Regira.DAL.Models;
+﻿using System.Globalization;
+using MySqlConnector;
+using Regira.DAL.Models;
 
 namespace Regira.DAL.MySQL.Models;
 
+/// <summary>
+/// A MySQL connection, read from and written to a connection string by MySqlConnector's own
+/// <see cref="MySqlConnectionStringBuilder"/>, so a password holding <c>;</c>, <c>=</c> or quotes survives the round
+/// trip. A port written with the host (<c>db01:3307</c>) is the port, unless one is given of its own.
+/// </summary>
 public class MySqlSettings : DbSettingsBase
 {
+    private const uint DefaultPort = 3306;
+
     public MySqlSettings() : this(null)
     {
     }
     public MySqlSettings(string? host, string? databaseName = null, string? port = null, string? username = null, string? password = null)
-        : base(host ?? MySqlDefaults.Host, databaseName, port ?? MySqlDefaults.Port, username ?? MySqlDefaults.Username, password ?? MySqlDefaults.Password, false)
+        : base(host ?? MySqlDefaults.Host, databaseName, port ?? string.Empty, username ?? MySqlDefaults.Username, password ?? MySqlDefaults.Password, false)
     {
         CleanupHostAndPort();
+        if (string.IsNullOrEmpty(Port))
+        {
+            Port = MySqlDefaults.Port;
+        }
     }
 
 
     public static MySqlSettings FromConnectionString(string connectionString)
     {
-        var dic = connectionString.Split(';')
-            .Select(p => p.Split('='))
-            .Where(p => p.Length == 2 && !string.IsNullOrEmpty(p[1]))
-            .Select(p => new KeyValuePair<string, string>(p[0], p[1]))
-            .ToDictionary(k => k.Key, v => v.Value, StringComparer.CurrentCultureIgnoreCase);
-
-        var host = GetConnectionStringValue(dic, "server") ?? GetConnectionStringValue(dic, "host");
-        var databaseName = GetConnectionStringValue(dic, "database");
-        var username = GetConnectionStringValue(dic, "user id") ?? GetConnectionStringValue(dic, "uid") ?? GetConnectionStringValue(dic, "username");
-        var password = GetConnectionStringValue(dic, "password") ?? GetConnectionStringValue(dic, "pwd");
-        var port = GetConnectionStringValue(dic, "port");
-
+        var builder = new MySqlConnectionStringBuilder(connectionString);
         return new MySqlSettings(
-            host: host,
-            databaseName: databaseName,
-            username: username,
-            password: password,
-            port: port
+            host: NullIfEmpty(builder.Server),
+            databaseName: NullIfEmpty(builder.Database),
+            username: NullIfEmpty(builder.UserID),
+            password: NullIfEmpty(builder.Password),
+            // without a port of its own, a port written with the host is the port
+            port: builder.ContainsKey("Port") ? builder.Port.ToString(CultureInfo.InvariantCulture) : null
         );
     }
     public override string BuildConnectionString(params KeyValuePair<string, string>[] extraOptions)
     {
-        //Server=127.0.0.1;Port=3306;Database=db_name;Uid=root;Pwd=;SslMode=none
-        var connectionString = $"Server={Host};Uid={Username};Pwd={Password};";
+        var builder = new MySqlConnectionStringBuilder
+        {
+            Server = Host,
+            UserID = Username,
+            Password = Password
+        };
         if (DatabaseName != null)
         {
-            connectionString += $"Database={DatabaseName};";
+            builder.Database = DatabaseName;
         }
-        if (Port != MySqlDefaults.Port)
+        var port = uint.Parse(Port, CultureInfo.InvariantCulture);
+        if (port != DefaultPort)
         {
-            connectionString += $"Port={Port};";
+            builder.Port = port;
         }
 
-        if (extraOptions.Any())
+        foreach (var option in extraOptions)
         {
-            connectionString += string.Join(";", extraOptions.Select(x => $"{x.Key}={x.Value}"));
+            builder[option.Key] = option.Value;
         }
 
-        return connectionString;
+        return builder.ConnectionString;
     }
     public override T Clone<T>()
     {
         var cn = BuildConnectionString();
         return (FromConnectionString(cn) as T)!;
     }
+    /// <summary>
+    /// Splits a host written as <c>host:port</c>, the port taken unless one is given of its own. A host list (a comma)
+    /// or an IPv6 address (more than one colon) stays as it is.
+    /// </summary>
     public void CleanupHostAndPort()
     {
-        // clean up host & port
-        if (Host.Contains(':'))
+        var colon = Host.IndexOf(':');
+        if (colon <= 0 || colon != Host.LastIndexOf(':') || Host.Contains(',')
+            || !uint.TryParse(Host[(colon + 1)..], NumberStyles.None, CultureInfo.InvariantCulture, out _))
         {
-            var hostSegments = Host.Split(":".ToCharArray(), StringSplitOptions.RemoveEmptyEntries);
-            if (hostSegments.Length == 2)
-            {
-                Host = hostSegments.First();
-                if (string.IsNullOrEmpty(Port))
-                {
-                    var portFromHost = hostSegments.Last();
-                    Port = portFromHost;
-                }
-            }
+            return;
         }
+        if (string.IsNullOrEmpty(Port))
+        {
+            Port = Host[(colon + 1)..];
+        }
+        Host = Host[..colon];
     }
 
 
+    [Obsolete("MySqlSettings reads connection strings with MySqlConnectionStringBuilder. Will be removed in v7.")]
     protected static string? GetConnectionStringValue(IDictionary<string, string> cnDic, string key)
     {
         if (cnDic.TryGetValue(key, out var value))
@@ -89,4 +99,6 @@ public class MySqlSettings : DbSettingsBase
 
         return null;
     }
+
+    private static string? NullIfEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
 }

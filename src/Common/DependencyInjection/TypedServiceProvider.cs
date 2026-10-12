@@ -9,6 +9,7 @@
 /// <typeparam name="TService">
 /// The type of the service to be provided.
 /// </typeparam>
+[Obsolete("Nothing in the Regira packages uses the typed service providers. Will be removed in v7.")]
 public class TypedServiceProvider<TDefiner, TService>(Func<TService> func) : ITypedServiceProvider<TDefiner, TService>
 {
     public TService Provide()

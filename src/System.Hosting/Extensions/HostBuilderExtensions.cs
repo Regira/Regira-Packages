@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Regira.System.Hosting.Extensions;
 
+[Obsolete("Nothing in the Regira packages uses it. Will be removed in v7.")]
 public static class HostBuilderExtensions
 {
     /// <summary>

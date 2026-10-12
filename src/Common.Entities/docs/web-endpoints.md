@@ -203,9 +203,9 @@ Delete(id) -> DeleteResult
   constraint violation (`EntityConstraintException`) → **409 Conflict** with a generic `ProblemDetails`
   detail (the provider message is logged server-side); a write built on a stale read
   (`EntityConcurrencyException`) → **409 Conflict** with a `ProblemDetails` titled "Concurrency conflict"; a
-  missing entity → **404**. The first three are not endpoint-scoped — `ConfigureDefaultJsonOptions()` registers
-  `EntityExceptionFilter` application-wide, so a hand-written action added beside the generated ones answers a
-  rule breach the same way. See [Built-in Features → Constraint Exceptions](built-in-features.md#constraint-exceptions)
+  missing entity → **404**. The first three are not endpoint-scoped: the controller bases carry
+  `[EntityConstraintConflict]`, so a hand-written action added beside the generated ones answers a rule breach the
+  same way, and `ConfigureDefaultJsonOptions()` registers `EntityExceptionFilter` for every other controller. See [Built-in Features → Constraint Exceptions](built-in-features.md#constraint-exceptions)
   and [Concurrency Exceptions](built-in-features.md#concurrency-exceptions)
 
 ---

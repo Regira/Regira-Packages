@@ -4,6 +4,7 @@
 /// Represents a wrapper for a specific service type, providing access to the wrapped service instance.
 /// </summary>
 /// <typeparam name="TService">The type of the service being wrapped.</typeparam>
+[Obsolete("Nothing in the Regira packages uses the typed service providers. Will be removed in v7.")]
 public interface ITypedWrapper<out TService>
 {
     TService Value { get; }
@@ -21,6 +22,7 @@ public interface ITypedWrapper<out TService>
 /// The type of the service being wrapped. This is the actual service instance that is provided 
 /// through the wrapper.
 /// </typeparam>
+[Obsolete("Nothing in the Regira packages uses the typed service providers. Will be removed in v7.")]
 public class TypedWrapper<TDefiner, TService>(TService instance) : ITypedWrapper<TService>
 {
     public TService Value => instance;

@@ -25,6 +25,29 @@ public static class DrawingPositionExtensions
         AssertColor("#FFFFFF", await service.GetPixelColor(resultImg, 200, 160));
     }
 
+    /// <summary>A layer turned a quarter takes its rotated size: 150 wide and 200 high at the top left.</summary>
+    public static async Task AddImage_Rotated(this IImageService service)
+    {
+        using var target = await service.ReadImage("white-400x300.jpg");
+        var imgToAdd = new ImageLayer
+        {
+            Source = await service.ReadImage("yellow-200x150.jpg"),
+            Options = new()
+            {
+                Position = ImagePosition.Top | ImagePosition.Left,
+                Rotation = 90
+            }
+        };
+
+        using var resultImg = await service.Draw([imgToAdd], target);
+        await service.SaveImage(resultImg, "add-image-rotated.jpg");
+
+        AssertColor("#FFFF00", await service.GetPixelColor(resultImg, 10, 10));
+        AssertColor("#FFFF00", await service.GetPixelColor(resultImg, 140, 190));
+        AssertColor("#FFFFFF", await service.GetPixelColor(resultImg, 190, 140));
+        AssertColor("#FFFFFF", await service.GetPixelColor(resultImg, 140, 210));
+    }
+
     // Positioned
     public static async Task AddImage_Top_Left(this IImageService service)
     {

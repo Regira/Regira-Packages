@@ -3,6 +3,7 @@ using Regira.Invoicing.Billit.Models.Orders.Documents;
 
 namespace Regira.Invoicing.Billit.Models.Orders.Dto;
 
+[Obsolete("Nothing in Regira.Invoicing.Billit reads or writes it. Will be removed in v7.")]
 public class OrderItemDto
 {
     public int OrderId { get; set; }
@@ -41,6 +42,7 @@ public class OrderItemDto
     public DocumentDeliveryDetails? CurrentDocumentDeliveryDetails { get; set; }
 }
 
+[Obsolete("Nothing in Regira.Invoicing.Billit reads or writes it. Will be removed in v7.")]
 public class OrderListResponse
 {
     public List<OrderItemDto> Items { get; set; } = null!;

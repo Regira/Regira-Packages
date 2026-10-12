@@ -92,8 +92,8 @@ public class ExcelManager(ExcelManager.Options? options = null) : IExcelService
     }
 
     /// <summary>
-    /// Writes each sheet with a header row. Dictionaries get every key their rows use, in the order they first appear;
-    /// objects are written by Npoi.Mapper.
+    /// Writes each sheet with a header row: every key or property its rows use, in the order they first appear, as on
+    /// the other backends. <see cref="ExcelManager{T}"/> writes typed rows through Npoi.Mapper.
     /// </summary>
     /// <exception cref="ArgumentException">A sheet name breaks Excel's rules or is used more than once</exception>
     public Task<IMemoryFile> Create(IEnumerable<ExcelSheet> sheets, CancellationToken cancellationToken = default)
@@ -101,20 +101,11 @@ public class ExcelManager(ExcelManager.Options? options = null) : IExcelService
         var sheetList = sheets.ToList();
         var sheetNames = SheetNames.Resolve(sheetList.Select(s => s.Name).ToList());
         var workbook = new XSSFWorkbook();
-        var mapper = new Mapper(workbook);
         for (var i = 0; i < sheetList.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var data = sheetList[i].Data;
-            if (data?.FirstOrDefault() is { } and not IDictionary<string, object>)
-            {
-                mapper.Put(data, sheetNames[i]);
-            }
-            else
-            {
-                var xlsSheet = workbook.CreateSheet(sheetNames[i]);
-                FillSheet(xlsSheet, SheetRows.ToDictionaries(data));
-            }
+            var xlsSheet = workbook.CreateSheet(sheetNames[i]);
+            FillSheet(xlsSheet, SheetRows.ToDictionaries(sheetList[i].Data));
         }
 
         var ms = new MemoryStream();

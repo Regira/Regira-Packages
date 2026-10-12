@@ -151,6 +151,7 @@
     <Project Path="tests/Common.Testing/Common.Testing.csproj" />
     <Project Path="tests/DAL.EFcore.Testing/DAL.EFcore.Testing.csproj" />
     <Project Path="tests/DAL.MongoDB.Testing/DAL.MongoDB.Testing.csproj" />
+    <Project Path="tests/DAL.MySQL.Testing/DAL.MySQL.Testing.csproj" />
     <Project Path="tests/DAL.PostgreSQL.Testing/DAL.PostgreSQL.Testing.csproj" />
     <Project Path="tests/DAL.SqlServer.Testing/DAL.SqlServer.Testing.csproj" />
     <Project Path="tests/Drawing.Testing/Drawing.Testing.csproj" />

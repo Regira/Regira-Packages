@@ -18,12 +18,13 @@ public interface IEncrypter
 
 ### SymmetricEncrypter
 
-AES-256 with a static key derived from `CryptoOptions.Secret`. Fast; same key always produces the same ciphertext.
+Obsolete. AES-256 with a key and vector derived from `CryptoOptions.Secret` alone, so a value always encrypts to the
+same ciphertext. Keep it only to decrypt what it encrypted; encrypt with `AesEncrypter`.
 
+<!-- no-compile -->
 ```csharp
-var enc = new SymmetricEncrypter(new CryptoOptions { Secret = "my-app-key" });
-string cipher = enc.Encrypt("sensitive value");
-string plain  = enc.Decrypt(cipher);
+var legacy = new SymmetricEncrypter(new CryptoOptions { Secret = "my-app-key" });
+string plain = legacy.Decrypt(storedCipher);
 ```
 
 ### AesEncrypter
@@ -80,7 +81,8 @@ bool ok       = hasher.Verify("myPassword123", stored);
 
 ### SimpleHasher
 
-Double-SHA with salt — fast but weaker. Use for non-password data only.
+Obsolete: a double SHA with a fixed salt, compared in variable time. Hash with `Hasher` (PBKDF2), or the BCrypt
+`Hasher` for passwords.
 
 ---
 

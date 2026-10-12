@@ -1,7 +1,7 @@
 # Web — Example: Invoice Email with Razor Template
 <!-- {% raw %} -->
 
-> Context: A billing service renders an HTML invoice email using a Razor template, then sends it. The API uses global exception handling and a central route prefix.
+> Context: A billing service renders an HTML invoice email using a Razor template, then sends it. The API answers unhandled exceptions with problem details and uses a central route prefix.
 
 ## DI Registration
 
@@ -15,9 +15,8 @@ services.AddControllers(options =>
     options.InputFormatters.Insert(0, new TextPlainInputFormatter());
 });
 
-services.AddGlobalExceptionHandling();
-app.UseGlobalExceptionHandling();
-app.UseRequestCulture();
+services.AddProblemDetails();
+app.UseExceptionHandler();
 ```
 
 ## Render an invoice email body

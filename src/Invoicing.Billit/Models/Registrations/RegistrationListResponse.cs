@@ -3,11 +3,13 @@ using Regira.Invoicing.Billit.Models.Identifiers;
 
 namespace Regira.Invoicing.Billit.Models.Registrations;
 
+[Obsolete("Nothing in Regira.Invoicing.Billit reads or writes it. Will be removed in v7.")]
 public class RegistrationListResponse
 {
     public List<CompanyItemDto> Companies { get; set; } = null!;
 }
 
+[Obsolete("Nothing in Regira.Invoicing.Billit reads or writes it. Will be removed in v7.")]
 public class CompanyItemDto
 {
     public int RegistrationId { get; set; }
@@ -16,6 +18,7 @@ public class CompanyItemDto
     public List<CompanyIntegrationDto>? Integrations { get; set; }
 }
 
+[Obsolete("Nothing in Regira.Invoicing.Billit reads or writes it. Will be removed in v7.")]
 public class CompanyIntegrationDto
 {
     public int IntegrationId { get; set; }
@@ -25,6 +28,7 @@ public class CompanyIntegrationDto
     public string? IntegrationDocumentToSign { get; set; }
 }
 
+[Obsolete("Nothing in Regira.Invoicing.Billit reads or writes it. Will be removed in v7.")]
 public class CompanyDetailsDto
 {
     public string TaxIdentifier { get; set; } = null!;
