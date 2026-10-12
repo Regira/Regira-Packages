@@ -45,11 +45,15 @@ string Decrypt(string encryptedText, string? key = null);
 ### `SymmetricEncrypter` — obsolete, decrypting only
 
 AES-256 with a key and vector derived from the secret alone, so a value always encrypts to the same ciphertext. Keep it
-only to decrypt what it encrypted; encrypt new values with `AesEncrypter`.
+only to decrypt what it encrypted; encrypt new values with `AesEncrypter`. Without a secret it uses the built-in key,
+which is published with the source.
 
 ### `AesEncrypter` — AES with random salt
 
-Slower but produces different ciphertext on each call. **Recommended for stored secrets.**
+Slower but produces different ciphertext on each call. **Recommended for stored secrets.** Encrypting needs a secret —
+`CryptoOptions.Secret`, read from configuration, or a key passed to `Encrypt` — and throws `InvalidOperationException`
+without one. `Decrypt` without one uses the built-in key, so what an earlier version encrypted with it stays readable;
+to move such values to a secret, decrypt them without it and encrypt them with it.
 
 ```csharp
 using Regira.Security.Encryption; // AesEncrypter
@@ -64,7 +68,7 @@ string plain  = enc.Decrypt(cipher);
 
 | Property | Type | Default | Description |
 |---|---|---|---|
-| `Secret` | `string?` | built-in salt key | Signing / derivation secret |
+| `Secret` | `string?` | `null` | The key `AesEncrypter` derives from; it refuses to encrypt without one. Without it, decrypting and the obsolete `SymmetricEncrypter` and `SimpleHasher` use a built-in key, published with the source |
 | `AlgorithmType` | `string?` | `"SHA512"` | Hash algorithm for key derivation |
 | `Encoding` | `Encoding?` | UTF-8 | Text encoding |
 

@@ -6,15 +6,27 @@ using Regira.Security.Utilities;
 
 namespace Regira.Security.Encryption;
 
+/// <summary>
+/// AES with a key derived from the secret and a random salt per call, so a value encrypts to a different text each time.
+/// Encrypting needs a secret: <see cref="CryptoOptions.Secret"/>, or a key passed to <see cref="Encrypt"/>. Decrypting
+/// without one uses <see cref="DefaultSecuritySettings.SaltKey"/>, so what was encrypted with that key stays readable.
+/// </summary>
 public class AesEncrypter(CryptoOptions? options = null) : IEncrypter
 {
-    private readonly string _defaultKey = options?.Secret ?? DefaultSecuritySettings.SaltKey;
+    private readonly string? _secret = options?.Secret;
     private readonly Encoding _encoding = options?.Encoding ?? DefaultSecuritySettings.Encoding;
 
 
+    /// <exception cref="InvalidOperationException">Neither <paramref name="key"/> nor <see cref="CryptoOptions.Secret"/> holds a secret</exception>
     public string Encrypt(string plainText, string? key = null)
     {
-        key ??= _defaultKey;
+        key ??= _secret;
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            throw new InvalidOperationException(
+                $"{nameof(AesEncrypter)} needs a secret to encrypt: set {nameof(CryptoOptions)}.{nameof(CryptoOptions.Secret)} or pass a key. " +
+                "The default key is published with the Regira source, so anyone could read what it encrypts.");
+        }
 
         var plainTextBytes = _encoding.GetBytes(plainText);
 
@@ -50,7 +62,7 @@ public class AesEncrypter(CryptoOptions? options = null) : IEncrypter
     }
     public string Decrypt(string encryptedText, string? key = null)
     {
-        key ??= _defaultKey;
+        key ??= _secret ?? DefaultSecuritySettings.SaltKey;
 
         var allBytes = Convert.FromBase64String(encryptedText);
         if (allBytes.Length <= CryptoUtility.DefaultSaltSize) return string.Empty;

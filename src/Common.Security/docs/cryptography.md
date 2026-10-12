@@ -19,7 +19,8 @@ public interface IEncrypter
 ### SymmetricEncrypter
 
 Obsolete. AES-256 with a key and vector derived from `CryptoOptions.Secret` alone, so a value always encrypts to the
-same ciphertext. Keep it only to decrypt what it encrypted; encrypt with `AesEncrypter`.
+same ciphertext. Keep it only to decrypt what it encrypted; encrypt with `AesEncrypter`. Without a secret it uses the
+built-in key, which is published with the source.
 
 <!-- no-compile -->
 ```csharp
@@ -30,6 +31,8 @@ string plain = legacy.Decrypt(storedCipher);
 ### AesEncrypter
 
 AES with a random salt prepended per encryption. Slower but produces different ciphertext on each call — recommended for stored secrets.
+Encrypting needs a secret, `CryptoOptions.Secret` or a key passed to `Encrypt`, and throws `InvalidOperationException`
+without one. `Decrypt` without one uses the built-in key, so what an earlier version encrypted with it stays readable.
 
 ```csharp
 var enc = new AesEncrypter(new CryptoOptions { Secret = "my-app-key" });
@@ -40,7 +43,7 @@ string cipher = enc.Encrypt("sensitive value");
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `Secret` | `string?` | built-in salt key | Signing / derivation secret |
+| `Secret` | `string?` | `null` | The key `AesEncrypter` derives from; it refuses to encrypt without one. Without it, decrypting and the obsolete `SymmetricEncrypter` and `SimpleHasher` use a built-in key, published with the source |
 | `AlgorithmType` | `string?` | `"SHA512"` | Hash algorithm — read only by `SymmetricEncrypter`, `SimpleHasher`, and the BCrypt hasher; `AesEncrypter` and the PBKDF2 `Hasher` hard-wire SHA-512 |
 | `Iterations` | `int?` | `500000` | PBKDF2 iteration count used by the `Hasher` |
 | `Encoding` | `Encoding?` | UTF-8 | Text encoding |
