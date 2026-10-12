@@ -14,9 +14,29 @@ namespace Regira.Security.Authentication.Web.Controllers;
 public abstract class UserControllerBase<TUser>(UserManager<TUser> userManager) : ControllerBase
   where TUser : IdentityUser<string>, new()
 {
+    /// <summary>
+    /// Creates the user, unless one by that name exists, and with <see cref="UserInput.ConfirmEmailUrl"/> mails it a
+    /// confirmation link: that page with the token as its query string.
+    /// <para>
+    /// The page must be on one of <see cref="AccountEmailOptions.AllowedOrigins"/>, or the answer is <c>400</c> and
+    /// nothing is created or sent. Throws <see cref="InvalidOperationException"/> when a page is given and no origin is
+    /// configured.
+    /// </para>
+    /// </summary>
     [HttpPost]
     public virtual async Task<IActionResult> Create(UserInput model, [FromServices] IEmailSender mailer)
     {
+        Uri? confirmPage = null;
+        if (!string.IsNullOrWhiteSpace(model.ConfirmEmailUrl))
+        {
+            confirmPage = HttpContext.GetAccountEmailOptions().FindAllowedPage(model.ConfirmEmailUrl);
+            if (confirmPage == null)
+            {
+                ModelState.AddModelError(nameof(model.ConfirmEmailUrl), AccountLinks.NotAllowed);
+                return BadRequest(ModelState);
+            }
+        }
+
         var user = await userManager.FindByNameAsync(model.Username);
         if (user == null)
         {
@@ -28,17 +48,13 @@ public abstract class UserControllerBase<TUser>(UserManager<TUser> userManager) 
                 ModelState.AddIdentityErrors(response.Errors);
                 return BadRequest(ModelState);
             }
-            if (!string.IsNullOrWhiteSpace(model.ConfirmEmailUrl))
+            if (confirmPage != null)
             {
                 var confirmToken = await userManager.GenerateEmailConfirmationTokenAsync(user);
                 var token = System.Text.Json.JsonSerializer.Serialize(new UserTokenModel { Token = confirmToken, Username = user.UserName! }).Base64Encode();
-                var confirmationLink = new UriBuilder(model.ConfirmEmailUrl)
-                {
-                    Query = $"?token={token}"
-                };
                 var body = $@"Welcome {model.Username},
 Please follow link below to confirm email
-{confirmationLink}
+{confirmPage.WithToken(token)}
 
 Token: {token}
 ";

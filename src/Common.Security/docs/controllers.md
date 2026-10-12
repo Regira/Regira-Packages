@@ -34,6 +34,7 @@ public class UsersController(UserManager<AppUser> userManager)
 | `ITokenHelper` | `AddJwtAuthentication(…)` | issuing JWTs (`AccountController`) |
 | `IUserClaimsPrincipalFactory<TUser>` | `AddIdentityCore` | building token claims (all but Identity's security stamp, which no token carries) |
 | `IEmailSender` | Regira's `IdentityMailer` (over `Regira.Office.Mail`) or your own | recover / confirm emails |
+| `AccountEmailOptions` | `services.Configure<AccountEmailOptions>(…)` | the origins the recover / confirm links may point at, and the reset mail's subject — see [Mailed links](#mailed-links-allowed-origins) |
 
 `AddDefaultTokenProviders()` is required — recover and confirm-email generate Identity tokens. The confirm-email/reset token payloads are (de)serialized with `System.Text.Json` internally, so no serializer needs to be registered.
 
@@ -83,19 +84,56 @@ that. See *Refresh Tokens* above.
 | Endpoint | Anon | Request body | Success | Failure |
 |----------|:----:|--------------|---------|---------|
 | `POST auth/password` | | `{ currentPassword, newPassword }` | `200` | `400` identity errors / `404` |
-| `POST auth/password/recover` | ✅ | `{ username, siteUrl, siteName }` | `200` (always) | — |
+| `POST auth/password/recover` | ✅ | `{ username, siteUrl }` | `200`, whether or not the user exists | `400` when `siteUrl` is not on an allowed origin |
 | `POST auth/password/reset` | ✅ | `{ token, password }` | `200` | `400` malformed token or identity errors |
 
-`recover` always returns `200` (it never reveals whether the user exists) and emails a `token` — a Base64 payload of the Identity reset token plus the username. `reset` decodes that payload and returns `400` when it is malformed.
+`recover` answers the same for an unknown user (it never reveals whether the user exists). A known user is emailed a link: `siteUrl`, the reset page, with a percent-encoded `token` as its query string, which any query parser (`URLSearchParams`, vue-router's `route.query`) reads back intact — a Base64 payload of the Identity reset token plus the username. `reset` decodes that payload and returns `400` when it is malformed.
 
 ### `UserControllerBase<TUser>` — route `users`
 
 | Endpoint | Anon | Request body | Success | Failure |
 |----------|:----:|--------------|---------|---------|
-| `POST users` | | `{ username, password, confirmEmailUrl? }` | `200` | `400` identity errors |
+| `POST users` | | `{ username, password, confirmEmailUrl? }` | `200` | `400` identity errors, or `confirmEmailUrl` not on an allowed origin |
 | `POST users/confirm-email` | ✅ | `{ token, userName, password? }` | `200` | `400` malformed token or identity errors |
 
-`username` is used as both the user name and the email address. When `confirmEmailUrl` is supplied, a confirmation email carrying a Base64 `token` is sent; `confirm-email` decodes it and returns `400` on a malformed token. Creating a user that already exists is a no-op `200`. A self-registration override that assigns a role or tenant must check that the user did not exist before, or the role lands on whatever account the caller names. The optional `password` on the confirm-email input is not used by the base implementation — it is available to overrides.
+`username` is used as both the user name and the email address. When `confirmEmailUrl` is supplied, the new user is emailed that page with a Base64 `token` as its query string, percent-encoded like the reset link's; `confirm-email` decodes it and returns `400` on a malformed token. Creating a user that already exists is a no-op `200`. A self-registration override that assigns a role or tenant must check that the user did not exist before, or the role lands on whatever account the caller names. The optional `password` on the confirm-email input is not used by the base implementation — it is available to overrides.
+
+### Mailed links: allowed origins
+
+`recover`, and `POST users` with a `confirmEmailUrl`, mail a link to the page the request names, with the token as
+its query string. Whoever controls that page receives the token when the link is followed, so the controllers mail a
+link only to a page on an origin the application lists in `AccountEmailOptions`:
+
+```csharp
+using Regira.Security.Authentication.Web.Models;
+
+services.AddOptions<AccountEmailOptions>()
+    .Bind(configuration.GetSection("Authentication:AccountEmails"))
+    .Validate(o => o.AllowedOrigins.Count > 0, "Authentication:AccountEmails:AllowedOrigins lists no origin.")
+    .ValidateOnStart();
+```
+
+```json
+{
+  "Authentication": {
+    "AccountEmails": {
+      "SiteName": "Example",
+      "AllowedOrigins": [ "https://app.example.com" ]
+    }
+  }
+}
+```
+
+| Option | Default | Purpose |
+|--------|---------|---------|
+| `AllowedOrigins` | empty | the origins (scheme, host and port) the reset and confirmation pages may be on |
+| `SiteName` | `null` | starts the reset mail's subject: "Example Password Reset" |
+
+- A `siteUrl` or `confirmEmailUrl` on any other origin — another host, scheme or port, or a URL carrying credentials — answers `400` and sends nothing, and `POST users` then creates no user. `recover` checks the page before it looks the user up, so its answer still reveals nothing about accounts.
+- With no origin listed, `recover` and a `POST users` with `confirmEmailUrl` throw `InvalidOperationException`, a 500. The `ValidateOnStart()` above moves that failure to startup; an entry that is not an http(s) URL is reported, by name, when a link is first needed. A `POST users` without `confirmEmailUrl` needs no configuration.
+- The request's `siteName` is ignored, so a caller cannot choose what the subject says.
+- The check runs in the base actions. An override of `RecoverPassword` or `Create` that mails a link of its own instead of calling the base must check the page against `AllowedOrigins` itself. To change only a mail's wording or layout, wrap the `IEmailSender`: it receives the subject and the body, link included.
+- A development front-end's origin, such as `http://localhost:5173`, belongs in `appsettings.Development.json` only.
 
 ### OpenAPI document transformers (`Security.Authentication.Web`)
 
@@ -135,6 +173,7 @@ used, and a guarded operation for which no scheme resolves is logged as a warnin
 
 - **Apply the global auth requirement** when mapping the controllers (above) — they do not self-guard with per-action `[Authorize]`, so without it the non-anonymous endpoints are exposed.
 - The authenticate failure response distinguishes a locked-out existing user from an unknown one (`isLockedOut` is `null` for unknown users) — a deliberate trade-off to weigh against username enumeration.
+- **List only your own front-end origins** in `AccountEmailOptions.AllowedOrigins`: a mailed link hands its token to the page it opens.
 - Recover / confirm tokens travel in the email body and in the `siteUrl` / `confirmEmailUrl` query string; query strings can surface in server logs, browser history and referrers, so prefer short token lifetimes.
 
 ---

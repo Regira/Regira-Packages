@@ -852,11 +852,12 @@ Users in the same DB, no roles — the happy path (details in the sections below
 2. `services.AddIdentityCore<AppUser>().AddEntityFrameworkStores<AppDbContext>().AddSignInManager().AddDefaultTokenProviders();`
 3. `services.AddJwtAuthentication(o => configuration.GetSection(AuthenticationSections.Jwt).Bind(o));` — set `Authentication:Jwt:Secret` (**≥ 64 bytes for the HS512 default**, or startup throws — counted as ASCII, so a non-ASCII character is one byte, not the two or three UTF-8 would give it) and **`Authentication:Jwt:Audience` = the SPA's `clientApp`**. `Authentication:Jwt:Authority` is optional for these self-issued tokens: it is written into each token as its issuer and checked on the way in, and left unset, tokens carry no issuer and none is checked. Leave `Algorithm` unset (or `"HS512"`). Add `.AddRefreshTokens()` if the SPA needs to survive access-token expiry, and `.AddSchemeSelector()` last if more than one scheme is registered.
 4. Register an `IEmailSender` — the interface is **`Microsoft.AspNetCore.Identity.UI.Services.IEmailSender`** (ASP.NET Core shared framework, no package to add; not a Regira type). Use Regira's `IdentityMailer`, which needs a registered Regira `IMailService` and an `IdentityMailerOptions` (`Regira.Office` → `office.mail.instructions` → *ASP.NET Identity Integration*), or a dev logger that prints the link. No `ISerializer` needed.
-5. Subclass the three base controllers with forwarding ctors (below).
-6. `app.UseAuthentication()` **before** `app.UseAuthorization()`; `MapControllers().RequireAuthorization()` — the bases carry no `[Authorize]`.
-7. Seed the first user via `UserManager<AppUser>`.
-8. **Front-end:** install `authPlugin` after router + axios and pass `clientApp: "<your audience>"` — the SPA's `login()` appends it as `?clientApp=`, so it must equal the API's `Jwt:Audience`. Leave `loginUrl` unset unless the login endpoint isn't `auth`.
-9. **Dev cross-origin:** either proxy the SPA's `/api` through Vite (no CORS needed) or point the SPA straight at the API origin and add a CORS policy allowing that origin. The full recipe (proxy config, URL alignment, HTTPS-redirect trap) is in the front-end guide: `regira_modules.vue.entities` → `entities.setup` → *Calling the API in dev* / *The URL contract*.
+5. List the SPA's origin for the mailed links: bind `AccountEmailOptions` from `Authentication:AccountEmails`, validated on start, with `AllowedOrigins: [ "https://app.example.com" ]` and the app's `SiteName` — the snippet is in *Mailed links: allowed origins* below. ⚠️ Without an origin, password recovery throws.
+6. Subclass the three base controllers with forwarding ctors (below).
+7. `app.UseAuthentication()` **before** `app.UseAuthorization()`; `MapControllers().RequireAuthorization()` — the bases carry no `[Authorize]`.
+8. Seed the first user via `UserManager<AppUser>`.
+9. **Front-end:** install `authPlugin` after router + axios and pass `clientApp: "<your audience>"` — the SPA's `login()` appends it as `?clientApp=`, so it must equal the API's `Jwt:Audience`. Leave `loginUrl` unset unless the login endpoint isn't `auth`.
+10. **Dev cross-origin:** either proxy the SPA's `/api` through Vite (no CORS needed) or point the SPA straight at the API origin and add a CORS policy allowing that origin. The full recipe (proxy config, URL alignment, HTTPS-redirect trap) is in the front-end guide: `regira_modules.vue.entities` → `entities.setup` → *Calling the API in dev* / *The URL contract*.
 
 ## Roles end-to-end: Identity → JWT → SPA
 
@@ -928,7 +929,7 @@ public class UsersController(UserManager<AppUser> userManager)
     : UserControllerBase<AppUser>(userManager);
 ```
 
-**Required services:** `AddIdentityCore<TUser>().AddEntityFrameworkStores<…>().AddDefaultTokenProviders()` (`AddDefaultTokenProviders` is mandatory — recover/confirm generate Identity tokens); `AddJwtAuthentication(…)` for `ITokenHelper`; an `IEmailSender` (Regira's `IdentityMailer`). Token payloads use `System.Text.Json` internally — no serializer registration needed.
+**Required services:** `AddIdentityCore<TUser>().AddEntityFrameworkStores<…>().AddDefaultTokenProviders()` (`AddDefaultTokenProviders` is mandatory — recover/confirm generate Identity tokens); `AddJwtAuthentication(…)` for `ITokenHelper`; an `IEmailSender` (Regira's `IdentityMailer`); `AccountEmailOptions` listing the origins the mailed links may point at (*Mailed links: allowed origins* below). Token payloads use `System.Text.Json` internally — no serializer registration needed.
 
 ### Authorization: guarded by default
 
@@ -1012,19 +1013,56 @@ increments it (Identity lockout).
 | Endpoint | Anon | Request | Success | Failure |
 |---|:---:|---|---|---|
 | `POST auth/password` |  | `{ currentPassword, newPassword }` | `200` | `400` / `404` |
-| `POST auth/password/recover` | ✅ | `{ username, siteUrl, siteName }` | `200` (always) | — |
+| `POST auth/password/recover` | ✅ | `{ username, siteUrl }` | `200`, whether or not the user exists | `400` `siteUrl` not on an allowed origin |
 | `POST auth/password/reset` | ✅ | `{ token, password }` | `200` | `400` malformed token / identity errors |
 
-`recover` always returns `200` (no user enumeration) and emails a Base64 `token` (reset token + username). `reset` returns `400` on a malformed token.
+`recover` answers alike for an unknown user (no user enumeration); for a known one it emails a link — `siteUrl`, the reset **page**, with a Base64 `token` (reset token + username) as its query string, percent-encoded, so any query parser (`URLSearchParams`, vue-router's `route.query`) reads it back intact. `reset` returns `400` on a malformed token.
 
 ### `UserControllerBase<TUser>` — route `users`
 
 | Endpoint | Anon | Request | Success | Failure |
 |---|:---:|---|---|---|
-| `POST users` |  | `{ username, password, confirmEmailUrl? }` | `200` | `400` |
+| `POST users` |  | `{ username, password, confirmEmailUrl? }` | `200` | `400` identity errors / `confirmEmailUrl` not on an allowed origin |
 | `POST users/confirm-email` | ✅ | `{ token, userName }` | `200` | `400` malformed token / identity errors |
 
-`username` is used as both user name and email. With `confirmEmailUrl`, a confirmation email with a Base64 `token` is sent. Creating an existing user is a no-op `200`.
+`username` is used as both user name and email. With `confirmEmailUrl`, the new user is emailed that page with a Base64 `token` as its query string, percent-encoded like the reset link's. Creating an existing user is a no-op `200`.
+
+### Mailed links: allowed origins
+
+The recover and confirmation mails carry a genuine token inside a link to the page the request names, so whoever
+controls that page receives the token. A page must therefore be on an origin the application lists:
+
+```csharp
+using Regira.Security.Authentication.Web.Models;          // AccountEmailOptions
+
+services.AddOptions<AccountEmailOptions>()
+    .Bind(configuration.GetSection("Authentication:AccountEmails"))
+    .Validate(o => o.AllowedOrigins.Count > 0, "Authentication:AccountEmails:AllowedOrigins lists no origin.")
+    .ValidateOnStart();
+```
+
+```json
+{
+  "Authentication": {
+    "AccountEmails": {
+      "SiteName": "Example",
+      "AllowedOrigins": [ "https://app.example.com" ]
+    }
+  }
+}
+```
+
+- `AllowedOrigins` — scheme, host and port of the SPA serving the reset and confirm pages; add the dev SPA's
+  (`http://localhost:5173`) in `appsettings.Development.json`. A `siteUrl` or `confirmEmailUrl` on any other origin
+  answers `400` and sends nothing — checked before the user lookup, so it reveals no account — and `POST users`
+  then creates no user.
+- ⚠️ **With no origin listed, `recover` and a `POST users` with `confirmEmailUrl` throw** `InvalidOperationException`
+  (500). Bound as above, the app stops at startup instead. An entry that is not an http(s) URL is reported, by name,
+  when a link is first needed. A `POST users` without `confirmEmailUrl` needs nothing.
+- `SiteName` starts the reset mail's subject ("Example Password Reset"); the request's `siteName` is ignored.
+- ⚠️ **The check runs in the base actions.** An override of `RecoverPassword` or `Create` that mails a link of its
+  own instead of calling the base must check the page against `AllowedOrigins` itself. To change only a mail's
+  wording or layout, wrap the `IEmailSender`: it receives the subject and the body, link included.
 
 ---
 

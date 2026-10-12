@@ -20,6 +20,11 @@
   Regira — it ships in the ASP.NET Core shared framework, so there is no package to add); implement it or use this package's `IdentityMailer`
   (`Regira.Security.Authentication.Web.Mail`), which sends through a registered Regira `IMailService` —
   `Regira.Office` → `office.mail.instructions` → *ASP.NET Identity Integration*.
+- **Mailed links go only to allowed origins:** bind `AccountEmailOptions`
+  (`Regira.Security.Authentication.Web.Models`) from `Authentication:AccountEmails`, validated on start, with
+  `AllowedOrigins` = the SPA's origin and the app's `SiteName`. A `siteUrl` / `confirmEmailUrl` on another origin
+  answers `400`; **with none listed, `recover` throws** (500). An override that mails a link of its own checks the
+  page itself — `security.instructions` → *Mailed links: allowed origins*.
 - **Version floor:** floors `Microsoft.OpenApi` at **2.12.2** and `Microsoft.AspNetCore.OpenApi` at
   **10.0.12** on net10 — a direct pin of either below the resolved version fails restore with NU1605, and
   nothing restores or builds until it is cleared. Leave `Microsoft.OpenApi` **transitive**:

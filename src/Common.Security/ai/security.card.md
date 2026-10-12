@@ -31,4 +31,5 @@
   in-memory store is dev-only.
 - **Top gotchas:** Entra app roles arrive as `roles` and key on `oid` not `sub`; cookie `SecurePolicy`
   defaults to `Always` (plain HTTP → sign-in "works", every request 401s); pre-built controllers are guarded
-  only via `MapControllers().RequireAuthorization()`.
+  only via `MapControllers().RequireAuthorization()`; their recover / confirm mails link only to
+  `AccountEmailOptions.AllowedOrigins` — list the SPA's origin, or `auth/password/recover` throws.

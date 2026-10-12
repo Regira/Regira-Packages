@@ -2,7 +2,9 @@ using Duende.IdentityModel.Client;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
+using Regira.Security.Authentication.Web.Models;
 using Regira.Utilities;
 using Shouldly;
 using System.Net;
@@ -16,7 +18,8 @@ namespace Web.Security.Testing;
 
 // Exercises the AccountControllerBase / PasswordControllerBase / UserControllerBase endpoints over a
 // real Identity + EF-in-memory stack. Covers the guarded-by-default authorization model, the
-// malformed-token guards, the lockout-counter reset, and the recover/reset & create/confirm flows.
+// malformed-token guards, the lockout-counter reset, the recover/reset & create/confirm flows, and the origins
+// their mailed links may point at.
 public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactory<IdentityStartup>>
 {
     private readonly WebApplicationFactory<IdentityStartup> _factory;
@@ -155,13 +158,16 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
 
         // recover always returns 200 (no user enumeration) and sends an email carrying the token
         var recover = await client.PostAsJsonAsync("auth/password/recover",
-            new { username, siteUrl = "https://example.com/reset", siteName = "Example" });
+            new { username, siteUrl = "https://app.example.com/reset-password" });
         recover.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var email = LastEmail();
         email.ShouldNotBeNull();
         email.Email.ShouldBe(username);
         var token = ExtractToken(email.Body);
+        var link = ExtractLink(email.Body);
+        link.GetLeftPart(UriPartial.Path).ShouldBe("https://app.example.com/reset-password");
+        LinkToken(link).ShouldBe(token);
 
         var reset = await client.PostAsJsonAsync("auth/password/reset", new { token, password = "NewPass2" });
         reset.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -194,7 +200,7 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
 
         const string newUser = "created@test.local";
         var create = await client.PostAsJsonAsync("users",
-            new { username = newUser, password = "Created1", confirmEmailUrl = "https://example.com/confirm" });
+            new { username = newUser, password = "Created1", confirmEmailUrl = "https://app.example.com/confirm-email" });
         create.StatusCode.ShouldBe(HttpStatusCode.OK);
         (await FindUser(newUser)).ShouldNotBeNull();
 
@@ -203,12 +209,180 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
         email.ShouldNotBeNull();
         email.Email.ShouldBe(newUser);
         var token = ExtractToken(email.Body);
+        var link = ExtractLink(email.Body);
+        link.GetLeftPart(UriPartial.Path).ShouldBe("https://app.example.com/confirm-email");
+        LinkToken(link).ShouldBe(token);
 
         var confirm = await client.PostAsJsonAsync("users/confirm-email", new { token, userName = newUser });
         confirm.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var confirmed = await FindUser(newUser);
         confirmed!.EmailConfirmed.ShouldBeTrue();
+    }
+
+    // --- emailed links ------------------------------------------------------------------------
+
+    // The caller names the page a link opens, so anyone could have the application mail a genuine reset token
+    // inside a link to their own host. Only a page on an origin the application allows may receive one.
+    [Theory]
+    [InlineData("https://attacker.example/reset-password")]
+    [InlineData("https://app.example.com.attacker.example/reset-password")]
+    [InlineData("https://app.example.com@attacker.example/reset-password")]
+    [InlineData("https://user@app.example.com/reset-password")]
+    [InlineData("http://app.example.com/reset-password")]
+    [InlineData("https://app.example.com:8443/reset-password")]
+    [InlineData("//attacker.example/reset-password")]
+    [InlineData("/reset-password")]
+    public async Task RecoverPassword_ToDisallowedPage_SendsNoMail(string siteUrl)
+    {
+        const string username = "recover-foreign@test.local";
+        await SeedUser(username, "OldPass1");
+        var client = _factory.CreateClient();
+
+        var recover = await client.PostAsJsonAsync("auth/password/recover",
+            new { username, siteUrl, siteName = "Example" });
+
+        SentEmails().ShouldBeEmpty("a reset token must not be mailed in a link to a foreign origin");
+        recover.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task RecoverPassword_ForUnknownUser_ToDisallowedPage_AnswersAsForAKnownOne()
+    {
+        var client = _factory.CreateClient();
+
+        var recover = await client.PostAsJsonAsync("auth/password/recover",
+            new { username = "nobody@test.local", siteUrl = "https://attacker.example/reset-password" });
+
+        recover.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        SentEmails().ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("https://app.example.com/reset-password")]
+    [InlineData("https://APP.Example.com/reset-password")]
+    [InlineData("https://app.example.com:443/reset-password")]
+    public async Task RecoverPassword_ToPageOnAllowedOrigin_MailsTheLink(string siteUrl)
+    {
+        const string username = "recover-allowed@test.local";
+        await SeedUser(username, "OldPass1");
+        var client = _factory.CreateClient();
+
+        var recover = await client.PostAsJsonAsync("auth/password/recover", new { username, siteUrl });
+
+        recover.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var email = LastEmail();
+        email.ShouldNotBeNull();
+        var link = ExtractLink(email.Body);
+        link.GetLeftPart(UriPartial.Path).ShouldBe("https://app.example.com/reset-password");
+        LinkToken(link).ShouldBe(ExtractToken(email.Body));
+    }
+
+    // The token is Base64, and a user name that may hold '~' or '?' puts '+' and '/' in it. A client reads the link's
+    // query with a parser that takes '+' for a space (URLSearchParams, vue-router, QueryHelpers), so the link carries
+    // the token percent-encoded.
+    [Fact]
+    public async Task RecoverPassword_TokenHoldingPlusAndSlash_SurvivesTheLinksQuery()
+    {
+        var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.Configure<IdentityOptions>(o => o.User.AllowedUserNameCharacters += "~?")));
+        const string username = "tilde~~~question???@test.local";
+        await SeedUser(username, "OldPass1", factory);
+        var client = factory.CreateClient();
+
+        var recover = await client.PostAsJsonAsync("auth/password/recover",
+            new { username, siteUrl = "https://app.example.com/reset-password" });
+        recover.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var email = factory.Services.GetRequiredService<SentEmailStore>().Last;
+        email.ShouldNotBeNull();
+        var token = ExtractToken(email.Body);
+        token.ShouldContain("+");
+        token.ShouldContain("/");
+        var linkToken = LinkToken(ExtractLink(email.Body));
+        linkToken.ShouldBe(token);
+
+        // the token as a client reads it from the link resets the password
+        (await client.PostAsJsonAsync("auth/password/reset", new { token = linkToken, password = "NewPass2" }))
+            .StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await client.PostAsJsonAsync("auth?clientApp=test", new { username, password = "NewPass2" }))
+            .StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task CreateUser_WithForeignConfirmEmailUrl_SendsNoMailAndCreatesNoUser()
+    {
+        const string admin = "creator-foreign@test.local";
+        await SeedUser(admin, "AdminPass1");
+        var client = _factory.CreateClient();
+        client.SetBearerToken(await Authenticate(client, admin, "AdminPass1"));
+
+        const string newUser = "created-foreign@test.local";
+        var create = await client.PostAsJsonAsync("users",
+            new { username = newUser, password = "Created1", confirmEmailUrl = "https://attacker.example/confirm-email" });
+
+        SentEmails().ShouldBeEmpty("a confirmation token must not be mailed in a link to a foreign origin");
+        create.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await FindUser(newUser)).ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task RecoverPassword_Subject_IsNotTheCallers()
+    {
+        const string username = "recover-subject@test.local";
+        await SeedUser(username, "OldPass1");
+        var client = _factory.CreateClient();
+
+        var recover = await client.PostAsJsonAsync("auth/password/recover",
+            new { username, siteUrl = "https://app.example.com/reset-password", siteName = "Your account is locked, call 555-0100 for" });
+        recover.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var email = LastEmail();
+        email.ShouldNotBeNull();
+        email.Subject.ShouldNotContain("555-0100");
+        email.Subject.ShouldBe("Example Password Reset");
+    }
+
+    [Fact]
+    public async Task RecoverPassword_WithoutAllowedOrigins_Throws()
+    {
+        var factory = WithAccountEmails(o => o.AllowedOrigins.Clear());
+        var client = factory.CreateClient();
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(() => client.PostAsJsonAsync("auth/password/recover",
+            new { username = "recover-unconfigured@test.local", siteUrl = "https://app.example.com/reset-password" }));
+
+        exception.Message.ShouldContain(nameof(AccountEmailOptions.AllowedOrigins));
+        factory.Services.GetRequiredService<SentEmailStore>().Messages.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task RecoverPassword_WithAllowedOriginThatIsNoUrl_Throws()
+    {
+        var factory = WithAccountEmails(o => o.AllowedOrigins.Add("app.example.com"));
+        var client = factory.CreateClient();
+
+        var exception = await Should.ThrowAsync<InvalidOperationException>(() => client.PostAsJsonAsync("auth/password/recover",
+            new { username = "recover-misconfigured@test.local", siteUrl = "https://app.example.com/reset-password" }));
+
+        exception.Message.ShouldContain("'app.example.com'");
+    }
+
+    [Fact]
+    public async Task CreateUser_WithoutConfirmEmailUrl_NeedsNoAllowedOrigins()
+    {
+        var factory = WithAccountEmails(o => o.AllowedOrigins.Clear());
+        const string admin = "creator-unconfigured@test.local";
+        await SeedUser(admin, "AdminPass1", factory);
+        var client = factory.CreateClient();
+        client.SetBearerToken(await Authenticate(client, admin, "AdminPass1"));
+
+        const string newUser = "created-unconfigured@test.local";
+        var create = await client.PostAsJsonAsync("users", new { username = newUser, password = "Created1" });
+
+        create.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await FindUser(newUser, factory)).ShouldNotBeNull();
+        factory.Services.GetRequiredService<SentEmailStore>().Messages.ShouldBeEmpty();
     }
 
     // --- helpers --------------------------------------------------------------------------------
@@ -221,9 +395,14 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
         return result!.Token!;
     }
 
-    private async Task SeedUser(string username, string password)
+    // A host whose AccountEmailOptions are changed after the startup configured them.
+    private WebApplicationFactory<IdentityStartup> WithAccountEmails(Action<AccountEmailOptions> change)
+        => _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.PostConfigure(change)));
+
+    private async Task SeedUser(string username, string password, WebApplicationFactory<IdentityStartup>? factory = null)
     {
-        using var scope = _factory.Services.CreateScope();
+        using var scope = (factory ?? _factory).Services.CreateScope();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<TestUser>>();
         if (await userManager.FindByNameAsync(username) != null)
         {
@@ -242,9 +421,9 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
         return await userManager.GetAccessFailedCountAsync(user!);
     }
 
-    private async Task<TestUser?> FindUser(string username)
+    private async Task<TestUser?> FindUser(string username, WebApplicationFactory<IdentityStartup>? factory = null)
     {
-        using var scope = _factory.Services.CreateScope();
+        using var scope = (factory ?? _factory).Services.CreateScope();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<TestUser>>();
         return await userManager.FindByNameAsync(username);
     }
@@ -252,12 +431,25 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
     private SentEmail? LastEmail()
         => _factory.Services.GetRequiredService<SentEmailStore>().Last;
 
+    private IReadOnlyCollection<SentEmail> SentEmails()
+        => _factory.Services.GetRequiredService<SentEmailStore>().Messages;
+
     private static string ExtractToken(string body)
     {
         var match = Regex.Match(body, @"Token:\s*(\S+)");
         match.Success.ShouldBeTrue($"expected a 'Token:' line in the email body but got:\n{body}");
         return match.Groups[1].Value;
     }
+
+    private static Uri ExtractLink(string body)
+    {
+        var match = Regex.Match(body, @"https?://\S+");
+        match.Success.ShouldBeTrue($"expected a link in the email body but got:\n{body}");
+        return new Uri(match.Value);
+    }
+
+    // The token as a client reads it from the link's query string.
+    private static string LinkToken(Uri link) => QueryHelpers.ParseQuery(link.Query)["token"].ToString();
 
     private record AuthResult
     {
