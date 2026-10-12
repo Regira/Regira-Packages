@@ -1,3 +1,5 @@
+// The OpenAPI document exists on .NET 10 only: AddOpenApi and the package's transformers are not built for .NET 8.
+#if NET10_0_OR_GREATER
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Shouldly;
@@ -86,3 +88,4 @@ public class OpenApiSecurityTests : IClassFixture<TestingWebApplicationFactory<J
         return JsonDocument.Parse(json);
     }
 }
+#endif
