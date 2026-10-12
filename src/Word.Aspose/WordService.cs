@@ -56,12 +56,9 @@ public class WordService : IWordService
         return Task.FromResult(ToMemoryFile(doc));
     }
 
-    public Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default)
-        => Merge(inputs, null, cancellationToken);
-
-    public async Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, MergeOptions? options, CancellationToken cancellationToken = default)
+    public async Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default)
     {
-        var doc = await MergeDocuments(inputs, options);
+        var doc = await MergeDocuments(inputs);
         return ToMemoryFile(doc);
     }
 
@@ -132,8 +129,6 @@ public class WordService : IWordService
         => doc.ToStream(format).ToMemoryFile(format == SaveFormat.Doc ? ContentTypes.DOC : ContentTypes.DOCX);
 
     protected internal Task<Document> MergeDocuments(IEnumerable<WordTemplateInput> inputs)
-        => MergeDocuments(inputs, null);
-    protected internal Task<Document> MergeDocuments(IEnumerable<WordTemplateInput> inputs, MergeOptions? mergeOptions)
     {
         // The first document is the destination, so later ones take on its styles.
         Document? doc = null;
@@ -157,11 +152,11 @@ public class WordService : IWordService
             doc.AppendDocument(inputDoc, ImportFormatMode.UseDestinationStyles);
 
             // AppendDocument starts an appended section on a new page whatever the source said, so the section starts
-            // are set afterwards: the input's own breaks as it had them, and the joint as the merge asks
+            // are set afterwards: the input's own breaks as it had them, and the joint on a new or an odd page
             for (var i = 0; i < starts.Count && joint + i < doc.Sections.Count; i++)
             {
                 doc.Sections[joint + i].PageSetup.SectionStart = i == 0
-                    ? JointStart(mergeOptions, previousIsPadded, input.Options?.EnforceEvenAmountOfPages == true)
+                    ? MergeJoints.StartsOnOddPage(previousIsPadded, input.Options?.EnforceEvenAmountOfPages == true) ? SectionStart.OddPage : SectionStart.NewPage
                     : starts[i];
             }
             previousIsPadded = input.Options?.EnforceEvenAmountOfPages == true;
@@ -169,14 +164,6 @@ public class WordService : IWordService
 
         return Task.FromResult(doc ?? NewDocument());
     }
-
-    private static SectionStart JointStart(MergeOptions? options, bool previousIsPadded, bool isPadded)
-        => MergeJoints.Of(options, previousIsPadded, isPadded) switch
-        {
-            MergeJoint.OddPage => SectionStart.OddPage,
-            MergeJoint.NewPage => SectionStart.NewPage,
-            _ => SectionStart.Continuous
-        };
 
     protected internal Document CreateDocument(WordTemplateInput input, Document? reference = null)
         => CreateDocument(input, reference, null);

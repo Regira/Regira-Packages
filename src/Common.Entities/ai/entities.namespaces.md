@@ -114,6 +114,7 @@
 | `Regira.Licensing.DependencyInjection` | `ServiceCollectionExtensions` *(`UseRegira(configuration)` / `UseRegira(params string?[] licenseKeys)` — on `IServiceCollection`; comes transitively via `Regira.Entities.DependencyInjection`)* |
 | `Regira.Entities.DependencyInjection.ServiceCollections` | `EntityServiceCollection<>`, `EntityRepositoryRegistry` *(the types `UseRepository()` sets)* |
 | `Regira.Entities.DependencyInjection.ServiceBuilders` | `EntityServiceBuilder<>`, `EntityIntServiceBuilder<>`, `EntitySearchObjectServiceBuilder<>`, `ComplexEntityServiceBuilder<>`, `ComplexEntityIntServiceBuilder<>` |
+| `Regira.Entities.DependencyInjection.ServiceBuilders.Abstractions` | `IEntityServiceBuilder` *(every `For<>()` builder: `Services`, `EntityType`)*, `IEntityServiceBuilder<,,>` |
 | `Regira.Entities.DependencyInjection.ServiceCollections.Models` | `EntityServiceCollectionOptions` |
 | `Regira.Entities.DependencyInjection.ServiceCollections.Abstractions` | `IEntityServiceCollection<>` |
 | `Regira.Entities.DependencyInjection.QueryBuilders` | `ServiceCollectionQueryFilterExtensions` *(`AddFilter<>()` and `RemoveGlobalQueryFilters()` — on `IServiceCollection`, the `UseEntities<TContext>()` builder included; `AddGlobalFilterQueryBuilder<>()` — on `IServiceCollection` and `EntityServiceCollectionOptions`; `AddDefaultGlobalQueryFilters()` — on `EntityServiceCollectionOptions`)* |
@@ -182,7 +183,7 @@
 | `Regira.Entities.Web.Controllers.Abstractions` | `EntityControllerBase<>` |
 | `Regira.Entities.Web.Models` | `SaveResult<>`, `DeleteResult<>`, `DetailsResult<>`, `ListResult<>`, `SearchResult<>` *(the generated actions' return types — needed to override one)* |
 | `Microsoft.AspNetCore.Mvc` | `[ApiController]`, `[Route]`, `ControllerBase` |
-| `Regira.Entities.Web.Endpoints` | `MapEntityEndpoints()`, `MapEntity<TEntity>()` *(on `IEndpointRouteBuilder`)*, `Endpoints()` *(on the `For<>()` builders)*, `EntityEndpointOptions`, `EntityEndpointsOptions`, `EntityEndpoint`, `EntityEndpointMetadata`, `EntityExceptionEndpointFilter` — the mapped endpoints, instead of controllers (`entities.patterns` → *Mapped entity endpoints*) |
+| `Regira.Entities.Web.Endpoints` | `MapEntityEndpoints()` *(on `IEndpointRouteBuilder`)*, `Endpoints()` *(on the `For<>()` builders)*, `EntityEndpointOptions`, `EntityEndpointsOptions`, `EntityEndpoint`, `EntityEndpointMetadata`, `EntityExceptionEndpointFilter` — the mapped endpoints, instead of controllers (`entities.patterns` → *Mapped entity endpoints*) |
 
 ---
 
@@ -190,12 +191,11 @@
 
 | Namespace | Types |
 |---|---|
-| `Regira.Entities.Mediator.Abstractions` | `IEntitySender`, `IEntityRequest`, `IEntityRequest<>`, `IEntityRequestHandler<,>`, `IEntityPipelineBehavior<,>`, `EntityRequestDelegate<>`, `IEntityRequestExecutor`, `IEntityInputValidator` — package `Regira.Entities.Mediator`, brought by `Regira.Entities.Web` |
-| `Regira.Entities.Mediator.Requests` | `DetailsQuery<,,>`, `ListQuery<,,,>`, `ListQuery<,,,,,>`, `SearchQuery<,,,>`, `SearchQuery<,,,,,>`, `SaveCommand<,,,>`, `PatchCommand<,,,>`, `DeleteCommand<,,>`; an owner's attachment routes: `UploadAttachmentCommand<,,>`, `UpdateAttachmentCommand<,,>`, `ReplaceAttachmentFileCommand<,>`, `AttachmentFileQuery<>`, `AttachmentFileByNameQuery<>` |
-| `Regira.Entities.Mediator.Handlers` | `DetailsHandler<,,>`, `ListHandler<,,,>`, `ListHandler<,,,,,>`, `SearchHandler<,,,>`, `SearchHandler<,,,,,>`, `SaveHandler<,,,>`, `PatchHandler<,,,>`, `DeleteHandler<,,>`, `UploadAttachmentHandler<,,>`, `UpdateAttachmentHandler<,,>`, `ReplaceAttachmentFileHandler<,>`, `AttachmentFileHandler<>`, `AttachmentFileByNameHandler<>` *(the defaults — derive from one to change an operation)* |
-| `Regira.Entities.Mediator` | `EntityOperation`, `EntitySender`, `EntityRequestExecutor`, `DataAnnotationsEntityInputValidator`, `EntityServiceProviderExtensions` *(`GetEntitySender()`)* |
+| `Regira.Entities.Mediator.Abstractions` | `IEntitySender`, `IEntityRequest`, `IEntityRequest<>`, `IEntityRequestHandler<,>`, `IEntityPipelineBehavior<,>`, `EntityRequestDelegate<>` — package `Regira.Entities.Mediator`, brought by `Regira.Entities.Web` |
+| `Regira.Entities.Mediator.Requests` | `DetailsQuery<,,>`, `ListQuery<,,,>`, `ListQuery<,,,,,>`, `SearchQuery<,,,>`, `SearchQuery<,,,,,>`, `SaveCommand<,,,>`, `PatchCommand<,,,>`, `DeleteCommand<,,>`; an owner's attachment routes: `UploadAttachmentCommand<,,>`, `UpdateAttachmentCommand<,,>`, `ReplaceAttachmentFileCommand<,>`, `AttachmentFileQuery<>` |
+| `Regira.Entities.Mediator.Handlers` | `DetailsHandler<,,>`, `ListHandler<,,,>`, `ListHandler<,,,,,>`, `SearchHandler<,,,>`, `SearchHandler<,,,,,>`, `SaveHandler<,,,>`, `PatchHandler<,,,>`, `DeleteHandler<,,>`, `UploadAttachmentHandler<,,>`, `UpdateAttachmentHandler<,,>`, `ReplaceAttachmentFileHandler<,>`, `AttachmentFileHandler<>` *(the defaults — derive from one to change an operation)* |
+| `Regira.Entities.Mediator` | `EntityOperation`, `EntitySender`, `DataAnnotationsEntityInputValidator`, `EntityServiceProviderExtensions` *(`GetEntitySender()`)* |
 | `Regira.Entities.Mediator.DependencyInjection` | `EntityMediatorServiceCollectionExtensions` *(`AddEntityMediator()` — `UseEntities()` calls it)* |
-| `Regira.Entities.Mediator.MediatR` | `EntityServiceCollectionOptionsExtensions` *(`UseMediatR()`)*, `EntityRequestMessage`, `EntityRequestMessageHandler`, `MediatREntitySender` — package `Regira.Entities.Mediator.MediatR` |
 
 ---
 
@@ -329,7 +329,7 @@ Microsoft.AspNetCore.Mvc                       → [ApiController], [Route]
 
 ### Mapping endpoints instead of controllers
 ```
-Regira.Entities.Web.Endpoints                  → MapEntityEndpoints(), MapEntity<TEntity>(), e.Endpoints(o => ...)
+Regira.Entities.Web.Endpoints                  → MapEntityEndpoints(), e.Endpoints(o => ...)
 ```
 
 ### Registering an entity in DI

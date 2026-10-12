@@ -16,10 +16,9 @@ public class RazorTemplateParser(RazorTemplateParser.Options? options) : IHtmlPa
         public bool HtmlEncode { get; set; }
     }
 
-    // Each compile loads an assembly that is never unloaded: compile each distinct template text once per process.
-    // GetOrAdd can run its factory on several threads at once, so it only creates the Lazy and one Lazy compiles
-    private static readonly ConcurrentDictionary<string, Lazy<Task<IRazorEngineCompiledTemplate>>> Templates = new();
-    private static readonly ConcurrentDictionary<string, Lazy<Task<IRazorEngineCompiledTemplate<HtmlEncodingTemplateBase>>>> EncodingTemplates = new();
+    // Each compile loads an assembly that is never unloaded: compile each distinct template text once per process, for
+    // both modes. GetOrAdd can run its factory on several threads at once, so it only creates the Lazy and one Lazy compiles
+    private static readonly ConcurrentDictionary<string, Lazy<Task<IRazorEngineCompiledTemplate<HtmlEncodingTemplateBase>>>> Templates = new();
 
     public RazorTemplateParser()
         : this(null)
@@ -28,16 +27,15 @@ public class RazorTemplateParser(RazorTemplateParser.Options? options) : IHtmlPa
 
     public async Task<string> Parse<T>(string html, T model)
     {
-        if (options?.HtmlEncode == true)
+        var template = await Templates.GetOrAdd(html, text => new(() => new RazorEngine().CompileAsync<HtmlEncodingTemplateBase>(ToTemplateSource(text)))).Value;
+        // the typed run leaves an anonymous model as it is, and its members are internal to the caller's assembly
+        object? templateModel = model != null && model.IsAnonymous() ? new AnonymousTypeWrapper(model) : model;
+        var htmlEncode = options?.HtmlEncode == true;
+        return await template.RunAsync(instance =>
         {
-            var encodingTemplate = await EncodingTemplates.GetOrAdd(html, text => new(() => new RazorEngine().CompileAsync<HtmlEncodingTemplateBase>(ToTemplateSource(text)))).Value;
-            // the typed run leaves an anonymous model as it is, and its members are internal to the caller's assembly
-            object? templateModel = model != null && model.IsAnonymous() ? new AnonymousTypeWrapper(model) : model;
-            return await encodingTemplate.RunAsync(instance => instance.Model = templateModel);
-        }
-
-        var template = await Templates.GetOrAdd(html, text => new(() => new RazorEngine().CompileAsync(ToTemplateSource(text)))).Value;
-        return await template.RunAsync(model);
+            instance.Model = templateModel;
+            instance.HtmlEncode = htmlEncode;
+        });
     }
 
     private static string ToTemplateSource(string html)

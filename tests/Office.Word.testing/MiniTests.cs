@@ -177,6 +177,75 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
         });
     }
 
+    /// <summary>
+    /// MiniWord builds a regular expression from every key, so a key it would read as a pattern is refused, named.
+    /// </summary>
+    [TestCase("x[1", null)]
+    [TestCase("a.b", null)]
+    [TestCase("Total (EUR)", null)]
+    [TestCase(null, "Price.Net")]
+    [TestCase(null, "Price (EUR)")]
+    public async Task Create_Rejects_A_Key_MiniWord_Reads_As_A_Pattern(string? globalKey, string? field)
+    {
+        var input = new WordTemplateInput { Template = Docx.Document("Text") };
+        if (globalKey != null)
+        {
+            input.GlobalParameters = new Dictionary<string, object> { [globalKey] = "value" };
+        }
+        if (field != null)
+        {
+            input.CollectionParameters!.Add("Items", new List<IDictionary<string, object>> { new Dictionary<string, object> { [field] = "Pen" } });
+        }
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => Mini.Create(input));
+
+        Assert.That(ex!.Message, Does.Contain(globalKey ?? $"Items.{field}"));
+    }
+
+    [TestCase("Items[0]")]
+    [TestCase("Order.Lines")]
+    public async Task Create_Rejects_A_Collection_Key_MiniWord_Cannot_Read(string key)
+    {
+        var input = new WordTemplateInput { Template = Docx.Document("Text") };
+        input.CollectionParameters!.Add(key, new List<IDictionary<string, object>> { new Dictionary<string, object> { ["Name"] = "Pen" } });
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => Mini.Create(input));
+
+        Assert.That(ex!.Message, Does.Contain(key));
+    }
+
+    /// <summary>A key MiniWord would read as a pattern is refused (<see cref="Create_Rejects_A_Key_MiniWord_Reads_As_A_Pattern"/>).</summary>
+    [Test]
+    public override async Task A_Parameter_Key_Is_Matched_Literally()
+    {
+        var input = new WordTemplateInput { Template = Docx.Document("Sum: {{ Total (EUR) }}") };
+        input.GlobalParameters = new Dictionary<string, object> { ["Total (EUR)"] = "42" };
+
+        await Assert.ThrowsAsync<ArgumentException>(() => Mini.Create(input));
+    }
+
+    /// <summary>MiniWord finds a row's tags as text, so a collection key and a field may hold spaces.</summary>
+    [Test]
+    public async Task Create_Fills_A_Collection_Whose_Key_And_Field_Hold_Spaces()
+    {
+        var input = new WordTemplateInput { Template = Docx.Document([Docx.Table(["{{ Order Lines.Unit Price }}"])]) };
+        input.CollectionParameters!.Add("Order Lines", new List<IDictionary<string, object>>
+        {
+            new Dictionary<string, object> { ["Unit Price"] = "1.50" },
+            new Dictionary<string, object> { ["Unit Price"] = "2.00" }
+        });
+
+        using var output = await Mini.Create(input);
+        var facts = await ReadDocx(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(facts.TableRows.Sum(), Is.EqualTo(2));
+            Assert.That(facts.BodyText, Does.Contain("1.50").And.Contain("2.00"));
+            Assert.That(facts.Leftovers, Is.Empty);
+        });
+    }
+
     [Test]
     public async Task Create_Still_Takes_A_Key_Spelled_With_Spaces()
     {
@@ -189,42 +258,11 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
         Assert.That(facts.BodyText, Does.Contain("A spaced key"));
     }
 
-    /// <summary>
-    /// A collection's key and its fields are matched literally too: <c>{{ Line Items.Price (excl. VAT) }}</c> reads the
-    /// field <c>Price (excl. VAT)</c> of the collection <c>Line Items</c>.
-    /// </summary>
+    /// <summary>No rows remove the template row, and a field no row supplies is left empty.</summary>
     [Test]
-    public async Task Create_Matches_A_Collection_Key_And_Field_Literally()
+    public async Task An_Empty_Collection_Drops_Its_Row_And_A_Missing_Field_Is_Left_Empty()
     {
-        var input = new WordTemplateInput
-        {
-            Template = Docx.Document([Docx.Table(["{{ Line Items.Price (excl. VAT) }}"], ["{{ Line Items.Name }}"])])
-        };
-        input.CollectionParameters!.Add("Line Items", new List<IDictionary<string, object>>
-        {
-            new Dictionary<string, object> { ["Name"] = "Pen", ["Price (excl. VAT)"] = "1.50" },
-            new Dictionary<string, object> { ["Name"] = "Ink", ["Price (excl. VAT)"] = "2.00" }
-        });
-
-        using var output = await Mini.Create(input);
-        var facts = await ReadDocx(output);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(facts.BodyText, Does.Contain("Pen").And.Contain("1.50"));
-            Assert.That(facts.BodyText, Does.Contain("Ink").And.Contain("2.00"));
-            Assert.That(facts.Leftovers, Is.Empty);
-        });
-    }
-
-    /// <summary>
-    /// A collection under a key MiniWord cannot take reads as one under a key it can: no rows remove the template row,
-    /// and a field no row supplies is left empty.
-    /// </summary>
-    [TestCase("Items")]
-    [TestCase("Order Lines")]
-    public async Task A_Collection_Reads_The_Same_Under_Any_Key(string key)
-    {
+        const string key = "Items";
         WordTemplateInput Input(params IDictionary<string, object>[] rows)
         {
             var input = new WordTemplateInput
@@ -248,43 +286,6 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
             Assert.That(withoutNoteFacts.BodyText, Does.Contain("Pen").And.Contain("Ink"));
             Assert.That(withoutNoteFacts.Leftovers, Is.Empty, "a field no row supplies is left empty");
         });
-    }
-
-    /// <summary>A collection's tag reads its field with spaces around the dot too, whatever the field's key holds.</summary>
-    [TestCase("Name")]
-    [TestCase("Unit Price")]
-    public async Task A_Collection_Tag_Spaced_Around_Its_Dot_Reads_The_Field(string field)
-    {
-        var input = new WordTemplateInput { Template = Docx.Document([Docx.Table([$"{{{{Items . {field}}}}}"])]) };
-        input.CollectionParameters!.Add("Items", new List<IDictionary<string, object>>
-        {
-            new Dictionary<string, object> { [field] = "Pen" },
-            new Dictionary<string, object> { [field] = "Ink" }
-        });
-
-        using var output = await Mini.Create(input);
-        var facts = await ReadDocx(output);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(facts.TableRows.Sum(), Is.EqualTo(2));
-            Assert.That(facts.BodyText, Does.Contain("Pen").And.Contain("Ink"));
-            Assert.That(facts.Leftovers, Is.Empty);
-        });
-    }
-
-    [Test]
-    public async Task Create_Rejects_A_Key_That_Reads_As_A_Collection_Field()
-    {
-        var input = TemplateInput("parameters.docx");
-        input.GlobalParameters = new Dictionary<string, object> { ["Items.Name"] = "text" };
-        input.CollectionParameters!.Add("Items", new List<IDictionary<string, object>>
-        {
-            new Dictionary<string, object> { ["Name"] = "Pen" }
-        });
-
-        var ex = await Assert.ThrowsAsync<ArgumentException>(() => Mini.Create(input));
-        Assert.That(ex!.Message, Does.Contain("Items.Name"));
     }
 
     /// <summary>

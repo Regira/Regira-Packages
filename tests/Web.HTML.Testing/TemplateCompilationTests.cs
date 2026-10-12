@@ -69,24 +69,39 @@ public class TemplateCompilationTests
         Assert.That(TemplatesLoadedSince(before), Is.EqualTo(1));
     }
 
+    // one compiled template serves both modes, each rendering as its own option asks
     [Test]
-    public async Task RazorEngineCore_HtmlEncode_Compiles_The_Same_Text_Apart()
+    public async Task RazorEngineCore_Plain_And_HtmlEncode_Share_One_Compile()
     {
         var model = new { Name = "<b>Alice</b>" };
+        var template = $"<p>Hello @Model.Name</p><!-- {Guid.NewGuid():N} -->";
         var plain = new Regira.Web.HTML.RazorEngineCore.RazorTemplateParser();
         var encoding = new Regira.Web.HTML.RazorEngineCore.RazorTemplateParser(new() { HtmlEncode = true });
+        await plain.Parse(Template, model);
+        await encoding.Parse(Template, model);
+        var before = LoadedAssemblies();
 
-        Assert.That(await plain.Parse(Template, model), Is.EqualTo("<p>Hello <b>Alice</b></p>"));
-        Assert.That(await encoding.Parse(Template, model), Is.EqualTo("<p>Hello &lt;b&gt;Alice&lt;/b&gt;</p>"));
+        var plainText = await plain.Parse(template, model);
+        var encodedText = await encoding.Parse(template, model);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(plainText, Does.StartWith("<p>Hello <b>Alice</b></p>"));
+            Assert.That(encodedText, Does.StartWith("<p>Hello &lt;b&gt;Alice&lt;/b&gt;</p>"));
+            Assert.That(TemplatesLoadedSince(before), Is.EqualTo(1));
+        });
     }
 
+    // a key no longer pins a template: the parser renders the template it is given
     [Test]
-    public async Task RazorLight_TemplateKey_Keeps_The_First_Template()
+    public async Task RazorLight_A_Keyed_Parser_Renders_The_Template_It_Is_Given()
     {
+#pragma warning disable CS0618 // TemplateKey is obsolete and ignored
         var parser = new Regira.Web.HTML.RazorLight.RazorTemplateParser(new() { TemplateKey = "invoice-template" });
+#pragma warning restore CS0618
 
         Assert.That(await parser.Parse("<p>Hello @Model.Name</p>", Model), Is.EqualTo("<p>Hello Alice</p>"));
-        Assert.That(await parser.Parse("<p>Goodbye @Model.Name</p>", Model), Is.EqualTo("<p>Hello Alice</p>"));
+        Assert.That(await parser.Parse("<p>Goodbye @Model.Name</p>", Model), Is.EqualTo("<p>Goodbye Alice</p>"));
     }
 
     private static async Task<int> CountAssembliesLoaded(Func<IHtmlParser> getParser)

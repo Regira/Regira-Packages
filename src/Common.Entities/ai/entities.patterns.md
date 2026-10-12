@@ -888,10 +888,12 @@ public class PriceImporter(IEntitySender sender)
   was registered.
 - **`null` means not found.** A refused write throws, as the write pipeline does: `EntityInputException`,
   `EntityConstraintException`, `EntityConcurrencyException`.
-- **`SaveCommand` checks the input DTO's DataAnnotations first** — nested objects and collection items too, and in an
-  MVC host by MVC's own rules — and refuses with an `EntityInputException`. The controllers turn that off
-  (`ValidateInput: false`), since MVC has answered an invalid body by then; the mapped endpoints keep it on, as no MVC
-  ran. A patch's merged input is always checked.
+- **`SaveCommand` checks the input DTO first**, by the rules MVC judges a request body by — DataAnnotations and
+  `IValidatableObject`, nested objects and collection items too, and the implicit `[Required]` on a non-nullable
+  reference — and refuses with an `EntityInputException`. `[ValidateNever]` leaves a property out; MVC validator
+  providers an app registers, and `SuppressImplicitRequiredAttributeForNonNullableReferenceTypes`, do not apply here.
+  The controllers turn that off (`ValidateInput: false`), since MVC has answered an invalid body by then; the mapped
+  endpoints keep it on, as no MVC ran. A patch's merged input is always checked.
 - **`PatchCommand` without `SerializerOptions`** merges with `JsonSerializerDefaults.Web`, cycles ignored, enums by
   name or number. The endpoints pass the app's JSON options; a job whose patch relies on a converter of the app's own
   passes them too — `IOptions<Microsoft.AspNetCore.Mvc.JsonOptions>.Value.JsonSerializerOptions`, or
@@ -903,7 +905,7 @@ public class PriceImporter(IEntitySender sender)
   `DetailsQuery`.
 
 Below: *Replacing one operation for one entity*, *Several sends in one transaction*, *Behaviours around every
-operation*, *Dispatching through MediatR* and *A mediator library without an adapter*.
+operation* and *Dispatching through a mediator library*.
 
 ### Replacing one operation for one entity
 
@@ -1142,33 +1144,41 @@ public static class OperationLogging
   validator's refusal, a 400, is taken back before anything is tracked.) Its own scope also keeps the audit row of an
   operation that failed, which is usually what an audit is for.
 
-### Dispatching through MediatR
+### Dispatching through a mediator library
 
-`Regira.Entities.Mediator.MediatR` dispatches every entity request through MediatR, so the app's own pipeline
-behaviours — logging, tracing, authorization, a unit of work — wrap the generated endpoints as they wrap the app's
-other requests. Add the package, register MediatR as usual, and call `UseMediatR()` inside `UseEntities()`:
+To run every entity request inside an app's own mediator pipeline — logging, tracing, authorization, a unit of work
+around the generated endpoints as around the app's other requests — replace the `IEntitySender` registration with a
+sender that sends through the library. Three small types do it; with MediatR:
 
+<!-- no-compile -->
 ```csharp
 using MediatR;
-using Microsoft.Extensions.Logging;
-using Regira.Entities.DependencyInjection.ServiceCollections;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Regira.Entities.Mediator;
-using Regira.Entities.Mediator.MediatR;
+using Regira.Entities.Mediator.Abstractions;
 
-public class Product : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } }
+// one message for every entity request; Run sends it on to the in-house sender, typed
+public sealed record EntityMessage(IEntityRequest Request, Func<IEntitySender, CancellationToken, Task<object?>> Run) : IRequest<object?>;
 
-public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+public class EntityMessageHandler(IServiceProvider services) : IRequestHandler<EntityMessage, object?>
 {
-    public DbSet<Product> Products => Set<Product>();
+    public Task<object?> Handle(EntityMessage message, CancellationToken token)
+        => message.Run(ActivatorUtilities.CreateInstance<EntitySender>(services), token);
 }
 
-// one of the app's behaviours: an entity request arrives as an EntityRequestMessage
+public class MediatREntitySender(ISender mediator) : IEntitySender
+{
+    public async Task<TResponse?> Send<TResponse>(IEntityRequest<TResponse> request, CancellationToken token = default)
+        => (TResponse?)await mediator.Send(new EntityMessage(request, async (inner, t) => await inner.Send(request, t)), token);
+}
+
+// one of the app's behaviours: it reads the entity request on the message to tell a read from a write
 public class WriteLog<TRequest, TResponse>(ILogger<WriteLog<TRequest, TResponse>> logger) : IPipelineBehavior<TRequest, TResponse>
     where TRequest : notnull
 {
     public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
     {
-        if (request is EntityRequestMessage { Request.Operation: EntityOperation.Save or EntityOperation.Patch or EntityOperation.Delete } message)
+        if (request is EntityMessage { Request.Operation: EntityOperation.Save or EntityOperation.Patch or EntityOperation.Delete } message)
         {
             logger.LogInformation("{Operation} {Entity}", message.Request.Operation, message.Request.EntityType.Name);
         }
@@ -1176,66 +1186,26 @@ public class WriteLog<TRequest, TResponse>(ILogger<WriteLog<TRequest, TResponse>
     }
 }
 
-public static class ShopServiceConfiguration
-{
-    public static EntityServiceCollection<AppDbContext> AddShop(this IServiceCollection services)
-    {
-        services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<AppDbContext>());
-        services.AddTransient(typeof(IPipelineBehavior<,>), typeof(WriteLog<,>));
-        return services
-            .UseEntities<AppDbContext>(o =>
-            {
-                o.UseDefaults();
-                o.UseMediatR();   // replaces the in-house sender, whatever the order
-            })
-            .For<Product>();
-    }
-}
+// in the app's registration, before or after UseEntities()
+services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<EntityMessage>());
+services.AddTransient(typeof(IPipelineBehavior<,>), typeof(WriteLog<,>));
+services.Replace(ServiceDescriptor.Scoped<IEntitySender, MediatREntitySender>());
 ```
 
-- **The app registers MediatR**, and chooses its version by licence. MediatR 13 and later are commercially licensed
-  and need the app's licence key; an app without one pins **MediatR 12.5.0**, the last Apache-2.0 release — the one
-  package where "install the latest stable" does not apply. The adapter works with 12, 13 and 14.
-- **What stays the same:** the closed-handler override, the `IEntityPipelineBehavior`s and `Duration` — MediatR's
-  handler for the envelope hands the request to the same executor the in-house sender uses.
-- **Every entity request is one MediatR request type**, `EntityRequestMessage`, holding the entity request. A
-  behaviour reads `Request.EntityType` and `Request.Operation` to tell a read from a write, and one keyed on a single
-  request type cannot pick out an entity operation.
+- **What stays the same:** the closed-handler override, the `IEntityPipelineBehavior`s and `Duration` — the
+  message's handler ends in the same `EntitySender` that `UseEntities()` registers.
+- **Keep the message one closed type.** A generic one needs an open-generic handler registration, and the container
+  resolves a closed service from the last open-generic registration of its type, so it would shadow the app's own
+  open-generic handlers or be shadowed by them. Another library follows the same shape: one message, one handler
+  that calls `Run`, and a sender that sends the message.
+- **MediatR's version is the app's choice, by licence.** MediatR 13 and later are commercially licensed and need the
+  app's licence key; an app without one pins **MediatR 12.5.0**, the last Apache-2.0 release — the one package where
+  "install the latest stable" does not apply.
 - ⚠️ **Let the entity exceptions through.** A behaviour that rethrows `EntityInputException`,
   `EntityConstraintException` or `EntityConcurrencyException` wrapped in an exception of its own turns the endpoint's
   400 and 409s into 500s.
 - A behaviour that opens a transaction around a write defers the reactors to its commit — the reactor rule
   (entities.instructions §Step 9 → Reactors).
-
-### A mediator library without an adapter
-
-The seam is public, so any library plugs in the way the MediatR adapter does: one envelope type with one handler that
-passes the request on to `IEntityRequestExecutor`, a sender that sends the envelope, and a `Replace` of the
-`IEntitySender` registration. The executor keeps resolving the handlers and running the behaviours.
-
-<!-- no-compile -->
-```csharp
-// the envelope and its handler, in the library's own shapes
-public sealed record EntityMessage(IEntityRequest Request);
-public class EntityMessageHandler(IEntityRequestExecutor executor)
-{
-    public Task<object?> Handle(EntityMessage message, CancellationToken token) => executor.Execute(message.Request, token);
-}
-
-// the sender: the library's send, the response cast back
-public class BusEntitySender(IMessageBus bus) : IEntitySender
-{
-    public async Task<TResponse?> Send<TResponse>(IEntityRequest<TResponse> request, CancellationToken token = default)
-        => await bus.InvokeAsync<object?>(new EntityMessage(request), token) is TResponse response ? response : default;
-}
-
-// inside or after UseEntities(), either way
-services.Replace(ServiceDescriptor.Scoped<IEntitySender, BusEntitySender>());
-```
-
-Keep the envelope one closed type: a generic one needs an open-generic handler registration, and the container
-resolves a closed service from the last open-generic registration of its type, so it would shadow the app's own
-open-generic handlers or be shadowed by them.
 
 ## Mapped entity endpoints (no controllers)
 
@@ -1243,7 +1213,7 @@ open-generic handlers or be shadowed by them.
 maps every entity registered through `For<>()` as minimal-API endpoints: the controllers' route table, request bodies
 and response envelopes (entities.instructions §Step 13), and the attachment routes under an owner that
 `HasAttachments()` registered. Each endpoint sends the request the matching controller action sends (§Entity operations
-outside a controller), so handler overrides, behaviours and `UseMediatR()` apply alike. The options on a registration
+outside a controller), so handler overrides, behaviours and a replaced sender apply alike. The options on a registration
 say how its entity maps:
 
 ```csharp
@@ -1296,9 +1266,8 @@ app.MapEntityEndpoints().RequireAuthorization();   // GET/POST products, PUT/PAT
   entity. It adds to the policy on the returned group rather than replacing it: a caller must pass both.
 - **Controllers and mapped endpoints mix.** An entity whose `EntityControllerBase` subclass MVC discovers is left to its
   controller (logged), and so is an attachment link with an attachment controller, so an app moves one entity at a time.
-  `app.MapEntity<Product>("v2/products")` maps one entity even when `o.Disable()` or a controller keeps it off
-  `MapEntityEndpoints()`; its DTOs, exclusions and anonymous endpoints still apply. The startup check warns about an entity
-  both a controller and a mapping serve.
+  A second `app.MapEntityEndpoints(o => o.Prefix = "v2")` maps the same set again under its own prefix, as a second API
+  version would.
 - **What differs from a controller.** The input DTO's DataAnnotations are checked by the request, with the 400 of a
   validator's refusal (`errorDetails` included) rather than MVC's automatic one. A missing row answers a `ProblemDetails`
   404. JSON is `System.Text.Json` only — a host on `AddNewtonsoftJson` keeps its controllers. The upload routes skip

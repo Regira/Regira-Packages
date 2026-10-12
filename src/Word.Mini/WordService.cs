@@ -37,10 +37,10 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
     private static readonly Regex TagRegex = new(@"\{\{([^{}]*)\}\}", RegexOptions.Compiled);
 
     /// <summary>
-    /// A key MiniWord can be given as it is: letters, digits and underscores, its own tag grammar, none of which a
-    /// regular expression reads as syntax.
+    /// The characters no key may hold: what a regular expression reads as syntax, and the dot MiniWord joins a
+    /// collection's key and field with.
     /// </summary>
-    private static readonly Regex MiniWordKey = new(@"^\w+\z", RegexOptions.Compiled);
+    private static readonly char[] PatternCharacters = @".\^$|?*+()[]{}".ToCharArray();
 
     public async Task<IMemoryFile> Create(WordTemplateInput input, CancellationToken cancellationToken = default)
     {
@@ -49,9 +49,9 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
         var templateBytes = input.Template.GetBytes()
             ?? throw new ArgumentException("Template has no content.", nameof(input));
 
-        var (values, names, collections) = GetMiniInput(input);
+        var values = GetMiniValue(input);
         var ms = new MemoryStream();
-        await ms.SaveAsByTemplateAsync(RewriteTags(ResolveBlocks(templateBytes, input), names, collections), values, cancellationToken);
+        await ms.SaveAsByTemplateAsync(TrimTags(ResolveBlocks(templateBytes, input)), values, cancellationToken);
         // SaveAsByTemplateAsync leaves the stream at its end; rewind so consumers reading
         // Stream directly (rather than through GetStream()) see the content.
         ms.Position = 0;
@@ -136,155 +136,78 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
 
 
     /// <summary>
-    /// The values MiniWord fills the template with, and for each tag the name MiniWord knows its value by.
+    /// The values MiniWord fills the template with. GlobalParameters, Images and CollectionParameters resolve against one
+    /// <c>{{tag}}</c> namespace, so a key may appear in one of them only.
     /// <para>
-    /// MiniWord builds a regular expression from every key it is given, a collection's <c>Items.Name</c> included:
-    /// a key holding <c>[</c> throws, and one holding <c>.</c> or <c>(</c> matches other tags than its own. So a key
-    /// of letters, digits and underscores is given as it is, any other key under a generated name of that form, and
-    /// <see cref="RewriteTags(byte[], IReadOnlyDictionary{string, string}, IReadOnlyDictionary{string, string})"/> writes that name into the template's tags.
+    /// MiniWord builds a regular expression from every key it is given, a collection's <c>Items.Name</c> included: a key
+    /// holding <c>[</c> throws, and one holding <c>.</c> or <c>(</c> matches other tags than its own. So a key — a
+    /// parameter key, an image name, a collection key or a collection's field — holding one of
+    /// <c>. \ ^ $ | ? * + ( ) [ ] { }</c> is refused with an <see cref="ArgumentException"/> naming it.
     /// </para>
     /// </summary>
-    /// <returns>
-    /// The values, each tag's name, and each collection's name by the tag of its key, for the field tags the names do
-    /// not hold as written (<see cref="FieldName"/>).
-    /// </returns>
-    internal static (Dictionary<string, object> Values, IReadOnlyDictionary<string, string> Names, IReadOnlyDictionary<string, string> Collections) GetMiniInput(WordTemplateInput input)
+    internal static Dictionary<string, object> GetMiniValue(WordTemplateInput input)
     {
-        // GlobalParameters, Images and CollectionParameters all resolve against the same
-        // {{tag}} namespace in the template, so a key may only appear in one of them.
-        var supplied = new Dictionary<string, object>();
-        var names = new Dictionary<string, string>();
-        var collectionNames = new Dictionary<string, string>();
-
-        ArgumentException Duplicate(string key) => new(
-            $"Duplicate parameter key '{key}'. GlobalParameters, Images and CollectionParameters share a single template namespace, which holds a collection's fields as Collection.Field.",
-            nameof(input));
+        var values = new Dictionary<string, object>();
 
         void Add(string key, object value)
         {
-            if (!supplied.TryAdd(key, value))
+            if (!values.TryAdd(key, value))
             {
-                throw Duplicate(key);
+                throw new ArgumentException(
+                    $"Duplicate parameter key '{key}'. GlobalParameters, Images and CollectionParameters share a single template namespace.",
+                    nameof(input));
             }
         }
-
-        // a collection's {{Items.Name}} tags are in the namespace too, so a global key "Items.Name" is a duplicate of its field
-        void Claim(string tag, string name)
-        {
-            if (!names.TryAdd(tag, name))
-            {
-                throw Duplicate(tag);
-            }
-        }
+        ArgumentException Unreadable(string key) => new(
+            $"MiniWord cannot read the key '{key}': it builds a regular expression from every key, so a key may not hold any of " +
+            $"{string.Join(" ", PatternCharacters)}. " +
+            "Rename the key and its tag, or use another Word backend.",
+            nameof(input));
 
         foreach (var parameter in input.GlobalParameters ?? new Dictionary<string, object>())
         {
+            if (parameter.Key.Trim().IndexOfAny(PatternCharacters) >= 0)
+            {
+                throw Unreadable(parameter.Key);
+            }
             Add(parameter.Key, parameter.Value);
         }
         foreach (var image in input.Images ?? [])
         {
+            if (image.Name.Trim().IndexOfAny(PatternCharacters) >= 0)
+            {
+                throw Unreadable(image.Name);
+            }
             Add(image.Name, ToPicture(image));
         }
-        var collections = input.CollectionParameters ?? new Dictionary<string, ICollection<IDictionary<string, object>>>();
-        foreach (var collection in collections)
+        foreach (var collection in input.CollectionParameters ?? new Dictionary<string, ICollection<IDictionary<string, object>>>())
         {
-            Add(collection.Key, collection.Value);
+            if (collection.Key.Trim().IndexOfAny(PatternCharacters) >= 0)
+            {
+                throw Unreadable(collection.Key);
+            }
+            var field = collection.Value?.SelectMany(row => row.Keys).FirstOrDefault(key => key.Trim().IndexOfAny(PatternCharacters) >= 0);
+            if (field != null)
+            {
+                throw Unreadable($"{collection.Key}.{field}");
+            }
+            Add(collection.Key, collection.Value!);
         }
 
-        var values = new Dictionary<string, object>();
-        foreach (var (key, value) in ByTag(supplied))
+        // the template's tags are trimmed (TrimTags), so a key spelled with spaces is reached by its trimmed form;
+        // TryAdd, so a key the caller supplied itself is never displaced
+        foreach (var spaced in values.Where(v => v.Key != v.Key.Trim()).ToArray())
         {
-            var tag = key.Trim();
-            var name = MiniWordName(tag);
-            Claim(tag, name);
-
-            if (collections.TryGetValue(key, out var rows) && rows != null)
-            {
-                var (namedRows, fields) = NameFields(rows);
-                foreach (var field in fields)
-                {
-                    Claim($"{tag}.{field.Key}", $"{name}.{field.Value}");
-                }
-                collectionNames[tag] = name;
-                values[name] = namedRows;
-            }
-            else
-            {
-                values[name] = value;
-            }
+            values.TryAdd(spaced.Key.Trim(), spaced.Value);
         }
 
-        return (values, names, collectionNames);
+        return values;
     }
 
     /// <summary>
-    /// The name of a collection field for a tag in the collection's row that <paramref name="names"/> does not hold as
-    /// it is written: one spaced around its dot takes the name of the field the rows supply, and a field no row supplies
-    /// is named under the collection's MiniWord name. MiniWord then reads the row as the collection's — removed when
-    /// there are no rows, a missing field left empty — as it does for a collection whose key it takes as it is; under
-    /// the caller's spelling the tag stays in the document as text. Null for a tag that reads no collection.
-    /// </summary>
-    private static string? FieldName(string tag, IReadOnlyDictionary<string, string> names, IReadOnlyDictionary<string, string> collections)
-    {
-        // the longest prefix first: a collection key may hold a dot itself
-        for (var dot = tag.LastIndexOf('.'); dot > 0; dot = tag.LastIndexOf('.', dot - 1))
-        {
-            var collectionTag = tag[..dot].Trim();
-            if (collections.TryGetValue(collectionTag, out var collection))
-            {
-                var field = tag[(dot + 1)..].Trim();
-                return names.TryGetValue($"{collectionTag}.{field}", out var known) ? known : $"{collection}.{MiniWordName(field)}";
-            }
-        }
-        return null;
-    }
-
-    /// <summary>
-    /// A collection's rows keyed by the names MiniWord is given for their fields, and for each field's tag that name.
-    /// </summary>
-    private static (List<Dictionary<string, object>> Rows, Dictionary<string, string> Fields) NameFields(IEnumerable<IDictionary<string, object>> rows)
-    {
-        var fields = new Dictionary<string, string>();
-        var namedRows = new List<Dictionary<string, object>>();
-        foreach (var row in rows)
-        {
-            var namedRow = new Dictionary<string, object>();
-            foreach (var (key, value) in ByTag(row))
-            {
-                var tag = key.Trim();
-                if (!fields.TryGetValue(tag, out var name))
-                {
-                    fields[tag] = name = MiniWordName(tag);
-                }
-                namedRow[name] = value;
-            }
-            namedRows.Add(namedRow);
-        }
-        return (namedRows, fields);
-    }
-
-    /// <summary>
-    /// The entries by the tag that reads them — the key trimmed, as <see cref="RewriteTags(byte[], IReadOnlyDictionary{string, string}, IReadOnlyDictionary{string, string})"/> trims the template's tags.
-    /// Of two keys reading the same tag, the one the caller spelled as the tag wins, so a key spelled with spaces never
-    /// displaces one supplied without them.
-    /// </summary>
-    private static IEnumerable<KeyValuePair<string, T>> ByTag<T>(IEnumerable<KeyValuePair<string, T>> entries)
-        => entries
-            .GroupBy(entry => entry.Key.Trim())
-            .Select(group => group.OrderBy(entry => entry.Key == group.Key ? 0 : 1).First());
-
-    /// <summary>
-    /// The name MiniWord is given for the key a tag reads: the tag itself when <see cref="MiniWordKey"/> allows it,
-    /// otherwise a generated one.
-    /// </summary>
-    private static string MiniWordName(string tag)
-        => MiniWordKey.IsMatch(tag) ? tag : $"regira_{Guid.NewGuid():N}";
-
-    /// <summary>
-    /// Writes every tag in the template whole, without the spaces just inside its braces, and under the name MiniWord
-    /// knows its key by (<see cref="GetMiniInput"/>) — <c>{{ title }}</c> becomes <c>{{title}}</c>,
-    /// <c>{{ Items.Name }}</c> becomes <c>{{Items.Name}}</c>, and <c>{{ Total (EUR) }}</c> takes the generated name of
-    /// the key <c>Total (EUR)</c> — in the body, headers and footers.
+    /// Writes every tag in the template whole and without the spaces just inside its braces — <c>{{ title }}</c>
+    /// becomes <c>{{title}}</c> and <c>{{ Items.Name }}</c> becomes <c>{{Items.Name}}</c> — in the body, headers
+    /// and footers.
     /// <para>
     /// MiniWord matches a tag only when the text between the braces is the key itself, dotted collection and
     /// property tags included, and only when the tag sits in one run; a spaced tag, or one Word split over runs
@@ -293,7 +216,7 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
     /// run's formatting. The spaces inside a tag (<c>{{if(a == b)}}</c>) are MiniWord's own syntax and stay.
     /// </para>
     /// </summary>
-    internal static byte[] RewriteTags(byte[] template, IReadOnlyDictionary<string, string> names, IReadOnlyDictionary<string, string> collections)
+    internal static byte[] TrimTags(byte[] template)
     {
         using var stream = new MemoryStream();
         stream.Write(template, 0, template.Length);
@@ -304,7 +227,7 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
             {
                 foreach (var paragraph in root.Descendants<W.Paragraph>())
                 {
-                    changed |= RewriteTags(MiniTemplateWalk.OwnTexts(paragraph).ToList(), names, collections);
+                    changed |= TrimTags(MiniTemplateWalk.OwnTexts(paragraph).ToList());
                 }
             }
         }
@@ -316,7 +239,7 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
     /// <summary>
     /// Rewrites the tags in one paragraph's text elements, read as one string so a tag split over runs is found.
     /// </summary>
-    private static bool RewriteTags(IReadOnlyList<W.Text> texts, IReadOnlyDictionary<string, string> names, IReadOnlyDictionary<string, string> collections)
+    private static bool TrimTags(IReadOnlyList<W.Text> texts)
     {
         // the paragraph's text, and for each character the element it came from
         var combined = new StringBuilder();
@@ -333,18 +256,13 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
         foreach (Match match in TagRegex.Matches(combined.ToString()))
         {
             var key = match.Groups[1].Value.Trim();
-            if (key.Length == 0)
-            {
-                continue;
-            }
-            var name = names.TryGetValue(key, out var known) ? known : FieldName(key, names, collections) ?? key;
             var last = match.Index + match.Length - 1;
-            var intact = name == match.Groups[1].Value && owner[match.Index] == owner[last];
-            if (intact)
+            var intact = key.Length == match.Groups[1].Length && owner[match.Index] == owner[last];
+            if (intact || key.Length == 0)
             {
                 continue;
             }
-            rewrites[match.Index] = $"{{{{{name}}}}}";
+            rewrites[match.Index] = $"{{{{{key}}}}}";
             dropped.UnionWith(Enumerable.Range(match.Index + 1, match.Length - 1));
         }
         if (rewrites.Count == 0)
@@ -381,9 +299,8 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
     /// <summary>
     /// Resolves the template's blocks, as <see cref="TemplateBlocks"/> describes them, and fills the fields of its loops'
     /// rows before MiniWord sees it, so they read the same as on the other backends; MiniWord's own <c>@if</c> and
-    /// <c>@foreach</c> are left alone. Every tag is joined into one <c>w:t</c> first, as
-    /// <see cref="RewriteTags(byte[], IReadOnlyDictionary{string, string}, IReadOnlyDictionary{string, string})"/>
-    /// writes it, but under the key the template spells, so a row fills its field before MiniWord's names are written.
+    /// <c>@foreach</c> are left alone. Every tag is joined into one <c>w:t</c> first, as <see cref="TrimTags(byte[])"/>
+    /// writes it, so a row fills a field Word split over runs.
     /// </summary>
     internal static byte[] ResolveBlocks(byte[] template, WordTemplateInput input)
     {
@@ -393,7 +310,6 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
             return template;
         }
 
-        var keys = new Dictionary<string, string>();
         using var stream = new MemoryStream();
         stream.Write(template, 0, template.Length);
         using (var doc = WordprocessingDocument.Open(stream, true))
@@ -401,7 +317,7 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
             var roots = ContentRoots(doc.MainDocumentPart).Select(content => content.Root).ToArray();
             foreach (var paragraph in roots.SelectMany(root => root.Descendants<W.Paragraph>()))
             {
-                RewriteTags(MiniTemplateWalk.OwnTexts(paragraph).ToList(), keys, keys);
+                TrimTags(MiniTemplateWalk.OwnTexts(paragraph).ToList());
             }
             new MiniTemplateWalk(doc, roots).Run(input);
         }

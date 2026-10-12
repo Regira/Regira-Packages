@@ -123,27 +123,6 @@ public class AttachmentFileHandler<TEntity>(IServiceProvider services)
     }
 }
 
-/// <summary>The default handler of <see cref="AttachmentFileByNameQuery{TEntity}"/>.</summary>
-public class AttachmentFileByNameHandler<TEntity>(IServiceProvider services)
-    : IEntityRequestHandler<AttachmentFileByNameQuery<TEntity>, Attachment>
-    where TEntity : class, IEntityAttachment<int, int, int, Attachment>
-{
-    protected IServiceProvider Services { get; } = services;
-
-    public virtual async Task<Attachment?> Handle(AttachmentFileByNameQuery<TEntity> request, CancellationToken token = default)
-    {
-        var service = Services.GetRequiredEntityService<IEntityService<TEntity, int>>();
-        // the lookup by name lists the link without its file content; Details reads the content
-        var link = (await service.List(new { objectId = new[] { request.ObjectId }, fileName = request.FileName }, new PagingInfo { PageSize = 1 }, token))
-            .FirstOrDefault();
-        if (link == null)
-        {
-            return null;
-        }
-        return (await service.Details(link.Id, token))?.Attachment;
-    }
-}
-
 internal static class AttachmentLinks
 {
     /// <summary>A link with its attachment but without the file content.</summary>

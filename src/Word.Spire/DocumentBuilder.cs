@@ -19,7 +19,6 @@ public class DocumentBuilder(WordService manager)
     private WordDocumentSettings? _settings;
     private WordTemplateInput[]? _inputs;
     private ConversionOptions? _conversionOptions;
-    private MergeOptions? _mergeOptions;
     private IEnumerable<Paragraph>? _paragraphs;
     private ICollection<WordHeaderFooterInput>? _headers;
     private ICollection<WordHeaderFooterInput>? _footers;
@@ -57,22 +56,13 @@ public class DocumentBuilder(WordService manager)
         _conversionOptions = options;
         return this;
     }
-    /// <summary>
-    /// How the inputs <see cref="Load"/> takes are joined, as <see cref="WordService.Merge(IEnumerable{WordTemplateInput}, MergeOptions?, CancellationToken)"/>
-    /// joins them; by default each starts on a new page.
-    /// </summary>
-    public DocumentBuilder WithMerge(MergeOptions options)
-    {
-        _mergeOptions = options;
-        return this;
-    }
 
 
     public async Task<IMemoryFile> Build()
     {
         // Create Document
         using var doc = _inputs != null
-            ? await manager.MergeDocuments(_inputs, _mergeOptions)
+            ? await manager.MergeDocuments(_inputs)
             : new Document();
 
         // PageSettings

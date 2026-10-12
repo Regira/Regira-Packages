@@ -16,6 +16,8 @@
 - **Wrap every operation** with an open-generic `IEntityPipelineBehavior<,>`, the first registered outermost.
 - **A request of the app's own** implements `IEntityRequest<TResponse>`, declares its `EntityType` and `Operation`,
   and needs a registered handler.
-- **MediatR:** `Regira.Entities.Mediator.MediatR` (`get_package_card(id: "Regira.Entities.Mediator.MediatR")`).
+- **Through a mediator library** such as MediatR: replace the `IEntitySender` registration with a sender whose handler
+  ends in the in-house `EntitySender` —
+  `get_package(id: "Regira.Entities", section: "entities.patterns", heading: "Dispatching through a mediator library")`.
 - The response envelopes (`DetailsResult<>`, `ListResult<>`, …) ship here under their `Regira.Entities.Web.Models`
   namespace.

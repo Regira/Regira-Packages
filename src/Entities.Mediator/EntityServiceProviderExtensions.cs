@@ -7,12 +7,12 @@ namespace Regira.Entities.Mediator;
 public static class EntityServiceProviderExtensions
 {
     /// <summary>
-    /// The registered <see cref="IEntitySender"/> — the in-house one that <c>UseEntities()</c> registers, or an adapter's —
+    /// The registered <see cref="IEntitySender"/> — the in-house one that <c>UseEntities()</c> registers, or the app's own —
     /// or, in a host wired without <c>UseEntities()</c>, an in-house sender over this provider.
     /// </summary>
     public static IEntitySender GetEntitySender(this IServiceProvider services)
         => services.GetService<IEntitySender>()
-           ?? new EntitySender(services.GetService<IEntityRequestExecutor>() ?? new EntityRequestExecutor(services));
+           ?? new EntitySender(services);
 
     /// <summary>
     /// Resolves an <c>IEntityService&lt;…&gt;</c>, and when it is missing throws with what <c>For&lt;&gt;()</c> did register

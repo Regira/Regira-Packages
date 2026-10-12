@@ -14,7 +14,6 @@
 | *`Entities.Mapping.AutoMapper`* | *`Regira.Entities.Mapping.AutoMapper`* | *AutoMapper integration (deprecated)* |
 | `Entities.Validation.FluentValidation` | `Regira.Entities.Validation.FluentValidation` | FluentValidation rules in the write pipeline (§Step 8 → Validators) |
 | `Entities.Mediator` | `Regira.Entities.Mediator` | The requests the endpoints send through `IEntitySender`, for any other caller too (brought by `Regira.Entities.Web`) |
-| `Entities.Mediator.MediatR` | `Regira.Entities.Mediator.MediatR` | Every entity request dispatched through MediatR, inside the app's pipeline (opt-in) |
 
 Always prefer clear, conventional patterns over clever solutions. Default to the more feature-rich options when in doubt. Use the latest .NET version (net10) unless instructed otherwise.
 
@@ -1349,9 +1348,6 @@ in the Development environment by default. It catches, with actionable messages:
 - **Null attachment `Uri`** (warning) — an attachment controller, or an owner's downloads mapped by
   `MapEntityEndpoints()`, is in place while the null resolver is, i.e. `UseAttachmentUris()` was omitted or set on a
   different options instance.
-- **Served by a controller and a mapping** (warning) — `MapEntity<TEntity>()` maps an entity a discovered controller
-  serves (`MapEntityEndpoints()` leaves those alone). On the controller's route a request matches both and fails as
-  ambiguous; on a route of its own the second surface is deliberate and the warning can stand.
 - **Attachment owner not mapped to `ObjectId`** (warning) — an `IHasAttachments` owner whose attachment
   collection reaches the link through any key but `ObjectId`, typically a shadow key EF invented because the
   owner side was left to conventions. Every link row is saved orphaned: the owner's `Attachments` loads empty and

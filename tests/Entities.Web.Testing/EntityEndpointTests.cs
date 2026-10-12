@@ -40,10 +40,11 @@ public class Note : IEntity<int>, IArchivable
     public bool IsArchived { get; set; }
 }
 
+/// <summary><see cref="Title"/> is a non-nullable string without <c>[Required]</c>, which MVC would require.</summary>
 public class InterventionType : IEntity<int>
 {
     public int Id { get; set; }
-    public string? Title { get; set; }
+    public string Title { get; set; } = null!;
 }
 
 public class Ticket : IEntity<int>
@@ -326,6 +327,17 @@ public class EntityEndpointTests
     }
 
     [Fact]
+    public async Task A_Host_Without_Mvc_Requires_A_NonNullable_String_As_Mvc_Would()
+    {
+        await using var host = await Host.CreateAsync();
+
+        var problem = await Problem(await host.Client.PostAsJsonAsync("/intervention-types", new { }));
+
+        Assert.Equal("Title", problem.GetProperty("errorDetails")[0].GetProperty("key").GetString());
+        Assert.Equal("The Title field is required.", problem.GetProperty("errorDetails")[0].GetProperty("message").GetString());
+    }
+
+    [Fact]
     public async Task An_Entity_Without_Dtos_Is_Refused_At_Mapping_Unless_Disabled()
     {
         await using (var host = await Host.CreateAsync())
@@ -340,13 +352,17 @@ public class EntityEndpointTests
     }
 
     [Fact]
-    public async Task MapEntity_Maps_One_Entity_On_A_Route_Of_Choice()
+    public async Task A_Second_Call_Maps_The_Set_Again_Under_Its_Own_Prefix()
     {
-        await using var host = await Host.CreateAsync(map: app => app.MapEntity<Note>("v2/notes"));
+        await using var host = await Host.CreateAsync(map: app =>
+        {
+            app.MapEntityEndpoints();
+            app.MapEntityEndpoints(o => o.Prefix = "v2");
+        });
 
+        Assert.Equal(HttpStatusCode.OK, (await host.Client.GetAsync("/notes")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await host.Client.GetAsync("/v2/notes")).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await host.Client.GetAsync("/notes")).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await host.Client.GetAsync("/tickets")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await host.Client.GetAsync("/v2/tickets")).StatusCode);
     }
 
     [Fact]
@@ -382,7 +398,7 @@ public class EntityEndpointTests
     }
 
     [Fact]
-    public async Task The_Startup_Checks_See_The_Mapped_Dtos_And_An_Entity_Served_Twice()
+    public async Task The_Startup_Checks_See_The_Mapped_Dtos()
     {
         await using var host = await Host.CreateAsync(
             services => services.AddControllers().AddApplicationPart(typeof(NotesController).Assembly),
@@ -390,18 +406,13 @@ public class EntityEndpointTests
             {
                 app.MapControllers();
                 app.MapEntityEndpoints();          // leaves Note to its controller
-                app.MapEntity<Note>("v2/notes");   // maps it regardless
             });
         var services = host.App.Services;
-        var context = new EntityValidationContext(services, services.GetRequiredService<IServiceCollection>(), services.GetRequiredService<EntityRegistrationLog>());
 
         var shapes = services.GetServices<IEntityDtoShapeSource>().SelectMany(s => s.GetDtoShapes()).ToList();
-        var issues = services.GetServices<IEntityRegistrationValidator>().SelectMany(v => v.Validate(context)).ToList();
 
         Assert.Contains(shapes, s => s.EntityType == typeof(Ticket) && s.InputDtoType == typeof(Ticket));
-        Assert.Contains(issues, i => i.Severity == EntityValidationSeverity.Warning && i.Message.Contains("Served by a controller and by mapped endpoints: Note"));
         Assert.Equal(HttpStatusCode.OK, (await host.Client.GetAsync("/notes")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await host.Client.GetAsync("/v2/notes")).StatusCode);
     }
 
     private sealed class PinnedNotesHandler : IEntityRequestHandler<ListQuery<Note, int, SearchObject, Note>, ListResult<Note>>
@@ -414,21 +425,20 @@ public class EntityEndpointTests
     [Fact]
     public async Task One_List_Handler_Answers_For_The_Controller_And_The_Mapped_Endpoint()
     {
-        await using var host = await Host.CreateAsync(
+        static void Pinned(IServiceCollection services)
+            => services.AddTransient<IEntityRequestHandler<ListQuery<Note, int, SearchObject, Note>, ListResult<Note>>, PinnedNotesHandler>();
+        await using var controllerHost = await Host.CreateAsync(
             services =>
             {
                 services.AddControllers().AddApplicationPart(typeof(NotesController).Assembly);
-                services.AddTransient<IEntityRequestHandler<ListQuery<Note, int, SearchObject, Note>, ListResult<Note>>, PinnedNotesHandler>();
+                Pinned(services);
             },
-            app =>
-            {
-                app.MapControllers();
-                app.MapEntity<Note>("v2/notes");
-            });
+            app => app.MapControllers());
+        await using var mappedHost = await Host.CreateAsync(Pinned);
 
-        foreach (var route in new[] { "/notes", "/v2/notes" })
+        foreach (var client in new[] { controllerHost.Client, mappedHost.Client })
         {
-            var list = await host.Client.GetFromJsonAsync<ListResult<Note>>(route);
+            var list = await client.GetFromJsonAsync<ListResult<Note>>("/notes");
             Assert.Equal(["pinned"], list!.Items.Select(x => x.Title));
         }
     }

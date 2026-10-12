@@ -3,8 +3,8 @@ using System.Text;
 namespace Regira.Entities.Web.Endpoints;
 
 /// <summary>
-/// What <c>MapEntityEndpoints()</c> and <c>MapEntity&lt;TEntity&gt;()</c> mapped, for the startup checks — the DTO
-/// checks, a missing <c>UseAttachmentUris()</c>, an entity served by a controller too.
+/// What <c>MapEntityEndpoints()</c> mapped, for the startup checks — the DTO checks and a missing
+/// <c>UseAttachmentUris()</c>.
 /// </summary>
 internal sealed class EntityEndpointRegistry
 {
@@ -32,7 +32,7 @@ internal sealed class EntityEndpointRegistry
 
     /// <summary>
     /// <c>true</c> the first time an attachment link's downloads are mapped. Endpoint names are global, so a link mapped
-    /// twice — its owner on a second route through <c>MapEntity&lt;TEntity&gt;()</c> — has only its first downloads named,
+    /// twice — its owner under a second prefix of <c>MapEntityEndpoints()</c> — has only its first downloads named,
     /// and the attachment <c>Uri</c> links to those.
     /// </summary>
     public bool ClaimDownloadNames(Type attachmentType)

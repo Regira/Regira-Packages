@@ -19,7 +19,8 @@ public static class EntityEndpointRouteBuilderExtensions
     /// save's input DTO against its DataAnnotations. An entity needs its DTO pair declared — <c>UseMapping&lt;TDto, TInputDto&gt;()</c>
     /// or <c>e.Endpoints(o => o.UseDtos&lt;TDto, TInputDto&gt;())</c> — or mapping throws. An entity an <c>EntityControllerBase</c>
     /// subclass serves, and an attachment link an attachment controller serves, are left to the controller, so an app can
-    /// move one entity at a time.
+    /// move one entity at a time. A second call with another <see cref="EntityEndpointsOptions.Prefix"/> maps the set again,
+    /// as a second API version would.
     /// </para>
     /// </summary>
     /// <returns>The group of every mapped entity, for what applies to all of them: <c>.RequireAuthorization()</c>.</returns>
@@ -52,20 +53,5 @@ public static class EntityEndpointRouteBuilderExtensions
             options.ApplyGroup(entityType, mapper.Map(root, registration));
         }
         return root;
-    }
-
-    /// <summary>
-    /// Maps one entity registered through <c>For&lt;&gt;()</c>, as <see cref="MapEntityEndpoints"/> maps each — whether or not
-    /// <c>e.Endpoints(o => o.Disable())</c> or a controller would keep it off that surface. Its route is
-    /// <paramref name="route"/>, else its <c>e.Endpoints(o => o.Route = …)</c>, else the kebab-case plural of its name.
-    /// </summary>
-    public static RouteGroupBuilder MapEntity<TEntity>(this IEndpointRouteBuilder endpoints, string? route = null)
-    {
-        var mapper = EntityEndpointMapper.For(endpoints.ServiceProvider);
-        var registration = mapper.Registrations.FirstOrDefault(r => r.EntityType == typeof(TEntity))
-            ?? throw new InvalidOperationException($"{typeof(TEntity).Name} has no For<>() registration, so there are no endpoints to map for it.");
-        var group = mapper.Map(endpoints, registration, route);
-        group.AddEndpointFilter<EntityExceptionEndpointFilter>();
-        return group;
     }
 }

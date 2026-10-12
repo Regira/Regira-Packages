@@ -48,11 +48,9 @@ public class WordService : IWordService
         var file = ToMemoryFile(doc);
         return Task.FromResult(file);
     }
-    public Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default)
-        => Merge(inputs, null, cancellationToken);
-    public async Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, MergeOptions? options, CancellationToken cancellationToken = default)
+    public async Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default)
     {
-        using var doc = await MergeDocuments(inputs, options);
+        using var doc = await MergeDocuments(inputs);
         return ToMemoryFile(doc);
     }
     public Task<IMemoryFile> Convert(WordTemplateInput input, RegiraFileFormat format, CancellationToken cancellationToken = default)
@@ -103,8 +101,6 @@ public class WordService : IWordService
     protected internal IMemoryFile ToMemoryFile(Document doc, SpireFileFormat format = SpireFileFormat.Docx)
         => doc.ToStream(format).ToMemoryFile(format == SpireFileFormat.Doc ? ContentTypes.DOC : ContentTypes.DOCX);
     protected internal Task<Document> MergeDocuments(IEnumerable<WordTemplateInput> inputs)
-        => MergeDocuments(inputs, null);
-    protected internal Task<Document> MergeDocuments(IEnumerable<WordTemplateInput> inputs, MergeOptions? mergeOptions)
     {
         var doc = new Document();
 
@@ -143,12 +139,7 @@ public class WordService : IWordService
                 var isPadded = input.Options?.EnforceEvenAmountOfPages == true;
                 if (joint > 0 && doc.Sections.Count > joint)
                 {
-                    doc.Sections[joint].BreakCode = MergeJoints.Of(mergeOptions, previousIsPadded, isPadded) switch
-                    {
-                        MergeJoint.OddPage => SectionBreakType.Oddpage,
-                        MergeJoint.NewPage => SectionBreakType.NewPage,
-                        _ => SectionBreakType.NoBreak
-                    };
+                    doc.Sections[joint].BreakCode = MergeJoints.StartsOnOddPage(previousIsPadded, isPadded) ? SectionBreakType.Oddpage : SectionBreakType.NewPage;
                 }
                 previousIsPadded = isPadded;
             }

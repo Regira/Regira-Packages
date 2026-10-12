@@ -74,10 +74,9 @@ The returned file's `ContentType` names the format produced — `application/pdf
 <!-- no-compile -->
 ```csharp
 Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default);
-Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, MergeOptions? options, CancellationToken cancellationToken = default);
 ```
 
-Each input is created, then joined to the previous one: it starts on a new page and keeps its own section breaks. An input with `EnforceEvenAmountOfPages` starts on an odd page, and so does the one after it. Pass `new MergeOptions { FollowOn = true }` to run every input after the first on from the previous one's last page; `null` merges as the first overload does. A backend's `DocumentBuilder` joins the inputs it `Load`s the same way, and takes `MergeOptions` through `WithMerge`. The second overload is a default interface method, so a merger that cannot run an input on from the previous one throws `NotSupportedException` when asked to. `WordClient` is one: the Office API's merge takes no options.
+Each input is created, then joined to the previous one: it starts on a new page and keeps its own section breaks. An input with `EnforceEvenAmountOfPages` starts on an odd page, and so does the one after it. A backend's `DocumentBuilder` joins the inputs it `Load`s the same way. To run one document on inside another, without a page break, insert it as a nested document (`DocumentParameters`).
 
 ### IWordTextExtractor / IWordImageExtractor / IWordToImagesService
 
@@ -114,19 +113,13 @@ Composite of all the above. `Word.Spire.WordService`, `Word.Syncfusion.WordServi
 | `RemoveEmptyParagraphs` | `bool` | `false` | Strip blank paragraphs after substitution |
 | `EnforceEvenAmountOfPages` | `bool` | `false` | Insert page break if page count is odd, counted in the font `InheritFont` gives; merged, the input starts on an odd page and so does the next one |
 
-### MergeOptions
-
-| Property | Type | Default | Description |
-|----------|------|---------|-------------|
-| `FollowOn` | `bool` | `false` | Run every merged input after the first on from the previous one's last page, rather than on a new page |
-
 ### ConversionOptions
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `OutputFormat` | `FileFormat` | `Docx` | Target format |
 | `AutoScaleTables` | `bool` | `true` | Resize tables to fit new page width |
-| `AutoScalePictures` | `bool` | `true` | Scale pictures by as much as the text width changes, keeping their proportions, up to Word's 22-inch shape limit; a picture already past it is brought to it |
+| `AutoScalePictures` | `bool` | `true` | Scale pictures by as much as the text width changes, keeping their proportions, up to Word's 22-inch shape limit; a picture already past it is brought to it. A picture inside a text box keeps its size |
 | `Settings` | `DocumentSettings?` | `null` | Override page size / orientation / margins of every section — a document mixing portrait and landscape sections comes out in one orientation |
 
 ### DocumentSettings
@@ -333,10 +326,10 @@ IMemoryFile doc = await word.Create(new WordTemplateInput
 - `{{#if Key}}` inside a loop reads the same rows first, then the input, so it decides per row.
 - A row's value is written as text, with `ToString()`, a line ending becoming a line break, as a global one is; an
   `html_` key in a row is text too. Format numbers,
-  amounts and dates in code. A value is never read as a marker or as another field of its row: a row whose `Number`
-  is `{{/each}}` writes that text. Rows are filled before `GlobalParameters` and nested documents, though, as a
-  collection table's are: a row value
-  holding a `{{Key}}` or `<{ key }>` tag of theirs is filled too, and on Word.Mini any tag in it is rewritten as
+  amounts and dates in code. A value is never read as a marker: a row whose `Number` is `{{/each}}` writes that text.
+  It may be read as a field, though, as a global or collection-table value may: a row value holding a `{{Field}}` tag
+  of its row, or a `{{Key}}` or `<{ key }>` tag of `GlobalParameters` or nested documents, which are filled after the
+  rows, is filled too, and on Word.Mini any tag in it is rewritten as
   MiniWord reads tags (`{{ Code }}` comes out as `{{Code}}`). Keep user-entered text that may hold one out of row
   fields.
 - Everything between the markers is copied per row — paragraphs, tables, text boxes, pictures, a page break for a
@@ -462,9 +455,11 @@ When none of the four resolves — a configuration key that is missing, say — 
 
 `Create` renders `GlobalParameters`, `CollectionParameters` and `Images`, and throws `NotSupportedException` for `DocumentParameters`, `Headers`, `Footers` and any non-default `InputOptions`.
 
-> **Template syntax:** MiniWord's, not Word.Spire's. Every value fills a `{{tag}}`: a collection fills a table row whose cells hold `{{Items.Name}}` tags, and the row repeats per item (there is no `{{ row_number }}`); an image replaces a `{{logo}}` tag rather than a picture named by its Alt Text. A template written for the other backends renders its global parameters the same way and leaves its collection tables and pictures as they are. Spaces inside the braces are ignored, a tag Word split over several runs while it was edited still matches, and a key is matched literally whatever characters it holds, a collection's key and fields included (`{{ Total (EUR) }}`, `{{ Items.Price (excl. VAT) }}`). [Conditional blocks](#conditional-blocks) and [loops](#loop-blocks) work as on the other backends, `{{ row_number }}` included, because Word.Mini resolves them before MiniWord renders; use them rather than MiniWord's own `@if` paragraphs, which compare `true`/`false` as text (`@if Flag == true` never holds), throw on a bare `@if Flag`, and read only keys of letters, digits and `_`.
+> **Template syntax:** MiniWord's, not Word.Spire's. Every value fills a `{{tag}}`: a collection fills a table row whose cells hold `{{Items.Name}}` tags, and the row repeats per item (there is no `{{ row_number }}`); an image replaces a `{{logo}}` tag rather than a picture named by its Alt Text. A template written for the other backends renders its global parameters the same way and leaves its collection tables and pictures as they are. Spaces inside the braces are ignored, and a tag Word split over several runs while it was edited still matches. [Conditional blocks](#conditional-blocks) and [loops](#loop-blocks) work as on the other backends, `{{ row_number }}` included, because Word.Mini resolves them before MiniWord renders; use them rather than MiniWord's own `@if` paragraphs, which compare `true`/`false` as text (`@if Flag == true` never holds), throw on a bare `@if Flag`, and read only keys of letters, digits and `_`.
 
-> **Shared template namespace:** `GlobalParameters`, `Images` and `CollectionParameters` all resolve against the same `{{tag}}` placeholders, so a key may appear in only one of them, and a global key or image name may not read as a collection's field (`Items.Name`) — a duplicate throws `ArgumentException`.
+> **Keys:** MiniWord builds a regular expression from every key, so a key it would read as a pattern throws `ArgumentException` naming it. No key — a global key, an image name, a collection's key or its fields, a loop's too — may hold any of `. \ ^ $ | ? * + ( ) [ ] { }`: `{{ Total EUR }}` and `{{ Order Lines.Unit Price }}` work, `{{ Total (EUR) }}` does not.
+
+> **Shared template namespace:** `GlobalParameters`, `Images` and `CollectionParameters` all resolve against the same `{{tag}}` placeholders, so a key may appear in only one of them — a duplicate throws `ArgumentException`.
 
 ### Word.Gotenberg
 
@@ -516,7 +511,7 @@ services.AddGotenbergWord(o =>
 
 - **Create.** The whole `WordTemplateInput` travels as JSON: parameters, nested documents, headers, footers, `Options`, and each image with its `Size` and `HorizontalAlignment`.
 - **Convert.** The document is created first, then converted with `OutputFormat`, `Settings.PageSize`, `AutoScaleTables` and `AutoScalePictures`. The API's conversion takes no orientation or margins: it lays every section out in portrait on that page size — A4 when `Settings` is null — and keeps the document's margins, so a landscape document comes back in portrait. `Settings` asking for `Landscape` or for `Margins` throws `NotSupportedException`. `Jpeg` and `Png` come back as one ZIP of page images.
-- **Merge.** Each input is created on its own and the finished documents are merged without their options. So `InheritFont` on a merge input has no document to inherit from, and `EnforceEvenAmountOfPages` on one of several inputs throws `NotSupportedException`: the API starts that input and the next one on a new page, where an in-process merge starts both on an odd page, and the padding page is lost. `Merge(inputs, options)` with `FollowOn` throws too.
+- **Merge.** Each input is created on its own and the finished documents are merged without their options. So `InheritFont` on a merge input has no document to inherit from, and `EnforceEvenAmountOfPages` on one of several inputs throws `NotSupportedException`: the API starts that input and the next one on a new page, where an in-process merge starts both on an odd page, and the padding page is lost.
 
 Where orientation, margins, font inheritance or page padding across merged documents matter, use an in-process backend, or Word.Gotenberg for PDF output beside `AddOfficeClients`.
 

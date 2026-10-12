@@ -235,9 +235,9 @@ app.MapEntityEndpoints(o => o.Prefix = "api").RequireAuthorization();
   (`o.Disable()`). `MapEntityEndpoints(o => o.ConfigureGroup<Product>(g => …))` configures one entity's route group; a
   policy added there applies besides the one on the returned group.
 - **Controllers alongside.** An entity whose controller MVC discovers stays on its controller, and an attachment link
-  with an attachment controller does too, so an application can move one entity at a time. `app.MapEntity<Product>("v2/products")`
-  maps a single entity even when `o.Disable()` or a controller keeps it off `MapEntityEndpoints()`; its other options
-  apply.
+  with an attachment controller does too, so an application can move one entity at a time. A second
+  `app.MapEntityEndpoints(o => o.Prefix = "v2")` maps the same set again under its own prefix, as a second API version
+  would.
 - **Attachments.** An owner registered with `HasAttachments()` gets the attachment controller's routes under its own,
   for the `int`-keyed link, so the application writes no attachment controller
   ([Attachments → Controllers](attachments.md#controllers)).
@@ -300,8 +300,11 @@ public class ProductImporter(IEntitySender sender)
 }
 ```
 
-- **Input validation.** A `SaveCommand` checks the input DTO's DataAnnotations first, nested objects and collection
-  items included — in an MVC application by MVC's own rules — and refuses with an `EntityInputException`. The
+- **Input validation.** A `SaveCommand` checks the input DTO first, by the rules MVC judges a request body by:
+  DataAnnotations and `IValidatableObject`, nested objects and collection items included, and the implicit
+  `[Required]` on a property of a non-nullable reference type. It refuses with an `EntityInputException`; MVC
+  validator providers an application registers, and `SuppressImplicitRequiredAttributeForNonNullableReferenceTypes`, do
+  not apply here; a property marked `[ValidateNever]` is left out. The
   controllers skip that check (`ValidateInput: false`), since MVC has answered an invalid request body by then; the
   mapped endpoints keep it. A patch's merged input is always checked, so `PATCH` answers an invalid result with the
   same 400 a validator's refusal has.
@@ -319,12 +322,11 @@ public class ProductImporter(IEntitySender sender)
   request, the first registered outermost. `IEntityRequest.EntityType` and `IEntityRequest.Operation` tell which entity
   and which operation. `Duration` is written on the result a request returns when it is an `IEntityResult`, as the built-in envelopes are, so a caching behaviour hands out a copy
   (`cached with { }`) rather than the instance it keeps.
-- **MediatR.** With `Regira.Entities.Mediator.MediatR`, `options.UseMediatR()` inside `UseEntities()` dispatches every
-  entity request through MediatR, so the application's own pipeline behaviours wrap the generated endpoints. The
-  application registers MediatR itself — MediatR 13 and later with its licence key, or MediatR 12.5.0, the last
-  Apache-2.0 release, without one; handlers, behaviours and `Duration` work as without it. Every entity request travels as one MediatR request type, `EntityRequestMessage`, holding the
-  entity request. Another library plugs in the same way: replace the `IEntitySender` registration with a sender that
-  passes the request through the library to `IEntityRequestExecutor`.
+- **A mediator library.** To run every entity request inside the application's own mediator pipeline, such as
+  MediatR's, replace the `IEntitySender` registration with a sender that sends one message type through the library,
+  whose handler ends in the in-house `EntitySender`; handlers, behaviours and `Duration` work as without it. The guide
+  carries the three types it takes (`entities.patterns`, *Dispatching through a mediator library*). MediatR 13 and
+  later need a licence key; MediatR 12.5.0 is the last Apache-2.0 release.
 
 ---
 

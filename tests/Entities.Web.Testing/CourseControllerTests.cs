@@ -65,6 +65,22 @@ public abstract class CourseTests<TFactory> : IClassFixture<TFactory>, IDisposab
         var response3 = await client.GetAsync("/courses/new");
         Assert.Equal(HttpStatusCode.BadRequest, response3.StatusCode);
     }
+    [Theory]
+    [InlineData("{ not json")]
+    [InlineData("[1]")]
+    [InlineData("\"title\"")]
+    public async Task A_Patch_That_Is_No_Json_Object_Answers_400(string body)
+    {
+        using var client = _factory.CreateClient();
+        var inputResponse = await client.PostAsJsonAsync("/courses", new CourseInputDto { Title = "Course (patched)", DepartmentId = 1, Credits = 2 });
+        inputResponse.EnsureSuccessStatusCode();
+        var id = (await inputResponse.Content.ReadFromJsonAsync<SaveResult<CourseDto>>())!.Item.Id;
+
+        using var response = await client.PatchAsync($"/courses/{id}", new StringContent(body, System.Text.Encoding.UTF8, "application/merge-patch+json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("Course (patched)", (await client.GetFromJsonAsync<DetailsResult<CourseDto>>($"/courses/{id}"))!.Item.Title);
+    }
     [Fact]
     public async Task Insert_And_Get_Details()
     {

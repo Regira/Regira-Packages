@@ -1,6 +1,4 @@
 #if NETCOREAPP3_1_OR_GREATER
-using Microsoft.AspNetCore.Mvc.ApplicationParts;
-using Microsoft.AspNetCore.Mvc.Controllers;
 using Regira.Entities.DependencyInjection.Mapping;
 using Regira.Entities.DependencyInjection.Validation;
 using Regira.Entities.Web.Endpoints;
@@ -8,11 +6,11 @@ using Regira.Entities.Web.Endpoints;
 namespace Regira.Entities.Web.Validation;
 
 /// <summary>
-/// The startup checks of the mapped entity endpoints (<c>MapEntityEndpoints()</c>, <c>MapEntity&lt;TEntity&gt;()</c>): an
-/// entity or attachment link a controller serves too, and mapped attachment downloads whose DTOs would carry a null
-/// <c>Uri</c> because <c>UseAttachmentUris()</c> was not called. Registered with the controller checks.
+/// The startup check of the mapped entity endpoints (<c>MapEntityEndpoints()</c>): mapped attachment downloads whose
+/// DTOs would carry a null <c>Uri</c> because <c>UseAttachmentUris()</c> was not called. Registered with the controller
+/// checks.
 /// </summary>
-internal sealed class EntityEndpointValidator(EntityEndpointRegistry registry, ApplicationPartManager? partManager = null) : IEntityRegistrationValidator
+internal sealed class EntityEndpointValidator(EntityEndpointRegistry registry) : IEntityRegistrationValidator
 {
     public IEnumerable<EntityValidationIssue> Validate(EntityValidationContext context)
     {
@@ -20,26 +18,6 @@ internal sealed class EntityEndpointValidator(EntityEndpointRegistry registry, A
         if (mapped.Count == 0)
         {
             yield break;
-        }
-
-        if (partManager != null)
-        {
-            var feature = new ControllerFeature();
-            partManager.PopulateFeature(feature);
-            var controllers = feature.Controllers.Select(c => c.AsType()).ToList();
-            var controllerEntities = controllers.Select(c => ControllerDtoShapeSource.Shape(c)?.EntityType).OfType<Type>().ToHashSet();
-            var controllerAttachments = controllers.SelectMany(ControllerRegistrationValidator.GetAttachmentEntities).ToHashSet();
-            var servedTwice = mapped.Select(m => m.EntityType).Where(controllerEntities.Contains)
-                .Concat(mapped.Select(m => m.Attachments?.AttachmentType).OfType<Type>().Where(controllerAttachments.Contains))
-                .Select(t => t.Name)
-                .ToArray();
-            if (servedTwice.Length > 0)
-            {
-                yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
-                    $"Served by a controller and by mapped endpoints: {string.Join(", ", servedTwice)}. On one route a request matches both " +
-                    "and fails as ambiguous. MapEntityEndpoints() leaves a controller's entity alone; MapEntity<TEntity>() maps it regardless, " +
-                    "so give the mapped set a route of its own or drop one of the two.");
-            }
         }
 
         // Mapping an owner's attachment downloads is the statement that clients download these files over HTTP, so a null

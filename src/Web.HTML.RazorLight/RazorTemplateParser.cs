@@ -5,37 +5,26 @@ using System.Text;
 
 namespace Regira.Web.HTML.RazorLight;
 
+// the options are taken for source compatibility; their one member is ignored
+#pragma warning disable CS9113
 public class RazorTemplateParser(RazorTemplateParser.Options? options = null) : IHtmlParser
+#pragma warning restore CS9113
 {
     public class Options
     {
-        /// <summary>
-        /// Caches the first template this parser compiles under this key and renders that template on every later call,
-        /// whatever template text is passed. Not set by default: templates are cached by their text.
-        /// </summary>
+        /// <summary>Ignored: every template is cached by its text, so a parser renders the template it is given.</summary>
+        [Obsolete("Ignored: every template is cached by its text, so a parser renders the template it is given.")]
         public string? TemplateKey { get; set; }
     }
 
-    // Each compile loads an assembly that is never unloaded. Keyed by their text, templates can share one engine,
-    // so each distinct template compiles once per process whichever parser instance renders it
-    private static readonly RazorLightEngine SharedEngine = CreateEngine();
-    // Only a parser with a TemplateKey has an engine of its own
-    private readonly Lazy<RazorLightEngine> _engine = new(CreateEngine);
-
-    public async Task<string> Parse<T>(string html, T model)
-    {
-        var templateKey = options?.TemplateKey;
-        if (templateKey == null)
-        {
-            return await SharedEngine.CompileRenderStringAsync(GetTextKey(html), html, model);
-        }
-
-        return await _engine.Value.CompileRenderStringAsync(templateKey, html, model);
-    }
-
-    private static RazorLightEngine CreateEngine() => new RazorLightEngineBuilder()
+    // Each compile loads an assembly that is never unloaded. Keyed by their text, templates share one engine, so each
+    // distinct template compiles once per process whichever parser instance renders it
+    private static readonly RazorLightEngine Engine = new RazorLightEngineBuilder()
         .UseNoProject()
         .Build();
+
+    public Task<string> Parse<T>(string html, T model)
+        => Engine.CompileRenderStringAsync(GetTextKey(html), html, model);
 
     private static string GetTextKey(string html) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(html)));
 }

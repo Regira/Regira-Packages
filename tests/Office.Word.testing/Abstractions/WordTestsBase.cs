@@ -67,13 +67,13 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         => new TestCaseData(format, contentType).SetArgDisplayNames(format.ToString());
 
     /// <summary>
-    /// Builds a document with the backend's own <c>DocumentBuilder</c>: the inputs it loads, joined as
-    /// <paramref name="merge"/> asks, then the paragraphs and headers, on pages of the size and orientation
+    /// Builds a document with the backend's own <c>DocumentBuilder</c>: the inputs it loads, joined as <c>Merge</c> joins
+    /// them, then the paragraphs and headers, on pages of the size and orientation
     /// <paramref name="settings"/> gives. A fixture that does not leave out <see cref="WordFeature.DocumentBuilder"/>
     /// overrides this.
     /// </summary>
     protected virtual Task<IMemoryFile> Build(IEnumerable<Paragraph> paragraphs, IEnumerable<WordHeaderFooterInput> headers, ConversionOptions? conversion = null,
-        WordTemplateInput[]? inputs = null, MergeOptions? merge = null, DocumentSettings? settings = null)
+        WordTemplateInput[]? inputs = null, DocumentSettings? settings = null)
     {
         Assert.Fail($"{GetType().Name} does not leave out {nameof(WordFeature)}.{nameof(WordFeature.DocumentBuilder)}, so it overrides {nameof(Build)}.");
         return null!;
@@ -540,28 +540,6 @@ public abstract class WordTestsBase : WordAssetsTestsBase
             Assert.That(pages.PageTexts[0], Does.Contain("ALPHA").And.Not.Contain("BRAVO"));
             Assert.That(pages.PageTexts[1], Does.Contain("BRAVOFIRST").And.Not.Contain("BRAVOLAST"));
             Assert.That(pages.PageTexts[2], Does.Contain("BRAVOLAST"));
-        });
-    }
-
-    /// <summary>
-    /// Asked to (<see cref="MergeOptions.FollowOn"/>), a merged document follows on from the previous one's last page,
-    /// and still keeps its own section breaks: BRAVO's second section starts a page of its own.
-    /// </summary>
-    [Test]
-    [Needs(WordFeature.Merging | WordFeature.Converting)]
-    public virtual async Task Merged_Documents_Follow_On_From_The_Previous_Page_When_Asked()
-    {
-        using var merged = await RequireMerger().Merge(MergeInputs(), new MergeOptions { FollowOn = true });
-        var facts = await ReadDocx(merged);
-        using var pdf = await RequireConverter().Convert(new WordTemplateInput { Template = merged }, FileFormat.Pdf);
-        var pages = await ReadPdf(pdf);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(facts.Sections.Skip(1).Select(section => section.Start), Is.EqualTo(new[] { "continuous", "nextPage", "continuous" }));
-            Assert.That(pages.Pages, Is.EqualTo(2));
-            Assert.That(pages.PageTexts[0], Does.Contain("ALPHA").And.Contain("BRAVOFIRST"));
-            Assert.That(pages.PageTexts[1], Does.Contain("BRAVOLAST").And.Contain("CHARLIE"));
         });
     }
 
@@ -1616,50 +1594,6 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         });
     }
 
-    /// <summary>A row's value is written as it is, a tag of another field of the row in it included.</summary>
-    [Test]
-    [Needs(WordFeature.Creating)]
-    public virtual async Task A_Row_Value_Holding_Another_Fields_Tag_Is_Written_As_It_Is()
-    {
-        var input = new WordTemplateInput
-        {
-            Template = Docx.Document("{{#each Lines}}", "{{Description}}: {{Code}}", "{{/each}}"),
-            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
-            {
-                ["Lines"] = [new Dictionary<string, object> { ["Description"] = "Type {{Code}} here", ["Code"] = "X-1" }]
-            }
-        };
-
-        using var output = await RequireCreator().Create(input);
-        var facts = await ReadDocx(output);
-
-        Assert.That(Texts(facts), Is.EqualTo(new[] { "Type {{Code}} here: X-1" }));
-    }
-
-    /// <summary>
-    /// A row's value written into a text box is not read again when the paragraph holding the text box is filled.
-    /// </summary>
-    [Test]
-    [Needs(WordFeature.Creating)]
-    public virtual async Task A_Row_Value_In_A_Text_Box_Is_Written_As_It_Is()
-    {
-        var holder = Docx.TextBox("{{Description}}");
-        holder.PrependChild(new W.Run(new W.Text("{{Code}} ") { Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve }));
-        var input = new WordTemplateInput
-        {
-            Template = Docx.Document([Docx.Paragraph("{{#each Lines}}"), holder, Docx.Paragraph("{{/each}}")]),
-            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
-            {
-                ["Lines"] = [new Dictionary<string, object> { ["Description"] = "Type {{Code}} here", ["Code"] = "X-1" }]
-            }
-        };
-
-        using var output = await RequireCreator().Create(input);
-        var facts = await ReadDocx(output);
-
-        Assert.That(facts.BodyText, Does.Contain("Type {{Code}} here").And.Contain("X-1"));
-    }
-
     /// <summary>
     /// A marker row's marker is its cells' own text: a marker in a text box in the row belongs to the text box, and a
     /// lone one there is a block that does not close.
@@ -2681,17 +2615,15 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         });
     }
 
-    /// <summary>A builder joins the inputs it loads as <c>Merge</c> does, following on when asked.</summary>
-    [TestCase(false)]
-    [TestCase(true)]
+    /// <summary>A builder joins the inputs it loads as <c>Merge</c> does, each on a new page.</summary>
+    [Test]
     [Needs(WordFeature.DocumentBuilder)]
-    public virtual async Task DocumentBuilder_Joins_Loaded_Inputs_As_Merge_Does(bool followOn)
+    public virtual async Task DocumentBuilder_Joins_Loaded_Inputs_As_Merge_Does()
     {
-        using var docx = await Build([], [], inputs: MergeInputs(), merge: followOn ? new MergeOptions { FollowOn = true } : null);
+        using var docx = await Build([], [], inputs: MergeInputs());
         var facts = await ReadDocx(docx);
 
-        Assert.That(facts.Sections.Skip(1).Select(section => section.Start),
-            Is.EqualTo(followOn ? new[] { "continuous", "nextPage", "continuous" } : new[] { "nextPage", "nextPage", "nextPage" }));
+        Assert.That(facts.Sections.Skip(1).Select(section => section.Start), Is.EqualTo(new[] { "nextPage", "nextPage", "nextPage" }));
     }
 
     /// <summary>A builder's page settings apply to a loaded landscape section as <c>Convert</c>'s do.</summary>

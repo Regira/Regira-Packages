@@ -10,7 +10,7 @@ using Regira.Entities.Web.Models;
 namespace Entities.Mediator.Testing;
 
 /// <summary>What every request goes through, whatever sends it: handler resolution, behaviours and <c>Duration</c>.</summary>
-public class EntityRequestExecutorTests
+public class EntitySenderTests
 {
     [Fact]
     public async Task UseEntities_Registers_The_InHouse_Sender()
@@ -19,7 +19,6 @@ public class EntityRequestExecutorTests
         using var scope = shop.Services.CreateScope();
 
         Assert.IsType<EntitySender>(scope.ServiceProvider.GetRequiredService<IEntitySender>());
-        Assert.IsType<EntityRequestExecutor>(scope.ServiceProvider.GetRequiredService<IEntityRequestExecutor>());
     }
 
     [Fact]
@@ -83,20 +82,6 @@ public class EntityRequestExecutorTests
     }
 
     [Fact]
-    public async Task Untyped_Execution_Answers_As_Typed_Execution_Does()
-    {
-        await using var shop = await Shop.CreateServicesAsync();
-        using var scope = shop.Services.CreateScope();
-        var executor = scope.ServiceProvider.GetRequiredService<IEntityRequestExecutor>();
-
-        var response = await executor.Execute((IEntityRequest)new DetailsQuery<Product, int, Product>(shop.PenId));
-
-        var details = Assert.IsType<DetailsResult<Product>>(response);
-        Assert.Equal("Pen", details.Item.Title);
-        Assert.NotNull(details.Duration);
-    }
-
-    [Fact]
     public async Task A_Request_Of_The_Apps_Own_Needs_A_Handler_And_Says_So()
     {
         await using var shop = await Shop.CreateServicesAsync();
@@ -117,10 +102,7 @@ public class EntityRequestExecutorTests
     public async Task A_Host_Wired_Without_A_Sender_Falls_Back_To_The_InHouse_One()
     {
         await using var shop = await Shop.CreateServicesAsync(services =>
-        {
-            services.Remove(services.Single(d => d.ServiceType == typeof(IEntitySender)));
-            services.Remove(services.Single(d => d.ServiceType == typeof(IEntityRequestExecutor)));
-        });
+            services.Remove(services.Single(d => d.ServiceType == typeof(IEntitySender))));
         using var scope = shop.Services.CreateScope();
 
         var details = await scope.ServiceProvider.GetEntitySender().Send(new DetailsQuery<Product, int, Product>(shop.PenId));

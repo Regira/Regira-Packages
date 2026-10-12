@@ -4,9 +4,10 @@ using System.Text.Encodings.Web;
 namespace Regira.Web.HTML.RazorEngineCore;
 
 /// <summary>
-/// Template base that HTML-encodes every value a template writes with <c>@</c>, in text and in attribute values,
-/// with <see cref="HtmlEncoder.Default"/>. The template's own text, attribute text included, is written as it stands.
-/// <see cref="RazorTemplateParser"/> compiles against it when <see cref="RazorTemplateParser.Options.HtmlEncode"/> is set.
+/// The template base <see cref="RazorTemplateParser"/> compiles every template against. With <see cref="HtmlEncode"/>, it
+/// HTML-encodes every value a template writes with <c>@</c>, in text and in attribute values, with
+/// <see cref="HtmlEncoder.Default"/>; the template's own text, attribute text included, is written as it stands. One
+/// compiled template serves both modes.
 /// </summary>
 public abstract class HtmlEncodingTemplateBase : RazorEngineTemplateBase
 {
@@ -15,6 +16,9 @@ public abstract class HtmlEncodingTemplateBase : RazorEngineTemplateBase
         public object? Value { get; } = value;
         public override string? ToString() => Value?.ToString();
     }
+
+    /// <summary>Whether a value written with <c>@</c> is HTML-encoded; set per run.</summary>
+    public bool HtmlEncode { get; set; }
 
     /// <summary>
     /// Writes <paramref name="value"/> unencoded: <c>@Raw(Model.Body)</c>.
@@ -31,6 +35,6 @@ public abstract class HtmlEncodingTemplateBase : RazorEngineTemplateBase
         base.WriteAttributeValue(prefix, prefixOffset, output, valueOffset, valueLength, isLiteral);
     }
 
-    private static string? Encode(object? value)
-        => value == null ? null : HtmlEncoder.Default.Encode(value.ToString() ?? string.Empty);
+    private object? Encode(object? value)
+        => !HtmlEncode || value == null ? value : HtmlEncoder.Default.Encode(value.ToString() ?? string.Empty);
 }

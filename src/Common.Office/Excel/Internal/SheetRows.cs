@@ -15,9 +15,9 @@ internal static class SheetRows
 
     /// <summary>
     /// Each item as a new dictionary whose keys compare case-insensitively: a dictionary's entries, an object's properties.
-    /// Of keys that differ only in case, the first spelling and its value are kept, as across rows.
     /// A property holding an object stays that object, so its cell shows the object's <see cref="object.ToString"/>.
     /// </summary>
+    /// <exception cref="ArgumentException">An item holds two keys that differ only in case: a column is one key, whatever its case</exception>
     public static List<IDictionary<string, object?>> ToDictionaries(IEnumerable<object>? data)
         => (data ?? []).Select(item =>
         {
@@ -25,7 +25,11 @@ internal static class SheetRows
             var row = new Dictionary<string, object?>(StringComparer.InvariantCultureIgnoreCase);
             foreach (var (key, value) in DictionaryUtility.ToDictionary(item, RowOptions))
             {
-                row.TryAdd(key, value);
+                if (!row.TryAdd(key, value))
+                {
+                    var other = row.Keys.First(existing => string.Equals(existing, key, StringComparison.InvariantCultureIgnoreCase));
+                    throw new ArgumentException($"A row holds the keys '{other}' and '{key}', which differ only in case; a column is one key, whatever its case.", nameof(data));
+                }
             }
             return (IDictionary<string, object?>)row;
         }).ToList();

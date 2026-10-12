@@ -31,7 +31,10 @@ public class PatchHandler<TEntity, TKey, TDto, TInputDto>(IServiceProvider servi
     {
         if (request.Patch.ValueKind != JsonValueKind.Object)
         {
-            throw new ArgumentException("A JSON merge patch is a JSON object.", nameof(request));
+            throw new EntityInputException<TEntity>("A JSON merge patch is a JSON object.")
+            {
+                Errors = [new EntityInputError(string.Empty, "A JSON merge patch is a JSON object.")]
+            };
         }
 
         var service = Services.GetRequiredEntityService<IEntityService<TEntity, TKey>>();

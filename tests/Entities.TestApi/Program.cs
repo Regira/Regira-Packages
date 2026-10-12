@@ -158,8 +158,8 @@ if (mapsEntityEndpoints)
     // courses, the one entity no discovered controller serves; departments and persons stay on their controllers, and
     // enrollments are disabled
     app.MapEntityEndpoints();
-    // and courses again on a route of their own, as a second API version would: a link mapped twice names its downloads once
-    app.MapEntity<Course>("v2/courses");
+    // and again under a prefix of their own, as a second API version would: a link mapped twice names its downloads once
+    app.MapEntityEndpoints(o => o.Prefix = "v2");
 }
 
 app.Run();

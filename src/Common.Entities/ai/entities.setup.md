@@ -233,7 +233,6 @@ Regira.Entities.Web                       ← Web API entry point — EntityCont
 
 Regira.Entities.Mapping.Mapster           ← add separately — DTO mapping (NOT pulled transitively)
 Regira.Entities.Validation.FluentValidation ← optional — AbstractValidator rules as entity validators
-Regira.Entities.Mediator.MediatR          ← optional — entity requests dispatched through the app's MediatR pipeline
 ```
 
 | Host | Install |

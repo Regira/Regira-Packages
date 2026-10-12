@@ -121,12 +121,10 @@ internal static class OpenXmlPageSetup
         }
         if (options.AutoScalePictures)
         {
-            // document order: a drawing comes before the drawings nested in it, which grow no more than it does
-            var scales = new Dictionary<WordDrawing, double>();
-            foreach (var drawing in blocks.SelectMany(DescendantsAndSelf<WordDrawing>))
+            // top-level drawings only: a drawing nested in one, a picture in a text box, keeps its size, as on the other backends
+            foreach (var drawing in blocks.SelectMany(DescendantsAndSelf<WordDrawing>).Where(drawing => !drawing.Ancestors<WordDrawing>().Any()))
             {
-                var holder = drawing.Ancestors<WordDrawing>().FirstOrDefault();
-                scales[drawing] = ScalePicture(drawing, originalWidth.Value, newWidth.Value, holder != null && scales.TryGetValue(holder, out var cap) ? cap : null);
+                ScalePicture(drawing, originalWidth.Value, newWidth.Value);
             }
         }
     }
@@ -201,26 +199,19 @@ internal static class OpenXmlPageSetup
     /// <param name="drawing">The drawing to scale</param>
     /// <param name="originalTextWidth">The text width before the page setting</param>
     /// <param name="newTextWidth">The text width after it</param>
-    /// <param name="cap">The scale of the drawing this one is nested in: a text box's room grows by the box's scale</param>
-    /// <returns>The scale the drawing took</returns>
-    private static double ScalePicture(WordDrawing drawing, double originalTextWidth, double newTextWidth, double? cap)
+    private static void ScalePicture(WordDrawing drawing, double originalTextWidth, double newTextWidth)
     {
-        // wp:extent sizes the picture in the text flow, a:ext the graphic inside it; both in EMUs. A drawing nested in
-        // this one, a picture in a text box, scales as a drawing of its own
+        // wp:extent sizes the picture in the text flow, a:ext the graphic inside it; both in EMUs. Only the top-level
+        // graphic's a:ext: a:graphicData / pic:pic, wps:wsp or wpg:wgp / its spPr or grpSpPr / a:xfrm. The shapes in a group
+        // sit in the child space its a:chOff and a:chExt map onto that a:ext, so they follow it; the shapes of a drawing
+        // canvas, and a drawing nested in this one, keep their size
         var flowExtents = Own<Wp.Extent>(drawing);
-        // only the top-level graphic's a:ext: a:graphicData / pic:pic, wps:wsp or wpg:wgp / its spPr or grpSpPr / a:xfrm.
-        // The shapes in a group sit in the child space its a:chOff and a:chExt map onto that a:ext, so they follow it. A
-        // drawing canvas (wpc:wpc) has no size beyond wp:extent and places its shapes in EMUs of its own, so each shape
-        // directly in it scales, its a:off with it
-        var graphicExtents = Own<A.Extents>(drawing).Where(extents => IsGraphic(Shape(extents)) || InCanvas(Shape(extents)));
-        var canvasOffsets = Own<A.Offset>(drawing).Where(offset => InCanvas(Shape(offset)));
+        var graphicExtents = Own<A.Extents>(drawing).Where(extents => IsGraphic(Shape(extents)));
 
         // as far as the text width grows, stopping at Word's 22-inch shape limit as the other Word backends do; the
         // picture's size in the text flow decides where that is
         var size = flowExtents.FirstOrDefault();
-        var scale = Math.Min(
-            PictureScaling.Factor(originalTextWidth, newTextWidth, (size?.Cx?.Value ?? 0) / EmusPerPoint, (size?.Cy?.Value ?? 0) / EmusPerPoint),
-            cap ?? double.MaxValue);
+        var scale = PictureScaling.Factor(originalTextWidth, newTextWidth, (size?.Cx?.Value ?? 0) / EmusPerPoint, (size?.Cy?.Value ?? 0) / EmusPerPoint);
 
         foreach (var extent in flowExtents)
         {
@@ -232,25 +223,13 @@ internal static class OpenXmlPageSetup
             if (extents.Cx?.Value is { } cx) extents.Cx = Scale(cx, scale);
             if (extents.Cy?.Value is { } cy) extents.Cy = Scale(cy, scale);
         }
-        foreach (var offset in canvasOffsets)
-        {
-            if (offset.X?.Value is { } x) offset.X = Scale(x, scale);
-            if (offset.Y?.Value is { } y) offset.Y = Scale(y, scale);
-        }
-        return scale;
     }
 
-    private const string CanvasNamespace = "http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas";
-
-    /// <summary>The shape an <c>a:xfrm</c>'s <c>a:off</c> or <c>a:ext</c> places: <c>a:xfrm</c> / its <c>spPr</c> or <c>grpSpPr</c> / the shape.</summary>
+    /// <summary>The shape an <c>a:xfrm</c>'s <c>a:ext</c> sizes: <c>a:xfrm</c> / its <c>spPr</c> or <c>grpSpPr</c> / the shape.</summary>
     private static OpenXmlElement? Shape(OpenXmlElement transformPart) => transformPart.Parent?.Parent?.Parent;
 
     /// <summary>Whether the shape is the drawing's graphic itself.</summary>
     private static bool IsGraphic(OpenXmlElement? shape) => shape?.Parent is A.GraphicData;
-
-    /// <summary>Whether the shape sits directly in a drawing canvas that is the drawing's graphic.</summary>
-    private static bool InCanvas(OpenXmlElement? shape)
-        => shape?.Parent is { LocalName: "wpc", NamespaceUri: CanvasNamespace } canvas && canvas.Parent is A.GraphicData;
 
     /// <summary>The drawing's elements of the given type, leaving out those of a drawing nested in it.</summary>
     private static List<T> Own<T>(WordDrawing drawing) where T : OpenXmlElement

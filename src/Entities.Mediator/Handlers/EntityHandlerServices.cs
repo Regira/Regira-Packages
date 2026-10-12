@@ -31,8 +31,7 @@ internal static class EntityHandlerServices
     /// <summary>Throws the input's DataAnnotations errors as one <see cref="EntityInputException{T}"/>, the body of a validator's 400.</summary>
     public static void ThrowIfInvalidInput<TEntity>(this IServiceProvider services, object input)
     {
-        var validator = services.GetService<IEntityInputValidator>() ?? DataAnnotationsEntityInputValidator.Instance;
-        var errors = validator.Validate(input);
+        var errors = DataAnnotationsEntityInputValidator.Instance.Validate(input);
         if (errors.Count > 0)
         {
             throw new EntityInputException<TEntity>("The input is not valid.") { Errors = [.. errors] };

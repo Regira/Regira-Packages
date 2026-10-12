@@ -1,5 +1,4 @@
 ﻿using MiniExcelLibs;
-using MiniExcelLibs.Attributes;
 using MiniExcelLibs.OpenXml;
 using Regira.IO.Abstractions;
 using Regira.IO.Extensions;
@@ -15,10 +14,8 @@ public class ExcelManager(ExcelManager.Options? options = null) : IExcelService
     private readonly Options _options = options ?? new Options();
     public class Options
     {
-        /// <summary>
-        /// Excel number format for the columns whose values are all <see cref="DateTime"/>s, in every sheet.
-        /// <c>null</c> (default) keeps Excel's built-in date format.
-        /// </summary>
+        /// <summary>Ignored: MiniExcel writes a date in Excel's built-in date format.</summary>
+        [Obsolete("Ignored: MiniExcel writes a date in Excel's built-in date format. To format a column's dates, use Regira.Office.Excel.ClosedXML, whose ExcelManager.Options.DateFormat formats them.")]
         public string? DateFormat { get; set; }
     }
 
@@ -77,9 +74,6 @@ public class ExcelManager(ExcelManager.Options? options = null) : IExcelService
     {
         var sheetList = sheets.ToList();
         var sheetNames = SheetNames.Resolve(sheetList.Select(s => s.Name).ToList());
-        // MiniExcel formats a column by its exact key, in every sheet, so a key gets DateFormat
-        // only when all its values are DateTimes (true while only DateTimes were seen)
-        var dateKeys = new Dictionary<string, bool>(StringComparer.Ordinal);
 
         var miniSheets = new Dictionary<string, object>();
         for (var i = 0; i < sheetList.Count; i++)
@@ -91,17 +85,11 @@ public class ExcelManager(ExcelManager.Options? options = null) : IExcelService
             foreach (var row in rows)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                foreach (var (key, value) in row)
+                foreach (var key in row.Keys)
                 {
-                    if (!spellings.TryGetValue(key, out var column))
+                    if (spellings.TryAdd(key, key))
                     {
-                        column = key;
-                        spellings.Add(key, column);
-                        keys.Add(column);
-                    }
-                    if (value != null)
-                    {
-                        dateKeys[column] = value is DateTime && dateKeys.GetValueOrDefault(column, true);
+                        keys.Add(key);
                     }
                 }
             }
@@ -111,16 +99,7 @@ public class ExcelManager(ExcelManager.Options? options = null) : IExcelService
                 .Select(row => keys.ToDictionary(key => key, key => row.TryGetValue(key, out var value) ? value : null)));
         }
 
-        var config = new OpenXmlConfiguration
-        {
-            EnableWriteNullValueCell = true,
-            DynamicColumns = _options.DateFormat == null
-                ? null
-                : dateKeys
-                    .Where(x => x.Value)
-                    .Select(x => new DynamicExcelColumn(x.Key) { Format = _options.DateFormat })
-                    .ToArray()
-        };
+        var config = new OpenXmlConfiguration { EnableWriteNullValueCell = true };
         var ms = new MemoryStream();
         ms.SaveAs(miniSheets, configuration: config);
         ms.Position = 0;

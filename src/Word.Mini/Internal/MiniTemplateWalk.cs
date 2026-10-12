@@ -11,7 +11,7 @@ namespace Regira.Office.Word.Mini.Internal;
 /// <summary>
 /// <see cref="TemplateWalk{TNode}"/> over a package's Open XML: the body, headers and footers, both copies of a text
 /// box among them. Footnotes, endnotes and comments live in parts of their own, which are not read. A paragraph's text
-/// is its <c>w:t</c> elements, and every tag sits whole in one of them (<see cref="WordService.RewriteTags(byte[], IReadOnlyDictionary{string, string}, IReadOnlyDictionary{string, string})"/>),
+/// is its <c>w:t</c> elements, and every tag sits whole in one of them (<see cref="WordService.TrimTags(byte[])"/>),
 /// so a row's field is filled within one.
 /// </summary>
 internal sealed class MiniTemplateWalk(WordprocessingDocument doc, IEnumerable<OpenXmlElement> roots) : TemplateWalk<OpenXmlElement>

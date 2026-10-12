@@ -4,6 +4,15 @@ using Regira.Entities.Models.Abstractions;
 
 namespace Regira.Entities.DependencyInjection.ServiceBuilders.Abstractions;
 
+/// <summary>
+/// Every <c>For&lt;&gt;()</c> builder, whatever its shape: what an extension that only records something about the entity
+/// needs, and keeps the builder's own type by taking it as a type parameter (<c>where TBuilder : IEntityServiceBuilder</c>).
+/// </summary>
+public interface IEntityServiceBuilder
+{
+    IServiceCollection Services { get; }
+    Type EntityType { get; }
+}
 // ReSharper disable UnusedTypeParameter
 public interface IEntityServiceBuilder<TContext, TEntity> : IEntityServiceBuilder<TContext, TEntity, int>
     where TContext : DbContext
@@ -12,11 +21,13 @@ public interface IEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject> :
     where TContext : DbContext
     where TEntity : class, IEntity<TKey>
     where TSearchObject : class, ISearchObject<TKey>, new();
-public interface IEntityServiceBuilder<TContext, TEntity, TKey>
+public interface IEntityServiceBuilder<TContext, TEntity, TKey> : IEntityServiceBuilder
     where TContext : DbContext
     where TEntity : class, IEntity<TKey>
 {
-    IServiceCollection Services { get; }
+    new IServiceCollection Services { get; }
+    IServiceCollection IEntityServiceBuilder.Services => Services;
+    Type IEntityServiceBuilder.EntityType => typeof(TEntity);
     bool HasEntityService();
     bool HasService<TService>();
 }

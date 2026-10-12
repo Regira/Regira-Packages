@@ -11,8 +11,8 @@
 | Namespace | Types |
 |---|---|
 | `Regira.Entities.Web.Controllers.Abstractions` | `EntityControllerBase<>` (all overloads) |
-| `Regira.Entities.Web.Controllers` | `ControllerExtensions` *(`Details()`/`Save()`/`Patch()`/`Delete()` — on `ControllerBase`; each sends the matching request through `IEntitySender`)*, `EntityExceptionFilter`, `EntityConstraintConflictAttribute`, `MvcEntityInputValidator` *(a patch's input judged by MVC's model validation)* |
-| `Regira.Entities.Web.Endpoints` | `MapEntityEndpoints()`, `MapEntity<TEntity>()` *(on `IEndpointRouteBuilder`)*, `Endpoints()` *(on the `For<>()` builders)*, `EntityEndpointOptions`, `EntityEndpointsOptions`, `EntityEndpoint`, `EntityEndpointMetadata`, `EntityExceptionEndpointFilter` — the mapped endpoints, no controller (`entities.patterns` → *Mapped entity endpoints*) |
+| `Regira.Entities.Web.Controllers` | `ControllerExtensions` *(`Details()`/`Save()`/`Patch()`/`Delete()` — on `ControllerBase`; each sends the matching request through `IEntitySender`)*, `EntityExceptionFilter`, `EntityConstraintConflictAttribute` |
+| `Regira.Entities.Web.Endpoints` | `MapEntityEndpoints()` *(on `IEndpointRouteBuilder`)*, `Endpoints()` *(on the `For<>()` builders)*, `EntityEndpointOptions`, `EntityEndpointsOptions`, `EntityEndpoint`, `EntityEndpointMetadata`, `EntityExceptionEndpointFilter` — the mapped endpoints, no controller (`entities.patterns` → *Mapped entity endpoints*) |
 
 > ⚠️ **The `.Abstractions` suffix is required.** `using Regira.Entities.Web.Controllers;` is NOT enough — the class lives one level deeper in `...Controllers.Abstractions`.
 

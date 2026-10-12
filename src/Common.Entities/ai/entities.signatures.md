@@ -1831,7 +1831,7 @@ Package `Regira.Entities.Mediator` (brought by `Regira.Entities.Web`); usage in
 
 <!-- no-compile -->
 ```csharp
-using Regira.Entities.Mediator;                      // EntityOperation, EntitySender, EntityRequestExecutor, DataAnnotationsEntityInputValidator
+using Regira.Entities.Mediator;                      // EntityOperation, EntitySender, DataAnnotationsEntityInputValidator
 using Regira.Entities.Mediator.Abstractions;         // the interfaces below
 using Regira.Entities.Mediator.Requests;             // the requests
 using Regira.Entities.Mediator.Handlers;             // their default handlers, to derive from
@@ -1846,13 +1846,10 @@ public interface IEntitySender
 {
     Task<TResponse?> Send<TResponse>(IEntityRequest<TResponse> request, CancellationToken token = default);   // null = not found
 }
-// resolves the handler (a registered closed one, otherwise the default), runs the behaviours, and fills Duration on
-// a response that is an IEntityResult (the built-in envelopes) — a request of the app's own answering another type gets none
-public interface IEntityRequestExecutor
-{
-    Task<TResponse?> Execute<TResponse>(IEntityRequest<TResponse> request, CancellationToken token = default);
-    Task<object?> Execute(IEntityRequest request, CancellationToken token = default);                           // for an adapter
-}
+// the in-house sender: resolves the handler (a registered closed one, otherwise the default), runs the behaviours, and
+// fills Duration on a response that is an IEntityResult (the built-in envelopes) — a request of the app's own answering
+// another type gets none. A sender dispatching through a mediator library ends in one (entities.patterns)
+public class EntitySender(IServiceProvider services) : IEntitySender;
 public interface IEntityRequestHandler<in TRequest, TResponse> where TRequest : IEntityRequest<TResponse>
 {
     Task<TResponse?> Handle(TRequest request, CancellationToken token = default);
@@ -1863,8 +1860,13 @@ public interface IEntityPipelineBehavior<in TRequest, TResponse> where TRequest 
 {
     Task<TResponse?> Handle(TRequest request, EntityRequestDelegate<TResponse> next, CancellationToken token = default);
 }
-// a save's or a patch's input DTO check; MvcEntityInputValidator (Regira.Entities.Web.Controllers) in an MVC host
-public interface IEntityInputValidator { IReadOnlyList<EntityInputError> Validate(object input); }
+// a save's or a patch's input DTO check, by MVC's rules: DataAnnotations, IValidatableObject, nested objects and
+// collection items, and the implicit [Required] on a non-nullable reference
+public class DataAnnotationsEntityInputValidator
+{
+    public static readonly DataAnnotationsEntityInputValidator Instance;
+    public IReadOnlyList<EntityInputError> Validate(object input);   // keyed by property path, Lines[0].Quantity
+}
 
 // requests — the type lists follow the controller's
 public sealed record DetailsQuery<TEntity, TKey, TDto>(TKey Id, ArchivedFilter? Archived = null) : IEntityRequest<DetailsResult<TDto>>;
@@ -1887,8 +1889,8 @@ public sealed record DeleteCommand<TEntity, TKey, TDto>(TKey Id) : IEntityReques
 
 // an owner's attachment routes — TEntity is the int-keyed link (IEntityAttachment<int, int, int, Attachment>); the route
 // wins over the input, and a link of another owner throws an EntityInputException keyed objectId. The attachment
-// controller and the mapped endpoints send them; the controller's download by name goes through its GetFile(id), so
-// AttachmentFileByNameQuery comes from the mapped endpoints only
+// controller and the mapped endpoints send them; both downloads send AttachmentFileQuery — the one by name finds the
+// link first — so one handler override covers them
 // ValidateInput as on SaveCommand: the input's DataAnnotations first; the attachment controller passes false
 public sealed record UploadAttachmentCommand<TEntity, TDto, TInputDto>(int ObjectId, TInputDto Input, INamedFile File, bool ValidateInput = true)
     : IEntityRequest<SaveResult<TDto>>;
@@ -1896,11 +1898,9 @@ public sealed record UpdateAttachmentCommand<TEntity, TDto, TInputDto>(int Objec
     : IEntityRequest<SaveResult<TDto>>;
 public sealed record ReplaceAttachmentFileCommand<TEntity, TDto>(int ObjectId, int Id, INamedFile File) : IEntityRequest<SaveResult<TDto>>;
 public sealed record AttachmentFileQuery<TEntity>(int Id) : IEntityRequest<Attachment>;
-public sealed record AttachmentFileByNameQuery<TEntity>(int ObjectId, string FileName) : IEntityRequest<Attachment>;
 
 // default handlers (DetailsHandler, ListHandler ×2, SearchHandler ×2, SaveHandler, PatchHandler, DeleteHandler;
-// UploadAttachmentHandler, UpdateAttachmentHandler, ReplaceAttachmentFileHandler, AttachmentFileHandler,
-// AttachmentFileByNameHandler): public classes with a virtual Handle and a protected Services, built from the request's
+// UploadAttachmentHandler, UpdateAttachmentHandler, ReplaceAttachmentFileHandler, AttachmentFileHandler): public classes with a virtual Handle and a protected Services, built from the request's
 // own type arguments
 public class DetailsHandler<TEntity, TKey, TDto>(IServiceProvider services)
     : IEntityRequestHandler<DetailsQuery<TEntity, TKey, TDto>, DetailsResult<TDto>>;
@@ -1915,32 +1915,15 @@ public static class EntityServiceProviderExtensions
 public static IServiceCollection AddEntityMediator(this IServiceCollection services);
 ```
 
-MediatR adapter — package `Regira.Entities.Mediator.MediatR`:
-
-<!-- no-compile -->
-```csharp
-using Regira.Entities.Mediator.MediatR;
-
-// inside UseEntities() or after: replaces the in-house sender; the app calls AddMediatR(...) itself
-public static EntityServiceCollectionOptions UseMediatR(this EntityServiceCollectionOptions options);
-
-// every entity request travels as this one MediatR request
-public sealed record EntityRequestMessage(IEntityRequest Request) : IRequest<object?>;
-public class EntityRequestMessageHandler(IEntityRequestExecutor executor) : IRequestHandler<EntityRequestMessage, object?>;
-public class MediatREntitySender(IServiceProvider services) : IEntitySender;
-```
-
 Mapped endpoints — `Regira.Entities.Web.Endpoints`, usage in `entities.patterns` → *Mapped entity endpoints (no controllers)*:
 
 <!-- no-compile -->
 ```csharp
 using Regira.Entities.Web.Endpoints;
 
-// every For<>() registration, the controllers' route table; returns the group of all of them
+// every For<>() registration, the controllers' route table; returns the group of all of them. A second call with
+// another Prefix maps the set again
 public static RouteGroupBuilder MapEntityEndpoints(this IEndpointRouteBuilder endpoints, Action<EntityEndpointsOptions>? configure = null);
-// one registration, even one Disable() or a controller keeps off MapEntityEndpoints(); route: the argument, else its
-// Route, else the convention. Its UseDtos, Exclude and AllowAnonymous apply as they do there
-public static RouteGroupBuilder MapEntity<TEntity>(this IEndpointRouteBuilder endpoints, string? route = null);
 
 public class EntityEndpointsOptions
 {
@@ -1949,8 +1932,10 @@ public class EntityEndpointsOptions
     public EntityEndpointsOptions ConfigureGroup<TEntity>(Action<RouteGroupBuilder> configure);
 }
 
-// on each For<>() builder (simple, int, search-object, complex, complex int), returning that builder
-public static TBuilder Endpoints(this TBuilder builder, Action<EntityEndpointOptions> configure);
+// on every For<>() builder, returning that builder; IEntityServiceBuilder (Regira.Entities.DependencyInjection
+// .ServiceBuilders.Abstractions) is the non-generic interface they all implement: Services and EntityType
+public static TBuilder Endpoints<TBuilder>(this TBuilder builder, Action<EntityEndpointOptions> configure)
+    where TBuilder : IEntityServiceBuilder;
 
 public class EntityEndpointOptions
 {

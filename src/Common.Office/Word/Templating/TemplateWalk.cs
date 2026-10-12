@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using Regira.Office.Word.Models;
 
 namespace Regira.Office.Word.Templating;
@@ -109,39 +108,17 @@ internal abstract class TemplateWalk<TNode> where TNode : class
             read = Read();
         }
 
-        // inner paragraphs first: a text box's paragraphs before the paragraph that holds the text box
+        // every marker is read before any field is filled, so a value is never read as a marker; a value holding another
+        // field's tag may be filled, as a global or collection-table value may. Inner paragraphs first: a text box's
+        // paragraphs before the paragraph that holds the text box
         var filled = read.Paragraphs
             .OrderByDescending(paragraph => Ancestors(paragraph.Node).Count())
             .Select(paragraph => (paragraph.Node, Fields: ScopeOf(paragraph.Node, scopes) is { IsRoot: false } scope ? scope.Fields(paragraph.Text) : []))
-            .Where(paragraph => paragraph.Fields.Count > 0)
-            .ToArray();
-        if (!filled.Any(paragraph => paragraph.Fields.Any(field => field.Value.Contains("{{", StringComparison.Ordinal))))
+            .Where(paragraph => paragraph.Fields.Count > 0);
+        foreach (var (node, fields) in filled)
         {
-            foreach (var (node, fields) in filled)
-            {
-                Fill(node, fields);
-            }
-            return;
+            Fill(node, fields);
         }
-
-        // no value may be read as a tag, and a paragraph's fill reaches the text boxes it holds on some models: each field
-        // becomes a placeholder of its own first, from the Unicode private use area, and each placeholder its value after
-        var placeholders = 0;
-        var steps = filled.Select(paragraph => (paragraph.Node, paragraph.Fields, Placeholders: paragraph.Fields.Select(_ => Placeholder(placeholders++)).ToArray())).ToArray();
-        foreach (var (node, fields, marks) in steps)
-        {
-            Fill(node, fields.Select((field, i) => field with { Value = marks[i].Text }).ToArray());
-        }
-        foreach (var (node, fields, marks) in steps)
-        {
-            Fill(node, fields.Select((field, i) => field with { Pattern = marks[i].Pattern }).ToArray());
-        }
-    }
-
-    private static (string Text, Regex Pattern) Placeholder(int index)
-    {
-        var text = $"{(char)0xE000}{index}{(char)0xE001}";
-        return (text, new Regex(Regex.Escape(text), RegexOptions.CultureInvariant));
     }
 
     private void Resolve(TNode container, TemplateScope scope, Dictionary<TNode, TemplateScope> scopes, Reading read)

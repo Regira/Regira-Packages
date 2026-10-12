@@ -26,16 +26,12 @@ public class SpireTests() : WordTestsBase(new WordService(), "Spire")
     ];
 
     protected override Task<IMemoryFile> Build(IEnumerable<Paragraph> paragraphs, IEnumerable<WordHeaderFooterInput> headers, ConversionOptions? conversion = null,
-        WordTemplateInput[]? inputs = null, MergeOptions? merge = null, DocumentSettings? settings = null)
+        WordTemplateInput[]? inputs = null, DocumentSettings? settings = null)
     {
         var builder = new DocumentBuilder((WordService)Backend).WithParagraphs(paragraphs);
         if (inputs != null)
         {
             builder.Load(inputs);
-        }
-        if (merge != null)
-        {
-            builder.WithMerge(merge);
         }
         if (settings != null)
         {

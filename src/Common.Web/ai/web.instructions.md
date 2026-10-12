@@ -122,7 +122,7 @@ string html = await parser.Parse(razorTemplate, model);
 
 Both Razor parsers compile a template into an assembly that stays loaded until the process exits, and cache it by the template text for the whole process: each distinct template compiles once, whichever parser instance renders it, and later calls only render. Keep the template text fixed and pass the data as the model. Data concatenated into the text makes a new template on every call, which compiles every time and grows memory without bound.
 
-RazorLight's `Options.TemplateKey` replaces the text with a fixed key, cached per parser instance. The parser renders the first template it compiled on every later call, even when it is passed a different template, and each new instance compiles again. Leave it unset; a parser that does set one must get a single template and be registered as a singleton.
+RazorLight's `Options.TemplateKey` is `[Obsolete]` and ignored: a parser renders the template it is given.
 
 ---
 

@@ -74,12 +74,12 @@ internal sealed class EntityEndpointMapper
     public EntityEndpointOptions OptionsFor(Type entityType)
         => _options.TryGetValue(entityType, out var options) ? options : new EntityEndpointOptions();
 
-    public RouteGroupBuilder Map(IEndpointRouteBuilder parent, EntityRegistrationLog.EntityRegistration registration, string? route = null)
+    public RouteGroupBuilder Map(IEndpointRouteBuilder parent, EntityRegistrationLog.EntityRegistration registration)
     {
         var entityType = registration.EntityType;
         var options = OptionsFor(entityType);
         var (dtoType, inputDtoType) = DtosOf(entityType, options);
-        route ??= options.Route ?? EntityEndpointNames.Route(entityType);
+        var route = options.Route ?? EntityEndpointNames.Route(entityType);
 
         var group = parent.MapGroup(route).WithTags(entityType.Name);
         if (registration.IsComplex)
@@ -322,27 +322,12 @@ internal sealed class EntityEndpointMapper
         }
         if (options.Maps(EntityEndpoint.Patch))
         {
-            group.MapPatch("{id}", async (TKey id, HttpContext http) =>
+            // bound as a JsonElement, not a TInputDto: a merge patch names only what changes, and null clears a field;
+            // malformed JSON is the framework's 400, and the request refuses anything but an object
+            group.MapPatch("{id}", async (TKey id, [FromBody] JsonElement patch, HttpContext http) =>
                 {
-                    // read directly, as the controllers do: a merge patch is no TInputDto, and null clears a field
-                    JsonDocument patch;
-                    try
-                    {
-                        patch = await JsonDocument.ParseAsync(http.Request.Body);
-                    }
-                    catch (JsonException)
-                    {
-                        return Results.Problem(statusCode: StatusCodes.Status400BadRequest);
-                    }
-                    using (patch)
-                    {
-                        if (patch.RootElement.ValueKind != JsonValueKind.Object)
-                        {
-                            return Results.Problem(statusCode: StatusCodes.Status400BadRequest);
-                        }
-                        var serializerOptions = http.RequestServices.GetService<IOptions<HttpJsonOptions>>()?.Value.SerializerOptions;
-                        return Ok(await Sender(http).Send(new PatchCommand<TEntity, TKey, TDto, TInputDto>(id, patch.RootElement, serializerOptions)));
-                    }
+                    var serializerOptions = http.RequestServices.GetService<IOptions<HttpJsonOptions>>()?.Value.SerializerOptions;
+                    return Ok(await Sender(http).Send(new PatchCommand<TEntity, TKey, TDto, TInputDto>(id, patch, serializerOptions)));
                 })
                 .Describe<TEntity>(EntityEndpoint.Patch, options)
                 .Accepts<TInputDto>("application/merge-patch+json", "application/json")
@@ -415,7 +400,8 @@ internal sealed class EntityEndpointMapper
                 .Describe<TOwner>(EntityEndpoint.Download, options);
             var byName = group.MapGet("{objectId}/files/{*fileName}", async (int objectId, string fileName, HttpContext http, bool inline = true) =>
                 {
-                    var attachment = await Sender(http).Send(new AttachmentFileByNameQuery<TLink>(objectId, AttachmentRouteValues.DecodeFileName(fileName)));
+                    var id = await AttachmentRouteValues.FindLinkId<TLink>(http.RequestServices, objectId, fileName);
+                    var attachment = id == null ? null : await Sender(http).Send(new AttachmentFileQuery<TLink>(id.Value));
                     return attachment == null ? Results.Problem(statusCode: StatusCodes.Status404NotFound) : attachment.ToFileResult(http, inline);
                 })
                 .Describe<TOwner>(EntityEndpoint.Download, options);

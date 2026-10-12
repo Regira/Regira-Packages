@@ -76,10 +76,10 @@ Composite: `IExcelReader + IExcelWriter` (and their generic variants).
 
 ### Behaviour shared by the backends
 
-- **Read** — row 1 holds the keys: a blank header becomes `Column{n}` (its column number), a repeated one (case-insensitive) `{header}_2`, `{header}_3`, … (skipping a name another header already has). A sheet without rows reads as an empty `Data`.
-- **Create** — the header row holds every key the rows use (case-insensitive, first spelling, first-seen order; within a row, the first of `Id`/`ID` keeps its value); a row without a key gets an empty cell, and each cell keeps its own value's type; a property holding an object is written as its `ToString()` (NpoiMapper's Npoi.Mapper leaves it out). An empty or `null` `Data` writes an empty sheet (a typed writer keeps its header row).
+- **Read** — row 1 holds the keys: a blank header becomes `Column{n}` (its column number), a key taken already, from the left and case-insensitively, the first free `{key}_2`, `{key}_3`, … (`Value`, `Value`, `Value_2` reads as `Value`, `Value_2`, `Value_2_2`). A sheet without rows reads as an empty `Data`.
+- **Create** — the header row holds every key the rows use (case-insensitive, first spelling, first-seen order); a row holding two keys that differ only in case (`Id` beside `ID`) throws `ArgumentException`; a row without a key gets an empty cell, and each cell keeps its own value's type; a property holding an object is written as its `ToString()` (NpoiMapper's Npoi.Mapper leaves it out). An empty or `null` `Data` writes an empty sheet (a typed writer keeps its header row).
 - **Sheet names** — a missing `Name` becomes `Sheet-{n}` (`Sheet {n}` on EPPlus). A name Excel refuses throws `ArgumentException`: empty, over 31 characters, holding `: \ / ? * [ ]`, starting or ending with `'`, `History`, or used twice (case-insensitive).
-- **`Options.DateFormat`** — the number format of the `DateTime` cells written; they stay dates. Defaults: `null` on ClosedXML and MiniExcel (the library's own date format), `"yyyy/MM/dd"` on EPPlus, `"yyyy-MM-dd hh:mm:ss"` on NpoiMapper. MiniExcel applies it per key across the workbook, only to keys whose values are all `DateTime`s.
+- **`Options.DateFormat`** — the number format of the `DateTime` cells written; they stay dates. Defaults: `null` on ClosedXML (the library's own date format), `"yyyy/MM/dd"` on EPPlus, `"yyyy-MM-dd hh:mm:ss"` on NpoiMapper. MiniExcel's is `[Obsolete]` and ignored: it writes Excel's built-in date format; use ClosedXML to format dates.
 
 ---
 

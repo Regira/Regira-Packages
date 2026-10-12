@@ -81,10 +81,8 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
     [HttpGet("{objectId}/files/{*fileName}")]
     public virtual async Task<IActionResult> GetFile([FromRoute] int objectId, [FromRoute] string fileName, bool inline = true)
     {
-        var service = HttpContext.RequestServices.GetRequiredService<IEntityService<TEntity, int>>();
-        var link = (await service.List(new { objectId = new[] { objectId }, fileName = AttachmentRouteValues.DecodeFileName(fileName) }, new PagingInfo { PageSize = 1 }))
-            .FirstOrDefault();
-        return link == null ? NotFound() : await GetFile(link.Id, inline);
+        var id = await AttachmentRouteValues.FindLinkId<TEntity>(HttpContext.RequestServices, objectId, fileName);
+        return id == null ? NotFound() : await GetFile(id.Value, inline);
     }
     // Upload
     [HttpPost("{objectId}/files")]

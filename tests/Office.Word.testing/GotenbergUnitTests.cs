@@ -713,9 +713,9 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         });
     }
 
-    /// <summary>A picture in a text box scales once, as the text box does: as far as the text width grows.</summary>
+    /// <summary>A text box scales with the text width; the picture in it keeps its size, as on the other backends.</summary>
     [Test]
-    public void PageSetup_Scales_A_Picture_In_A_Text_Box_Once()
+    public void PageSetup_Scales_A_Text_Box_And_Leaves_The_Picture_In_It()
     {
         var input = Docx.Document([new W.Paragraph(new W.Run(new W.Drawing(TextBoxHoldingAPicture)))]).GetBytes()!;
         var before = PictureExtents(input);
@@ -729,10 +729,14 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         Assert.That(before, Has.Count.EqualTo(4));
         Assert.Multiple(() =>
         {
-            for (var i = 0; i < before.Count; i++)
+            foreach (var box in new[] { 0, 2 })
             {
-                Assert.That(after[i].Cx, Is.EqualTo(before[i].Cx * scale).Within(1));
-                Assert.That(after[i].Cy, Is.EqualTo(before[i].Cy * scale).Within(1));
+                Assert.That(after[box].Cx, Is.EqualTo(before[box].Cx * scale).Within(1), "the text box");
+                Assert.That(after[box].Cy, Is.EqualTo(before[box].Cy * scale).Within(1), "the text box");
+            }
+            foreach (var picture in new[] { 1, 3 })
+            {
+                Assert.That(after[picture], Is.EqualTo(before[picture]), "the picture");
             }
         });
     }
@@ -741,60 +745,6 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     /// A group scales as a whole, through its own size: its shapes sit in the child space that its a:chOff and a:chExt map
     /// onto its a:ext, so they follow it and keep their own a:off and a:ext.
     /// </summary>
-    /// <summary>
-    /// A picture in a text box grows no more than the text box does: where the box stops at the 22-inch limit, the
-    /// picture keeps its share of the box, where its own limit would have let it grow as large.
-    /// </summary>
-    [Test]
-    public void PageSetup_Grows_A_Picture_In_A_Text_Box_No_More_Than_The_Box()
-    {
-        var input = Docx.Document([new W.Paragraph(new W.Run(new W.Drawing(TextBoxHolding(450, 100, 400, 80))))]).GetBytes()!;
-
-        // A4 → A0, the page without margins: four times as wide
-        var output = OpenXmlPageSetup.Apply(input, new ConversionOptions { OutputFormat = FileFormat.Pdf, Settings = new DocumentSettings { PageSize = PageSize.A0 } });
-
-        // the text box's wp:extent, then the picture's
-        var after = PictureExtents(output);
-        var boxScale = 1584d / 450;
-        Assert.Multiple(() =>
-        {
-            Assert.That(after[0].Cx, Is.EqualTo(1584 * 12700).Within(1), "the box at the limit");
-            Assert.That(after[1].Cx, Is.EqualTo(400 * 12700 * boxScale).Within(1), "the picture grown as the box");
-            Assert.That(after[1].Cy, Is.EqualTo(80 * 12700 * boxScale).Within(1));
-        });
-    }
-
-    /// <summary>
-    /// A drawing canvas scales with its shapes: it places them in EMUs of its own, with no child space to map them
-    /// through as a group has, so each shape's offset and size grow with the canvas.
-    /// </summary>
-    [Test]
-    public void PageSetup_Scales_A_Drawing_Canvas_With_Its_Shapes()
-    {
-        var input = Docx.Document([new W.Paragraph(new W.Run(new W.Drawing(CanvasOfTwoShapes)))]).GetBytes()!;
-        var before = ShapeTransforms(input);
-
-        var output = OpenXmlPageSetup.Apply(input, new ConversionOptions { OutputFormat = FileFormat.Pdf, Settings = new DocumentSettings { PageSize = PageSize.A3 } });
-
-        // A4 → A3, the page without margins
-        var scale = 16838d / 11906;
-        var after = ShapeTransforms(output);
-        using var doc = Open(output);
-        var canvas = doc.MainDocumentPart!.Document!.Body!.Descendants<Wp.Extent>().Single();
-        Assert.That(before, Has.Count.EqualTo(2));
-        Assert.Multiple(() =>
-        {
-            Assert.That(canvas.Cx!.Value, Is.EqualTo(3810000 * scale).Within(1), "the canvas");
-            for (var i = 0; i < before.Count; i++)
-            {
-                Assert.That(after[i].X, Is.EqualTo(before[i].X * scale).Within(1), $"shape {i + 1}'s offset");
-                Assert.That(after[i].Y, Is.EqualTo(before[i].Y * scale).Within(1), $"shape {i + 1}'s offset");
-                Assert.That(after[i].Cx, Is.EqualTo(before[i].Cx * scale).Within(1), $"shape {i + 1}'s size");
-                Assert.That(after[i].Cy, Is.EqualTo(before[i].Cy * scale).Within(1), $"shape {i + 1}'s size");
-            }
-        });
-    }
-
     [Test]
     public void PageSetup_Scales_A_Group_Of_Shapes_As_A_Whole()
     {
@@ -1104,58 +1054,6 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         """;
 
     private static long Emus(double points) => (long)Math.Round(points * 12700);
-
-    /// <summary>
-    /// An inline drawing canvas of 300 × 200 pt holding two rectangles: 100 × 50 pt at (10, 10) and 80 × 60 pt at
-    /// (150, 100).
-    /// </summary>
-    private const string CanvasOfTwoShapes = """
-        <w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-                   xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
-                   xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
-                   xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"
-                   xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas">
-          <wp:inline distT="0" distB="0" distL="0" distR="0">
-            <wp:extent cx="3810000" cy="2540000"/>
-            <wp:docPr id="1" name="Canvas 1"/>
-            <a:graphic>
-              <a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas">
-                <wpc:wpc>
-                  <wpc:bg/>
-                  <wpc:whole/>
-                  <wps:wsp>
-                    <wps:cNvPr id="2" name="Rectangle 2"/>
-                    <wps:cNvSpPr/>
-                    <wps:spPr>
-                      <a:xfrm><a:off x="127000" y="127000"/><a:ext cx="1270000" cy="635000"/></a:xfrm>
-                      <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-                    </wps:spPr>
-                    <wps:bodyPr/>
-                  </wps:wsp>
-                  <wps:wsp>
-                    <wps:cNvPr id="3" name="Rectangle 3"/>
-                    <wps:cNvSpPr/>
-                    <wps:spPr>
-                      <a:xfrm><a:off x="1905000" y="1270000"/><a:ext cx="1016000" cy="762000"/></a:xfrm>
-                      <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
-                    </wps:spPr>
-                    <wps:bodyPr/>
-                  </wps:wsp>
-                </wpc:wpc>
-              </a:graphicData>
-            </a:graphic>
-          </wp:inline>
-        </w:drawing>
-        """;
-
-    /// <summary>The offset and size of each shape's <c>a:xfrm</c> in the body, in EMUs.</summary>
-    private static List<(long X, long Y, long Cx, long Cy)> ShapeTransforms(byte[] docx)
-    {
-        using var doc = Open(docx);
-        return doc.MainDocumentPart!.Document!.Body!.Descendants<A.Transform2D>()
-            .Select(xfrm => (xfrm.Offset!.X!.Value, xfrm.Offset.Y!.Value, xfrm.Extents!.Cx!.Value, xfrm.Extents.Cy!.Value))
-            .ToList();
-    }
 
     private static List<double> GridColumns(byte[] docx)
     {

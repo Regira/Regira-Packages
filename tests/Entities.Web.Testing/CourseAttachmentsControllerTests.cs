@@ -11,6 +11,9 @@ using Microsoft.EntityFrameworkCore;
 using Regira.Entities.Attachments.Models;
 using Regira.Entities.DependencyInjection.Validators;
 using Regira.Entities.Mapping.Models;
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Handlers;
+using Regira.Entities.Mediator.Requests;
 using Regira.Entities.Models;
 using Regira.Entities.Services.Abstractions;
 using Regira.Entities.Web.Models;
@@ -136,6 +139,40 @@ public abstract class CourseAttachmentsTests<TFactory> : IClassFixture<TFactory>
         Assert.NotNull(downloadStream);
         Assert.Equal(fileStream.Length, downloadStream.Length);
         Assert.Equal(FileUtility.GetString(downloadStream), fileTextContent);
+    }
+    /// <summary>Counts the downloads it answers, and answers them as the default handler does.</summary>
+    public sealed class CountingFileHandler(IServiceProvider services, DownloadCounter counter) : AttachmentFileHandler<CourseAttachment>(services)
+    {
+        public override Task<Attachment?> Handle(AttachmentFileQuery<CourseAttachment> request, CancellationToken token = default)
+        {
+            counter.Count++;
+            return base.Handle(request, token);
+        }
+    }
+    public sealed class DownloadCounter
+    {
+        public int Count { get; set; }
+    }
+
+    // both downloads send AttachmentFileQuery, so one handler override covers the download by id and by name
+    [Fact]
+    public async Task One_File_Handler_Answers_Both_Downloads()
+    {
+        using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<DownloadCounter>();
+            services.AddTransient<IEntityRequestHandler<AttachmentFileQuery<CourseAttachment>, Attachment>, CountingFileHandler>();
+        }));
+        using var client = app.CreateClient();
+        var content = new MultipartFormDataContent { { new StringContent("counted"), "file", "counted.txt" } };
+        using var upload = await client.PostAsync("/courses/3/files", content);
+        upload.EnsureSuccessStatusCode();
+        var saved = (await upload.Content.ReadFromJsonAsync<SaveResult<EntityAttachmentDto>>())!.Item;
+
+        Assert.Equal("counted", await client.GetStringAsync($"/courses/files/{saved.Id}"));
+        Assert.Equal("counted", await client.GetStringAsync("/courses/3/files/counted.txt"));
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/courses/3/files/missing.txt")).StatusCode);
+        Assert.Equal(2, app.Services.GetRequiredService<DownloadCounter>().Count);
     }
     [Fact]
     public async Task Insert_And_Get_List()

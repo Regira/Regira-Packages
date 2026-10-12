@@ -5,7 +5,7 @@
         is imported before the project body and would read it as empty.
 
         - Commercially licensed packages (Common.Licensing, Entities.EFcore,
-          Entities.DependencyInjection, Entities.Web, Entities.Mediator, Entities.Mediator.MediatR,
+          Entities.DependencyInjection, Entities.Web, Entities.Mediator,
           Entities.Mapping.Mapster, Entities.Mapping.AutoMapper, Entities.Validation.FluentValidation,
           Common.Office.Clients)
           ship the Regira Commercial License

@@ -53,8 +53,11 @@ public class NpoiMapperTests
         .Run_Create_Mixed_Value_Types();
     // no Create_Nested_Object: object rows go to Npoi.Mapper, which leaves out a property holding an object (docs/excel)
     [Test]
-    public Task Create_Keys_Differing_By_Case() => CreateExcelManager()
-        .Run_Create_Keys_Differing_By_Case();
+    public Task Create_Keys_Differing_By_Case_Across_Rows() => CreateExcelManager()
+        .Run_Create_Keys_Differing_By_Case_Across_Rows();
+    [Test]
+    public Task Create_Keys_Differing_By_Case_Within_A_Row() => CreateExcelManager()
+        .Run_Create_Keys_Differing_By_Case_Within_A_Row();
     [Test]
     public Task Create_With_Invalid_Sheet_Names() => CreateExcelManager()
         .Run_Create_With_Invalid_Sheet_Names();

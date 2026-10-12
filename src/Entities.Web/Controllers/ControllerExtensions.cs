@@ -119,11 +119,6 @@ public static class ControllerExtensions
         where TInputDto : class
         where TDto : class
     {
-        if (patch.ValueKind != JsonValueKind.Object)
-        {
-            return Task.FromResult<ActionResult<SaveResult<TDto>>?>(ctrl.BadRequest());
-        }
-
         var serializerOptions = ctrl.HttpContext.RequestServices.GetService<IOptions<JsonOptions>>()?.Value.JsonSerializerOptions;
         return ctrl.Write<TEntity, SaveResult<TDto>>(new PatchCommand<TEntity, TKey, TDto, TInputDto>(id, patch, serializerOptions));
     }

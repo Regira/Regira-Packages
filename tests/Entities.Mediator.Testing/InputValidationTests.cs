@@ -9,13 +9,12 @@ using Regira.Entities.Mediator;
 using Regira.Entities.Mediator.Abstractions;
 using Regira.Entities.Mediator.Requests;
 using Regira.Entities.Models;
-using Regira.Entities.Web.Controllers;
 
 namespace Entities.Mediator.Testing;
 
 /// <summary>
-/// The input DTO's DataAnnotations, checked before a save or a patch maps it: with MVC's own model validation in an MVC
-/// host, with <see cref="DataAnnotationsEntityInputValidator"/> elsewhere.
+/// The input DTO, checked before a save or a patch maps it by the rules MVC judges a request body by
+/// (<see cref="DataAnnotationsEntityInputValidator"/>), in any host.
 /// </summary>
 public class InputValidationTests
 {
@@ -56,8 +55,54 @@ public class InputValidationTests
     }
 
     [Fact]
-    public void DataAnnotations_Alone_Do_Not_Require_A_NonNullable_String()
-        => Assert.Empty(DataAnnotationsEntityInputValidator.Instance.Validate(new ProductInputDto { Title = null! }));
+    public void A_NonNullable_String_Left_Null_Is_Required_As_Mvc_Requires_It()
+    {
+        var errors = DataAnnotationsEntityInputValidator.Instance.Validate(new ProductInputDto { Title = null! });
+
+        Assert.Equal([new EntityInputError("Title", "The Title field is required.")], errors);
+        Assert.Empty(DataAnnotationsEntityInputValidator.Instance.Validate(new ProductInputDto { Title = "" }));
+    }
+
+    public class Note : IValidatableObject
+    {
+        public string Title { get; set; } = null!;
+        [MaxLength(5)]
+        public string? Code { get; set; }
+
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        {
+            if (Title.Trim().Length == 0)
+            {
+                yield return new ValidationResult("A title is more than spaces.", [nameof(Title)]);
+            }
+        }
+    }
+
+    // as MVC does, an object whose properties fail is not asked to validate itself, which may count on them
+    [Fact]
+    public void A_Missing_Required_Property_Keeps_The_Object_From_Validating_Itself()
+    {
+        var missing = DataAnnotationsEntityInputValidator.Instance.Validate(new Note { Title = null! });
+        var both = DataAnnotationsEntityInputValidator.Instance.Validate(new Note { Title = null!, Code = "TOO-LONG" });
+
+        Assert.Equal(["Title"], missing.Select(x => x.Key));
+        Assert.Equal(["Title", "Code"], both.Select(x => x.Key));
+    }
+
+    public class Course
+    {
+        public string Title { get; set; } = "";
+        [Microsoft.AspNetCore.Mvc.ModelBinding.Validation.ValidateNever]
+        public Address Department { get; set; } = null!;
+    }
+
+    // [ValidateNever] is MVC's opt-out: a navigation a patch does not load is not required, nor descended into
+    [Fact]
+    public void A_ValidateNever_Property_Is_Not_Checked()
+    {
+        Assert.Empty(DataAnnotationsEntityInputValidator.Instance.Validate(new Course { Title = "Math" }));
+        Assert.Empty(DataAnnotationsEntityInputValidator.Instance.Validate(new Course { Title = "Math", Department = new Address() }));
+    }
 
     [Fact]
     public async Task A_Job_Is_Refused_An_Invalid_Input_With_The_Errors_Of_A_Validator()
@@ -86,20 +131,11 @@ public class InputValidationTests
     }
 
     [Fact]
-    public async Task An_Mvc_Host_Validates_With_Mvc()
-    {
-        await using var shop = await Shop.CreateHostAsync();
-        using var scope = shop.Services.CreateScope();
-
-        Assert.IsType<MvcEntityInputValidator>(scope.ServiceProvider.GetRequiredService<IEntityInputValidator>());
-    }
-
-    [Fact]
     public async Task A_Patch_Fails_Where_The_Same_Body_Sent_To_Put_Would()
     {
         await using var shop = await Shop.CreateHostAsync();
 
-        // the merge drops a null title, so the merged input's non-nullable Title is null: MVC refuses that, as for a PUT
+        // the merge drops a null title, so the merged input's non-nullable Title is null: refused, as MVC refuses a PUT
         var response = await shop.Client!.PatchAsync($"/products/{shop.PenId}", JsonContent.Create(new { title = (string?)null }));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);

@@ -10,7 +10,7 @@ namespace Regira.Entities.Mediator.Requests;
 /// re-read and mapped to <typeparamref name="TDto"/> (see <c>EntityReadOptions.RefetchAfterSave</c>); <c>null</c> when
 /// the row to update does not exist. An update keeps a persisted <c>IsArchived</c> that the input cannot express.
 /// <para>
-/// <see cref="ValidateInput"/> checks the input's DataAnnotations first (<see cref="IEntityInputValidator"/>). The
+/// <see cref="ValidateInput"/> checks the input first, by the rules MVC judges a request body by (<see cref="DataAnnotationsEntityInputValidator"/>). The
 /// controllers turn it off: MVC has validated the request body by then, and an app that suppressed that answer chose to.
 /// </para>
 /// </summary>

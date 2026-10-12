@@ -50,7 +50,10 @@ public sealed record ReplaceAttachmentFileCommand<TEntity, TDto>(int ObjectId, i
     EntityOperation IEntityRequest.Operation => EntityOperation.Save;
 }
 
-/// <summary>The stored file of link <see cref="Id"/>, as <c>GET files/{id}</c> serves it; <c>null</c> when the link does not exist.</summary>
+/// <summary>
+/// The stored file of link <see cref="Id"/>, as <c>GET files/{id}</c> serves it; <c>null</c> when the link does not exist.
+/// The download by name, <c>GET {objectId}/files/{*fileName}</c>, finds the link first and sends this too.
+/// </summary>
 public sealed record AttachmentFileQuery<TEntity>(int Id) : IEntityRequest<Attachment>
     where TEntity : class, IEntityAttachment<int, int, int, Attachment>
 {
@@ -58,15 +61,3 @@ public sealed record AttachmentFileQuery<TEntity>(int Id) : IEntityRequest<Attac
     EntityOperation IEntityRequest.Operation => EntityOperation.Details;
 }
 
-/// <summary>
-/// The stored file of owner <see cref="ObjectId"/> named <see cref="FileName"/> — a virtual path, folders included —
-/// as the mapped <c>GET {objectId}/files/{*fileName}</c> serves it; <c>null</c> when the owner has no file of that name.
-/// The attachment controller's download by name goes through its own <c>GetFile(id)</c>, and so sends
-/// <see cref="AttachmentFileQuery{TEntity}"/>.
-/// </summary>
-public sealed record AttachmentFileByNameQuery<TEntity>(int ObjectId, string FileName) : IEntityRequest<Attachment>
-    where TEntity : class, IEntityAttachment<int, int, int, Attachment>
-{
-    Type IEntityRequest.EntityType => typeof(TEntity);
-    EntityOperation IEntityRequest.Operation => EntityOperation.Details;
-}

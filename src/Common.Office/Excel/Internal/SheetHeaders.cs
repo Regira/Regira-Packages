@@ -12,38 +12,32 @@ namespace Regira.Office.Excel.Internal;
 internal static class SheetHeaders
 {
     /// <summary>
-    /// Gives each header cell a unique key: the header text, <c>Column{n}</c> for a blank header, and
-    /// <c>{header}_{i}</c> for a repeated one. A key never takes the text of another column's header.
+    /// Gives each header cell a unique key, in one pass from the left: the header text, <c>Column{n}</c> for a blank
+    /// header in column <c>n</c>, and for a key taken already the first free <c>{key}_{i}</c>, from 2. Keys compare
+    /// case-insensitively, as the writers compare them, so a sheet that is read can be written back.
     /// </summary>
     /// <param name="headerCells">The values of the header row, one per column, blank cells included</param>
     public static string[] Keys(IReadOnlyList<object?> headerCells)
     {
-        var texts = headerCells.Select(HeaderText).ToList();
-        // case-insensitive, as the writers compare keys, so a sheet that is read can be written back
-        var literals = new HashSet<string>(texts.Where(x => x != null)!, StringComparer.InvariantCultureIgnoreCase);
         var used = new HashSet<string>(StringComparer.InvariantCultureIgnoreCase);
-
-        return texts
-            .Select((text, i) => text != null && used.Add(text)
-                ? text
-                : Generate(text ?? $"Column{i + 1}", text == null))
-            .ToArray();
-
-        string Generate(string baseName, bool tryBaseName)
-        {
-            if (tryBaseName && !literals.Contains(baseName) && used.Add(baseName))
+        return headerCells
+            .Select((cell, i) =>
             {
-                return baseName;
-            }
-            for (var i = 2; ; i++)
-            {
-                var candidate = $"{baseName}_{i}";
-                if (!literals.Contains(candidate) && used.Add(candidate))
+                var key = HeaderText(cell) ?? $"Column{i + 1}";
+                if (used.Add(key))
                 {
-                    return candidate;
+                    return key;
                 }
-            }
-        }
+                for (var n = 2; ; n++)
+                {
+                    var candidate = $"{key}_{n}";
+                    if (used.Add(candidate))
+                    {
+                        return candidate;
+                    }
+                }
+            })
+            .ToArray();
     }
 
     private static string? HeaderText(object? value)

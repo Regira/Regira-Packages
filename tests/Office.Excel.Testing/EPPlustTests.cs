@@ -54,8 +54,11 @@ public class EPPlustTests
     public Task Create_Nested_Object() => CreateExcelManager()
         .Run_Create_Nested_Object();
     [Test]
-    public Task Create_Keys_Differing_By_Case() => CreateExcelManager()
-        .Run_Create_Keys_Differing_By_Case();
+    public Task Create_Keys_Differing_By_Case_Across_Rows() => CreateExcelManager()
+        .Run_Create_Keys_Differing_By_Case_Across_Rows();
+    [Test]
+    public Task Create_Keys_Differing_By_Case_Within_A_Row() => CreateExcelManager()
+        .Run_Create_Keys_Differing_By_Case_Within_A_Row();
     [Test]
     public Task Create_With_Invalid_Sheet_Names() => CreateExcelManager()
         .Run_Create_With_Invalid_Sheet_Names();

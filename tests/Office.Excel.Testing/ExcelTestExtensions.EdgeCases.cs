@@ -87,26 +87,36 @@ public static partial class ExcelTestExtensions
         });
     }
 
-    public static async Task Run_Create_Keys_Differing_By_Case<TService>(this TService service)
+    public static async Task Run_Create_Keys_Differing_By_Case_Across_Rows<TService>(this TService service)
         where TService : IExcelService
     {
         using var excelFile = await service.Create([new ExcelSheet
         {
             Name = "Items",
             Data = [
-                new Dictionary<string, object?> { ["Id"] = 1, ["ID"] = 2 },
+                new Dictionary<string, object?> { ["Id"] = 1 },
                 new Dictionary<string, object?> { ["id"] = 3 }
             ]
         }]);
 
         var sheet = (await service.Read(excelFile.ToBinaryFile())).Single();
-        // one column, spelled and valued as the key first appears, within a row as across rows
+        // one column, spelled as the key first appears
         Assert.That(Row(sheet, 0).Keys, Is.EqualTo(new[] { "Id" }).AsCollection);
         Assert.Multiple(() =>
         {
             Assert.That(Convert.ToDouble(Row(sheet, 0)["Id"]), Is.EqualTo(1));
             Assert.That(Convert.ToDouble(Row(sheet, 1)["Id"]), Is.EqualTo(3));
         });
+    }
+
+    public static async Task Run_Create_Keys_Differing_By_Case_Within_A_Row<TService>(this TService service)
+        where TService : IExcelService
+    {
+        var sheet = new ExcelSheet { Name = "Items", Data = [new Dictionary<string, object?> { ["Id"] = 1, ["ID"] = 2 }] };
+
+        var ex = await Assert.ThrowsAsync<ArgumentException>(() => service.Create([sheet]));
+
+        Assert.That(ex!.Message, Does.Contain("'Id'").And.Contain("'ID'"));
     }
 
     public static async Task Run_Create_Nested_Object<TService>(this TService service)
@@ -174,14 +184,14 @@ public static partial class ExcelTestExtensions
         ]));
 
         var row = Row((await service.Read(input)).Single(), 0);
-        // a blank header becomes Column{n}; a repeated one Value_{i}, skipping a name another header already has
-        Assert.That(row.Keys, Is.EqualTo(new[] { "Title", "Column2", "Value", "Value_3", "Value_2" }).AsCollection);
+        // a blank header becomes Column{n}; a key taken already the first free {key}_{i}, from the left
+        Assert.That(row.Keys, Is.EqualTo(new[] { "Title", "Column2", "Value", "Value_2", "Value_2_2" }).AsCollection);
         Assert.Multiple(() =>
         {
             Assert.That(row["Column2"], Is.EqualTo("no header"));
             Assert.That(Convert.ToDouble(row["Value"]), Is.EqualTo(1));
-            Assert.That(Convert.ToDouble(row["Value_3"]), Is.EqualTo(2));
-            Assert.That(Convert.ToDouble(row["Value_2"]), Is.EqualTo(3));
+            Assert.That(Convert.ToDouble(row["Value_2"]), Is.EqualTo(2));
+            Assert.That(Convert.ToDouble(row["Value_2_2"]), Is.EqualTo(3));
         });
     }
 

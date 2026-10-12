@@ -50,12 +50,9 @@ public class WordService : IWordService
         return Task.FromResult(ToMemoryFile(doc));
     }
 
-    public Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default)
-        => Merge(inputs, null, cancellationToken);
-
-    public async Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, MergeOptions? options, CancellationToken cancellationToken = default)
+    public async Task<IMemoryFile> Merge(IEnumerable<WordTemplateInput> inputs, CancellationToken cancellationToken = default)
     {
-        using var doc = await MergeDocuments(inputs, options);
+        using var doc = await MergeDocuments(inputs);
         return ToMemoryFile(doc);
     }
 
@@ -122,8 +119,6 @@ public class WordService : IWordService
         => doc.ToStream(format).ToMemoryFile(format == FormatType.Doc ? ContentTypes.DOC : ContentTypes.DOCX);
 
     protected internal Task<WordDocument> MergeDocuments(IEnumerable<WordTemplateInput> inputs)
-        => MergeDocuments(inputs, null);
-    protected internal Task<WordDocument> MergeDocuments(IEnumerable<WordTemplateInput> inputs, MergeOptions? mergeOptions)
     {
         var doc = new WordDocument();
 
@@ -144,7 +139,9 @@ public class WordService : IWordService
                     // joint between two inputs changes, so an input keeps its own section breaks
                     if (doc.Sections.Count > 0 && inputDoc.Sections.Count > 0)
                     {
-                        inputDoc.Sections[0].BreakCode = JointBreak(mergeOptions, previousIsPadded, input.Options?.EnforceEvenAmountOfPages == true);
+                        inputDoc.Sections[0].BreakCode = MergeJoints.StartsOnOddPage(previousIsPadded, input.Options?.EnforceEvenAmountOfPages == true)
+                            ? SectionBreakCode.Oddpage
+                            : SectionBreakCode.NewPage;
                     }
 
                     doc.ImportContent(inputDoc, ImportOptions.UseDestinationStyles);
@@ -171,14 +168,6 @@ public class WordService : IWordService
 
         return Task.FromResult(doc);
     }
-
-    private static SectionBreakCode JointBreak(MergeOptions? options, bool previousIsPadded, bool isPadded)
-        => MergeJoints.Of(options, previousIsPadded, isPadded) switch
-        {
-            MergeJoint.OddPage => SectionBreakCode.Oddpage,
-            MergeJoint.NewPage => SectionBreakCode.NewPage,
-            _ => SectionBreakCode.NoBreak
-        };
 
     protected internal WordDocument CreateDocument(WordTemplateInput input, WordDocument? reference = null)
         => CreateDocument(input, reference, null);
