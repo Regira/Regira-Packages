@@ -44,6 +44,7 @@
     <Project Path="src/Common.Invoicing/Common.Invoicing.csproj" />
   </Folder>
   <Folder Name="/src/Invoicing/Payments/">
+    <Project Path="src/Common.Payments/Common.Payments.csproj" />
     <Project Path="src/Payments.Mollie/Payments.Mollie.csproj" />
     <Project Path="src/Payments.Pom/Payments.Pom.csproj" />
   </Folder>

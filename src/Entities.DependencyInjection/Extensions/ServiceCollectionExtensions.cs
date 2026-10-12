@@ -104,7 +104,7 @@ public static class ServiceCollectionExtensions
     /// validators (interceptor wiring, ignored <c>?q=</c> input, competing write authorities, out-of-scope
     /// global filters, missing archived query filter, archivable reference data behind a required FK,
     /// attachments owners whose input DTO cannot carry the collection, unenforceable <c>[ServerOwned]</c>
-    /// declarations, an entity referencing one of its own children, concurrency tokens a client cannot
+    /// declarations, attachment navigations not mapped to the link's <c>ObjectId</c>, concurrency tokens a client cannot
     /// round-trip, entity validators no entity is in scope of, write paths that cannot run their entity's
     /// validators, entities a <c>UseRepository()</c> type of their shape is missing for) and the <see cref="EntityValidationOptions"/>.
     /// Runs in Development by default; see <see cref="EntityServiceCollectionOptions.ConfigureValidation"/>.
