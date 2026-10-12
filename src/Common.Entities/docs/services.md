@@ -536,8 +536,8 @@ public abstract class EntityPrimerBase<T> : IEntityPrimer<T>
   `BeginTransaction()` inside `CreateExecutionStrategy().Execute(...)`, or a `TransactionScope` with
   `TransactionScopeAsyncFlowOption.Enabled`. The library joins either, and its reactors wait for that commit
 - A rollback to a savepoint does not say which saves it undid, so the reactions of every save made before it in that
-  transaction still run when it commits; after one the application makes, `AttachmentFileReactor` keeps the files of
-  those saves instead
+  transaction still run when it commits: a reactor that must not act on a change that never happened reads the
+  stored row first, as `AttachmentFileReactor` does
 - Not seen: a transaction committed outside EF, on the `DbTransaction` itself — its reactions never run. A
   transaction begun outside EF and handed to `UseTransaction` is known to have ended only when it commits or rolls
   back through EF: on Npgsql, which reuses the transaction object of a pooled connection, one disposed without either
@@ -546,10 +546,10 @@ public abstract class EntityPrimerBase<T> : IEntityPrimer<T>
   `Entity` (the committed row, generated keys filled in), `Original` (the row as stored before the save) and
   `ChangedProperties`, with the `HasChanged(x => x.Status)` and `ChangedTo(x => x.Status, value)` helpers. Values
   are detached snapshots without navigations
-- The stored values come from the entity as it was loaded — by a tracking query, `Modify` or the `Related()` sync.
-  Every other write (`Update()` of a detached entity, a stub `Attach` or `Remove`, a delete through the service)
-  has its rows read during the save, one query per entity type — only for entity types a reactor is registered for.
-  `ExecuteUpdate` / `ExecuteDelete` bypass the change tracker, so no reactor sees them
+- The stored values are read during the save: the stored rows of its updates and deletes, whatever the entries
+  hold, one query per entity type (a row at a time for a composite, converted or owned key) — only for entity types a
+  reactor is registered for. `ExecuteUpdate` /
+  `ExecuteDelete` bypass the change tracker, so no reactor sees them
 - Run in process, inside the call that commits, which returns once they have run: `SaveChanges()` for a save that
   commits on its own; `Commit()` / `CommitAsync()` for the saves inside `BeginTransaction()`, whose own
   `SaveChanges()` returns before anything reacts; the `Dispose()` that ends a completed `TransactionScope`, which

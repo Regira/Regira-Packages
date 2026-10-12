@@ -1,9 +1,14 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Regira.Entities.DependencyInjection.ServiceCollections.Models;
 using Regira.Entities.Reactors.Abstractions;
 
 namespace Regira.Entities.DependencyInjection.Reactors;
 
+/// <summary>
+/// Reactor registrations. Each also registers the <see cref="IServiceCollection"/> itself, as <c>UseEntities()</c> does:
+/// the reactor interceptor finds the reactors, and what each reacts to, in the registrations.
+/// </summary>
 public static class ServiceCollectionReactorExtensions
 {
     /// <summary>
@@ -13,17 +18,23 @@ public static class ServiceCollectionReactorExtensions
     /// </summary>
     public static IServiceCollection AddReactor<TReactor>(this IServiceCollection services)
         where TReactor : class, IEntityReactor
-        => services.AddTransient<IEntityReactor, TReactor>();
+        => services.WithRegistrations().AddTransient<IEntityReactor, TReactor>();
     /// <summary>Registers a reactor for the changes of <typeparamref name="TEntity"/>.</summary>
     public static IServiceCollection AddReactor<TEntity, TReactor>(this IServiceCollection services)
         where TReactor : class, IEntityReactor<TEntity>
-        => services.AddTransient<IEntityReactor<TEntity>, TReactor>();
+        => services.WithRegistrations().AddTransient<IEntityReactor<TEntity>, TReactor>();
     /// <summary>
     /// Registers a reactor for the changes of <typeparamref name="TEntity"/>, created by <paramref name="factory"/> from
     /// the reaction's own DI scope.
     /// </summary>
     public static IServiceCollection AddReactor<TEntity>(this IServiceCollection services, Func<IServiceProvider, IEntityReactor<TEntity>> factory)
-        => services.AddTransient(factory);
+        => services.WithRegistrations().AddTransient(factory);
+
+    private static IServiceCollection WithRegistrations(this IServiceCollection services)
+    {
+        services.TryAddSingleton(services);
+        return services;
+    }
 
     /// <summary>
     /// Registers a reactor for every entity it covers (see <see cref="AddReactor{TReactor}(IServiceCollection)"/>) — the

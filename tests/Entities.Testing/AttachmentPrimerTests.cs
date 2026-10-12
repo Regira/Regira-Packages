@@ -12,6 +12,7 @@ using Regira.Entities.DependencyInjection.ServiceCollections.Models;
 using Regira.Entities.EFcore.Attachments;
 using Regira.Entities.EFcore.Primers;
 using Regira.Entities.EFcore.Reactors;
+using Regira.Entities.Reactors.Abstractions;
 using Regira.Entities.Services.Abstractions;
 using Regira.IO.Storage;
 using Regira.IO.Storage.Abstractions;
@@ -20,10 +21,11 @@ using Regira.IO.Storage.FileSystem;
 namespace Entities.Testing;
 
 /// <summary>
-/// The attachment primer stores the content given to an attachment as the save is primed, and a save that fails removes
-/// the file it wrote, wherever it fails. The bytes <c>Details</c> loaded are not new content, so a metadata edit leaves
-/// the stored file where it is. A replaced or deleted attachment's file is removed after the commit where an
-/// <see cref="AttachmentFileReactor{TAttachment, TKey}"/> will run for it, and by the primer where none will.
+/// The attachment primer stores the content given to an attachment as the save is primed; a save that fails leaves the
+/// file it wrote, which no row names, and a retry of the same instance saves that file. The bytes <c>Details</c> loaded
+/// are not new content, so a metadata edit leaves the stored file where it is. A replaced or deleted attachment's file is
+/// removed after the commit by <see cref="AttachmentFileReactor{TAttachment, TKey}"/>, once no stored row names it, and
+/// by nothing else.
 /// </summary>
 [TestFixture]
 public class AttachmentPrimerTests
@@ -31,6 +33,15 @@ public class AttachmentPrimerTests
     public class FileContext(DbContextOptions<FileContext> options) : DbContext(options)
     {
         public DbSet<Attachment> Attachments => Set<Attachment>();
+    }
+
+    /// <summary>Hides the attachments named <c>hidden.txt</c>, as a tenant or archive filter hides rows.</summary>
+    public class FilteredFileContext(DbContextOptions<FilteredFileContext> options) : DbContext(options)
+    {
+        public DbSet<Attachment> Attachments => Set<Attachment>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+            => modelBuilder.Entity<Attachment>().HasQueryFilter(x => x.FileName != "hidden.txt");
     }
 
     /// <summary>A file system store that records what it saves, and fails the save it is told to.</summary>
@@ -132,9 +143,14 @@ public class AttachmentPrimerTests
 
     private void Build(DbContextWiring? wiring = null, Action<IServiceCollection>? afterwards = null, IInterceptor? interceptor = null,
         Action<DbContextOptionsBuilder>? dbOptions = null)
+        => Build<FileContext>(wiring, afterwards, interceptor, dbOptions);
+
+    private void Build<TContext>(DbContextWiring? wiring = null, Action<IServiceCollection>? afterwards = null, IInterceptor? interceptor = null,
+        Action<DbContextOptionsBuilder>? dbOptions = null)
+        where TContext : DbContext
     {
         var services = new ServiceCollection();
-        services.AddDbContext<FileContext>(db =>
+        services.AddDbContext<TContext>(db =>
         {
             db.UseSqlite(_connection);
             if (interceptor != null)
@@ -143,7 +159,7 @@ public class AttachmentPrimerTests
             }
             dbOptions?.Invoke(db);
         });
-        services.UseEntities<FileContext>(o =>
+        services.UseEntities<TContext>(o =>
             {
                 if (wiring == null)
                 {
@@ -158,7 +174,7 @@ public class AttachmentPrimerTests
         afterwards?.Invoke(services);
         _sp = services.BuildServiceProvider();
         using var scope = _sp.CreateScope();
-        scope.ServiceProvider.GetRequiredService<FileContext>().Database.EnsureCreated();
+        scope.ServiceProvider.GetRequiredService<TContext>().Database.EnsureCreated();
     }
 
     private string[] StoredFiles() => Directory.GetFiles(_root, "*", SearchOption.AllDirectories);
@@ -195,12 +211,12 @@ public class AttachmentPrimerTests
             $"CREATE TRIGGER refuse_{statement.ToLowerInvariant()} BEFORE {statement} ON \"{table}\" {(when == null ? "" : $"WHEN {when} ")}BEGIN SELECT RAISE(ABORT, 'refused'); END;");
     }
 
-    // --- A failed save removes the file it wrote ---
+    // --- A failed save leaves the file it wrote ---
 
-    // the second upload fails inside the primer pass, before EF's own save begins: the first one's file goes too
+    // the second upload fails inside the primer pass, before EF's own save begins: the first one's file stays, unnamed
     [TestCase(true)]
     [TestCase(false)]
-    public async Task A_Save_Failing_In_The_Primer_Pass_Removes_The_File_It_Wrote(bool async)
+    public async Task A_Save_Failing_In_The_Primer_Pass_Leaves_The_File_It_Wrote(bool async)
     {
         Build();
         _store.FailSave = 2;
@@ -218,13 +234,14 @@ public class AttachmentPrimerTests
             Assert.Throws<IOException>(() => db.SaveChanges());
         }
 
-        Assert.That(StoredFiles(), Is.Empty);
+        Assert.That(StoredRows(), Is.Empty);
+        Assert.That(StoredFiles(), Has.Length.EqualTo(1));
     }
 
-    // a save the database refuses removes the file it wrote and hands the row its stored path back, so a retry stores the
-    // content again under a key of its own and the replaced file is the stored one
+    // a save the database refuses leaves the file it wrote, which the attachment keeps naming: a retry saves that file,
+    // and the replaced file goes once it commits
     [Test]
-    public async Task A_Retried_Save_After_A_Refused_One_Leaves_Only_The_File_It_Stored()
+    public async Task A_Retried_Save_After_A_Refused_One_Saves_The_File_It_Wrote()
     {
         Build();
         var stored = await AddAttachment("report.txt", "first version");
@@ -236,19 +253,66 @@ public class AttachmentPrimerTests
         attachment.Bytes = "second version"u8.ToArray();
 
         await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
-        Assert.That(attachment.Path, Is.EqualTo(stored.Path));
-        Assert.That(attachment.Length, Is.EqualTo(stored.Length));
-        Assert.That(StoredFiles(), Has.Length.EqualTo(1));
+        Assert.That(attachment.Path, Is.Not.EqualTo(stored.Path));
+        Assert.That(StoredFiles(), Has.Length.EqualTo(2));
+        var saves = _store.Saves.Count;
 
         attachment.FileName = "report.txt";
         await db.SaveChangesAsync();
 
+        Assert.That(_store.Saves, Has.Count.EqualTo(saves), "the retry writes no file");
         Assert.That(StoredFiles(), Has.Length.EqualTo(1));
-        Assert.That(File.ReadAllText(StoredFiles()[0]), Is.EqualTo("second version"));
+        Assert.That(ReadFile(Stored(stored.Id).Path), Is.EqualTo("second version"));
+    }
+
+    // an insert the database refuses keeps naming the file it wrote: the retry of the same entry saves that file
+    [Test]
+    public async Task A_Retried_Insert_After_A_Refused_One_Saves_The_File_It_Wrote()
+    {
+        Build();
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FileContext>();
+        await Refuse(db, "INSERT");
+        var attachment = new Attachment { FileName = "report.txt", Bytes = "content"u8.ToArray() };
+        db.Attachments.Add(attachment);
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        await db.Database.ExecuteSqlRawAsync("DROP TRIGGER refuse_insert;");
+        await db.SaveChangesAsync();
+
+        Assert.That(_store.Saves, Has.Count.EqualTo(1));
+        Assert.That(StoredFiles(), Has.Length.EqualTo(1));
+        Assert.That(ReadFile(Stored(attachment.Id).Path), Is.EqualTo("content"));
+    }
+
+    // reloaded after a failed save, the attachment names its stored file again: the new content is stored again
+    [Test]
+    public async Task A_Reload_After_A_Refused_Save_Stores_The_New_Content_Again()
+    {
+        Build();
+        var stored = await AddAttachment("report.txt", "first version");
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<FileContext>();
+        await Refuse(db, "UPDATE");
+        var attachment = db.Attachments.Single(x => x.Id == stored.Id);
+        attachment.FileName = "report-2.txt";
+        attachment.Bytes = "second version"u8.ToArray();
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        await db.Database.ExecuteSqlRawAsync("DROP TRIGGER refuse_update;");
+        await db.Entry(attachment).ReloadAsync();
+        Assert.That(attachment.Path, Is.EqualTo(stored.Path));
+        attachment.FileName = "report-2.txt";
+        await db.SaveChangesAsync();
+
+        Assert.That(_store.Saves, Has.Count.EqualTo(3));
+        Assert.That(ReadFile(Stored(stored.Id).Path), Is.EqualTo("second version"));
+        Assert.That(ReadFile(stored.Path), Is.Null);
+        Assert.That(StoredFiles(), Has.Length.EqualTo(2), "the refused save's file stays, unnamed");
     }
 
     [Test]
-    public async Task A_Refused_Upload_Leaves_No_File()
+    public async Task A_Refused_Upload_Leaves_The_File_It_Wrote()
     {
         Build();
         using var scope = _sp.CreateScope();
@@ -259,12 +323,12 @@ public class AttachmentPrimerTests
         await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
 
         Assert.That(_store.Saves, Has.Count.EqualTo(1));
-        Assert.That(StoredFiles(), Is.Empty);
+        Assert.That(StoredRows(), Is.Empty);
+        Assert.That(StoredFiles(), Has.Length.EqualTo(1));
     }
 
-    // a conflict raises none of the interceptors' failure hooks, only the context's event
     [Test]
-    public async Task A_Concurrency_Conflict_Leaves_No_New_File()
+    public async Task A_Concurrency_Conflict_Leaves_Its_New_File()
     {
         Build();
         var stored = await AddAttachment("report.txt", "first version");
@@ -279,12 +343,12 @@ public class AttachmentPrimerTests
         await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => db.SaveChangesAsync());
 
         Assert.That(_store.Saves, Has.Count.EqualTo(2));
-        Assert.That(StoredFiles(), Has.Length.EqualTo(1));
+        Assert.That(StoredFiles(), Has.Length.EqualTo(2));
         Assert.That(ReadFile(stored.Path), Is.EqualTo("first version"));
     }
 
     [Test]
-    public async Task A_Canceled_Save_Leaves_No_New_File()
+    public async Task A_Canceled_Save_Leaves_The_File_It_Wrote()
     {
         var canceling = new CancelingInterceptor();
         Build(interceptor: canceling);
@@ -296,14 +360,14 @@ public class AttachmentPrimerTests
         await Assert.CatchAsync<OperationCanceledException>(() => db.SaveChangesAsync(canceling.Cancellation.Token));
 
         Assert.That(_store.Saves, Has.Count.EqualTo(1));
-        Assert.That(StoredFiles(), Is.Empty);
+        Assert.That(StoredFiles(), Has.Length.EqualTo(1));
     }
 
     // --- A failed save inside a caller's transaction ---
 
-    // EF rolls the failed save back to the savepoint it made: no row of it is committed, and no file of it stays
+    // EF rolls the failed save back to the savepoint it made: no row of it is committed, and its files stay, unnamed
     [Test]
-    public async Task A_Save_Refused_Inside_A_Transaction_Leaves_No_File()
+    public async Task A_Save_Refused_Inside_A_Transaction_Leaves_The_Files_It_Wrote()
     {
         Build();
         using var scope = _sp.CreateScope();
@@ -317,7 +381,7 @@ public class AttachmentPrimerTests
         await transaction.CommitAsync();
 
         Assert.That(StoredRows(), Is.Empty);
-        Assert.That(StoredFiles(), Is.Empty);
+        Assert.That(StoredFiles(), Has.Length.EqualTo(2));
     }
 
     // without a savepoint the statements before the refused one stand, and the caller may commit them: their files stay
@@ -336,35 +400,6 @@ public class AttachmentPrimerTests
         await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
         await transaction.CommitAsync();
 
-        var rows = StoredRows();
-        Assert.That(rows.Select(x => x.FileName), Is.EqualTo(new[] { "first.txt" }));
-        Assert.That(rows.Select(x => File.Exists(Path.Combine(_root, x.Path!))), Is.All.True);
-    }
-
-    // On an exclusive scheduler the synchronous hooks hand their work to the thread pool, where a scope without async
-    // flow is not visible. SQLite cannot enlist, so the first insert is written at once, as a scope would commit it.
-    [Test]
-    public async Task A_Synchronous_Save_Refused_Under_A_Thread_Bound_Scope_Keeps_The_Files_Its_Rows_May_Name()
-    {
-        Build(dbOptions: db => db.ConfigureWarnings(w => w.Ignore(RelationalEventId.AmbientTransactionWarning)));
-        using (var setup = _sp.CreateScope())
-        {
-            await Refuse(setup.ServiceProvider.GetRequiredService<FileContext>(), "INSERT", "NEW.FileName = 'second.txt'");
-        }
-        var scheduler = new ConcurrentExclusiveSchedulerPair().ExclusiveScheduler;
-
-        var save = Task.Factory.StartNew(() =>
-        {
-            using var ambient = new TransactionScope();
-            using var scope = _sp.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<FileContext>();
-            db.Attachments.Add(new Attachment { FileName = "first.txt", Bytes = [1] });
-            db.Attachments.Add(new Attachment { FileName = "second.txt", Bytes = [2] });
-            Assert.Throws<DbUpdateException>(() => db.SaveChanges());
-            ambient.Complete();
-        }, CancellationToken.None, TaskCreationOptions.None, scheduler);
-
-        Assert.That(save.Wait(TimeSpan.FromSeconds(10)), Is.True);
         var rows = StoredRows();
         Assert.That(rows.Select(x => x.FileName), Is.EqualTo(new[] { "first.txt" }));
         Assert.That(rows.Select(x => File.Exists(Path.Combine(_root, x.Path!))), Is.All.True);
@@ -483,8 +518,9 @@ public class AttachmentPrimerTests
 
     // --- Who removes the replaced and the deleted file ---
 
+    // the reactor alone removes files: without its wiring, the replaced file stays
     [Test]
-    public async Task Without_The_Reactor_Wiring_New_Bytes_Remove_The_Replaced_File()
+    public async Task Without_The_Reactor_Wiring_New_Bytes_Leave_The_Replaced_File()
     {
         Build(DbContextWiring.PrimerInterceptors);
         var stored = await AddAttachment("report.txt", "first version");
@@ -498,65 +534,18 @@ public class AttachmentPrimerTests
             await service.SaveChanges();
         }
 
-        Assert.That(StoredFiles(), Has.Length.EqualTo(1));
-        Assert.That(File.ReadAllText(StoredFiles()[0]), Is.EqualTo("second version"));
+        Assert.That(StoredFiles(), Has.Length.EqualTo(2));
+        Assert.That(ReadFile(stored.Path), Is.EqualTo("first version"));
+        Assert.That(ReadFile(Stored(stored.Id).Path), Is.EqualTo("second version"));
     }
 
-    // a save that wrote no row replaced no file: one an interceptor suppressed, or a later save after the primed change
-    // was dropped, leaves the stored file in place
+    // the reactor wiring is there, but no AttachmentFileReactor runs for the attachment: its file stays
     [Test]
-    public async Task A_Suppressed_Save_Keeps_The_Stored_File()
-    {
-        Build(DbContextWiring.PrimerInterceptors);
-        var stored = await AddAttachment("report.txt", "first version");
-        _sp.Dispose();
-        Build(DbContextWiring.PrimerInterceptors, interceptor: new SuppressingInterceptor());
-
-        using (var scope = _sp.CreateScope())
-        {
-            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Attachment, int>>();
-            var attachment = (await service.Details(stored.Id))!;
-            attachment.Bytes = "second version"u8.ToArray();
-            await service.Modify(attachment);
-            await service.SaveChanges();
-        }
-
-        Assert.That(File.ReadAllText(Path.Combine(_root, Stored(stored.Id).Path!)), Is.EqualTo("first version"));
-    }
-
-    [Test]
-    public async Task A_Save_After_Explicitly_Primed_Changes_Were_Dropped_Keeps_The_Stored_File()
-    {
-        Build(DbContextWiring.PrimerInterceptors);
-        var stored = await AddAttachment("report.txt", "first version");
-        _sp.Dispose();
-        // primed only where ApplyPrimers() is called
-        Build(DbContextWiring.None, services => services.RegisterPrimerContainer<FileContext>());
-
-        using (var scope = _sp.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<FileContext>();
-            var attachment = db.Attachments.Single(x => x.Id == stored.Id);
-            attachment.Bytes = "second version"u8.ToArray();
-            db.Entry(attachment).State = EntityState.Modified;
-            await scope.ServiceProvider.GetRequiredService<EntityPrimerContainer>().ApplyPrimers();
-            // the caller decides not to save these changes
-            db.ChangeTracker.Clear();
-
-            db.Attachments.Single(x => x.Id == stored.Id).FileName = "renamed.txt";
-            await db.SaveChangesAsync();
-        }
-
-        Assert.That(File.ReadAllText(Path.Combine(_root, Stored(stored.Id).Path!)), Is.EqualTo("first version"));
-    }
-
-    // the reactor wiring is there, but no AttachmentFileReactor will run for the attachment: the primer removes the file
-    [Test]
-    public async Task A_Deleted_Attachment_Without_An_AttachmentFileReactor_Has_Its_File_Removed()
+    public async Task A_Deleted_Attachment_Without_An_AttachmentFileReactor_Keeps_Its_File()
     {
         Build(afterwards: services =>
         {
-            foreach (var reactor in services.Where(d => typeof(AttachmentFileReactor<Attachment, int>).IsAssignableFrom(d.ImplementationType)).ToArray())
+            foreach (var reactor in services.Where(d => d.ServiceType == typeof(IEntityReactor<Attachment>)).ToArray())
             {
                 services.Remove(reactor);
             }
@@ -570,7 +559,8 @@ public class AttachmentPrimerTests
             await service.SaveChanges();
         }
 
-        Assert.That(StoredFiles(), Is.Empty);
+        Assert.That(StoredRows(), Is.Empty);
+        Assert.That(ReadFile(stored.Path), Is.EqualTo("content"));
     }
 
     // the startup warning about a context without the reactor wiring names the attachment files, also for the
@@ -607,12 +597,11 @@ public class AttachmentPrimerTests
         Assert.That(StoredFiles(), Is.Empty);
     }
 
-    // a delete by key alone: the file's path is the stored row's, whoever removes the file
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task A_Stub_Delete_Removes_The_File(bool fileReactor)
+    // a delete by key alone: the file's path is the stored row's
+    [Test]
+    public async Task A_Stub_Delete_Removes_The_File()
     {
-        Build(fileReactor ? null : DbContextWiring.PrimerInterceptors);
+        Build();
         var stored = await AddAttachment("report.txt", "content");
 
         using (var scope = _sp.CreateScope())
@@ -626,11 +615,10 @@ public class AttachmentPrimerTests
         Assert.That(StoredFiles(), Is.Empty);
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public async Task A_Refused_Delete_Keeps_The_File(bool fileReactor)
+    [Test]
+    public async Task A_Refused_Delete_Keeps_The_File()
     {
-        Build(fileReactor ? null : DbContextWiring.PrimerInterceptors);
+        Build();
         var stored = await AddAttachment("report.txt", "content");
 
         using (var scope = _sp.CreateScope())
@@ -639,30 +627,6 @@ public class AttachmentPrimerTests
             await Refuse(db, "DELETE");
             db.Attachments.Remove(db.Attachments.Single(x => x.Id == stored.Id));
             await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
-        }
-
-        Assert.That(ReadFile(Stored(stored.Id).Path), Is.EqualTo("content"));
-    }
-
-    // a delete primed by an explicit ApplyPrimers() that the caller then drops removes nothing at the next save
-    [Test]
-    public async Task A_Save_After_An_Explicitly_Primed_Delete_Was_Dropped_Keeps_The_File()
-    {
-        Build(DbContextWiring.PrimerInterceptors);
-        var stored = await AddAttachment("report.txt", "content");
-        _sp.Dispose();
-        Build(DbContextWiring.None, services => services.RegisterPrimerContainer<FileContext>());
-
-        using (var scope = _sp.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<FileContext>();
-            db.Attachments.Remove(db.Attachments.Single(x => x.Id == stored.Id));
-            await scope.ServiceProvider.GetRequiredService<EntityPrimerContainer>().ApplyPrimers();
-            // the caller decides not to save this delete
-            db.ChangeTracker.Clear();
-
-            db.Attachments.Single(x => x.Id == stored.Id).FileName = "renamed.txt";
-            await db.SaveChangesAsync();
         }
 
         Assert.That(ReadFile(Stored(stored.Id).Path), Is.EqualTo("content"));
@@ -685,6 +649,53 @@ public class AttachmentPrimerTests
 
         Assert.That(StoredFiles(), Has.Length.EqualTo(1));
         Assert.That(ReadFile(Stored(stored.Id).Path), Is.EqualTo("second version"));
+    }
+
+    // --- The reactor removes a file once no stored row names it ---
+
+    // a save an interceptor suppressed wrote no row, yet reaches SavedChanges: the row still names its stored file
+    [Test]
+    public async Task A_Suppressed_Save_With_The_Reactor_Keeps_The_Stored_File()
+    {
+        Build();
+        var stored = await AddAttachment("report.txt", "first version");
+        _sp.Dispose();
+        Build(interceptor: new SuppressingInterceptor());
+
+        using (var scope = _sp.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Attachment, int>>();
+            var attachment = (await service.Details(stored.Id))!;
+            attachment.Bytes = "second version"u8.ToArray();
+            await service.Modify(attachment);
+            await service.SaveChanges();
+        }
+
+        Assert.That(Stored(stored.Id).Path, Is.EqualTo(stored.Path));
+        Assert.That(ReadFile(stored.Path), Is.EqualTo("first version"));
+    }
+
+    // the stored row is read past query filters: a row a filter hides still names its file
+    [Test]
+    public async Task A_Rollback_To_A_Savepoint_Keeps_The_File_Of_A_Row_A_Query_Filter_Hides()
+    {
+        Build<FilteredFileContext>();
+        var stored = await AddAttachment("hidden.txt", "first version");
+
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FilteredFileContext>();
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            await transaction.CreateSavepointAsync("before");
+            var attachment = db.Attachments.IgnoreQueryFilters().Single(x => x.Id == stored.Id);
+            attachment.FileName = "report.txt";
+            attachment.Bytes = "second version"u8.ToArray();
+            await db.SaveChangesAsync();
+            await transaction.RollbackToSavepointAsync("before");
+            await transaction.CommitAsync();
+        }
+
+        Assert.That(ReadFile(stored.Path), Is.EqualTo("first version"));
     }
 
     // --- A caller's transaction ---
@@ -740,7 +751,7 @@ public class AttachmentPrimerTests
     }
 
     // EF's own rollback to the savepoint it made for a failing save undoes that save alone: a caller that catches the
-    // failure and commits has the files of its earlier saves removed as usual
+    // failure and commits has the files of its earlier saves removed as usual, and the failed save's file stays, unnamed
     [TestCase(false)]
     [TestCase(true)]
     public async Task A_Failed_Save_Caught_Inside_A_Transaction_Leaves_The_Earlier_Files_To_The_Reactor(bool delete)
@@ -771,7 +782,7 @@ public class AttachmentPrimerTests
         }
 
         Assert.That(ReadFile(stored.Path), Is.Null);
-        Assert.That(StoredFiles(), Has.Length.EqualTo(delete ? 0 : 1));
+        Assert.That(StoredFiles(), Has.Length.EqualTo(delete ? 1 : 2));
     }
 
     // A save that an interceptor after the entity interceptors ends never reaches EF's own save, and raises no hook that

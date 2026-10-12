@@ -50,17 +50,17 @@ internal sealed class ReactionDispatcher(IServiceProvider serviceProvider)
                 var entityType = change.Entity.GetType();
                 for (var i = 0; i < reactors.Count; i++)
                 {
-                    if (!reactors.MayHandle(i, entityType))
+                    if (!reactors.Handles(i, entityType))
                     {
                         continue;
                     }
                     try
                     {
                         // instantiated here, so a reactor that cannot be built fails like one that throws
-                        if (reactors.Get(i) is { } registered && registered.Handles(entityType) && registered.Reactor.CanReact(change))
+                        if (reactors.Get(i) is { } reactor && reactor.CanReact(change))
                         {
                             // not the save's token: the data is committed, and a client that goes away must not cancel what follows from it
-                            await registered.Reactor.React(change, CancellationToken.None);
+                            await reactor.React(change, CancellationToken.None);
                         }
                     }
                     catch (Exception ex)
@@ -87,21 +87,19 @@ internal sealed class ReactionDispatcher(IServiceProvider serviceProvider)
     }
 
     private ScopedReactors InScope(IServiceProvider scopedProvider)
-        => new(_services != null
-            ? ReactorDiscovery.GetCatalog(_services).Registrations
-            : ReactorDiscovery.Resolved(scopedProvider.GetServices<IEntityReactor>()), scopedProvider);
+        => new(_services != null ? ReactorDiscovery.GetCatalog(_services).Registrations : [], scopedProvider);
 
     /// <summary>The reactors of one DI scope, each instantiated the first time a change needs it.</summary>
     private sealed class ScopedReactors(ReactorRegistration[] registrations, IServiceProvider scopedProvider)
     {
-        private readonly RegisteredReactor?[] _reactors = new RegisteredReactor?[registrations.Length];
+        private readonly IEntityReactor?[] _reactors = new IEntityReactor?[registrations.Length];
         private readonly bool[] _materialized = new bool[registrations.Length];
 
         public int Count => registrations.Length;
-        public bool MayHandle(int index, Type entityType) => registrations[index].MayHandle(entityType);
-        public string NameOf(int index) => _reactors[index]?.Reactor.GetType().FullName ?? registrations[index].Name;
+        public bool Handles(int index, Type entityType) => registrations[index].Handles(entityType);
+        public string NameOf(int index) => _reactors[index]?.GetType().FullName ?? registrations[index].Name;
 
-        public RegisteredReactor? Get(int index)
+        public IEntityReactor? Get(int index)
         {
             if (!_materialized[index])
             {

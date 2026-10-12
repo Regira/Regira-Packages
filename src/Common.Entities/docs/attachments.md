@@ -229,37 +229,41 @@ Attachments need **two** registrations:
 
 1. **`WithAttachments(factory)`** registers the shared `Attachment` entity, the file store, the
    bytes→file primer, and `AttachmentFileReactor`, which removes a file that new bytes replaced, and a deleted
-   attachment's file, once the save is committed (see *Files and transactions* below).
+   attachment's file, after the commit (see *Files and transactions* below).
 2. **`HasAttachments<…>(x => x.Attachments)`** — chained on the owner's `For<>()` builder — registers the
    typed per-owner read/write services, the link prepper and DTO mapping.
+
+Call `WithAttachments` once per attachment type. A second call for the same type, from another `DbContext`'s
+`UseEntities`, replaces the first one's file store and adds a second file reactor, which reads the other database and
+so never finds the row it checks.
 
 The bytes `Details` loads are the attachment's stored file, not new content: saving a rename or another metadata edit
 leaves the file where it is. Bytes or a stream set in their place replace it, stored under the file name's extension.
 
-**Files and transactions.** With the reactor wiring `UseDefaults()` sets, storage keeps every file a stored row names.
-An outcome the library cannot be sure of costs an orphan — a file no row names — never a row without its file:
+**Files and transactions.** A replaced or deleted attachment's file is removed after the commit, by
+`AttachmentFileReactor`, once the attachment's own row no longer names it. A save that fails, a rollback — to a
+savepoint too — and a context without the reactor wiring leave a file no row names; an application that needs a clean
+store sweeps it against the stored `Path` values, as it does for the attachments of a deleted owner:
 
 - New bytes go under a key of their own, so a save the database refuses, or a transaction rolled back, leaves the
   stored file as it was.
-- A save that fails removes the file it wrote and gives the row back its stored path, so a retry starts from the
-  stored state. Where EF does not roll the failed save back — a caller's transaction without a savepoint
-  (`Database.AutoSavepointsEnabled = false`, SQL Server with MARS), an ambient `TransactionScope`, or
-  `Database.AutoTransactionBehavior = Never` — the statements before the failing one stand and the caller may still
-  commit them, so the file stays.
-- `AttachmentFileReactor` removes the replaced and the deleted files once the save is committed. A rollback to a
-  savepoint the application makes does not say which saves it undid, so the files replaced or deleted by every save
-  before it in that transaction stay. A failed save the application catches inside its transaction is undone alone:
-  the earlier saves' files go as usual.
-- A transaction rolled back after a successful save keeps the new file, which no row names.
+- A save that fails leaves the file it wrote. The attachment keeps naming that file, so a retry of the same instance
+  saves it instead of writing another; reloaded, the attachment names its stored file again, and its new content is
+  stored again.
+- After the commit, `AttachmentFileReactor` reads the attachment's row by key, past query filters, and removes the
+  replaced or deleted file only when the row no longer names it: a save an interceptor suppressed, or one a rollback to
+  a savepoint undid, changed no row, and the file stays. Only that row is read: two attachment rows naming one path —
+  one added with another's `Path` and no content of its own — share the file, and deleting either removes it.
+- Removing a link, or giving it a new attachment, deletes the attachment it leaves, with its file, unless another link
+  still names it: links can share an attachment, since a new link may name one its owner links already.
+  `HasAttachments<…>(x => x.Attachments, a => a.HasStrictRelation = false)` keeps the attachments the owner's links
+  leave, for attachments that outlive their links.
 - Deleting an owner keeps its attachments and their files, by design: the links go by the database's FK cascade, and an
   attachment can be linked from more than one entity, so the library does not decide that it is no longer needed. A
   background job removes the `Attachment` rows no link references, through `IEntityService<Attachment, int>` so that
   `AttachmentFileReactor` removes each file, or the application applies a rule of its own.
-
-An application that needs a clean store sweeps it against the stored `Path` values. Without the reactor wiring, the
-primer removes the replaced and the deleted files once the save succeeds — before a transaction around it commits, so a
-rollback after that leaves a row naming a removed file; the startup validation warns about this setup. There, a
-`SaveChanges(acceptAllChangesOnSuccess: false)` leaves both files in storage.
+- Without the reactor wiring (`DbContextWiring.Reactors`, part of `UseDefaults()`), no file is removed; the startup
+  validation warns about such a context.
 
 <!-- no-compile -->
 ```csharp

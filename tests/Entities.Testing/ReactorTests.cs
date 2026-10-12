@@ -23,10 +23,8 @@ namespace Entities.Testing;
 
 /// <summary>
 /// Reactors run once the changes of a save are committed — never for a save that fails or a transaction that rolls
-/// back — and receive each changed row with the values it was stored with before the save. Those originals come from
-/// the entry when it was loaded — by a tracking query, or by the write path's own read when the entity went through
-/// <c>IEntityService</c> — and from a read of the row, one query per entity type, when a writer attached it; the query
-/// counts pin both.
+/// back — and receive each changed row with the values it was stored with before the save. Those originals are read
+/// during the save, one query per entity type a reactor covers, whatever the entry holds; the query counts pin it.
 /// </summary>
 [TestFixture]
 public class ReactorTests
@@ -134,6 +132,21 @@ public class ReactorTests
         {
             Commands.Add(command.CommandText);
             return ValueTask.FromResult(result);
+        }
+    }
+
+    /// <summary>For every query, whether it ran inside the ambient transaction.</summary>
+    private sealed class AmbientLog : DbCommandInterceptor
+    {
+        public List<bool> Selects { get; } = [];
+
+        public override InterceptionResult<DbDataReader> ReaderExecuting(DbCommand command, CommandEventData eventData, InterceptionResult<DbDataReader> result)
+        {
+            if (command.CommandText.TrimStart().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
+            {
+                Selects.Add(Transaction.Current != null);
+            }
+            return result;
         }
     }
 
@@ -260,7 +273,7 @@ public class ReactorTests
     }
 
     [Test]
-    public async Task A_Service_Update_Reports_The_Stored_Row_Without_Reading_It_Again()
+    public async Task A_Service_Update_Reports_The_Stored_Row()
     {
         Build(s => s.For<Order>(e => e.React(Record)));
         var id = await SeedOrder();
@@ -281,7 +294,7 @@ public class ReactorTests
             Assert.That(change.Entity.Status, Is.EqualTo(OrderStatus.Shipped));
             Assert.That(change.HasChanged(x => x.Status), Is.True);
             Assert.That(change.HasChanged(x => x.Title), Is.False);
-            Assert.That(_commands.Selects, Is.Zero, "Modify already read the stored row — the save must not read it again");
+            Assert.That(_commands.Selects, Is.EqualTo(1));
         });
     }
 
@@ -310,26 +323,7 @@ public class ReactorTests
     }
 
     [Test]
-    public async Task Clearing_The_Tracker_Forgets_That_Modify_Loaded_The_Stored_Row()
-    {
-        Build(s => s.For<Order>(e => e.React(Record)));
-        var id = await SeedOrder();
-
-        using var scope = _sp.CreateScope();
-        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order>>();
-        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
-        var incoming = NewOrder(status: OrderStatus.Shipped);
-        incoming.Id = id;
-        await service.Modify(incoming);   // the stored row becomes this instance's originals
-        db.ChangeTracker.Clear();
-        db.Update(incoming);              // the same instance again, now with its own values as originals
-        await db.SaveChangesAsync();
-
-        Assert.That(_log.Single<Order>().Original!.Status, Is.EqualTo(OrderStatus.Pending));
-    }
-
-    [Test]
-    public async Task An_Update_Of_A_Tracked_Entity_Uses_Its_Loaded_Originals()
+    public async Task An_Update_Of_A_Tracked_Entity_Reports_The_Stored_Row()
     {
         Build(s => s.For<Order>(e => e.React(Record)));
         var id = await SeedOrder();
@@ -346,7 +340,7 @@ public class ReactorTests
         {
             Assert.That(change.Original!.Status, Is.EqualTo(OrderStatus.Pending));
             Assert.That(change.ChangedTo(x => x.Status, OrderStatus.Delivered), Is.True);
-            Assert.That(_commands.Selects, Is.Zero);
+            Assert.That(_commands.Selects, Is.EqualTo(1));
         });
     }
 
@@ -459,7 +453,7 @@ public class ReactorTests
     }
 
     [Test]
-    public async Task Related_Children_React_With_Their_Stored_Rows_Without_Extra_Reads()
+    public async Task Related_Children_React_With_Their_Stored_Rows_Read_In_One_Query()
     {
         Build(s => s.For<Order>(e => e.Related(x => x.Lines)), o => o.AddReactor<LineReactor>());
         var id = await SeedOrder(lines: [new OrderLine { Product = "Pen", Quantity = 1 }, new OrderLine { Product = "Ink", Quantity = 2 }]);
@@ -482,7 +476,7 @@ public class ReactorTests
             Assert.That(modified.Original!.Quantity, Is.EqualTo(1));
             Assert.That(modified.Entity.Quantity, Is.EqualTo(5));
             Assert.That(deleted.Entity.Product, Is.EqualTo("Ink"));
-            Assert.That(_commands.Selects, Is.Zero);
+            Assert.That(_commands.Selects, Is.EqualTo(1));
         });
     }
 
@@ -595,8 +589,9 @@ public class ReactorTests
         });
     }
 
+    // a pooled context reads the stored row on every lease, as any context does
     [Test]
-    public async Task A_Pooled_Context_Uses_What_It_Loads_On_Every_Lease()
+    public async Task A_Pooled_Context_Reports_The_Stored_Row_On_Every_Lease()
     {
         Build(s => s.For<Order>(e => e.React(Record)));
         var id = await SeedOrder();
@@ -613,7 +608,7 @@ public class ReactorTests
             order.Status = status;
             _commands.Commands.Clear();
             await db.SaveChangesAsync();
-            Assert.That(_commands.Selects, Is.Zero, $"the lease saving {status}");
+            Assert.That(_commands.Selects, Is.EqualTo(1), $"the lease saving {status}");
         }
 
         Assert.That(_log.Changes.OfType<IEntityChange<Order>>().Select(c => c.Original!.Status), Is.EqualTo(new[] { OrderStatus.Pending, OrderStatus.Shipped }));
@@ -870,8 +865,7 @@ public class ReactorTests
         Assert.That(_log.Single<Invoice>().Entity.Number, Is.EqualTo("INV-2"));
     }
 
-    // a conflict raises none of the interceptors' failure hooks: the marks of the failed save go all the same, so a
-    // retry that refreshes nothing reports the row another writer stored, not the one this context loaded
+    // a retry that refreshes nothing reports the row another writer stored, not the one this context loaded
     [Test]
     public async Task A_Retry_After_A_Concurrency_Conflict_Reports_The_Stored_Row()
     {
@@ -972,6 +966,34 @@ public class ReactorTests
         Assert.That(_log.Changes, Is.Empty, "a scope disposed without Complete() aborts");
     }
 
+    // the stored rows are read on the saving thread, inside a scope without async flow: on the thread pool the read ran
+    // outside the scope's transaction, where it waits on the locks that transaction holds
+    [Test]
+    public async Task A_Synchronous_Save_On_An_Exclusive_Scheduler_Reads_The_Stored_Rows_Inside_A_Thread_Bound_Scope()
+    {
+        var ambientLog = new AmbientLog();
+        Build(s => s.For<Order>(e => e.React(Record)),
+            dbOptions: db => db.AddInterceptors(ambientLog).ConfigureWarnings(w => w.Ignore(RelationalEventId.AmbientTransactionWarning)));
+        var id = await SeedOrder();
+        ambientLog.Selects.Clear();
+        var scheduler = new ConcurrentExclusiveSchedulerPair().ExclusiveScheduler;
+
+        var save = Task.Factory.StartNew(() =>
+        {
+            using var ambient = new TransactionScope();
+            using var scope = _sp.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+            var incoming = NewOrder(status: OrderStatus.Shipped);
+            incoming.Id = id;
+            db.Update(incoming);
+            db.SaveChanges();
+            ambient.Complete();
+        }, CancellationToken.None, TaskCreationOptions.None, scheduler);
+
+        Assert.That(save.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        Assert.That(ambientLog.Selects, Is.EqualTo(new[] { true }));
+    }
+
     // ── what a reactor may do ───────────────────────────────────────────────────
 
     [Test]
@@ -1067,6 +1089,25 @@ public class ReactorTests
         await db.SaveChangesAsync();
 
         Assert.That(_commands.Selects, Is.Zero);
+    }
+
+    // a hand-wired interceptor finds what AddReactor registered, a reactor for one entity included, without UseEntities()
+    [Test]
+    public async Task A_Reactor_Added_Without_UseEntities_Reacts()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(_log);
+        services.AddReactor<Invoice, InvoiceReactor>();
+        services.AddDbContext<ShopContext>((sp, db) => db.UseSqlite(_connection).AddInterceptors(new EntityReactorInterceptor(sp)));
+        _sp = services.BuildServiceProvider();
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        await db.Database.EnsureCreatedAsync();
+        db.Invoices.Add(new Invoice { OrderId = 1, Number = "INV-1" });
+        await db.SaveChangesAsync();
+
+        Assert.That(_log.Single<Invoice>().Kind, Is.EqualTo(EntityChangeKind.Added));
     }
 
     [Test]

@@ -2,12 +2,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
-using Regira.Entities.EFcore.Attachments;
+using Regira.Entities.Attachments.Abstractions;
 using Regira.Entities.EFcore.Normalizing;
 using Regira.Entities.EFcore.Primers;
 using Regira.Entities.EFcore.Primers.Abstractions;
 using Regira.Entities.EFcore.Reactors;
 using Regira.Entities.Normalizing.Abstractions;
+using Regira.Entities.Reactors.Abstractions;
 
 namespace Regira.Entities.DependencyInjection.Validation;
 
@@ -116,8 +117,8 @@ internal sealed class InterceptorWiringValidator : IEntityRegistrationValidator
                 }
                 if (hasReactors && !interceptors.Any(i => i is EntityReactorInterceptor))
                 {
-                    var attachmentFiles = context.Services.Any(d => IsAttachmentFileReactor(d.ImplementationType ?? d.ImplementationInstance?.GetType()))
-                        ? " Among them is the AttachmentFileReactor WithAttachments registers: without it, a file new bytes replaced, and a deleted attachment's file, are removed once the save succeeds, before a transaction around it commits."
+                    var attachmentFiles = context.Services.Any(ReactsToAttachments)
+                        ? " Among them is the AttachmentFileReactor WithAttachments registers: without it, no file new bytes replaced, nor a deleted attachment's file, is removed."
                         : string.Empty;
                     yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
                         $"IEntityReactor services are registered but {inspectType.Name} has no reactor interceptor — reactors will not run after its saves are committed.{attachmentFiles} " +
@@ -127,18 +128,11 @@ internal sealed class InterceptorWiringValidator : IEntityRegistrationValidator
         }
     }
 
-    // an AttachmentFileReactor<,>, its non-generic alias or a class derived from either
-    private static bool IsAttachmentFileReactor(Type? type)
-    {
-        for (; type != null; type = type.BaseType)
-        {
-            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(AttachmentFileReactor<,>))
-            {
-                return true;
-            }
-        }
-        return false;
-    }
+    // a reactor registered for an attachment type, as WithAttachments registers its AttachmentFileReactor
+    private static bool ReactsToAttachments(ServiceDescriptor descriptor)
+        => descriptor.ServiceType is { IsGenericType: true, IsGenericTypeDefinition: false } serviceType
+           && serviceType.GetGenericTypeDefinition() == typeof(IEntityReactor<>)
+           && typeof(IAttachment).IsAssignableFrom(serviceType.GetGenericArguments()[0]);
 
     /// <summary>
     /// The entity type each resolved primer/normalizer targets, read from its <c>I...&lt;T&gt;</c> interface.

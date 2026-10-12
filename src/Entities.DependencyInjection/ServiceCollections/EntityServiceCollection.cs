@@ -241,16 +241,20 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         {
             e.AddFilter<AttachmentFilteredQueryBuilder<TAttachment, TAttachmentKey, TAttachmentSearchObject>>();
             e.AddProcessor<AttachmentProcessor<TAttachment, TAttachmentKey>>();
+            // the file reactor reads the attachment's row in the reaction's own context before it removes a file, so it
+            // is registered through a factory, which names no implementation type
             if (typeof(TAttachment) == typeof(Attachment))
             {
-                // the default attachment registers the non-generic types, which code finding or replacing them names
+                // the default attachment registers the non-generic types, the primer by type for code finding or replacing it
                 Services.AddPrimer<Attachment, AttachmentPrimer>();
-                Services.AddReactor<Attachment, AttachmentFileReactor>();
+                Services.AddReactor<Attachment>(p => new AttachmentFileReactor(
+                    p.GetRequiredService<IAttachmentFileService<Attachment, int>>(), p.GetRequiredService<TContext>()));
             }
             else
             {
                 e.AddPrimer<AttachmentPrimer<TAttachment, TAttachmentKey>>();
-                e.AddReactor<AttachmentFileReactor<TAttachment, TAttachmentKey>>();
+                Services.AddReactor<TAttachment>(p => new AttachmentFileReactor<TAttachment, TAttachmentKey>(
+                    p.GetRequiredService<IAttachmentFileService<TAttachment, TAttachmentKey>>(), p.GetRequiredService<TContext>()));
             }
             e.AddTransient<IFileIdentifierGenerator, DefaultFileIdentifierGenerator<TAttachmentKey, TAttachment>>();
             e.AddTransient<IAttachmentFileService<TAttachment, TAttachmentKey>>(p => new AttachmentFileService<TAttachment, TAttachmentKey>(fileServiceFactory(p)));

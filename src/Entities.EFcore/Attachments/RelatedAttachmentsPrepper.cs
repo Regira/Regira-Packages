@@ -38,38 +38,33 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
         // A new link may point only at an attachment the owner already links. On an insert of the owner every link is
         // new, whatever id it carries; on an update, one without an id or one the stored links do not hold — and
         // without the stored links, only one without an id is known to be new.
-        var storedItems = original != null ? selectorFunc(original) : null;
-        var ownedAttachmentIds = storedItems?.Select(x => x.AttachmentId).ToArray() ?? [];
-        foreach (var link in modifiedItems.Where(m => original == null || IsNew(m) || (storedItems != null && storedItems.All(o => m.Id!.Equals(o.Id) != true))))
-        {
-            EntityAttachmentContent.KeepToOwner(link, ownedAttachmentIds);
-        }
-
         if (original == null)
         {
-            // an owner inserted with its links: they are tracked with it, and new bytes need an attachment to hold them.
-            // A negative temp id from the client is cleared, as Related() clears it, so the store assigns the key
+            // an owner inserted with its links: they are tracked with it, and new bytes need an attachment to hold them
             foreach (var link in modifiedItems)
             {
-                DbContextExtensions.ResetTempKey<TEntityAttachment, TEntityAttachmentKey>(link);
-                EntityAttachmentContent.CreateFromNewContent(link);
+                EntityAttachmentContent.PrepareLink(link, null, ownedAttachmentIds: []);
             }
         }
         else
         {
-            var originalItems = storedItems;
+            var originalItems = selectorFunc(original);
 
             if (originalItems == null)
             {
+                foreach (var link in modifiedItems.Where(IsNew))
+                {
+                    EntityAttachmentContent.KeepToOwner(link, []);
+                }
                 return;
             }
 
+            var ownedAttachmentIds = originalItems.Select(x => x.AttachmentId).ToArray();
             var relatedItemsToAdd = modifiedItems.Where(m => IsNew(m) || originalItems.All(o => m.Id!.Equals(o.Id) != true)).ToArray();
             var relatedItemsToDelete = originalItems.Where(o => modifiedItems.All(m => m.Id != null && m.Id.Equals(o.Id) != true)).ToArray();
             foreach (var entity in relatedItemsToAdd)
             {
-                DbContextExtensions.ResetTempKey<TEntityAttachment, TEntityAttachmentKey>(entity);
-                EntityAttachmentContent.CreateFromNewContent(entity);
+                EntityAttachmentContent.PrepareLink(entity, null, ownedAttachmentIds);
                 // Only add when attachment has content
                 if (entity.Attachment?.HasContent() == true)
                 {
@@ -81,19 +76,11 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
             }
             // Materialized before the loop: tracking a link runs EF's fixup, which may change the collection it came from
             var relatedItemsToModify = modifiedItems.Except(relatedItemsToAdd).Where(m => m.Id != null && !m.Id.Equals(default(TEntityAttachmentKey))).ToArray();
+            var replacedLinks = new List<(TEntityAttachment Link, TAttachment Attachment)>();
             foreach (var entity in relatedItemsToModify)
             {
                 var originalEntity = originalItems.Single(p => p.Id!.Equals(entity.Id));
-
-                if (entity.Attachment?.IsNew() != true)
-                {
-                    // a kept link keeps its attachment, as on the link's own route
-                    EntityAttachmentContent.KeepAttachment(entity, originalEntity);
-                }
-                if (!string.IsNullOrWhiteSpace(entity.NewFileName) || entity.NewBytes?.Any() == true)
-                {
-                    entity.Attachment ??= originalEntity.Attachment;
-                }
+                var replaced = EntityAttachmentContent.PrepareLink(entity, originalEntity);
 
                 if (entity.Attachment != null)
                 {
@@ -101,14 +88,9 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
                     {
                         EntityAttachmentContent.TypeByName(entity.Attachment);
                         dbContext.Entry(entity.Attachment).State = EntityState.Added;
-                        if (_options.IsStrictRelation && entity.AttachmentId?.Equals(originalEntity.AttachmentId) != true)
+                        if (replaced != null)
                         {
-                            var originalAttachment = originalEntity.Attachment;
-                            if (originalAttachment != null)
-                            {
-                                // mark original Attachment entity as deleted
-                                dbContext.Entry(originalAttachment).State = EntityState.Deleted;
-                            }
+                            replacedLinks.Add((entity, replaced));
                         }
                     }
                     else
@@ -124,15 +106,40 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
             foreach (var entity in relatedItemsToDelete)
             {
                 dbContext.Entry(entity).State = EntityState.Deleted;
-                // also delete Attachment entity in DB
-                if (_options.IsStrictRelation)
-                {
-                    var attachment = entity.Attachment ?? await ResolveAttachment(entity.AttachmentId, token);
-                    if (attachment != null)
-                    {
-                        dbContext.Entry(attachment).State = EntityState.Deleted;
-                    }
-                }
+            }
+            if (_options.IsStrictRelation)
+            {
+                await DeleteLeftAttachments(modifiedItems, relatedItemsToDelete, replacedLinks, token);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Deletes the attachments the removed and the replaced links leave, once every link is prepared — unless another
+    /// link still names one: one of the owner's links (a new link may name an attachment its owner links already), or
+    /// a stored link of another owner. Deleting it would take those links with it.
+    /// </summary>
+    private async Task DeleteLeftAttachments(ICollection<TEntityAttachment> links, TEntityAttachment[] removedLinks,
+        List<(TEntityAttachment Link, TAttachment Attachment)> replacedLinks, CancellationToken token)
+    {
+        var comparer = EqualityComparer<TAttachmentKey>.Default;
+        var leavingLinkIds = removedLinks.Concat(replacedLinks.Select(x => x.Link)).Select(x => x.Id).ToArray();
+        var left = replacedLinks.Select(x => (Id: x.Attachment.Id, Attachment: (TAttachment?)x.Attachment))
+            .Concat(removedLinks.Select(x => (Id: x.AttachmentId, x.Attachment)))
+            .Where(x => x.Id != null && !comparer.Equals(x.Id, default!));
+        foreach (var group in left.GroupBy(x => x.Id, comparer))
+        {
+            var attachmentId = group.Key;
+            if (links.Any(link => link.Attachment?.IsNew() != true && comparer.Equals(link.AttachmentId, attachmentId))
+                || await EntityAttachmentContent.IsLinkedElsewhere<TEntityAttachment, TEntityAttachmentKey, TEntityKey, TAttachmentKey, TAttachment>(
+                    dbContext, attachmentId, leavingLinkIds, token))
+            {
+                continue;
+            }
+            var attachment = group.Select(x => x.Attachment).FirstOrDefault(x => x != null) ?? await ResolveAttachment(attachmentId, token);
+            if (attachment != null)
+            {
+                dbContext.Entry(attachment).State = EntityState.Deleted;
             }
         }
     }

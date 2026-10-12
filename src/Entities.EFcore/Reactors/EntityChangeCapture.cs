@@ -19,14 +19,13 @@ internal sealed class CapturedChange(EntityEntry entry, EntityChangeKind kind, P
     private static readonly IReadOnlySet<IProperty> NoneWritten = new HashSet<IProperty>();
 
     /// <summary>
-    /// Captures the pending <paramref name="entries"/>. An update or delete is reported against the stored row: the
-    /// entry's own originals when it is marked as holding it (<see cref="StoredOriginalsExtensions"/>), otherwise the
-    /// row read now — in one query per entity type.
+    /// Captures the pending <paramref name="entries"/>. An update or delete is reported against the stored row, read
+    /// now — in one query per entity type: whatever an entry holds as its originals is what its writer attached.
     /// </summary>
     public static async Task<List<CapturedChange>> CaptureAll(DbContext dbContext, IReadOnlyCollection<EntityEntry> entries, bool async, CancellationToken token)
     {
-        var unknown = entries.Where(e => e.State != EntityState.Added && !e.HasStoredOriginals()).ToArray();
-        var read = await StoredRowReader.Read(dbContext, unknown, async, token);
+        var stored = entries.Where(e => e.State != EntityState.Added).ToArray();
+        var read = await StoredRowReader.Read(dbContext, stored, async, token);
         return entries.Select(entry => Capture(entry, read.GetValueOrDefault(entry))).ToList();
     }
 

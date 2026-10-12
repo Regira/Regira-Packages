@@ -167,6 +167,152 @@ public class AttachmentNewContentTests
         }
         AssertStoredFile(productId);
     }
+    // A link given a new attachment in place of its own, the AttachmentId it was read with kept: through the owner and
+    // through the link's own service, the replaced attachment goes with its file
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task A_Replaced_Attachment_Goes_On_Both_Routes(bool throughOwner)
+    {
+        var productId = await AddProduct(NestedLink());
+        using (var scope = _sp.CreateScope())
+        {
+            var replacement = new Attachment { FileName = "spec.txt", Bytes = Content };
+            if (throughOwner)
+            {
+                var service = scope.ServiceProvider.GetRequiredService<IEntityService<Product, int>>();
+                var product = (await service.Details(productId))!;
+                product.Attachments!.Single().Attachment = replacement;
+                await service.Modify(product);
+                await service.SaveChanges();
+            }
+            else
+            {
+                var links = scope.ServiceProvider.GetRequiredService<IEntityService<ProductAttachment, int>>();
+                var link = (await links.Details(StoredLinkIds(productId).Single()))!;
+                link.Attachment = replacement;
+                await links.Modify(link);
+                await links.SaveChanges();
+            }
+        }
+
+        using var check = _sp.CreateScope();
+        var db = check.ServiceProvider.GetRequiredService<ShopContext>();
+        var stored = db.Attachments.AsNoTracking().ToArray();
+        Assert.Multiple(() =>
+        {
+            Assert.That(stored, Has.Length.EqualTo(1), "the replaced attachment row");
+            Assert.That(db.ProductAttachments.AsNoTracking().Single().AttachmentId, Is.EqualTo(stored[0].Id));
+            Assert.That(Directory.GetFiles(_root, "*", SearchOption.AllDirectories), Has.Length.EqualTo(1), "the replaced file");
+        });
+    }
+
+    // Two links of one owner can share an attachment: a new link may name one its owner links already. Replacing the
+    // attachment of one of them, or removing it, keeps the attachment, and its file, that the other still links — on the
+    // owner's route and on the link's own
+    private async Task<(int ProductId, int SharedId, int KeptLinkId, int OtherLinkId)> ShareOneAttachment()
+    {
+        var productId = await AddProduct(NestedLink());
+        int sharedId;
+        using (var scope = _sp.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Product, int>>();
+            var product = (await service.Details(productId))!;
+            sharedId = product.Attachments!.Single().AttachmentId;
+            product.Attachments = [.. product.Attachments!, new ProductAttachment { ObjectId = productId, AttachmentId = sharedId }];
+            await service.Modify(product);
+            await service.SaveChanges();
+        }
+        var linkIds = StoredLinkIds(productId);
+        Assert.That(linkIds, Has.Length.EqualTo(2));
+        return (productId, sharedId, linkIds.Max(), linkIds.Min());
+    }
+
+    private void AssertSharedAttachmentKept(int keptLinkId, int sharedId)
+    {
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        var kept = db.ProductAttachments.Include(x => x.Attachment).AsNoTracking().SingleOrDefault(x => x.Id == keptLinkId);
+        Assert.Multiple(() =>
+        {
+            Assert.That(kept?.AttachmentId, Is.EqualTo(sharedId), "the other link");
+            Assert.That(kept?.Attachment?.Path, Is.Not.Null, "the shared attachment");
+            Assert.That(kept?.Attachment?.Path is { } path && File.Exists(Path.Combine(_root, path)), Is.True, "the shared file");
+        });
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task The_Owner_Route_Keeps_An_Attachment_Another_Link_Names(bool replace)
+    {
+        var (productId, sharedId, keptLinkId, otherLinkId) = await ShareOneAttachment();
+
+        using (var scope = _sp.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Product, int>>();
+            var product = (await service.Details(productId))!;
+            if (replace)
+            {
+                product.Attachments!.Single(x => x.Id == otherLinkId).Attachment = new Attachment { FileName = "spec-2.txt", Bytes = Content };
+            }
+            else
+            {
+                // as a client's input maps it: the link alone, no nested attachment
+                var keptLink = product.Attachments!.Single(x => x.Id == keptLinkId);
+                keptLink.Attachment = null;
+                product.Attachments = [keptLink];
+            }
+            await service.Modify(product);
+            await service.SaveChanges();
+        }
+
+        AssertSharedAttachmentKept(keptLinkId, sharedId);
+    }
+
+    // one save removes a link and adds another naming its attachment: the attachment stays, with the new link
+    [Test]
+    public async Task A_New_Link_Taking_Over_A_Removed_Links_Attachment_Keeps_It()
+    {
+        var productId = await AddProduct(NestedLink());
+        int sharedId;
+        using (var scope = _sp.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Product, int>>();
+            var product = (await service.Details(productId))!;
+            sharedId = product.Attachments!.Single().AttachmentId;
+            product.Attachments = [new ProductAttachment { ObjectId = productId, AttachmentId = sharedId }];
+            await service.Modify(product);
+            await service.SaveChanges();
+        }
+
+        AssertSharedAttachmentKept(StoredLinkIds(productId).Single(), sharedId);
+    }
+
+    // the file replace (PUT {objectId}/files/{id}) and the delete of a link (DELETE {objectId}/attachments/{id})
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task The_Link_Route_Keeps_An_Attachment_Another_Link_Names(bool replace)
+    {
+        var (_, sharedId, keptLinkId, otherLinkId) = await ShareOneAttachment();
+
+        using (var scope = _sp.CreateScope())
+        {
+            var links = scope.ServiceProvider.GetRequiredService<IEntityService<ProductAttachment, int>>();
+            var link = (await links.Details(otherLinkId))!;
+            if (replace)
+            {
+                link.Attachment = new Attachment { FileName = "spec-2.txt", Bytes = Content };
+                await links.Save(link);
+            }
+            else
+            {
+                await links.Remove(link);
+            }
+            await links.SaveChanges();
+        }
+
+        AssertSharedAttachmentKept(keptLinkId, sharedId);
+    }
+
     // a client mints negative temp ids for new rows; a link that kept one was inserted under it (SQLite) or refused
     // as an explicit key (SQL Server)
     private int[] StoredLinkIds(int productId)

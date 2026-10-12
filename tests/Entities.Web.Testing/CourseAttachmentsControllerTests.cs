@@ -677,7 +677,8 @@ public abstract class CourseAttachmentsTests<TFactory> : IClassFixture<TFactory>
     }
 
     // A save the database refuses leaves the stored file as it was, as it leaves the row: the new bytes went under a key
-    // of their own, and the stored file is removed only once a save is committed.
+    // of their own, and the stored file is removed only once a save is committed. The file written for the new bytes
+    // stays, which no row names.
     [Fact]
     public async Task A_Refused_Save_Leaves_The_Stored_File()
     {
@@ -714,8 +715,7 @@ public abstract class CourseAttachmentsTests<TFactory> : IClassFixture<TFactory>
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal("first version", await client.GetStringAsync($"/courses/{courseId}/files/{name}"));
         Assert.Equal(storedPath, StoredPath(uploaded.AttachmentId));
-        // nor the file it wrote for the new bytes
-        Assert.Single(Directory.GetFiles(_factory.AttachmentsDirectory, $"*{stem}*", SearchOption.AllDirectories));
+        Assert.Equal(2, Directory.GetFiles(_factory.AttachmentsDirectory, $"*{stem}*", SearchOption.AllDirectories).Length);
     }
 
     // A save the database refuses keeps the file of a link it would have deleted: the file goes once a save is committed.

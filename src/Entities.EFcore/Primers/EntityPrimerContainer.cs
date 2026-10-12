@@ -3,7 +3,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Regira.DAL.EFcore.Extensions;
 using Regira.Entities.EFcore.Extensions;
 using Regira.Entities.EFcore.Primers.Abstractions;
-using Regira.Entities.EFcore.Utilities;
 using Regira.Utilities;
 
 namespace Regira.Entities.EFcore.Primers;
@@ -40,20 +39,6 @@ public class EntityPrimerContainer
     }
 
     public async Task ApplyPrimers(Type? entityType = null, CancellationToken token = default)
-    {
-        try
-        {
-            await ApplyPrimersCore(entityType, token);
-        }
-        catch
-        {
-            // the save these primers prepare will not run: what they left for it is undone
-            await SaveOutcomes.FailedBeforeDatabase(_dbContext);
-            throw;
-        }
-    }
-
-    private async Task ApplyPrimersCore(Type? entityType, CancellationToken token)
     {
         ArchivablePrimer.BeginPass(_dbContext);
         var groupedEntries = _dbContext.GetPendingEntries()

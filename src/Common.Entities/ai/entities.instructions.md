@@ -748,19 +748,20 @@ options.AddReactor<AuditReactor>();    // global — an EntityReactorBase<IHasTi
 - `change.HasChanged(x => x.Status)` / `ChangedProperties` — `Modified` rows only; `Added` and `Deleted` report
   none. `change.ChangedTo(x => x.Status, value)` covers both an insert holding the value and an update that
   brought it there — the usual trigger for a pipeline.
-- The stored values are the database's on every write. An entity that a tracking query loaded, or that
-  `IEntityService.Modify` or a `Related()` sync loaded, already holds them. Any other write — `Update()` of a
-  detached entity, a stub `Attach(new Order { Id = id })` then edited, a stub `Remove(...)`, a delete through the
-  service — has its rows read during the save, one query per entity type, and only for entity types a reactor is
-  registered for. `ExecuteUpdate` / `ExecuteDelete` bypass the change tracker: no reactor (and no primer) sees them.
+- The stored values are the database's on every write — a tracked edit, `Update()` of a detached entity, a stub
+  `Attach(new Order { Id = id })` then edited, a stub `Remove(...)`: the save reads the stored rows of its updates and
+  deletes, one query per entity type (a row at a time for a composite, converted or owned key), and only for entity
+  types a reactor is registered for. `ExecuteUpdate` /
+  `ExecuteDelete` bypass the change tracker: no reactor (and no primer) sees them.
 
 **How reactors run:**
 - **After the commit, never before** — at once for a save that commits on its own; at `Commit()` for every save
   inside an explicit `BeginTransaction()`, also when several contexts share that transaction through
   `UseTransaction` and one of them commits it; when an ambient `TransactionScope` completes. A failed save, a
   rollback and a transaction disposed without committing react to nothing. A rollback to a savepoint does not say
-  which saves it undid: the reactions of every save made before it in that transaction still run at the commit
-  (after one the app makes, `AttachmentFileReactor` keeps those saves' files). Not seen: a commit made on the `DbTransaction` itself
+  which saves it undid: the reactions of every save made before it in that transaction still run at the commit, so a
+  reactor that must not act on a change that never happened reads the stored row first, as `AttachmentFileReactor`
+  does. Not seen: a commit made on the `DbTransaction` itself
   rather than through a context `UseEntities` wires (its reactions never run). A transaction begun outside EF and
   handed to `UseTransaction` must also commit or roll back through EF: on Npgsql, one disposed without either leaves
   its reactions to the next such transaction on that pooled connection.
@@ -1335,7 +1336,7 @@ in the Development environment by default. It catches, with actionable messages:
 - **Unwired interceptors** — primers/normalizers/reactors registered in DI while the `DbContext` options lack
   the matching interceptor (they would silently never run). Only applies to setups without `UseDefaults()`
   (which auto-wires the interceptors) that also skipped `e.WireDbContext(...)`. Without the reactor interceptor,
-  attachment files go before a surrounding transaction commits (§Attachments step 6).
+  no replaced or deleted attachment file is removed (§Attachments step 6).
 - **Ignored `?q=`** (warning) — entities without `IHasNormalizedContent` and without a custom filter. Any custom
   filter counts as handling `q`, so one that never reads `so.Q` gets no warning: handle it there (`FilterQ`).
 - **Two write paths** (warning) — an entity synced by a parent's `Related()` that also has its own `.For<>()`.
@@ -1598,13 +1599,12 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
    modelBuilder.Entity<ProductAttachment>().HasOne(x => x.Attachment).WithMany().HasForeignKey(x => x.AttachmentId);
    modelBuilder.Entity<Product>().HasMany(x => x.Attachments).WithOne().HasForeignKey(x => x.ObjectId).HasPrincipalKey(x => x.Id);
    ```
-6. Register **two** things: `.WithAttachments(_ => new BinaryFileService(...))` for the shared `Attachment` entity + file store + bytes→file primer + `AttachmentFileReactor` (removes a replaced or deleted attachment's file once the save is committed), **and** `.For<Product>(e => e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments))` for the typed per-owner services + link prepper + DTO mapping. `HasAttachments` is an extension on the **base** `EntityServiceBuilder`, so it chains on every `For<>()` tier — a complex owner registers it exactly like the simple one shown here. The bytes `Details` loads are the stored file, not new content, so saving a rename or another metadata edit leaves the file where it is; bytes or a stream set in their place replace it, stored under the file name's extension. **Files follow the rows** — with the reactor wiring `UseDefaults()` sets, storage keeps every file a stored row names, and doubt costs an orphan file, never a row without its file:
+6. Register **two** things: `.WithAttachments(_ => new BinaryFileService(...))` for the shared `Attachment` entity + file store + bytes→file primer + `AttachmentFileReactor` (removes a replaced or deleted attachment's file after the commit), **and** `.For<Product>(e => e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments))` for the typed per-owner services + link prepper + DTO mapping. `HasAttachments` is an extension on the **base** `EntityServiceBuilder`, so it chains on every `For<>()` tier — a complex owner registers it exactly like the simple one shown here. The bytes `Details` loads are the stored file, not new content, so saving a rename or another metadata edit leaves the file where it is; bytes or a stream set in their place replace it, stored under the file name's extension. Call `WithAttachments` once per attachment type: a second call for the same type, from another context, replaces the first one's file store and adds a file reactor that reads the other database. **Files follow the rows** — a replaced or deleted attachment's file is removed after the commit, by `AttachmentFileReactor`, once the attachment's own row no longer names it. A save that fails, a rollback — to a savepoint too — and a context without the reactor wiring leave a file no row names; an app that needs a clean store sweeps it against the stored `Path` values, as it does for the attachments of a deleted owner:
    - New bytes go under a key of their own, so a refused save or a rolled-back transaction leaves the stored file as it was.
-   - A failed save removes the file it wrote and gives the row its stored path back for a retry — except where EF does not roll the failed save back (a caller's transaction without a savepoint: `AutoSavepointsEnabled = false`, SQL Server with MARS; an ambient `TransactionScope`; `AutoTransactionBehavior.Never`): the statements before the failing one stand, so the file stays.
-   - Replaced and deleted files go after the commit. A rollback to a savepoint the app makes keeps the files of every save before it in that transaction; a failed save the app catches inside its transaction is undone alone, and the earlier saves' files go as usual.
-   - A transaction rolled back after a successful save leaves the new file as an orphan; an app that needs a clean store sweeps storage against the stored `Path` values.
+   - A failed save leaves the file it wrote; the attachment keeps naming it, so a retry of the same instance saves that file instead of writing another.
+   - The reactor reads the attachment's row by key, past query filters, before it removes a file: a save an interceptor suppressed, or one a rollback to a savepoint undid, keeps the file the row still names. Only that row is read, so two attachment rows naming one path (one added with another's `Path` and no content of its own) share a file that deleting either removes.
+   - Removing a link, or giving it a new attachment, deletes the attachment it leaves, with its file, unless another link still names it (a new link may name an attachment its owner links already). `e.HasAttachments<…>(x => x.Attachments, a => a.HasStrictRelation = false)` keeps the attachments the owner's links leave.
    - **Deleting the owner leaves its attachments, by design.** Its links go by the database's FK cascade, but the `Attachment` rows and their files stay: an attachment can be linked from more than one entity, so the library does not decide that it is no longer needed. Clean up in a background job that removes the `Attachment` rows no link references — through `IEntityService<Attachment, int>`, so `AttachmentFileReactor` removes each file after the commit — or with a rule of the app's own.
-   - Without the reactor wiring, the primer removes replaced and deleted files once the save succeeds — before a surrounding transaction commits; a `SaveChanges(acceptAllChangesOnSuccess: false)` leaves them in storage.
 7. *(web apps)* Call `options.UseAttachmentUris()` (before registering entities, on the **same** `UseEntities` options instance) and register `AddHttpContextAccessor()` so attachment DTOs resolve a `Uri`: a link to the owner's mapped download when `MapEntityEndpoints()` serves it, else to the attachment controller's `GetFile` action. The `Uri` takes the request's host, so behind a proxy (the SPA's dev server) add `app.UseForwardedHeaders(...)` with `XForwardedHost | XForwardedProto`, or it names the API's own origin (`entities.setup` → P3).
 
 > ⚠️ **A link rule belongs in the owner's validator too.** Validators scoped to the link entity run for the
