@@ -518,7 +518,7 @@ using Regira.Entities.Extensions;
 public static class EntityExtensions
 {
     public static bool IsNew<TKey>(this IEntity<TKey> item);
-    public static void AdjustIdForEfCore(this IEnumerable<IEntity<int>> items);
+    [Obsolete] public static void AdjustIdForEfCore(this IEnumerable<IEntity<int>> items);   // the syncs clear a negative key at every depth
     public static void SetSortOrder(this IEnumerable<ISortable> items);
 }
 ```
@@ -1040,9 +1040,9 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
     // Service registration
     EntityServiceBuilder<TContext, TEntity, TKey> AddDefaultService();
 
-    // Registers IEntityService<TEntity,TKey> + IEntityService<TEntity,TKey,SearchObject<TKey>>.
-    // Note: does NOT register the bare IEntityService<TEntity> shortcut — that is only registered by
-    // For<TEntity>() and the complex int For<TEntity,TSearchObject,TSortBy,TIncludes>() overloads.
+    // Registers TService under every IEntityService<TEntity, ...> it implements — the int shortcut IEntityService<TEntity>
+    // too when it implements it — as every Use*/Has* call does on every builder shape. A class short of the interface
+    // the For<>() shape resolves through is refused at registration (For<Course>() needs IEntityService<Course>).
     EntityServiceBuilder<TContext, TEntity, TKey> UseEntityService<TService>()
         where TService : class, IEntityService<TEntity, TKey>, IEntityService<TEntity, TKey, SearchObject<TKey>>;
 
@@ -1205,8 +1205,6 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
         Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression,
         Action<RelatedEntityBuilder<TContext, TRelated, int>> configure)
         where TRelated : class, IEntity<int>;
-
-    void Build();
 }
 ```
 
@@ -1282,8 +1280,6 @@ public partial class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, T
     // Re-declared to keep the builder type through a chain, here and on the complex builders:
     // Validate(...) and React(...) — every overload — AddValidator<T>(), AddReactor<T>(), ServerOwned(...)
     // and the two int-child Related<TRelated>(...) overloads
-
-    void Build();
 }
 ```
 
@@ -1324,8 +1320,6 @@ public partial class EntityIntServiceBuilder<TContext, TEntity>
     EntityIntServiceBuilder<TContext, TEntity> ServerOwned<TProp>(
         Expression<Func<TEntity, TProp>> selector,
         Func<TEntity, TProp>? mintOnCreate = null);
-
-    void Build();
 }
 
 // For<TEntity, TSearchObject>() or WithSearchObject() → EntityIntServiceBuilder<TContext, TEntity, TSearchObject>
@@ -1339,8 +1333,6 @@ public class EntityIntServiceBuilder<TContext, TEntity, TSearchObject>
         Complex<TSortBy, TIncludes>()
         where TSortBy : struct, Enum
         where TIncludes : struct, Enum;
-
-    void Build();
 }
 ```
 
@@ -1394,8 +1386,6 @@ public partial class ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearc
     ComplexEntityServiceBuilder<...> Process(Action<TEntity, TIncludes?> process);
     ComplexEntityServiceBuilder<...> AddProcessor<TImplementation>()
         where TImplementation : class, IEntityProcessor<TEntity, TIncludes>;
-
-    void Build();
 }
 ```
 

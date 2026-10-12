@@ -29,48 +29,13 @@ public class EntityIntServiceBuilder<TContext, TEntity>(EntityServiceCollectionO
 {
     public new bool HasEntityService() => HasService<IEntityService<TEntity>>();
 
-    // Build
-    public override void Build()
-    {
-        base.Build();
-
-        // Query Builder
-        if (!HasService<IQueryBuilder<TEntity, int, SearchObject<int>, EntitySortBy, EntityIncludes>>())
-        {
-            AddDefaultQueryBuilder();
-        }
-        // Read Service
-        if (!HasService<IEntityReadService<TEntity, int, SearchObject<int>>>())
-        {
-            UseReadService<EntityReadService<TContext, TEntity, int, SearchObject<int>>>();
-        }
-        // Write Service
-        if (!HasService<IEntityWriteService<TEntity, int>>())
-        {
-            UseWriteService<EntityWriteService<TContext, TEntity>>();
-        }
-        // Entity Repository
-        if (!HasService<IEntityRepository<TEntity>>())
-        {
-            HasRepositoryInner<EntityRepository<TEntity>>();
-        }
-        // Entity Service
-        if (!HasService<IEntityService<TEntity>>())
-        {
-            UseEntityService<EntityRepository<TEntity>>();
-        }
-    }
-
-
     // Entity service
     public new EntityIntServiceBuilder<TContext, TEntity> AddDefaultService()
         => UseEntityService<EntityRepository<TEntity>>();
     public new EntityIntServiceBuilder<TContext, TEntity> UseEntityService<TService>()
         where TService : class, IEntityService<TEntity>, IEntityService<TEntity, int, SearchObject<int>>
     {
-        Services.AddTransient<IEntityService<TEntity>, TService>();
-        Services.AddTransient<IEntityService<TEntity, int>, TService>();
-        Services.AddTransient<IEntityService<TEntity, int, SearchObject<int>>, TService>();
+        RegisterAs(typeof(TService), null, EntityServiceFamily);
         return this;
     }
     /// <summary>
@@ -83,10 +48,7 @@ public class EntityIntServiceBuilder<TContext, TEntity>(EntityServiceCollectionO
     public new EntityIntServiceBuilder<TContext, TEntity> UseEntityService<TService>(Func<IServiceProvider, TService> factory)
         where TService : class, IEntityService<TEntity>, IEntityService<TEntity, int, SearchObject<int>>
     {
-        Services.AddTransient<IEntityService<TEntity>>(factory);
-        Services.AddTransient<IEntityService<TEntity, int>>(factory);
-        Services.AddTransient<IEntityService<TEntity, int, SearchObject<int>>>(factory);
-        Services.AddTransient(factory);
+        RegisterAs(typeof(TService), p => factory(p), EntityServiceFamily);
         return this;
     }
 
@@ -94,31 +56,25 @@ public class EntityIntServiceBuilder<TContext, TEntity>(EntityServiceCollectionO
     protected internal new EntityIntServiceBuilder<TContext, TEntity> HasRepositoryInner<TService>()
         where TService : class, IEntityRepository<TEntity>, IEntityRepository<TEntity, int, SearchObject<int>>
     {
-        Services.AddTransient<IEntityRepository<TEntity>, TService>();
-        Services.AddTransient<IEntityRepository<TEntity, int>, TService>();
-        Services.AddTransient<IEntityRepository<TEntity, int, SearchObject<int>>, TService>();
+        RegisterAs(typeof(TService), null, RepositoryFamily);
         return this;
     }
     protected internal new EntityIntServiceBuilder<TContext, TEntity> HasRepositoryInner<TImplementation>(Func<IServiceProvider, TImplementation> factory)
         where TImplementation : class, IEntityRepository<TEntity>, IEntityRepository<TEntity, int, SearchObject<int>>
     {
-        Services.AddTransient(factory);
-        Services.AddTransient<IEntityRepository<TEntity, int>>(factory);
-        Services.AddTransient<IEntityRepository<TEntity, int, SearchObject<int>>>(factory);
+        RegisterAs(typeof(TImplementation), p => factory(p), RepositoryFamily);
         return this;
     }
     public new EntityIntServiceBuilder<TContext, TEntity> HasRepository<TService>()
         where TService : class, IEntityRepository<TEntity>, IEntityRepository<TEntity, int, SearchObject<int>>
     {
-        UseEntityService<TService>();
-        HasRepositoryInner<TService>();
+        RegisterAs(typeof(TService), null, RepositoryFamily, EntityServiceFamily);
         return this;
     }
     public new EntityIntServiceBuilder<TContext, TEntity> HasRepository<TImplementation>(Func<IServiceProvider, TImplementation> factory)
         where TImplementation : class, IEntityRepository<TEntity>, IEntityRepository<TEntity, int, SearchObject<int>>
     {
-        UseEntityService(factory);
-        HasRepositoryInner(factory);
+        RegisterAs(typeof(TImplementation), p => factory(p), RepositoryFamily, EntityServiceFamily);
         return this;
     }
 
@@ -126,19 +82,13 @@ public class EntityIntServiceBuilder<TContext, TEntity>(EntityServiceCollectionO
     public new EntityIntServiceBuilder<TContext, TEntity> HasManager<TService>()
         where TService : class, IEntityManager<TEntity>, IEntityManager<TEntity, int, SearchObject<int>>
     {
-        UseEntityService<TService>();
-        Services.AddTransient<IEntityManager<TEntity>, TService>();
-        Services.AddTransient<IEntityManager<TEntity, int>, TService>();
-        Services.AddTransient<IEntityManager<TEntity, int, SearchObject<int>>, TService>();
+        RegisterAs(typeof(TService), null, ManagerFamily, EntityServiceFamily);
         return this;
     }
     public new EntityIntServiceBuilder<TContext, TEntity> HasManager<TImplementation>(Func<IServiceProvider, TImplementation> factory)
         where TImplementation : class, IEntityManager<TEntity>, IEntityManager<TEntity, int, SearchObject<int>>
     {
-        UseEntityService(factory);
-        Services.AddTransient(factory);
-        Services.AddTransient<IEntityManager<TEntity, int>>(factory);
-        Services.AddTransient<IEntityManager<TEntity, int, SearchObject<int>>>(factory);
+        RegisterAs(typeof(TImplementation), p => factory(p), ManagerFamily, EntityServiceFamily);
         return this;
     }
 

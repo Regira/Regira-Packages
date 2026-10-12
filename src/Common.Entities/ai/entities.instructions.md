@@ -532,7 +532,7 @@ What a prepper works with: `modified` is the mapped incoming entity — the inst
 
 | Incoming `Id` | Treated as | Note |
 |---|---|---|
-| `0`, `null`, or **any negative number** | **new** → `INSERT` | A negative id is a client temp key (the Vue `useOwnedCollection` mints them so a row added in the session has a stable `:key`); it is cleared before insert, so the store generates the real one |
+| `0`, `null`, or **any negative number** | **new** → `INSERT` | A negative id is a client temp key (the Vue `useOwnedCollection` mints them so a row added in the session has a stable `:key`); it is cleared before insert, so the store generates the real one — at every depth, in a `Related()` collection and an attachment collection alike, so nothing needs to reset it first |
 | matches an original row | update | fields absent from the child input DTO reset to default |
 | positive but matching nothing | **new** → `INSERT`, ⚠️ **with that id** | Only temp (negative) keys are cleared, so a store-generated key arrives as an explicit insert: a silently wrong PK on SQLite, and *"Cannot insert explicit value for identity column"* on SQL Server. It means the client is sending a stale id for a row someone else deleted — reload before saving rather than relying on the server to absorb it. (A **client-assigned** key type — `Guid`, `string` — is never cleared, because there a chosen key is the point.) |
 
@@ -1036,6 +1036,11 @@ Examples:
 **Registration:**
 - `e.AddTransient<IProductService, ProductService>()` — enables typed injection by interface
 - `e.UseEntityService<ProductService>()` — replaces the default `EntityRepository` as `IEntityService` for the entity
+- `UseEntityService`, `HasRepository` and `HasManager` register the class under every service, repository or manager
+  interface of the entity it implements. It has to implement the one its `For<>()` shape resolves through — derive a
+  repository from the `EntityRepository` with the same type arguments (`EntityRepository<Product>` for
+  `For<Product>()`). One short of it, an `EntityRepository<Product, int>` on `For<Product>()`, is refused at
+  registration with an `InvalidOperationException` naming the missing interface, since the default would replace it.
 
 > **→ See:** [`entities.signatures.md`](./entities.signatures.md) — EntityWrappingServiceBase
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — Order + OrderLine entities (OrderManager)
@@ -1355,13 +1360,16 @@ in the Development environment by default. It catches, with actionable messages:
   `?hasAttachment=true` matches nothing (§Attachments step 5).
 - **Archivable reference data behind a required FK** (warning, net10) — an `IArchivable` principal that
   separately registered entities reference through a required FK. Archiving such a row drops the dependents
-  from list results while `/search` keeps counting them; the message works the mirrored-filter remedy
-  ([`entities.patterns.md`](./entities.patterns.md) → Soft Delete).
+  from list results while `/search` keeps counting them; the remedies are in
+  [`entities.patterns.md`](./entities.patterns.md) → Soft Delete.
 - **Out-of-scope global filter** (warning) — a registered global filter whose `TEntity` no registered entity
   satisfies, so it never runs. Usually a scope that names an interface the entity does not implement; when the
-  filter guards row access, the rows it was meant to hide are being returned. The built-in defaults are
-  reported as *information* instead: `UseDefaults()` registers the whole set whether or not the app has an
-  `IArchivable` (or timestamped, or normalized-content) entity, so an inert one carries no signal.
+  filter guards row access, the rows it was meant to hide are being returned. Regira's built-in filters are not
+  checked: `UseDefaults()` registers the whole set whether or not the app has an `IArchivable` (or timestamped,
+  or normalized-content) entity, so an inert one carries no signal.
+- **Concurrency tokens** — one never compared, never moved, or unable to make the round trip to the client, and
+  a `Guid`, an integer, `byte[]`, `DateTime` or `DateTimeOffset` token not declared a version stamp, which is compared as a data column
+  ([`entities.patterns.md`](./entities.patterns.md) → Optimistic concurrency).
 - **Entity validator no entity is in scope of** (warning) — a validator whose `TScope` no registered entity, nor a
   type deriving from one, is, derives from or implements, so it never runs; typically one scoped to a `Related()`
   child, which is validated through its parent (§Step 8 → Validators). A validator on `Person` with only
@@ -1384,9 +1392,16 @@ in the Development environment by default. It catches, with actionable messages:
   to stay visible. It inspects contexts resolved from DI, so a `DbContext` constructed by hand is outside its
   reach as well as the wiring's.
 
+The checks report what is silent; a failure that is loud at the first request — a 500, a 409 on every update —
+is a row in §Troubleshooting instead. A check that cannot complete (a registration that throws when resolved) is
+skipped with a warning naming it, and a `DbContext` the checks cannot resolve is reported once.
+
 Configure via `UseEntities(o => o.ConfigureValidation(v => { v.Enabled = true; v.ThrowOnError = false; }))`:
 `Enabled` — `null` (default) = Development only, `true` = always (Production opt-in), `false` = never.
-Diagnostic code `REGIRA0001` marks the obsolete `EntityPrimerContainer(DbContext, IServiceCollection)` constructor, which builds a second service provider to resolve primers — use `RegisterPrimerContainer<TContext>()` (the `IEnumerable<IEntityPrimer>` constructor) instead.
+Diagnostic code `REGIRA0001` marks what builds a second service provider or repeats an interceptor, removed at 7.0:
+the `EntityPrimerContainer(DbContext, IServiceCollection)` constructor (use `RegisterPrimerContainer<TContext>()`
+instead), `AddRegisteredInterceptors`, `AutoTruncatePrimer` and `AutoNormalizingPrimer` (their interceptors run
+on every save) and the explicit normalizer path (`EntityNormalizerContainer`, `ApplyNormalizers()`).
 
 ---
 
@@ -1927,7 +1942,6 @@ accepts search objects matching its own key type, so non-int entities need the m
 | `HasLastModifiedDbPrimer` | `IHasLastModified` | Sets `LastModified` (UTC) on update |
 | `ArchivablePrimer` | `IArchivable` | Soft-delete: sets `IsArchived = true` and writes nothing else of the row (what the later primers stamp aside); undoes EF's cascade to the loaded dependents first, so they stay as they are — a dependent removed in the same raw save as its parent is kept too |
 | `HasConcurrencyTokenDbPrimer` | `IHasConcurrencyToken` | Mints a new `ConcurrencyToken` on every update (a soft delete included) and on insert when empty |
-| `AutoTruncatePrimer` | All entities | Truncates strings to `[MaxLength]` |
 
 ### Normalizer Services
 
@@ -1994,8 +2008,9 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 | `DELETE` erases the row instead of archiving it | `IArchivable` not implemented, or `ArchivablePrimer` not registered | Implement `IArchivable`; use `UseDefaults()` |
 | A `Restrict` FK lets the parent delete anyway (no 409) | SQLite enforces foreign keys only when the connection string sets `Foreign Keys=True` | Add it to the connection string ([`entities.setup.md`](./entities.setup.md) → P3) |
 | Save/delete returns **409 Conflict** (`ProblemDetails` title "Conflict") on a valid-looking payload | A DB constraint rejected the change — required FK points at a nonexistent parent, duplicate unique key, or a delete under `Restrict` (§Error Handling); the response detail is generic — the constraint name is in the server log (warning) | Fix the data, or check it in a validator → field-level 400 (§Step 8 → Validators) |
-| A user's edit silently overwrites another user's change — no 409 | No concurrency token, or it never round-trips: missing from the read or input DTO (the client then sends the default, which is not checked), or an application-owned token nothing re-mints | Implement `IHasConcurrencyToken` (or declare a token of your own and mint it in a primer) and put it on both DTOs ([`entities.patterns.md`](./entities.patterns.md) → Optimistic concurrency). Startup validation warns about a DTO without the property |
-| Every PUT/PATCH answers **409 "Concurrency conflict"**, even with a single user | The entity initializes its token (`= Guid.NewGuid()`) and the input DTO has no property for it, so each mapped entity carries a token the row never held; or the client resends the token it read before its own last save | Remove the initializer and add the property to both DTOs; take the new token from the `SaveResult` after each save. Startup validation reports the initializer as an error |
+| A user's edit silently overwrites another user's change — no 409 | No concurrency token, or it never round-trips: missing from the read or input DTO (the client then sends the default, which is not checked), an application-owned token nothing re-mints, or a token not declared a version stamp — a `[ConcurrencyCheck]` token without `[VersionStamp]` is a data column, compared with the stored row however a primer moves it | Implement `IHasConcurrencyToken`, or declare a token of your own `[VersionStamp]` and mint it in a primer, and put it on both DTOs ([`entities.patterns.md`](./entities.patterns.md) → Optimistic concurrency). Startup validation warns about a DTO without the property and about an undeclared token shaped like a stamp |
+| Every PUT/PATCH answers **409 "Concurrency conflict"**, even with a single user | The entity initializes its token (`= Guid.NewGuid()`) and the input DTO has no property for it, so each mapped entity carries a token the row never held; or an input DTO initializes it, so a client that leaves it out sends that value; or the client resends the token it read before its own last save | Remove the initializers and add the property to both DTOs; take the new token from the `SaveResult` after each save |
+| An owner `DELETE` answers **500** *"a circular dependency was detected in the data to be saved"*, or SQL Server refuses the migration with **Msg 1785** (*may cause cycles or multiple cascade paths*) | The owner holds a foreign key to one of its own child rows (a cover image among its images), so the two tables reference each other | [`entities.patterns.md`](./entities.patterns.md) → *An entity that references one of its own children* |
 | A dashboard/report endpoint answers **500 with an empty body** on a green build; the log says *"The LINQ expression … could not be translated"* or *"Translating this query requires the SQL APPLY operation"* | An untranslatable construct in the query: a record constructor in the projection, a correlated `SelectMany` (`CROSS APPLY` — absent on SQLite), **a method of your own called on the row**, date arithmetic between two columns on SQLite (`x.End - x.Start`), or a provider-specific `EF.Functions` member (`DateDiff*` is SQL Server only) | The full list with the translating alternative for each is in [`entities.patterns.md`](./entities.patterns.md) § Cross-entity aggregates & report endpoints |
 
 ### Troubleshooting — compiler errors

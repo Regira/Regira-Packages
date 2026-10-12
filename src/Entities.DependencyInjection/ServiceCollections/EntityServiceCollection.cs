@@ -36,6 +36,7 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         _licenseValidator.TrackSimple(options.Services, typeof(TEntity));
         _registrationLog.TrackEntity(typeof(TContext), typeof(TEntity), typeof(int), typeof(SearchObject<int>), isComplex: false);
         var builder = new EntityIntServiceBuilder<TContext, TEntity>(Options);
+        var configuredFrom = Services.Count;
         configure?.Invoke(builder);
 
         // Query Builder
@@ -56,7 +57,8 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         // Entity Repository + Entity Service
         AddDefaultRepository(typeof(EntityRepository<TEntity>),
             asRepository: !builder.HasService<IEntityRepository<TEntity>>(),
-            asEntityService: !builder.HasService<IEntityService<TEntity>>());
+            asEntityService: !builder.HasService<IEntityService<TEntity>>(),
+            configuredFrom);
 
         return this;
     }
@@ -73,6 +75,7 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         _licenseValidator.TrackSimple(options.Services, typeof(TEntity));
         _registrationLog.TrackEntity(typeof(TContext), typeof(TEntity), typeof(TKey), typeof(SearchObject<TKey>), isComplex: false);
         var builder = new EntityServiceBuilder<TContext, TEntity, TKey>(options);
+        var configuredFrom = Services.Count;
         configure?.Invoke(builder);
 
         EnsureGlobalKeyedFilters<TKey>();
@@ -95,7 +98,8 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         // Entity Repository + Entity Service
         AddDefaultRepository(typeof(EntityRepository<TEntity, TKey>),
             asRepository: !builder.HasService<IEntityRepository<TEntity, TKey>>(),
-            asEntityService: !builder.HasService<IEntityService<TEntity, TKey>>());
+            asEntityService: !builder.HasService<IEntityService<TEntity, TKey>>(),
+            configuredFrom);
 
         return this;
     }
@@ -106,6 +110,7 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         _licenseValidator.TrackSimple(options.Services, typeof(TEntity));
         _registrationLog.TrackEntity(typeof(TContext), typeof(TEntity), typeof(TKey), typeof(TSearchObject), isComplex: false);
         var builder = new EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject>(Options);
+        var configuredFrom = Services.Count;
         configure?.Invoke(builder);
 
         EnsureGlobalKeyedFilters<TKey>();
@@ -128,7 +133,8 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         // Entity Repository + Entity Service
         AddDefaultRepository(typeof(EntityRepository<TEntity, TKey, TSearchObject>),
             asRepository: !builder.HasService<IEntityRepository<TEntity, TKey, TSearchObject>>(),
-            asEntityService: !builder.HasService<IEntityService<TEntity, TKey, TSearchObject>>());
+            asEntityService: !builder.HasService<IEntityService<TEntity, TKey, TSearchObject>>(),
+            configuredFrom);
 
         return this;
     }
@@ -143,6 +149,7 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         _registrationLog.TrackEntity(typeof(TContext), typeof(TEntity), typeof(int), typeof(TSearchObject), typeof(TSortBy), typeof(TIncludes));
         var simpleBuilder = new EntitySearchObjectServiceBuilder<TContext, TEntity, int, TSearchObject>(Options);
         var builder = new ComplexEntityIntServiceBuilder<TContext, TEntity, TSearchObject, TSortBy, TIncludes>(simpleBuilder);
+        var configuredFrom = Services.Count;
         configure?.Invoke(builder);
 
         // Query Builder
@@ -165,7 +172,8 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         // Entity Repository + Entity Service
         AddDefaultRepository(typeof(EntityRepository<TEntity, TSearchObject, TSortBy, TIncludes>),
             asRepository: !builder.HasService<IEntityRepository<TEntity, TSearchObject, TSortBy, TIncludes>>(),
-            asEntityService: !builder.HasEntityService());
+            asEntityService: !builder.HasEntityService(),
+            configuredFrom);
 
         return this;
     }
@@ -190,6 +198,7 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         _registrationLog.TrackEntity(typeof(TContext), typeof(TEntity), typeof(TKey), typeof(TSearchObject), typeof(TSortBy), typeof(TIncludes));
         var simpleBuilder = new EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject>(Options);
         var builder = new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes>(simpleBuilder);
+        var configuredFrom = Services.Count;
         configure?.Invoke(builder);
 
         EnsureGlobalKeyedFilters<TKey>();
@@ -214,7 +223,8 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         // Entity Repository + Entity Service
         AddDefaultRepository(typeof(EntityRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>),
             asRepository: !builder.HasService<IEntityRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>>(),
-            asEntityService: !builder.HasEntityService());
+            asEntityService: !builder.HasEntityService(),
+            configuredFrom);
 
         return this;
     }
@@ -306,15 +316,33 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
     /// app's own type of the same shape set with <see cref="EntityServiceCollectionOptions.UseRepository"/> — under the
     /// repository and/or entity-service interfaces the default implements.
     /// </summary>
-    private void AddDefaultRepository(Type defaultRepositoryType, bool asRepository, bool asEntityService)
+    /// <exception cref="InvalidOperationException">The configuration, from <paramref name="configuredFrom"/> on, registered
+    /// an implementation under some of those interfaces but not under the one this shape resolves through: the default
+    /// would replace it under all of them, silently.</exception>
+    private void AddDefaultRepository(Type defaultRepositoryType, bool asRepository, bool asEntityService, int configuredFrom)
     {
         if (!asRepository && !asEntityService)
         {
             return;
         }
 
+        var serviceTypes = EntityRepositoryRegistry.ServiceTypesOf(defaultRepositoryType, asRepository, asEntityService).ToArray();
+        var configured = options.Services.Skip(configuredFrom).FirstOrDefault(d => serviceTypes.Contains(d.ServiceType));
+        if (configured != null)
+        {
+            var entity = defaultRepositoryType.GetGenericArguments()[0].Name;
+            var implementation = configured.ImplementationType ?? configured.ImplementationInstance?.GetType();
+            var missing = serviceTypes.Where(t => options.Services.All(d => d.ServiceType != t)).Select(EntityRepositoryRegistry.FriendlyName);
+            throw new InvalidOperationException(
+                $"{(implementation != null ? EntityRepositoryRegistry.FriendlyName(implementation) : "A factory registration")} serves {entity} as " +
+                $"{EntityRepositoryRegistry.FriendlyName(configured.ServiceType)} but not as {string.Join(", ", missing)}, which this For<>() resolves through, " +
+                $"so the default {EntityRepositoryRegistry.FriendlyName(defaultRepositoryType)} would replace it under every interface. " +
+                $"Derive it from the {EntityRepositoryRegistry.FriendlyName(defaultRepositoryType.GetGenericTypeDefinition())} of this shape, " +
+                "or register the entity with the For<>() shape the class is written for.");
+        }
+
         var repositoryType = EntityRepositoryRegistry.For(options.Services).Resolve(defaultRepositoryType);
-        foreach (var serviceType in EntityRepositoryRegistry.ServiceTypesOf(defaultRepositoryType, asRepository, asEntityService))
+        foreach (var serviceType in serviceTypes)
         {
             options.Services.AddTransient(serviceType, repositoryType);
         }
@@ -357,10 +385,8 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
     {
         if (registered.Contains(typeof(TIntDefault)) && !registered.Contains(typeof(TKeyed)))
         {
-            // back-filled only because the defaults registered the int variant, so this is
-            // defaults-contributed too — it must be recorded as such, or the scope check reports an inert
-            // keyed twin as a hand-registered filter and warns about rows the app never meant to hide
-            options.AddDefaultGlobalFilter<TKeyed>();
+            // back-filled only because the defaults registered the int variant
+            options.AddGlobalFilterQueryBuilder<TKeyed>();
         }
     }
 

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Regira.Entities.DependencyInjection.ServiceCollections;
 
 namespace Regira.Entities.DependencyInjection.Validation;
 
@@ -26,21 +27,12 @@ public sealed class EntityRegistrationLog
 
     /// <summary>
     /// Global filters contributed by <c>UseDefaults()</c> / <c>AddDefaultGlobalQueryFilters()</c> rather than
-    /// chosen by the app. The whole set is registered regardless of which capability interfaces the entities
-    /// implement, so an inert one carries no signal — while the same type registered deliberately does.
+    /// chosen by the app. No longer filled: startup validation does not check Regira's own filters.
     /// </summary>
+    [Obsolete("No longer filled or read: startup validation does not check Regira's own global filters. Will be removed in v7.")]
     public ISet<Type> DefaultGlobalFilters { get; } = new HashSet<Type>();
 
-    public static EntityRegistrationLog For(IServiceCollection services)
-    {
-        if (services.FirstOrDefault(d => d.ServiceType == typeof(EntityRegistrationLog))?.ImplementationInstance is EntityRegistrationLog existing)
-        {
-            return existing;
-        }
-        var log = new EntityRegistrationLog();
-        services.AddSingleton(log);
-        return log;
-    }
+    public static EntityRegistrationLog For(IServiceCollection services) => services.GetOrAddInstance<EntityRegistrationLog>();
 
     /// <summary>Gets (or creates) the log for <paramref name="services"/> and tracks <paramref name="contextType"/>.</summary>
     public static EntityRegistrationLog ForContext(IServiceCollection services, Type contextType)
@@ -91,6 +83,9 @@ public sealed class EntityRegistrationLog
         => For(services).TrackRelated(contextType, parentType, relatedType);
 
     /// <summary>Records that <paramref name="filterType"/> was contributed by the defaults, not chosen by the app.</summary>
+    [Obsolete("No longer read: startup validation does not check Regira's own global filters. Will be removed in v7.")]
     public static void TrackDefaultGlobalFilter(IServiceCollection services, Type filterType)
+#pragma warning disable CS0618 // goes with the property
         => For(services).DefaultGlobalFilters.Add(filterType);
+#pragma warning restore CS0618
 }

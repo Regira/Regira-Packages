@@ -74,9 +74,9 @@
 
 | Namespace | Types |
 |---|---|
-| `Regira.Entities.EFcore.Primers` | `ArchivablePrimer`, `HasCreatedDbPrimer`, `HasLastModifiedDbPrimer`, `HasConcurrencyTokenDbPrimer`, `AutoTruncatePrimer`, `AutoNormalizingPrimer`, `EntityPrimerContainerInterceptor` |
+| `Regira.Entities.EFcore.Primers` | `ArchivablePrimer`, `HasCreatedDbPrimer`, `HasLastModifiedDbPrimer`, `HasConcurrencyTokenDbPrimer`, `EntityPrimerContainerInterceptor`; obsolete: `AutoTruncatePrimer`, `AutoNormalizingPrimer` |
 | `Regira.Entities.EFcore.Primers.Abstractions` | `IEntityPrimer<>`, `EntityPrimerBase<>` |
-| `Regira.Entities.DependencyInjection.Primers` | `ServiceCollectionPrimerExtensions` *(`AddPrimer<>()`, `AddDefaultPrimers()`, `AddAutoTruncatePrimer()`, `AddDefaultEntityNormalizerPrimer()` — on `IServiceCollection` and `EntityServiceCollectionOptions`)* |
+| `Regira.Entities.DependencyInjection.Primers` | `ServiceCollectionPrimerExtensions` *(`AddPrimer<>()`, `AddDefaultPrimers()` — on `IServiceCollection` and `EntityServiceCollectionOptions`; obsolete: `AddAutoTruncatePrimer()`, `AddDefaultEntityNormalizerPrimer()`)* |
 
 ---
 

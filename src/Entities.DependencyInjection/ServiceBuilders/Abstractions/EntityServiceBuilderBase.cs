@@ -17,6 +17,7 @@ using Regira.Entities.Services.Abstractions;
 
 namespace Regira.Entities.DependencyInjection.ServiceBuilders.Abstractions;
 
+[Obsolete("An older second fluent API nothing reaches: UseEntities<TContext>().For<>() hands out the EntityServiceBuilder shapes. Will be removed in v7.")]
 public class EntityServiceBuilderBase<TEntity, TKey>(EntityServiceCollectionOptions options)
     : EntityServiceCollectionBase(options)
     where TEntity : class, IEntity<TKey>

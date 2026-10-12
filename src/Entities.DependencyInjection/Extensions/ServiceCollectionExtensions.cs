@@ -21,9 +21,9 @@ public static class ServiceCollectionExtensions
         // License validation is deferred: For<>() checks the limit once the free tier is exceeded
         services.TryAddSingleton(services);
         services.RegisterTierStartupLogger();
-        services.RegisterGlobalPagingOptions(options);
-        services.RegisterGlobalQueryOptions(options);
-        services.RegisterGlobalReadOptions(options);
+        services.RegisterLastConfigured(options.PageSizeConfigured, new EntityListOptions { DefaultPageSize = options.DefaultPageSize, MaxPageSize = options.MaxPageSize });
+        services.RegisterLastConfigured(options.QueryBehaviorConfigured, new EntityQueryOptions { DefaultArchivedFilter = options.DefaultArchivedFilter });
+        services.RegisterLastConfigured(options.ReadBehaviorConfigured, new EntityReadOptions { RefetchAfterSave = options.RefetchAfterSave });
         services.RegisterStartupValidation(options);
         services.RegisterEntityMediator();
         return options;
@@ -32,16 +32,7 @@ public static class ServiceCollectionExtensions
     public static EntityServiceCollection<TContext> UseEntities<TContext>(this IServiceCollection services, Action<EntityServiceCollectionOptions>? configure = null)
         where TContext : DbContext
     {
-        var options = new EntityServiceCollectionOptions(services);
-        configure?.Invoke(options);
-        // License validation is deferred: For<>() checks the limit once the free tier is exceeded
-        services.TryAddSingleton(services);
-        services.RegisterTierStartupLogger();
-        services.RegisterGlobalPagingOptions(options);
-        services.RegisterGlobalQueryOptions(options);
-        services.RegisterGlobalReadOptions(options);
-        services.RegisterStartupValidation(options);
-        services.RegisterEntityMediator();
+        var options = services.UseEntities(configure);
         services.WireDbContextDefaults<TContext>(options);
         return new EntityServiceCollection<TContext>(options);
     }
@@ -89,69 +80,22 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Registers the global <see cref="EntityListOptions"/> from the configured paging defaults.
-    /// Across multiple <c>UseEntities()</c> calls the last call that explicitly configured paging wins
-    /// (so a later <c>SetPageSize()</c> opt-out is not swallowed by an earlier registration). Calls that
-    /// never touched paging only seed a default when none exists yet, and never overwrite an existing one.
+    /// Registers an app-wide options instance — paging (<see cref="EntityListOptions"/>), query and read behavior,
+    /// validation. Across multiple <c>UseEntities()</c> calls the last call that explicitly configured it wins (so a
+    /// later <c>SetPageSize()</c> opt-out is not swallowed by an earlier registration); a call that never touched it
+    /// only seeds a default when none exists yet, and never overwrites an existing one.
     /// </summary>
-    private static void RegisterGlobalPagingOptions(this IServiceCollection services, EntityServiceCollectionOptions options)
+    private static void RegisterLastConfigured<TOptions>(this IServiceCollection services, bool configured, TOptions instance)
+        where TOptions : class
     {
-        if (options.PageSizeConfigured)
+        if (configured)
         {
-            var existing = services.FirstOrDefault(d => d.ServiceType == typeof(EntityListOptions));
-            if (existing != null)
-            {
-                services.Remove(existing);
-            }
-            services.AddSingleton(new EntityListOptions { DefaultPageSize = options.DefaultPageSize, MaxPageSize = options.MaxPageSize });
+            services.RemoveAll<TOptions>();
+            services.AddSingleton(instance);
         }
         else
         {
-            services.TryAddSingleton(new EntityListOptions { DefaultPageSize = options.DefaultPageSize, MaxPageSize = options.MaxPageSize });
-        }
-    }
-
-    /// <summary>
-    /// Registers the global <see cref="EntityQueryOptions"/> from the configured query behavior
-    /// (<see cref="EntityServiceCollectionOptions.DefaultArchivedFilter"/>).
-    /// Same last-explicit-configuration-wins semantics as <see cref="RegisterGlobalPagingOptions"/>.
-    /// </summary>
-    private static void RegisterGlobalQueryOptions(this IServiceCollection services, EntityServiceCollectionOptions options)
-    {
-        if (options.QueryBehaviorConfigured)
-        {
-            var existing = services.FirstOrDefault(d => d.ServiceType == typeof(EntityQueryOptions));
-            if (existing != null)
-            {
-                services.Remove(existing);
-            }
-            services.AddSingleton(new EntityQueryOptions { DefaultArchivedFilter = options.DefaultArchivedFilter });
-        }
-        else
-        {
-            services.TryAddSingleton(new EntityQueryOptions { DefaultArchivedFilter = options.DefaultArchivedFilter });
-        }
-    }
-
-    /// <summary>
-    /// Registers the global <see cref="EntityReadOptions"/> from the configured read behavior
-    /// (<see cref="EntityServiceCollectionOptions.RefetchAfterSave"/>).
-    /// Same last-explicit-configuration-wins semantics as <see cref="RegisterGlobalPagingOptions"/>.
-    /// </summary>
-    private static void RegisterGlobalReadOptions(this IServiceCollection services, EntityServiceCollectionOptions options)
-    {
-        if (options.ReadBehaviorConfigured)
-        {
-            var existing = services.FirstOrDefault(d => d.ServiceType == typeof(EntityReadOptions));
-            if (existing != null)
-            {
-                services.Remove(existing);
-            }
-            services.AddSingleton(new EntityReadOptions { RefetchAfterSave = options.RefetchAfterSave });
-        }
-        else
-        {
-            services.TryAddSingleton(new EntityReadOptions { RefetchAfterSave = options.RefetchAfterSave });
+            services.TryAddSingleton(instance);
         }
     }
 
@@ -178,9 +122,7 @@ public static class ServiceCollectionExtensions
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, AttachmentsInputDtoValidator>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, AttachmentForeignKeyValidator>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, ServerOwnedValidator>());
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, DeleteCycleValidator>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, ConcurrencyTokenValidator>());
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, EntityValidatorScopeValidator>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, EntityValidatorWiringValidator>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, RepositoryShapeValidator>());
 
@@ -193,19 +135,7 @@ public static class ServiceCollectionExtensions
             .GetMethod("ValidateEntityControllers", [typeof(IServiceCollection)])?
             .Invoke(null, [services]);
 
-        if (options.ValidationConfigured)
-        {
-            var existing = services.FirstOrDefault(d => d.ServiceType == typeof(EntityValidationOptions));
-            if (existing != null)
-            {
-                services.Remove(existing);
-            }
-            services.AddSingleton(options.Validation);
-        }
-        else
-        {
-            services.TryAddSingleton(options.Validation);
-        }
+        services.RegisterLastConfigured(options.ValidationConfigured, options.Validation);
     }
 
     public static IServiceCollection GetServices<TContext>(this IEntityServiceCollection<TContext> entityServiceCollection)

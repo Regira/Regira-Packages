@@ -1,7 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Regira.DAL.EFcore.Extensions;
-using Regira.Entities.EFcore.Extensions;
 using Regira.Entities.EFcore.Primers.Abstractions;
 using Regira.Utilities;
 
@@ -38,32 +36,16 @@ public class EntityPrimerContainer
             .ToArray();
     }
 
-    public async Task ApplyPrimers(Type? entityType = null, CancellationToken token = default)
-    {
-        ArchivablePrimer.BeginPass(_dbContext);
-        var groupedEntries = _dbContext.GetPendingEntries()
-            .GroupBy(e => e.Entity.GetType())
-            .Where(g => entityType == null || g.Key == entityType || TypeUtility.GetBaseTypes(g.Key).Contains(entityType));
-        foreach (var entriesGroup in groupedEntries)
-        {
-            var genericPrimerTypes = new[] { entriesGroup.Key }.Concat(TypeUtility.GetBaseTypes(entriesGroup.Key)).Distinct();
-            foreach (var genericPrimerType in genericPrimerTypes)
-            {
-                var primerType = typeof(IEntityPrimer<>).MakeGenericType(genericPrimerType);
-                var primers = Primers.Where(x => TypeUtility.ImplementsInterface(x.GetType(), primerType));
-                foreach (var primer in primers)
-                {
-                    await primer.PrepareManyAsync(entriesGroup.ToArray(), token);
-                }
-            }
-        }
-
-        // only now is it known which concurrency tokens a primer moves — those are compared with the client's value
-        _dbContext.ApplyUndecidedClientTokens(entityType);
-        ArchivablePrimer.EndPass(_dbContext);
-    }
     /// <summary>
-    /// 
+    /// Runs the primers on the pending entries without saving, in registration order, as <c>SaveChanges()</c> does
+    /// through <see cref="EntityPrimerContainerInterceptor"/>.
+    /// </summary>
+    /// <param name="entityType">Only the entries of this type or a subtype; every pending entry when <c>null</c>.</param>
+    /// <param name="token">A token to monitor for cancellation requests.</param>
+    public Task ApplyPrimers(Type? entityType = null, CancellationToken token = default)
+        => PrimerPass.Run(_dbContext, Primers.ToArray(), entityType, null, token);
+    /// <summary>
+    /// Runs the primers on the pending entries of <typeparamref name="T"/> without saving.
     /// </summary>
     /// <typeparam name="T">Type of entity</typeparam>
     /// <param name="token">A token to monitor for cancellation requests.</param>

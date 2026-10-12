@@ -403,7 +403,7 @@ scoped to that category                  count  43 | items   0   ← 43 rows nob
 
 Startup validation reports this shape (`ArchivableReferenceDataValidator`, a **warning** naming both entities) — it fires only for a dependent that is separately registered, since an `e.Related()` child is never queried on its own.
 
-**If it really is an aggregate parent**, suppress the warning per context with `.ConfigureWarnings(w => w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning))` on the `AddDbContext` options. And for any dependent you **also query directly**, mirror the filter — `modelBuilder.Entity<OrderLine>().HasQueryFilter(x => !x.Order!.IsArchived)` — which is what keeps its count and items in agreement. A filter you add to a dependent that is **not itself `IArchivable`** never collides with the named archived filter: the archived filter only touches `IArchivable` types, so your filter on such a dependent is unopposed.
+**If it really is an aggregate parent**, suppress the warning per context with `.ConfigureWarnings(w => w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning))` on the `AddDbContext` options. And for any dependent you **also query directly**, mirror the filter — `modelBuilder.Entity<OrderLine>().HasQueryFilter(x => !x.Order!.IsArchived)` — which is what keeps its count and items in agreement. Each such dependent needs its own, and one without a navigation back to the parent needs that navigation first (*Attachments on an archivable owner*, below). A filter you add to a dependent that is **not itself `IArchivable`** never collides with the named archived filter: the archived filter only touches `IArchivable` types, so your filter on such a dependent is unopposed.
 
 **What mirroring costs.** `?archived=` opts in on the queried entity only, and a mirrored filter is your own filter on a dependent that is not `IArchivable` — no opt-in ever lifts it. An archived parent's children are then unreachable through the API for everyone, the administrator who archived it included. When they must stay readable, don't mirror: keep the parent out of the children's reads — no `Include` of it, no filter through its navigation, and the one field their list shows denormalised onto them (`AssetCode` on the record) — so no join exists for the archived filter to drop rows through. Startup validation still warns, since it inspects the model's shape rather than your queries; with no read joining the parent, that warning stands by design.
 
@@ -412,7 +412,7 @@ Startup validation reports this shape (`ArchivableReferenceDataValidator`, a **w
 The mirrored filter above needs a **navigation** on the dependent to bind to (`x.Order`), and a per-owner
 attachment link has none: `EntityAttachment` carries `ObjectId` / `ObjectType` only, and the model
 configuration in [`entities.examples.md`](./entities.examples.md) → Attachments maps it with a bare
-`WithOne()`. So on an `IArchivable` owner the validator's remedy does not compile until you add the
+`WithOne()`. So on an `IArchivable` owner the mirrored filter does not compile until you add the
 navigation yourself. This is a common intersection, not an edge case: soft delete belongs on aggregate
 parents, which are exactly the entities that own files, and the per-owner link is always separately
 registered (it costs its own simple slot).
@@ -1748,40 +1748,36 @@ A token you declare yourself goes through the same check:
 | Application-owned | `[ConcurrencyCheck, VersionStamp] public Guid Version { get; set; }` | **a primer you register** — `HasConcurrencyTokenDbPrimer` is the one to copy |
 | Data column | `[ConcurrencyCheck] public string? LastName { get; set; }` | nothing — the client edits it |
 
-A token is a **version stamp** when the database generates it on update, when it is the marker's
-`ConcurrencyToken`, or when it carries `[VersionStamp]` (`Regira.Entities.Attributes`). Declare an
-application-owned token so: the check then compares the client's value on every write, and startup validation
-checks its DTOs as below. An undeclared token is treated as a stamp only on a write where a prepper or primer
-changes it — which misses a primer that can produce the value the client already holds (a hash of the content: the
-stale client that sends back what it read is let through) — and startup validation reports its findings only as
-Info. **A token nothing moves is a data column:** the client's value is the edit itself, so it is written as sent — a
-change or a clear — and compared with nothing the client read: only a write racing the save is caught. That is also
-what an application-owned token without its primer gets, so two clients holding the same value both pass. The flip
-side: a primer that rewrites an undeclared data column in place (trimming, rounding) makes it look like a version
-stamp, and the edit it rewrote answers 409.
+A token is a **version stamp** only when it is declared one: the database generates it on update, it is the
+marker's `ConcurrencyToken`, or it carries `[VersionStamp]` (`Regira.Entities.Attributes`). A stamp's client value
+is compared on every write, and startup validation checks its DTOs as below. **Any other token is a data column,
+whatever moves it:** the value on the entity is written — the client's edit, or what a primer made of it — and it
+is compared with the stored row, never with what the client read, so only a write racing the save is caught. So an
+application-owned token needs `[VersionStamp]` as well as its primer: without the attribute a stale client is not
+refused, and startup validation warns about an undeclared token of a type a stamp takes (a `Guid`, an integer, `byte[]`, `DateTime` or `DateTimeOffset`). A primer that
+rewrites a data column in place (trimming, rounding) is just another edit.
 
 **2. Carry it on both DTOs, uninitialized** — `public Guid ConcurrencyToken { get; set; }` on `OrderDto` and
-`OrderInputDto`. Startup validation reports the shapes that break the check:
+`OrderInputDto`. An initializer (`= Guid.NewGuid()`) on the entity's token, with no input-DTO property to overwrite
+it, gives every mapped entity a token the row never held, so every `PUT`/`PATCH` answers 409; on the input DTO it
+does the same to a client that leaves the token out. Startup validation reports the shapes that silently break the
+check:
 
 - A DTO **without** the property: the client never receives the token or can never send it back, so every write
   is last-write-wins again (warning). For a token declared `[VersionStamp(Required = true)]` an input DTO without
   it means every update answers 400 instead (error).
-- An **initializer** on the entity's token (`= Guid.NewGuid()`) with no input-DTO property to overwrite it: the
-  mapper builds a fresh entity per request, so every `PUT`/`PATCH` carries a token the row never held and
-  answers 409 (error). An initializer on the input DTO — or on the entity's token when the entity is its own input
-  DTO — does the same to a client that omits the token (warning).
 - `[VersionStamp]` on a property the model does not treat as a concurrency token: nothing is compared (warning).
 
-These apply to declared version stamps; a data column needs none of them, so an undeclared token only gets them as
-Info.
+These apply to declared version stamps; a data column needs none of them.
 
 **Deleting by key still works, at one read per row.** A delete is commonly issued from a stub —
 `Remove(new Order { Id = id })` — which carries no token, and comparing the stored row against `Guid.Empty` would
 match nothing and fail as a conflict forever. An absent token is read as the absence of a claim, so the primer reads
 the stored token and deletes against that: the delete goes through, while a caller that *does* supply a token keeps
 its check and an already-deleted row still reports a conflict. The soft delete of an `IArchivable` stub is checked
-the same way; it writes the archive flag and the primers' stamps, never the stub's empty values. The cost is one
-extra `SELECT` per deleted row that carries the marker, so removing N stubs in a loop is N extra round trips — load
+the same way — it writes the archive flag and the primers' stamps, never the stub's empty values — and so is an
+update of an attached stub (`Attach(new Order { Id = id })`, then a change), as a `PUT` without the token is. The cost
+is one extra `SELECT` per such row that carries the marker, so removing N stubs in a loop is N extra round trips — load
 the entities you are deleting (a single query) when that matters. On a synchronous `SaveChanges()` each of those
 reads blocks the calling thread. One stub still needs the entity loaded: one whose row references its own children,
 whose reference is dropped by a direct `UPDATE` before any primer runs.
@@ -1800,7 +1796,7 @@ What each write is checked against:
 | `DELETE`, and child rows a save drops | no client token reaches them — only a write racing them is caught |
 | Your own code on the raw `DbContext` (load, copy the DTO, `SaveChanges()`) | the token the entity was **loaded** with — copying the client's token onto a tracked entity changes only its current value, so a stale client wins. Set the original yourself: `db.Entry(order).Property(x => x.ConcurrencyToken).OriginalValue = dto.ConcurrencyToken` |
 | Owned children (`Related()`) | each child's own token, when it declares one; one stale child fails the whole save. A CLR type EF maps more than once — a shared-type entity, an owned type with several owners — has no single model to read its token from, so only a write racing it is caught |
-| A data-column token | the stored row — only a write racing the save is caught |
+| A data-column token — any token not declared a version stamp | the stored row — only a write racing the save is caught |
 
 - A required stamp left out answers the field-level 400, keyed by the token's C# property name:
   `"errors": { "ConcurrencyToken": ["Required on an update: send the value read with the record."] }`. The camelCase naming
@@ -2003,7 +1999,7 @@ guarded — the `<img>` still 401s. (Authorization is evaluated on the *routed* 
 
 An owner with an optional foreign key to one of its own child rows — while the child's foreign key back is
 required, and therefore cascades — makes the two tables reference each other. Two independent things break, and
-neither failure names the relationship. Startup validation warns about the shape.
+neither failure names the relationship (§Troubleshooting in `entities.instructions` lists both symptoms).
 
 **Prefer marking the child over pointing at it.** A flag or a rank column on the child identifies the same row
 with no foreign key and neither failure below; an attachment link entity's `SortOrder` (assigned from the

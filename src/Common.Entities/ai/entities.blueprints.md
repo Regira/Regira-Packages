@@ -122,7 +122,7 @@ services.For<Supplier, SupplierSearchObject, EntitySortBy, SupplierIncludes>(e =
 });
 ```
 
-(`Prepare()` is the two-line app helper shown under Stakeholders § Registration — id reset + sort order.)
+(`Prepare()` is the one-line app helper shown under Stakeholders § Registration — sort order.)
 
 Contact values and address text become searchable by folding them into the **owner's** `NormalizedContent`,
 so the one global `Q` filter finds a supplier by phone number or city:
@@ -390,13 +390,12 @@ public static IEntityServiceCollection<AppDbContext> AddParties(this IEntityServ
 > added). Deeper graphs nest the same way (`configure` again). No hand-written prepper is needed for
 > grandchild collections — write one only for logic *beyond* collection syncing.
 
-`Prepare()` is a two-line app helper reused by every owned collection — it resets client-generated ids and applies sort order using framework extensions (`Regira.Entities.Extensions`):
+`Prepare()` is a one-line app helper reused by every owned collection — it applies sort order using a framework extension (`Regira.Entities.Extensions`); the sync itself clears a client's negative temp ids, at every depth:
 
 <!-- no-compile -->
 ```csharp
 public static ICollection<T> Prepare<T>(this ICollection<T> items) where T : IEntity<int>
 {
-    items.Cast<IEntity<int>>().AdjustIdForEfCore();                       // new rows: negative/temp ids -> 0
     (items as IEnumerable<ISortable>)?.SetSortOrder();                    // ISortable children: index -> SortOrder
     return items;
 }

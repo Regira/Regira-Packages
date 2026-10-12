@@ -43,20 +43,8 @@ internal sealed class ArchivableReferenceDataValidator : IEntityRegistrationVali
         var registered = context.Registrations.Entities.Select(e => e.EntityType).ToHashSet();
         var ownedByParent = context.Registrations.Related.Select(r => r.RelatedType).ToHashSet();
 
-        foreach (var inspectType in ValidationContextTypes.Inspectable(context))
+        foreach (var (inspectType, dbContext) in context.DbContexts)
         {
-            DbContext dbContext;
-            try
-            {
-                dbContext = (DbContext)context.Provider.GetRequiredService(inspectType);
-            }
-            catch
-            {
-                // The archived-filter validator already reports an uninspectable context; saying it twice
-                // adds noise without adding information.
-                continue;
-            }
-
             foreach (var issue in Hazards(dbContext, inspectType, registered, ownedByParent))
             {
                 yield return issue;
@@ -80,11 +68,9 @@ internal sealed class ArchivableReferenceDataValidator : IEntityRegistrationVali
                 // agreement by eliminating the same rows from both.
                 .Where(fk => fk.DeclaringEntityType.GetDeclaredQueryFilters().Count == 0)
                 .Where(fk => registered.Contains(fk.DeclaringEntityType.ClrType) && !ownedByParent.Contains(fk.DeclaringEntityType.ClrType))
-                .GroupBy(fk => fk.DeclaringEntityType.ClrType)
-                // The remedy is a predicate over a navigation, so it only compiles when the dependent has one.
-                // A link entity mapped with a bare WithOne() — every EntityAttachment-derived type — has none.
-                .Select(g => new { Type = g.Key, Navigation = g.Select(fk => fk.DependentToPrincipal?.Name).FirstOrDefault(n => n != null) })
-                .OrderBy(d => d.Type.Name)
+                .Select(fk => fk.DeclaringEntityType.ClrType.Name)
+                .Distinct()
+                .OrderBy(name => name)
                 .ToArray();
 
             if (dependents.Length == 0)
@@ -92,30 +78,14 @@ internal sealed class ArchivableReferenceDataValidator : IEntityRegistrationVali
                 continue;
             }
 
-            var names = string.Join(", ", dependents.Select(d => d.Type.Name));
-            // One message, one worked remedy — so prescribe for the dependent that needs the *longer* fix.
-            // Shown against a navigation-carrying dependent, the filter-only remedy silently under-serves a
-            // navigationless sibling; the reverse is merely more verbose than that sibling needs.
-            var target = dependents.FirstOrDefault(d => d.Navigation == null) ?? dependents[0];
-            var first = target.Type.Name;
-            // Each dependent carries its own filter, so a multi-dependent warning is not fixed by one line.
-            var eachOne = dependents.Length > 1 ? $" Each of {names} needs its own, {first} shown here." : "";
-            var navigation = target.Navigation ?? principal.ClrType.Name;
-            var mirror = $"modelBuilder.Entity<{first}>().HasQueryFilter(x => !x.{navigation}!.IsArchived)";
-            var remedy = target.Navigation != null
-                ? $"mirror the filter on the dependent: {mirror} — that is what keeps count and items in agreement."
-                : $"mirror the filter on the dependent — but {first} has no navigation back to {principal.ClrType.Name} for the predicate to bind to " +
-                  $"(a link entity mapped with a bare WithOne() carries the foreign key only), so add one, re-point the relationship at it " +
-                  $"(.WithOne(x => x.{navigation}!)), and then filter: {mirror} — that is what keeps count and items in agreement.";
+            var principalName = principal.ClrType.Name;
+            var names = string.Join(", ", dependents);
             yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
-                $"{principal.ClrType.Name} is IArchivable and is the required end of a relationship with separately registered {names} (in {inspectType.Name}). " +
-                $"Archiving one {principal.ClrType.Name} hides the {first} rows that reference it from list results while /search still counts them, " +
+                $"{principalName} is IArchivable and is the required end of a relationship with separately registered {names} (in {inspectType.Name}). " +
+                $"Archiving one {principalName} hides the rows of {names} that reference it from list results while /search still counts them, " +
                 "so pages come back short and count disagrees with items. Nothing errors. " +
-                $"ACTION: decide what {principal.ClrType.Name} is. Reference data (a lookup, a category, a status) should NOT be IArchivable — " +
-                "delete it for real and let OnDelete(Restrict) return 409 while it is in use — or make the foreign key optional, " +
-                $"so the dependent survives with a null navigation. If it really is an aggregate parent and hiding {first} is the intent, " +
-                remedy + eachOne +
-                " See entities.patterns → Soft Delete.");
+                $"ACTION: decide what {principalName} is: reference data that should not be IArchivable, a foreign key that should be optional, " +
+                "or an aggregate parent whose dependents mirror its filter. See entities.patterns → Soft Delete.");
         }
     }
 

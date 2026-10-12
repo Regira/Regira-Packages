@@ -5,6 +5,7 @@ using Regira.Entities.Models.Abstractions;
 
 namespace Regira.Entities.DependencyInjection.ServiceCollections.Abstractions;
 
+[Obsolete("An older second fluent API nothing reaches: UseEntities<TContext>() returns EntityServiceCollection<TContext>. Will be removed in v7.")]
 public class EntityServiceCollectionBase(EntityServiceCollectionOptions options) : ServiceCollectionWrapper(options.Services)
 {
     protected internal EntityServiceCollectionOptions Options => options;

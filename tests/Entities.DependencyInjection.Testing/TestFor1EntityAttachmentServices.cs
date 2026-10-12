@@ -212,4 +212,21 @@ public class TestFor1EntityAttachmentServices
         Assert.That(entityService2, Is.TypeOf<EntityRepository<CourseAttachment, int, EntityAttachmentSearchObject>>());
         Assert.That(entityService3, Is.TypeOf<EntityRepository<CourseAttachment, int, EntityAttachmentSearchObject>>());
     }
+
+    [Test]
+    public void The_Link_Defaults_Are_Added_Over_A_Keyed_Registration_Of_The_Link()
+    {
+        // an int owner adds the link's defaults unless IEntityService<CourseAttachment> is registered; a keyed registration
+        // of the link entity made earlier must not stand for it, or the filter scoping links to their owner is missing
+        using var sp = new ServiceCollection()
+            .AddDbContext<ContosoContext>()
+            .UseEntities<ContosoContext>()
+            .WithAttachments(_ => new BinaryFileService(new FileSystemOptions()))
+            .For<CourseAttachment, int, EntityAttachmentSearchObject>()
+            .For<Course>(e => e.HasAttachments(item => item.Attachments))
+            .BuildServiceProvider();
+
+        var queryFilters = sp.GetServices<IFilteredQueryBuilder<CourseAttachment, int, EntityAttachmentSearchObject>>().ToArray();
+        Assert.That(queryFilters.OfType<EntityAttachmentFilteredQueryBuilder<int, CourseAttachment, int, EntityAttachmentSearchObject, int, Attachment>>(), Is.Not.Empty);
+    }
 }

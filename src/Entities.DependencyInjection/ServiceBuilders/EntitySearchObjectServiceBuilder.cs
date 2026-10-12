@@ -24,40 +24,6 @@ public class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchOb
 {
     public new bool HasEntityService() => HasService<IEntityService<TEntity, TKey, TSearchObject>>();
 
-    // Build
-    public override void Build()
-    {
-        base.Build();
-
-        // Query Builder
-        if (!HasService<IQueryBuilder<TEntity, TKey, TSearchObject, EntitySortBy, EntityIncludes>>())
-        {
-            AddDefaultQueryBuilder();
-        }
-        // Read Service
-        if (!HasService<IEntityReadService<TEntity, TKey, TSearchObject>>())
-        {
-            UseReadService<EntityReadService<TContext, TEntity, TKey, TSearchObject>>();
-        }
-        // Write Service
-        if (!HasService<IEntityWriteService<TEntity, TKey>>())
-        {
-            UseWriteService<EntityWriteService<TContext, TEntity, TKey>>();
-        }
-        // Entity Repository
-        if (!HasService<IEntityRepository<TEntity, TKey, TSearchObject>>())
-        {
-            HasRepositoryInner<EntityRepository<TEntity, TKey, TSearchObject>>();
-        }
-        // Entity Service
-        if (!HasService<IEntityService<TEntity, TKey, TSearchObject>>())
-        {
-            UseEntityService<EntityRepository<TEntity, TKey, TSearchObject>>();
-        }
-    }
-
-
-
     // Entity services
     public new EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject> AddDefaultService()
         => UseEntityService<EntityRepository<TEntity, TKey, TSearchObject>>();
@@ -72,8 +38,7 @@ public class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchOb
     public new EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject> UseEntityService<TService>()
         where TService : class, IEntityService<TEntity, TKey, TSearchObject>
     {
-        Services.AddTransient<IEntityService<TEntity, TKey>, TService>();
-        Services.AddTransient<IEntityService<TEntity, TKey, TSearchObject>, TService>();
+        RegisterAs(typeof(TService), null, EntityServiceFamily);
         return this;
     }
     /// <summary>
@@ -86,9 +51,7 @@ public class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchOb
     public new EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject> UseEntityService<TService>(Func<IServiceProvider, TService> factory)
         where TService : class, IEntityService<TEntity, TKey, TSearchObject>
     {
-        Services.AddTransient<IEntityService<TEntity, TKey>>(factory);
-        Services.AddTransient<IEntityService<TEntity, TKey, TSearchObject>>(factory);
-        Services.AddTransient(factory);
+        RegisterAs(typeof(TService), p => factory(p), EntityServiceFamily);
         return this;
     }
 
@@ -96,15 +59,14 @@ public class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchOb
     public new EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject> UseReadService<TService>()
         where TService : class, IEntityReadService<TEntity, TKey, TSearchObject>
     {
-        Services.AddTransient<IEntityReadService<TEntity, TKey>, TService>();
-        Services.AddTransient<IEntityReadService<TEntity, TKey, TSearchObject>, TService>();
+        RegisterAs(typeof(TService), null, ReadServiceFamily);
         return this;
     }
     // Write Service
     public new EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject> UseWriteService<TService>()
         where TService : class, IEntityWriteService<TEntity, TKey>
     {
-        Services.AddTransient<IEntityWriteService<TEntity, TKey>, TService>();
+        RegisterAs(typeof(TService), null, WriteServiceFamily);
         return this;
     }
 
@@ -112,16 +74,13 @@ public class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchOb
     protected internal new EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject> HasRepositoryInner<TService>()
         where TService : class, IEntityRepository<TEntity, TKey, TSearchObject>
     {
-        Services.AddTransient<IEntityRepository<TEntity, TKey>, TService>();
-        Services.AddTransient<IEntityRepository<TEntity, TKey, TSearchObject>, TService>();
+        RegisterAs(typeof(TService), null, RepositoryFamily);
         return this;
     }
     protected internal new EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject> HasRepositoryInner<TImplementation>(Func<IServiceProvider, TImplementation> factory)
         where TImplementation : class, IEntityRepository<TEntity, TKey, TSearchObject>
     {
-        Services.AddTransient(factory);
-        Services.AddTransient<IEntityRepository<TEntity, TKey>>(factory);
-        Services.AddTransient<IEntityRepository<TEntity, TKey, TSearchObject>>(factory);
+        RegisterAs(typeof(TImplementation), p => factory(p), RepositoryFamily);
         return this;
     }
     /// <summary>
@@ -136,8 +95,7 @@ public class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchOb
     public new EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject> HasRepository<TService>()
         where TService : class, IEntityRepository<TEntity, TKey, TSearchObject>
     {
-        UseEntityService<TService>();
-        HasRepositoryInner<TService>();
+        RegisterAs(typeof(TService), null, RepositoryFamily, EntityServiceFamily);
         return this;
     }
     /// <summary>
@@ -153,8 +111,7 @@ public class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchOb
     public new EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject> HasRepository<TImplementation>(Func<IServiceProvider, TImplementation> factory)
         where TImplementation : class, IEntityRepository<TEntity, TKey>, IEntityRepository<TEntity, TKey, TSearchObject>
     {
-        UseEntityService(factory);
-        HasRepositoryInner(factory);
+        RegisterAs(typeof(TImplementation), p => factory(p), RepositoryFamily, EntityServiceFamily);
         return this;
     }
     // Entity Manager
@@ -170,9 +127,7 @@ public class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchOb
     public new EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject> HasManager<TService>()
         where TService : class, IEntityManager<TEntity, TKey, TSearchObject>
     {
-        UseEntityService<TService>();
-        Services.AddTransient<IEntityManager<TEntity, TKey>, TService>();
-        Services.AddTransient<IEntityManager<TEntity, TKey, TSearchObject>, TService>();
+        RegisterAs(typeof(TService), null, ManagerFamily, EntityServiceFamily);
         return this;
     }
     /// <summary>
@@ -187,10 +142,7 @@ public class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchOb
     public new EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject> HasManager<TImplementation>(Func<IServiceProvider, TImplementation> factory)
         where TImplementation : class, IEntityManager<TEntity, TKey, TSearchObject>
     {
-        UseEntityService(factory);
-        Services.AddTransient(factory);
-        Services.AddTransient<IEntityManager<TEntity, TKey>>(factory);
-        Services.AddTransient<IEntityManager<TEntity, TKey, TSearchObject>>(factory);
+        RegisterAs(typeof(TImplementation), p => factory(p), ManagerFamily, EntityServiceFamily);
         return this;
     }
 

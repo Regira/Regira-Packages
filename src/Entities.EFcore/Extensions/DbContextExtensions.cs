@@ -34,14 +34,7 @@ public static class DbContextExtensions
     public static void UpdateRelatedCollection<TEntity, TRelated>(this DbContext dbContext, TEntity modified, TEntity original, Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression)
         where TEntity : class, IEntity<int>
         where TRelated : class, IEntity<int>
-    {
-        foreach (var item in navigationExpression.Compile()(modified) ?? Array.Empty<TRelated>())
-        {
-            // No negative ids for EF!
-            item.Id = Math.Max(0, item.Id);
-        }
-        dbContext.UpdateRelatedCollection<TEntity, TRelated, int, int>(modified, original, navigationExpression);
-    }
+        => dbContext.UpdateRelatedCollection<TEntity, TRelated, int, int>(modified, original, navigationExpression);
 
     public static void UpdateRelatedCollection<TEntity, TRelated, TEntityKey, TRelatedKey>(this DbContext dbContext, TEntity modified, TEntity original, Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression)
         where TEntity : class, IEntity<TEntityKey>
@@ -72,8 +65,7 @@ public static class DbContextExtensions
             // so they have a stable :key before the server has seen them; such a row matches no original, so
             // it correctly lands here — but attaching it as Added with the temp key still on it makes the
             // provider insert that key verbatim (SQLite accepts a negative rowid without complaint), and the
-            // row is only visibly wrong to someone who inspects primary keys. Same normalization the int
-            // convenience overload above already applies, generalized to any signed numeric key.
+            // row is only visibly wrong to someone who inspects primary keys.
             ResetTempKey<TRelated, TRelatedKey>(entity);
             dbContext.Entry(entity).State = EntityState.Added;
         }

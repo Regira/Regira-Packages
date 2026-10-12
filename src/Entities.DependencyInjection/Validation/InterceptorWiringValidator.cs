@@ -22,19 +22,14 @@ internal sealed class InterceptorWiringValidator : IEntityRegistrationValidator
 {
     public IEnumerable<EntityValidationIssue> Validate(EntityValidationContext context)
     {
-        using var scope = context.Provider.CreateScope();
-        var provider = scope.ServiceProvider;
-
-        // Resolving primer/normalizer instances can throw if a factory is misconfigured — a DIAGNOSTIC
-        // validator must never turn that into a startup crash, so it is isolated in a non-iterator helper
-        // (yield return cannot live inside try/catch) that reports the failure as a Warning instead.
-        var (primerTargets, normalizerTargets, resolutionError) = ResolveTargets(provider, context);
-        if (resolutionError != null)
-        {
-            yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
-                $"Could not resolve primers/normalizers to validate interceptor wiring: {resolutionError}");
-            yield break;
-        }
+        var provider = context.Provider;
+        var primerTargets = TargetsOf(provider.GetServices<IEntityPrimer>(), typeof(IEntityPrimer<>));
+        var normalizerTargets = TargetsOf(provider.GetServices<IEntityNormalizer>(), typeof(IEntityNormalizer<>));
+        // Typed-only registrations (IEntityPrimer<T> / IEntityNormalizer<T> without the untyped interface) are not
+        // returned by GetServices<IEntityPrimer>(); their target is read straight from the service type, so a missing
+        // interceptor is still flagged for them. Duplicates are harmless (Targets() only checks .Any()).
+        primerTargets.AddRange(TypedServiceTargets(context.Services, typeof(IEntityPrimer<>)));
+        normalizerTargets.AddRange(TypedServiceTargets(context.Services, typeof(IEntityNormalizer<>)));
         // read from the registrations — no reactor is instantiated for this
         var reactorTargets = ReactorDiscovery.GetTargets(context.Services);
         if (primerTargets.Count == 0 && normalizerTargets.Count == 0 && reactorTargets.IsEmpty)
@@ -58,41 +53,14 @@ internal sealed class InterceptorWiringValidator : IEntityRegistrationValidator
             // The recorded type may be an abstract base (UseEntities<AppContextBase>() +
             // AddDbContext<SqlServerAppContext>()): inspect the registered concrete context type(s) it
             // covers — those are the options EF actually builds.
-            var inspectTypes = context.Services
-                .Select(d => d.ServiceType)
-                .Where(t => !t.IsAbstract && typeof(DbContext).IsAssignableFrom(t) && contextType.IsAssignableFrom(t))
-                .Distinct()
-                .ToArray();
-            if (inspectTypes.Length == 0)
+            foreach (var (inspectType, dbContext) in context.DbContexts.Where(c => contextType.IsAssignableFrom(c.Type)))
             {
-                inspectTypes = [contextType]; // not registered at all — the resolution below reports the failure
-            }
-
-            foreach (var inspectType in inspectTypes)
-            {
-                IInterceptor[]? interceptors = null;
-                string? inspectionFailure = null;
-                try
-                {
-                    var dbContext = (DbContext)provider.GetRequiredService(inspectType);
-                    var optionsInterceptors = dbContext.GetService<IDbContextOptions>()
-                        .Extensions.OfType<CoreOptionsExtension>()
-                        .FirstOrDefault()?.Interceptors ?? [];
-                    // EF Core also applies IInterceptor services registered in the application provider, so
-                    // include those — a user may wire the interceptor via DI rather than AddInterceptors(sp).
-                    var diInterceptors = provider.GetServices<IInterceptor>();
-                    interceptors = optionsInterceptors.Concat(diInterceptors).ToArray();
-                }
-                catch (Exception ex)
-                {
-                    inspectionFailure = ex.Message;
-                }
-                if (interceptors == null)
-                {
-                    yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
-                        $"Could not inspect {inspectType.Name} for interceptor wiring: {inspectionFailure}");
-                    continue;
-                }
+                var optionsInterceptors = dbContext.GetService<IDbContextOptions>()
+                    .Extensions.OfType<CoreOptionsExtension>()
+                    .FirstOrDefault()?.Interceptors ?? [];
+                // EF Core also applies IInterceptor services registered in the application provider, so
+                // include those — a user may wire the interceptor via DI rather than AddInterceptors(sp).
+                var interceptors = optionsInterceptors.Concat(provider.GetServices<IInterceptor>()).ToArray();
 
                 if (hasPrimers && !interceptors.Any(i => i is EntityPrimerContainerInterceptor))
                 {
@@ -134,33 +102,6 @@ internal sealed class InterceptorWiringValidator : IEntityRegistrationValidator
            && serviceType.GetGenericTypeDefinition() == typeof(IEntityReactor<>)
            && typeof(IAttachment).IsAssignableFrom(serviceType.GetGenericArguments()[0]);
 
-    /// <summary>
-    /// The entity type each resolved primer/normalizer targets, read from its <c>I...&lt;T&gt;</c> interface.
-    /// A hook implementing only the non-generic marker targets everything (<c>null</c>).
-    /// </summary>
-    private static (List<Type?> Primers, List<Type?> Normalizers, string? Error) ResolveTargets(
-        IServiceProvider provider, EntityValidationContext context)
-    {
-        try
-        {
-            var primerTargets = TargetsOf(provider.GetServices<IEntityPrimer>(), typeof(IEntityPrimer<>));
-            var normalizerTargets = TargetsOf(provider.GetServices<IEntityNormalizer>(), typeof(IEntityNormalizer<>));
-
-            // Typed-only registrations (IEntityPrimer<T> / IEntityNormalizer<T> without the untyped
-            // interface) are NOT returned by GetServices<IEntityPrimer>(); read their target straight from
-            // the service type so a missing interceptor is still flagged for them. Duplicates are harmless
-            // (Targets() only checks .Any()).
-            primerTargets.AddRange(TypedServiceTargets(context.Services, typeof(IEntityPrimer<>)));
-            normalizerTargets.AddRange(TypedServiceTargets(context.Services, typeof(IEntityNormalizer<>)));
-
-            return (primerTargets, normalizerTargets, null);
-        }
-        catch (Exception ex)
-        {
-            return ([], [], ex.Message);
-        }
-    }
-
     // The target entity type read from every closed IEntityPrimer<T> / IEntityNormalizer<T> service-type
     // registration — no instance resolution required.
     private static IEnumerable<Type?> TypedServiceTargets(IServiceCollection services, Type genericMarker)
@@ -170,6 +111,10 @@ internal sealed class InterceptorWiringValidator : IEntityRegistrationValidator
                         && d.ServiceType.GetGenericTypeDefinition() == genericMarker)
             .Select(d => (Type?)d.ServiceType.GetGenericArguments()[0]);
 
+    /// <summary>
+    /// The entity type each resolved primer/normalizer targets, read from its <c>I...&lt;T&gt;</c> interface.
+    /// A hook implementing only the non-generic marker targets everything (<c>null</c>).
+    /// </summary>
     private static List<Type?> TargetsOf<T>(IEnumerable<T> instances, Type genericMarker) where T : notnull
         => instances
             .Select(instance => instance.GetType().GetInterfaces()

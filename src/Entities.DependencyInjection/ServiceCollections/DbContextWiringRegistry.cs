@@ -55,16 +55,5 @@ public class DbContextWiringRegistry
     /// Gets (or registers) the singleton registry instance for this service collection.
     /// </summary>
     /// <param name="services"></param>
-    public static DbContextWiringRegistry For(IServiceCollection services)
-    {
-        var existing = services.FirstOrDefault(d => d.ServiceType == typeof(DbContextWiringRegistry))?.ImplementationInstance as DbContextWiringRegistry;
-        if (existing != null)
-        {
-            return existing;
-        }
-
-        var registry = new DbContextWiringRegistry();
-        services.AddSingleton(registry);
-        return registry;
-    }
+    public static DbContextWiringRegistry For(IServiceCollection services) => services.GetOrAddInstance<DbContextWiringRegistry>();
 }

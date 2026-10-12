@@ -151,15 +151,14 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
 ```
 
 - **The client's token is what gets compared.** Every version stamp — a concurrency token the server moves on the
-  write, declared with `[Timestamp]` / `IsRowVersion()`, `[ConcurrencyCheck]` or `IsConcurrencyToken()` — is
-  checked against the value that arrived with the write, not against the row the update reloads. The token travels
-  as an ordinary DTO field: put it on both the read and the input DTO, without an initializer.
-- **A token nothing moves is a data column** (`[ConcurrencyCheck] public string? LastName`). The client's value is
-  the edit itself, so it is written as sent — a change or a clear — and the check compares the stored row: only a
-  write racing the save is caught. A token is a version stamp when the database generates it on update, when it is
-  `IHasConcurrencyToken.ConcurrencyToken`, or when it carries `[VersionStamp]` (`Regira.Entities.Attributes`) —
-  declare an application-owned token so. An undeclared token counts as one only on a write where a prepper or primer
-  changes it, which misses a primer that reproduces the client's value (a content hash).
+  write — is checked against the value that arrived with the write, not against the row the update reloads. The
+  token travels as an ordinary DTO field: put it on both the read and the input DTO, without an initializer.
+- **A token is a version stamp only when it is declared one:** the database generates it on update (`[Timestamp]` /
+  `IsRowVersion()`), it is `IHasConcurrencyToken.ConcurrencyToken`, or it carries `[VersionStamp]`
+  (`Regira.Entities.Attributes`) — declare an application-owned token so. **Any other `[ConcurrencyCheck]` /
+  `IsConcurrencyToken()` token is a data column** (`[ConcurrencyCheck] public string? LastName`), whatever moves it:
+  the value on the entity is written — a change or a clear, or what a primer made of it — and the check compares the
+  stored row, so only a write racing the save is caught.
 - **A token the client leaves out is not compared** (`null`, empty, or the CLR default): the write goes through,
   only a write racing it is caught, and the empty value never overwrites the token — with `IHasConcurrencyToken`
   the primer still mints a new one. `PATCH` carries the stored value unless its body sets the token; `DELETE`
@@ -182,12 +181,12 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
 - **A write through the raw `DbContext` is checked against the token the entity was loaded with.** Copying a
   client's token onto a tracked entity changes only its current value, so a stale client still wins; set
   `db.Entry(entity).Property(x => x.ConcurrencyToken).OriginalValue` to the client's token for the check to apply.
-- Startup validation warns when a DTO has no property for a version stamp, and when the input DTO — or an entity
-  that is its own input DTO — initializes it, so a client that omits the stamp gets a 409 instead of an unchecked
-  write. It reports an error when the entity initializes its stamp while the input DTO has no property to overwrite
-  it — every write would answer 409 — or when the input DTO has no property for a required stamp — every update
-  would answer 400 — and warns about `[VersionStamp]` on a property the model does not treat as a concurrency
-  token. A data column needs none of this, so an undeclared token gets these findings only as Info.
+- Startup validation warns when a DTO has no property for a version stamp — every write would be last-write-wins —
+  and reports an error when the input DTO has no property for a required stamp — every update would answer 400. It
+  warns about `[VersionStamp]` on a property the model does not treat as a concurrency token, and about a `Guid`, an
+  integer, `byte[]`, `DateTime` or `DateTimeOffset` token not declared a version stamp — of a registered entity or a
+  `Related()` child — which is compared as a data column. A data column needs no DTO property. An initializer on the
+  token answers 409 to every write, loudly, so it is not checked.
 
 
 ## DbContext
@@ -370,7 +369,9 @@ attachments owner's collection is not mapped to the link's `ObjectId`, when an e
 registered entity or an entity's write path cannot run the validators in its scope, and when `UseRepository()` has no
 repository type for a `For<>()` shape, and fails on a `[ServerOwned]` declaration nothing can enforce. With
 [mapped endpoints](web-endpoints.md#mapped-endpoints) it also warns about mapped attachment downloads without
-`UseAttachmentUris()`, whose DTOs would carry a null `Uri`.
+`UseAttachmentUris()`, whose DTOs would carry a null `Uri`. It checks what fails silently; a failure that is loud at
+the first request is left to it. A check that cannot complete is skipped with a warning naming it, and a context the
+checks cannot resolve is reported once.
 Configure via `UseEntities(o => o.ConfigureValidation(v => { v.Enabled = true; /* Production opt-in */ }))`.
 
 
@@ -478,6 +479,9 @@ translation key. The values the message was formatted with — `{ComparisonValue
 all but the attempted `{PropertyValue}`.
 
 ### Primers
+
+The primers run in registration order, on `SaveChanges()` and on an explicit `ApplyPrimers()` alike, each over every
+pending entry it matches.
 
 **ArchivablePrimer**:
 *Sets IsArchived to true instead of deleting entities implementing `IArchivable`.

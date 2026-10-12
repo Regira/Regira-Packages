@@ -70,23 +70,6 @@ public class AttachmentForeignKeyValidatorTests
         }
     }
 
-    private sealed class CaptureLoggerProvider : ILoggerProvider
-    {
-        public List<string> Warnings { get; } = [];
-        public ILogger CreateLogger(string categoryName) => new CaptureLogger(this);
-        public void Dispose() { }
-
-        private sealed class CaptureLogger(CaptureLoggerProvider provider) : ILogger
-        {
-            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-            public bool IsEnabled(LogLevel logLevel) => true;
-            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-            {
-                if (logLevel == LogLevel.Warning) provider.Warnings.Add(formatter(state, exception));
-            }
-        }
-    }
-
     private SqliteConnection _connection = null!;
 
     [SetUp]
@@ -102,7 +85,7 @@ public class AttachmentForeignKeyValidatorTests
     private async Task<List<string>> Warnings<TContext>()
         where TContext : DbContext
     {
-        var capture = new CaptureLoggerProvider();
+        var capture = new StartupValidationHarness();
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddProvider(capture));
         services.AddDbContext<TContext>(db => db.UseSqlite(_connection));

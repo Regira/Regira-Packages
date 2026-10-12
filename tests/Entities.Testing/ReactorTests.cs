@@ -150,30 +150,11 @@ public class ReactorTests
         }
     }
 
-    private sealed class CaptureLoggerProvider : ILoggerProvider
-    {
-        public List<string> Errors { get; } = [];
-        public List<string> Warnings { get; } = [];
-        public ILogger CreateLogger(string categoryName) => new CaptureLogger(this);
-        public void Dispose() { }
-
-        private sealed class CaptureLogger(CaptureLoggerProvider provider) : ILogger
-        {
-            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-            public bool IsEnabled(LogLevel logLevel) => true;
-            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-            {
-                if (logLevel == LogLevel.Error) provider.Errors.Add($"{formatter(state, exception)} {exception?.Message}");
-                if (logLevel == LogLevel.Warning) provider.Warnings.Add(formatter(state, exception));
-            }
-        }
-    }
-
     private SqliteConnection _connection = null!;
     private ServiceProvider _sp = null!;
     private ReactionLog _log = null!;
     private CommandLog _commands = null!;
-    private CaptureLoggerProvider _logs = null!;
+    private StartupValidationHarness _logs = null!;
 
     [SetUp]
     public void Setup()
@@ -182,7 +163,7 @@ public class ReactorTests
         _connection.Open();
         _log = new ReactionLog();
         _commands = new CommandLog();
-        _logs = new CaptureLoggerProvider();
+        _logs = new StartupValidationHarness();
     }
 
     [TearDown]

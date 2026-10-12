@@ -35,14 +35,18 @@ public static class ServiceCollectionPrimerExtensions
 
 
     // AutoTruncate
+#pragma warning disable REGIRA0001 // registers the obsolete primer, and goes with it
+    [Obsolete("Truncates beside AutoTruncateDbContextInterceptor, which UseDefaults() wires (twice when both are). Use the interceptor, or AddAutoTruncateInterceptors() on the options builder. Will be removed in v7.", DiagnosticId = "REGIRA0001")]
     public static IServiceCollection AddAutoTruncatePrimer<TServiceCollection>(this TServiceCollection services)
         where TServiceCollection : IServiceCollection
         => services.AddTransient<IEntityPrimer, AutoTruncatePrimer>();
 
     // Default normalizer
+    [Obsolete("Normalizes beside EntityNormalizerContainerInterceptor, which UseDefaults() wires (twice when both are). Use the interceptor, or WireDbContext(DbContextWiring.NormalizerInterceptors). Will be removed in v7.", DiagnosticId = "REGIRA0001")]
     public static IServiceCollection AddDefaultEntityNormalizerPrimer<TServiceCollection>(this TServiceCollection services)
         where TServiceCollection : IServiceCollection
         => services.AddTransient<IEntityPrimer, AutoNormalizingPrimer>();
+#pragma warning restore REGIRA0001
 
 
     // EntityServiceCollectionOptions

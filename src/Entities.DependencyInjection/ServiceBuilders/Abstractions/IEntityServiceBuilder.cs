@@ -31,6 +31,7 @@ public interface IEntityServiceBuilder<TContext, TEntity, TKey> : IEntityService
     bool HasEntityService();
     bool HasService<TService>();
 }
+[Obsolete("No builder implements it. Will be removed in v7.")]
 public interface IEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> : IEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject>
     where TContext : DbContext
     where TEntity : class, IEntity<TKey>

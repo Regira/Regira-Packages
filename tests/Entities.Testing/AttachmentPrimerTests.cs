@@ -568,7 +568,7 @@ public class AttachmentPrimerTests
     [Test]
     public async Task Startup_Validation_Names_The_Attachment_Files_Without_The_Reactor_Wiring()
     {
-        var logs = new StartupValidationTests.CaptureLoggerProvider();
+        var logs = new StartupValidationHarness();
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddProvider(logs));
         services.AddDbContext<FileContext>(db => db.UseSqlite(_connection));
@@ -576,7 +576,7 @@ public class AttachmentPrimerTests
             .WithAttachments(_ => _store);
         _sp = services.BuildServiceProvider();
 
-        await StartupValidationTests.RunHostedServices(_sp);
+        await StartupValidationHarness.RunHostedServices(_sp);
 
         Assert.That(logs.Warnings, Has.Some.Contains("no reactor interceptor").And.Contains("AttachmentFileReactor"));
     }

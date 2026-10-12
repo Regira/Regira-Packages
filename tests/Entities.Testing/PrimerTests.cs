@@ -12,6 +12,8 @@ using Regira.Entities.EFcore.Primers.Abstractions;
 using Regira.Entities.Models.Abstractions;
 using Regira.Utilities;
 
+#pragma warning disable REGIRA0001 // AutoTruncatePrimer stays covered until it is removed at 7.0
+
 namespace Entities.Testing;
 
 [TestFixture]
@@ -366,6 +368,88 @@ public class PrimerTests
         }
     }
 
+
+    // The interfaces in this order put the token and timestamp primers' types before IArchivable's, so a pass that
+    // ordered primers by the entity's types would stamp the delete before the ArchivablePrimer turned it into an update.
+    public class Ticket : IEntity<int>, IHasConcurrencyToken, IHasLastModified, IArchivable
+    {
+        public int Id { get; set; }
+        public string? Title { get; set; }
+        public Guid ConcurrencyToken { get; set; }
+        public DateTime? LastModified { get; set; }
+        public bool IsArchived { get; set; }
+    }
+
+    public class TicketContext(DbContextOptions<TicketContext> options) : DbContext(options)
+    {
+        public DbSet<Ticket> Tickets => Set<Ticket>();
+    }
+
+    [Test]
+    public async Task An_Explicit_ApplyPrimers_Soft_Delete_Moves_The_Token_And_Stamps_LastModified()
+    {
+        IServiceCollection services = new ServiceCollection();
+        services.AddDbContext<TicketContext>(db => db.UseSqlite(_connection));
+        // the order AddDefaultPrimers() registers them in
+        services.AddTransient<IEntityPrimer, ArchivablePrimer>();
+        services.AddTransient<IEntityPrimer, HasCreatedDbPrimer>();
+        services.AddTransient<IEntityPrimer, HasLastModifiedDbPrimer>();
+        services.AddTransient<IEntityPrimer, HasConcurrencyTokenDbPrimer>();
+        services.RegisterPrimerContainer<TicketContext>();
+        var sp = services.BuildServiceProvider();
+        var dbContext = sp.GetRequiredService<TicketContext>();
+        await dbContext.Database.EnsureCreatedAsync();
+
+        var read = Guid.NewGuid();
+        var ticket = new Ticket { Title = "Ticket", ConcurrencyToken = read };
+        dbContext.Tickets.Add(ticket);
+        await dbContext.SaveChangesAsync();
+
+        dbContext.Tickets.Remove(ticket);
+        await dbContext.ApplyPrimers();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(dbContext.Entry(ticket).State, Is.EqualTo(EntityState.Modified), "a soft delete");
+            Assert.That(ticket.IsArchived, Is.True);
+            Assert.That(ticket.ConcurrencyToken, Is.Not.EqualTo(read), "archiving is a write, so the token moves");
+            Assert.That(ticket.LastModified, Is.Not.Null);
+        });
+    }
+
+    // One primer for two of an entity's types prepares each entry once, as the save interceptor runs it.
+    private sealed class TwoTypesPrimer(int[] callCount) : IEntityPrimer<Product>, IEntityPrimer<IHasTimestamps>
+    {
+        public Task PrepareManyAsync(IList<EntityEntry> entries, CancellationToken token = default)
+        {
+            callCount[0] += entries.Count;
+            return Task.CompletedTask;
+        }
+        public Task PrepareAsync(Product entity, EntityEntry entry, CancellationToken token = default) => Task.CompletedTask;
+        public bool CanPrepare(Product entity) => true;
+        public Task PrepareAsync(IHasTimestamps entity, EntityEntry entry, CancellationToken token = default) => Task.CompletedTask;
+        public bool CanPrepare(IHasTimestamps entity) => true;
+        public Task PrepareAsync(object entity, EntityEntry entry, CancellationToken token = default) => Task.CompletedTask;
+        public bool CanPrepare(object entity) => true;
+    }
+
+    [Test]
+    public async Task A_Primer_For_Two_Types_Of_An_Entity_Prepares_It_Once()
+    {
+        var callCount = new int[1];
+        IServiceCollection services = new ServiceCollection();
+        services.AddDbContext<ProductContext>(db => db.UseSqlite(_connection));
+        services.AddTransient<IEntityPrimer>(_ => new TwoTypesPrimer(callCount));
+        services.RegisterPrimerContainer<ProductContext>();
+        var sp = services.BuildServiceProvider();
+        var dbContext = sp.GetRequiredService<ProductContext>();
+        await dbContext.Database.EnsureCreatedAsync();
+
+        dbContext.Products.Add(new Product { Title = "Product (test)" });
+        await dbContext.ApplyPrimers();
+
+        Assert.That(callCount[0], Is.EqualTo(1));
+    }
 
     [Test]
     public async Task Test_AutoTruncate_As_Primer_Interceptor()

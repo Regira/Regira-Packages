@@ -47,16 +47,9 @@ internal sealed class ArchivedQueryFilterValidator : IEntityRegistrationValidato
             yield break;
         }
 
-        using var scope = context.Provider.CreateScope();
-        foreach (var inspectType in ValidationContextTypes.Inspectable(context))
+        foreach (var (inspectType, dbContext) in context.DbContexts)
         {
-            var (unfiltered, inspectionFailure) = UnfilteredArchivables(scope.ServiceProvider, inspectType);
-            if (inspectionFailure != null)
-            {
-                yield return new EntityValidationIssue(EntityValidationSeverity.Info,
-                    $"Could not inspect {inspectType.Name} for the archived query filter: {inspectionFailure}");
-                continue;
-            }
+            var unfiltered = UnfilteredArchivables(dbContext);
             if (unfiltered.Length == 0)
             {
                 continue;
@@ -82,45 +75,23 @@ internal sealed class ArchivedQueryFilterValidator : IEntityRegistrationValidato
 #if NET10_0_OR_GREATER
 
     /// <summary>
-    /// Names of the <see cref="IArchivable"/> entity types in <paramref name="contextType"/>'s model that carry
+    /// Names of the <see cref="IArchivable"/> entity types in <paramref name="dbContext"/>'s model that carry
     /// no <see cref="ModelBuilderExtensions.ArchivedQueryFilterName"/> filter. Selects through the shared
     /// <see cref="ModelBuilderExtensions.IsArchivedFilterTarget"/>, so it cannot drift from what actually
     /// installs the filter — a derived type (filtered through its root) and an owned type (configured through
     /// its owner) would otherwise be reported as unprotected.
     /// </summary>
-    private static (string[] Unfiltered, string? Error) UnfilteredArchivables(IServiceProvider provider, Type contextType)
-    {
-        try
-        {
-            // Building a model needs no connection; resolving a context still can throw (a missing provider,
-            // a throwing factory) — a diagnostic must never take the host down for its own inspection.
-            var dbContext = (DbContext)provider.GetRequiredService(contextType);
-            var unfiltered = dbContext.Model.GetEntityTypes()
-                .Where(t => ModelBuilderExtensions.IsArchivedFilterTarget(t)
-                            && t.FindDeclaredQueryFilter(ModelBuilderExtensions.ArchivedQueryFilterName) == null)
-                .Select(t => t.ClrType.Name)
-                .Distinct()
-                .OrderBy(name => name)
-                .ToArray();
-            return (unfiltered, null);
-        }
-        catch (Exception ex)
-        {
-            return ([], ex.Message);
-        }
-    }
+    private static string[] UnfilteredArchivables(DbContext dbContext)
+        => dbContext.Model.GetEntityTypes()
+            .Where(t => ModelBuilderExtensions.IsArchivedFilterTarget(t)
+                        && t.FindDeclaredQueryFilter(ModelBuilderExtensions.ArchivedQueryFilterName) == null)
+            .Select(t => t.ClrType.Name)
+            .Distinct()
+            .OrderBy(name => name)
+            .ToArray();
 
-    /// <summary>The configured app-wide default, or <see cref="ArchivedFilter.Excluded"/> when unavailable.</summary>
+    /// <summary>The configured app-wide default, or <see cref="ArchivedFilter.Excluded"/> when none is registered.</summary>
     private static ArchivedFilter ResolveDefaultArchivedFilter(EntityValidationContext context)
-    {
-        try
-        {
-            return context.Provider.GetService<EntityQueryOptions>()?.DefaultArchivedFilter ?? ArchivedFilter.Excluded;
-        }
-        catch
-        {
-            return ArchivedFilter.Excluded;
-        }
-    }
+        => context.Provider.GetService<EntityQueryOptions>()?.DefaultArchivedFilter ?? ArchivedFilter.Excluded;
 #endif
 }

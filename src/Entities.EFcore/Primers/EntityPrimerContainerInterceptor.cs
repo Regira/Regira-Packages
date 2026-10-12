@@ -5,8 +5,6 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Regira.DAL.EFcore.Extensions;
-using Regira.Entities.EFcore.Extensions;
 using Regira.Entities.EFcore.Primers.Abstractions;
 using Regira.Entities.EFcore.Utilities;
 
@@ -40,7 +38,7 @@ public class EntityPrimerContainerInterceptor(IServiceProvider serviceProvider, 
         return await base.SavingChangesAsync(eventData, result, cancellationToken);
     }
 
-    private async Task ApplyPrimersAsync(DbContext context, CancellationToken cancellationToken)
+    private Task ApplyPrimersAsync(DbContext context, CancellationToken cancellationToken)
     {
         // Same discovery as the EntityPrimerContainer path (ApplyPrimers): registration-identity
         // dedupe + typed-only registrations included. UseEntities() registers the IServiceCollection;
@@ -50,31 +48,7 @@ public class EntityPrimerContainerInterceptor(IServiceProvider serviceProvider, 
             ? PrimerDiscovery.GetPrimers(serviceProvider, serviceCollection)
             : serviceProvider.GetServices<IEntityPrimer>().Distinct().ToArray();
 
-        ArchivablePrimer.BeginPass(context);
-        var groupedEntries = context
-            .GetPendingEntries()
-            .GroupBy(e => e.Entity.GetType())
-            .ToArray();
-
-        if (primers.Any() && groupedEntries.Any())
-        {
-            // execute primers in same order than they were registered
-            foreach (var primer in primers)
-            {
-                foreach (var entriesGroup in groupedEntries)
-                {
-                    if (primer.IsMatch(entriesGroup.Key))
-                    {
-                        logger?.LogDebug($"Priming {entriesGroup.Count()} {entriesGroup.Key.FullName} entries using {primer.GetType().FullName}");
-                        await primer.PrepareManyAsync(entriesGroup.ToArray(), cancellationToken);
-                    }
-                }
-            }
-        }
-
-        // only now is it known which concurrency tokens a primer moves — those are compared with the client's value
-        context.ApplyUndecidedClientTokens();
-        ArchivablePrimer.EndPass(context);
+        return PrimerPass.Run(context, primers, null, logger, cancellationToken);
     }
 }
 

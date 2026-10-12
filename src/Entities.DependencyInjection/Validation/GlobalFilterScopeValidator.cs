@@ -10,15 +10,11 @@ namespace Regira.Entities.DependencyInjection.Validation;
 /// For a custom filter this is silent and security-relevant: the usual cause is scoping it to a type no
 /// registered entity satisfies, and the symptom is rows that were meant to be hidden being returned in
 /// full. Nothing else catches it — it compiles, starts clean, and DI validation is satisfied because the
-/// filter really is constructed; it is simply never selected for any entity. Those are reported per filter
-/// as warnings.
+/// filter really is constructed; it is simply never selected for any entity.
 /// </para>
 /// <para>
-/// Filters the defaults contributed are different: <c>UseDefaults()</c> registers the whole set whether or
-/// not the app has an <c>IArchivable</c> (or timestamped, or normalized-content) entity, so an inert one
-/// carries no signal. Those collapse into a single informational line — giving them the security wording
-/// would teach readers to skim past the message that matters. Membership is recorded at registration, not
-/// inferred from the type, so the same built-in registered <i>deliberately</i> still warns when it is inert.
+/// Regira's own filters are not checked: <c>UseDefaults()</c> registers the whole set whether or not the app has
+/// an <c>IArchivable</c> (or timestamped, or normalized-content) entity, so an inert one carries no signal.
 /// </para>
 /// </summary>
 internal sealed class GlobalFilterScopeValidator : IEntityRegistrationValidator
@@ -31,53 +27,12 @@ internal sealed class GlobalFilterScopeValidator : IEntityRegistrationValidator
             yield break;
         }
 
-        IGlobalFilteredQueryBuilder[] filters;
-        string? resolutionError = null;
-        try
-        {
-            // Resolving user-supplied services can throw; a validator must never break startup with
-            // its own diagnostics.
-            filters = context.Provider.GetServices<IGlobalFilteredQueryBuilder>().ToArray();
-        }
-        catch (Exception ex)
-        {
-            filters = [];
-            resolutionError = ex.Message;
-        }
-
-        if (resolutionError != null)
-        {
-            yield return new EntityValidationIssue(EntityValidationSeverity.Info,
-                $"Could not resolve global filters, so their scope was not checked: {resolutionError}");
-            yield break;
-        }
-
-        var contributedByDefaults = context.Registrations.DefaultGlobalFilters;
-        var inert = filters
+        var inert = context.Provider.GetServices<IGlobalFilteredQueryBuilder>()
             .Select(filter => filter.GetType())
             .Distinct()
-            .Where(filterType => !entityTypes.Any(entityType => GlobalFilterScope.AppliesTo(filterType, entityType)))
-            .ToArray();
-
-        // UseDefaults() registers the whole built-in set regardless of which capability interfaces the app's
-        // entities actually implement, so an inert one it contributed is the normal case, not a finding.
-        // Reporting each with the security wording below trains readers to skim past it — which is exactly the
-        // habit that hides a genuinely mis-scoped filter. Membership comes from what the defaults actually
-        // registered, so the same type registered deliberately still warns.
-        var inertDefaults = inert.Where(contributedByDefaults.Contains).ToArray();
-        if (inertDefaults.Length > 0)
-        {
-            // Name only the capabilities these filters scope: the app may well implement the others, and listing
-            // a capability it does use reads as a claim that its filter is inert too.
-            var filterNames = inertDefaults.Select(FriendlyName).Distinct();
-            var scopeNames = inertDefaults.SelectMany(ScopedTypes).Select(FriendlyName).Distinct();
-            yield return new EntityValidationIssue(EntityValidationSeverity.Info,
-                $"Built-in global filters that never run: {string.Join(", ", filterNames)}. " +
-                $"No registered entity implements the capability each one scopes ({string.Join(", ", scopeNames)}). " +
-                "UseDefaults() registers the full set regardless, so this is expected and needs no action.");
-        }
-
-        foreach (var filterType in inert.Where(t => !contributedByDefaults.Contains(t)))
+            .Where(filterType => !IsRegiras(filterType))
+            .Where(filterType => !entityTypes.Any(entityType => GlobalFilterScope.AppliesTo(filterType, entityType)));
+        foreach (var filterType in inert)
         {
             yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
                 $"Global filter '{filterType.Name}' applies to none of the registered entities, so it never runs. " +
@@ -90,17 +45,7 @@ internal sealed class GlobalFilterScopeValidator : IEntityRegistrationValidator
         }
     }
 
-    /// <summary>The types a filter scopes — the <c>TEntity</c> of each <see cref="IGlobalFilteredQueryBuilder{TEntity,TKey}"/> it implements.</summary>
-    private static IEnumerable<Type> ScopedTypes(Type filterType)
-        => filterType.GetInterfaces()
-            .Where(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IGlobalFilteredQueryBuilder<,>))
-            .Select(i => i.GetGenericArguments()[0]);
-
-    /// <summary>Type name without the CLR arity suffix, so <c>FilterIdsQueryBuilder`1</c> reads as written.</summary>
-    private static string FriendlyName(Type type)
-    {
-        var name = type.Name;
-        var arity = name.IndexOf('`');
-        return arity < 0 ? name : name[..arity];
-    }
+    /// <summary>A filter one of Regira's packages declares, closed over any type argument.</summary>
+    private static bool IsRegiras(Type filterType)
+        => (filterType.IsGenericType ? filterType.GetGenericTypeDefinition() : filterType).Assembly.GetName().Name?.StartsWith("Regira.", StringComparison.Ordinal) == true;
 }

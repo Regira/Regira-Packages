@@ -46,7 +46,7 @@ public static class EntityServiceCollectionExtensions
         {
             options.AddDefaultEntityNormalizer();
         }
-        options.AddDefaultGlobalFilter<FilterHasNormalizedContentQueryBuilder>();
+        options.AddGlobalFilterQueryBuilder<FilterHasNormalizedContentQueryBuilder>();
         options.AddDefaultGlobalQueryFilters();
 
         return options;

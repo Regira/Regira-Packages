@@ -25,10 +25,6 @@ internal sealed class AttachmentsInputDtoValidator : IEntityRegistrationValidato
     public IEnumerable<EntityValidationIssue> Validate(EntityValidationContext context)
     {
         var shapes = new EntityDtoShapes(context);
-        if (shapes.FailureIssue("attachments input-DTO") is { } failure)
-        {
-            yield return failure;
-        }
 
         foreach (var entityType in context.Registrations.Entities.Select(e => e.EntityType).Distinct().OrderBy(t => t.Name))
         {

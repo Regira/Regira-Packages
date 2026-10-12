@@ -39,16 +39,7 @@ public class AutoTruncateDbContextInterceptor : SaveChangesInterceptor
     }
 
     private static void TruncatePendingEntries(DbContext context)
-    {
-        var logger = context.GetService<ILoggerFactory>()?.CreateLogger<AutoTruncateDbContextInterceptor>();
-        foreach (var entry in context.GetPendingEntries())
-        {
-            if (entry.State != EntityState.Deleted)
-            {
-                entry.AutoTruncate(logger);
-            }
-        }
-    }
+        => context.AutoTruncateStringsToMaxLengthForEntries(context.GetService<ILoggerFactory>()?.CreateLogger<AutoTruncateDbContextInterceptor>());
 }
 
 public static class DbContextInterceptorExtensions
