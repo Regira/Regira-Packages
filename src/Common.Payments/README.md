@@ -93,10 +93,12 @@ var payment = new Payment // Regira.Invoicing.Payments.Models
     Amount   = 49.99m,
     Currency = "EUR"
 };
-await svc.Save(payment);
+var response = await svc.CreatePaylink(payment); // sets payment.Id
+var paylink = response.Paylink;                  // send the payer here
 ```
 
-`Save` sends `Amount` and `Currency`; the sender contract number comes from `PomSettings`.
+`CreatePaylink` sends `Amount` and `Currency`, the sender contract number coming from `PomSettings`, sets the payment's `Id` to POM's document id and returns POM's `PomPaymentResponse`. `Save`, the `IPaymentService` method, does the same without returning the link.
+Every instance sends its requests through one shared `HttpClient`; pass your own, for instance from `IHttpClientFactory`, as the third constructor argument. An instance keeps its POM token and, when POM refuses it (`401`), authenticates again and sends the request once more, so it can be registered as a singleton.
 `PomException` is thrown on API errors; check `StatusCode` and `PomResponse` for details.
 
 ---

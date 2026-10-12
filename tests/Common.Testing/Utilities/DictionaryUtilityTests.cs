@@ -129,6 +129,22 @@ public class DictionaryUtilityTests
         IDictionary<string, object?> root = (IDictionary<string, object?>)parent["Parent"]!;
         Assert.That(obj.Parent.Id, Is.EqualTo(root["Id"]));
     }
+    [Test]
+    public void Selectors_To_Dictionary_Renames_Every_Duplicate_Key()
+    {
+        var source = new[] { ("Code", "BE"), ("Code", "NL"), ("Code", "FR"), ("Title", "Belgium") };
+
+        var task = Task.Run(() => source.ToDictionary(x => x.Item1, x => x.Item2, renameDuplicateKeys: true));
+
+        Assert.That(task.Wait(TimeSpan.FromSeconds(5)), Is.True, "renaming a third equal key does not finish");
+        Assert.That(task.Result, Is.EqualTo(new Dictionary<string, string>
+        {
+            ["Code"] = "BE",
+            ["Code2"] = "NL",
+            ["Code3"] = "FR",
+            ["Title"] = "Belgium"
+        }));
+    }
     #endregion
 
     #region TableArray tests

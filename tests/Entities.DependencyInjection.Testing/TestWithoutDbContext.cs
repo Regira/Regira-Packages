@@ -55,6 +55,32 @@ public class TestWithoutDbContext
     }
 
     [Test]
+    public void With_Defaults_Registers_Keyword_Filter()
+    {
+        var services = new ServiceCollection();
+        services.UseEntities(e => e.UseDefaults());
+        using var sp = services.BuildServiceProvider();
+
+        var globalFilters = sp.GetServices<IGlobalFilteredQueryBuilder>().ToArray();
+
+        Assert.That(globalFilters.OfType<FilterHasNormalizedContentQueryBuilder>(), Is.Not.Empty);
+    }
+
+    [Test]
+    public void With_Defaults_And_Configured_Normalizing_Registers_Keyword_Filter()
+    {
+        var services = new ServiceCollection();
+        services.UseEntities(e => e.UseDefaults(d => d.ConfigureNormalizing(n => n.Transform = Regira.Normalizing.Models.TextTransform.ToUpperCase)));
+        using var sp = services.BuildServiceProvider();
+
+        var entityNormalizer = sp.GetService<IEntityNormalizer>();
+        var globalFilters = sp.GetServices<IGlobalFilteredQueryBuilder>().ToArray();
+
+        Assert.That(entityNormalizer, Is.TypeOf<DefaultEntityNormalizer>());
+        Assert.That(globalFilters.OfType<FilterHasNormalizedContentQueryBuilder>(), Is.Not.Empty);
+    }
+
+    [Test]
     public void With_GlobalFilter()
     {
         var services = new ServiceCollection();

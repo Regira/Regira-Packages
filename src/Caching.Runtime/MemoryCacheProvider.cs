@@ -28,13 +28,20 @@ public class MemoryCacheProvider : CacheProviderBase
     private readonly string? _prefix;
     private readonly int _defaultDuration;
     protected readonly MemoryCache Cache = MemoryCache.Default;
-    public override IList<string> Keys { get; }
+    /// <summary>
+    /// The keys in <see cref="MemoryCache.Default"/> under this provider's prefix, without it.
+    /// Without a prefix, every key in <see cref="MemoryCache.Default"/>, so <see cref="RemoveAll"/> clears it.
+    /// </summary>
+    public override IList<string> Keys => Cache
+        .Select(x => x.Key)
+        .Where(key => string.IsNullOrEmpty(_prefix) || key.StartsWith(_prefix, StringComparison.Ordinal))
+        .Select(key => key.Substring(_prefix?.Length ?? 0))
+        .ToList();
     public MemoryCacheProvider(Options? options = null)
     {
         options ??= new Options();
         _prefix = options.Prefix;
         _defaultDuration = options.DefaultDuration;
-        Keys = new List<string>();
     }
 
 

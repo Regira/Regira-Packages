@@ -1,6 +1,6 @@
 # Regira.Caching.Runtime
 
-In-memory cache provider for the caching abstractions in [Regira Common](https://regira.github.io/Regira-Packages/src/Common/), built on [System.Runtime.Caching](https://www.nuget.org/packages/System.Runtime.Caching). `MemoryCacheProvider` implements `ICacheProvider` on `MemoryCache.Default`, so entries are shared process-wide and the optional key prefix (`MemoryCacheProvider.Options.Prefix`) is the only isolation between instances. An entry expires after the duration given to `Set`, in seconds, or else after `Options.DefaultDuration` — one hour by default.
+In-memory cache provider for the caching abstractions in [Regira Common](https://regira.github.io/Regira-Packages/src/Common/), built on [System.Runtime.Caching](https://www.nuget.org/packages/System.Runtime.Caching). `MemoryCacheProvider` implements `ICacheProvider` on `MemoryCache.Default`, so entries are shared process-wide and the optional key prefix (`MemoryCacheProvider.Options.Prefix`) is the only isolation between instances: without one, `RemoveAll` clears everything in `MemoryCache.Default`. End a prefix with a separator, such as `"users:"`: a prefix matches by its start, so `user` would also cover the entries of a `users` provider. An entry expires after the duration given to `Set`, in seconds, or else after `Options.DefaultDuration` — one hour by default.
 
 ## Installation
 

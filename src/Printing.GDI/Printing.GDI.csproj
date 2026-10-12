@@ -16,6 +16,9 @@
     <PackageTags>regira;office;printing;gdi;windows</PackageTags>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Drawing.Testing" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
     <ProjectReference Include="..\Drawing.GDI\Drawing.GDI.csproj" />
   </ItemGroup>

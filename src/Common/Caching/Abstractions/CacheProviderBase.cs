@@ -29,7 +29,7 @@ public abstract class CacheProviderBase : ICacheProvider
     private class CacheEnumerator(IList<string> keys, Func<string, object?> getter)
         : IEnumerator<KeyValuePair<string, object?>>, IDictionaryEnumerator
     {
-        private int _index;
+        private int _index = -1;
 
         public bool MoveNext()
         {
@@ -41,7 +41,7 @@ public abstract class CacheProviderBase : ICacheProvider
         }
         public void Reset()
         {
-            _index = 0;
+            _index = -1;
         }
 
         object IEnumerator.Current => Current;

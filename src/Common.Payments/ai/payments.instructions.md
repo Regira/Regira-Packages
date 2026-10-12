@@ -28,7 +28,7 @@
 
 The shared contracts ship in the `Regira.Invoicing` package: `IPayment` and `IPaymentService` in `Regira.Invoicing.Payments.Abstractions`, the `Payment` model in `Regira.Invoicing.Payments.Models`, `PaymentStatus` in `Regira.Invoicing.Payments.Enums`.
 
-- **POM**: `PaymentService` implements `IPaymentService` (`Details`, `Save`) — register and consume it via the interface.
+- **POM**: `PaymentService` implements `IPaymentService` (`Details`, `Save`) — register and consume it via the interface. Only its own `CreatePaylink` returns the payment link, so inject the concrete class where the payer needs the link.
 - **Mollie**: `PaymentService` implements no interface — register and consume the concrete class. It offers `Details`, `List`, `Save` (returns `CreatePaymentResponse` with the checkout URL), `Delete` (cancels) and `WebHook`.
 
 Both accept and return the shared `IPayment` model and can be registered as singletons.
@@ -110,10 +110,20 @@ var payment = new Payment // Regira.Invoicing.Payments.Models
     Amount   = 49.99m,
     Currency = "EUR"
 };
-await svc.Save(payment);
+await svc.Save(payment); // creates a payment link, sets payment.Id
 ```
 
-`Save` sends `Amount` and `Currency`; the sender contract number comes from `PomSettings`.
+To send the payer to the link, call `CreatePaylink` on the concrete class instead of `Save`:
+
+<!-- no-compile -->
+```csharp
+var pom = new Regira.Payments.Pom.PaymentService(pomSettings, jsonSerializer);
+var response = await pom.CreatePaylink(payment); // sets payment.Id
+var paylink = response.Paylink;                  // send the payer here
+```
+
+`Save` and `CreatePaylink` send `Amount` and `Currency`, the sender contract number coming from `PomSettings`, and set the payment's `Id` to POM's document id; `CreatePaylink` also returns POM's `PomPaymentResponse`, with the link in `Paylink`.
+Every instance sends its requests through one shared `HttpClient`; pass your own, for instance from `IHttpClientFactory`, as the third constructor argument. An instance keeps its POM token and, when POM refuses it (`401`), authenticates again and sends the request once more, so it can be registered as a singleton.
 `PomException` is thrown on API errors — check `StatusCode` and `PomResponse` for details.
 
 ---
@@ -123,9 +133,9 @@ await svc.Save(payment);
 | Feature | Mollie | POM |
 |---|---|---|
 | `IPaymentService` | — (concrete class) | ✓ |
-| Operations | `Details`, `List`, `Save`, `Delete` | `Details`, `Save` |
+| Operations | `Details`, `List`, `Save`, `Delete` | `Details`, `Save`, `CreatePaylink` |
 | Webhook handling | `WebHook()` | Via `WebhookKey` HMAC |
-| Payment link | ✓ (`Save` returns checkout URL) | ✓ (`CreatePaylinkApi`) |
+| Payment link | ✓ (`Save` returns checkout URL) | ✓ (`CreatePaylink` returns `Paylink`) |
 | Client library | Official `Mollie.Api` NuGet | `HttpClient` + token auth (`X-Authentication`) |
 
 ---

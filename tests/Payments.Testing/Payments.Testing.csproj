@@ -29,5 +29,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Payments.Mollie\Payments.Mollie.csproj" />
+    <ProjectReference Include="..\..\src\Payments.Pom\Payments.Pom.csproj" />
+    <ProjectReference Include="..\..\src\Serializing.Newtonsoft\Serializing.Newtonsoft.csproj" />
   </ItemGroup>
 </Project>

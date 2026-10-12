@@ -305,6 +305,8 @@ public interface ICacheProvider
 }
 ```
 
+A provider's `Keys`, and enumerating it, return the entries under its key prefix, with the prefix left off; `RemoveAll` removes those entries. A provider without a prefix covers every entry in its store. End a prefix with a separator, such as `"users:"`: a prefix matches by its start, so `user` would also cover the entries of a `users` provider.
+
 ### DictionaryCacheProvider
 
 Thread-safe in-memory cache backed by a **static** `ConcurrentDictionary` — entries are shared process-wide across all instances; the optional key prefix is the only isolation between them.
@@ -312,7 +314,7 @@ Thread-safe in-memory cache backed by a **static** `ConcurrentDictionary` — en
 ```csharp
 var products = new List<string> { "chair", "table" };
 
-var cache = new DictionaryCacheProvider("products");
+var cache = new DictionaryCacheProvider("products:");
 cache.Set("list", products);
 var list = cache.Get<List<string>>("list");
 ```

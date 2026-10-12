@@ -135,7 +135,7 @@ public static class DictionaryUtility
             var index = 2;
             while (renameDuplicateKeys && dic.ContainsKey(key))
             {
-                key = $"{kvp.Key}{index}";
+                key = $"{kvp.Key}{index++}";
             }
             dic[key] = value;
         }
@@ -219,7 +219,7 @@ public static class DictionaryUtility
                 var index = 2;
                 while (dic.ContainsKey(key))
                 {
-                    key = $"{property.Name}_{index}";
+                    key = $"{property.Name}_{index++}";
                 }
             }
 

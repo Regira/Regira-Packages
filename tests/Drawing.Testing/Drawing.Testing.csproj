@@ -27,5 +27,6 @@
     <ProjectReference Include="..\..\src\Drawing.GDI\Drawing.GDI.csproj" />
     <ProjectReference Include="..\..\src\Drawing.SkiaSharp\Drawing.SkiaSharp.csproj" />
     <ProjectReference Include="..\..\src\OCR.PaddleOCR\OCR.PaddleOCR.csproj" />
+    <ProjectReference Include="..\..\src\Printing.GDI\Printing.GDI.csproj" />
   </ItemGroup>
 </Project>
