@@ -9,6 +9,7 @@ public class GitHubCommunicator : IDisposable
     internal HttpClient Client { get; }
     internal string Branch { get; }
     internal string? CommitMessage { get; }
+    internal bool Contained { get; }
 
     public GitHubCommunicator(GitHubOptions options)
     {
@@ -18,6 +19,7 @@ public class GitHubCommunicator : IDisposable
 
         Branch = options.Branch;
         CommitMessage = options.CommitMessage;
+        Contained = options.Contained;
 
         Client = new HttpClient { BaseAddress = new Uri(Root) };
         Client.DefaultRequestHeaders.UserAgent.ParseAdd(options.UserAgent ?? Assembly.GetExecutingAssembly().GetName().Name);

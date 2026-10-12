@@ -155,7 +155,7 @@ Path        →  /var/app/storage/invoices/2024/inv-001.pdf
 | `Identifier` | Relative key — `Prefix + FileName` — portable across backend swaps |
 | `Path` | `Root + Identifier` — full absolute address |
 
-> **Path containment.** The local and SFTP backends resolve every identifier against `Root` and throw `UnauthorizedAccessException` when it escapes the root (e.g. via `../`); zip extraction to a folder (the `targetDirectory` overloads of `ZipUtility.Unzip`) enforces the same containment, while `ZipUtility.Unzip(IBinaryFile)` returns each entry name as stored, `../x` included — check one before using it as a path. Folder names compare as the file system does: regardless of case on Windows and macOS, exactly elsewhere. This is on by default (`Contained = true` in `FileSystemOptions`/`SftpConfig`) — only disable it for trusted, non-user input.
+> **Path containment.** The local, SFTP, blob and GitHub backends resolve every identifier against `Root` and throw `UnauthorizedAccessException` when it escapes the root (e.g. via `../`). The blob and GitHub backends check the address as a URL reads it (`%2e` is a dot) and as a server that decodes `%2f` into a `/` would; they and the SFTP backend also refuse a null character, where a server may end the path. Zip extraction to a folder (the `targetDirectory` overloads of `ZipUtility.Unzip`) enforces the same containment, while `ZipUtility.Unzip(IBinaryFile)` returns each entry name as stored, `../x` included — check one before using it as a path. Folder names compare as the file system does: regardless of case on Windows and macOS, exactly elsewhere. This is on by default (`Contained = true` in `FileSystemOptions`/`SftpConfig`/`AzureOptions`/`GitHubOptions`) — only disable it for trusted, non-user input.
 
 ---
 
@@ -296,6 +296,7 @@ var service = new BinaryBlobService(communicator);
 | `ConnectionString` | `string` | *(required)* | Azure Storage connection string |
 | `ContainerName` | `string` | *(required)* | Blob container name |
 | `CreateContainerIfNotExists` | `bool` | `true` | Auto-create the container on `Open()`; set `false` to fail fast on a misconfigured name |
+| `Contained` | `bool` | `true` | Reject identifiers that escape the container (path traversal) — without it, `../other/x` names a blob in container `other` |
 
 `Save` stores its `contentType` as the blob's `Content-Type`, which decides whether a browser following a SAS or CDN
 link shows the file or downloads it. Without one — `null`, empty or blank — the type comes from the identifier's
@@ -364,8 +365,9 @@ var service = new GitHubService(
 | `Branch` | `string` | `"main"` | Branch used for writes |
 | `CommitMessage` | `string?` | auto | Commit message for `Save`/`Delete` |
 | `ContentPath` | `string?` | repo root | Sub-path within the repository used as `Root` |
+| `Contained` | `bool` | `true` | Reject identifiers that escape `Root` (path traversal) |
 
-Fully implements `IFileService`: reads via the contents API; `Save`/`Move`/`Delete` create commits on `Branch`. Not suited for high-frequency writes (every write is a commit).
+Fully implements `IFileService`: reads via the contents API; `Save`/`Move`/`Delete` create commits on `Branch`. Not suited for high-frequency writes (every write is a commit). An identifier ending in `?ref={branch}` reads and writes that branch instead, so a file name cannot hold a `?`; a `#` is part of the name.
 
 ---
 

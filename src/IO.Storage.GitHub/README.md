@@ -13,6 +13,7 @@ Public repositories can be read without a token. Writes and private repositories
 ## Documentation
 
 - [GitHub storage](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/#github-githubservice) — construction, options and branch handling
+- [File identification](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/#file-identification) — identifiers relative to the content path, and the check that keeps them inside it
 - [Regira IO.Storage](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/) — the `IFileService` contract and the other storage backends
 
 ## License

@@ -3,6 +3,7 @@ using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Regira.IO.Storage.Abstractions;
 using Regira.IO.Storage.Azure.Utilities;
+using Regira.IO.Storage.Utilities;
 using Regira.IO.Utilities;
 
 namespace Regira.IO.Storage.Azure;
@@ -147,8 +148,9 @@ public class BinaryBlobService(AzureCommunicator communicator) : IFileService
         await communicator.Open();
         var sourceBlob = GetBlobReference(sourceIdentifier);
         var targetBlob = GetBlobReference(targetIdentifier);
-        // server-side copy is asynchronous on Azure's side; wait for completion before deleting the source
-        var copyOperation = await targetBlob.StartCopyFromUriAsync(GetBlobUri(sourceIdentifier));
+        // server-side copy is asynchronous on Azure's side; wait for completion before deleting the source.
+        // The copy source is the address the SDK built for the blob, escaped: a ?, # or % in its name stays part of it
+        var copyOperation = await targetBlob.StartCopyFromUriAsync(sourceBlob.Uri);
         await copyOperation.WaitForCompletionAsync();
         await sourceBlob.DeleteIfExistsAsync();
     }
@@ -181,7 +183,13 @@ public class BinaryBlobService(AzureCommunicator communicator) : IFileService
     public string GetAbsoluteUri(string identifier)
     {
         communicator.Open().GetAwaiter().GetResult();
-        return FileNameUtility.GetUri(identifier, Root);
+        var uri = FileNameUtility.GetUri(identifier, Root);
+        if (communicator.Contained)
+        {
+            // read as a URL, as GetBlobUri reads it: %2e is a dot there, though the SDK keeps it in a blob's name
+            UrlPath.EnsureContained(new Uri(uri), Container.Uri);
+        }
+        return uri;
     }
 
     public string GetIdentifier(string uri)
@@ -201,7 +209,13 @@ public class BinaryBlobService(AzureCommunicator communicator) : IFileService
     protected internal BlobClient GetBlobReference(string identifier)
     {
         var prefixedFilename = FileNameUtility.GetRelativeUri(identifier, Root);
-        return Container.GetBlobClient(prefixedFilename);
+        var blob = Container.GetBlobClient(prefixedFilename);
+        if (communicator.Contained)
+        {
+            // the SDK resolves the dot segments of the address it builds, so ../ can name a blob in another container
+            UrlPath.EnsureContained(blob.Uri, Container.Uri);
+        }
+        return blob;
     }
     [Obsolete("A BlobClient carries no content type: Save sets it on upload. Use GetBlobReference(identifier).")]
     protected internal BlobClient GetBlobReference(string identifier, string? contentType = null)

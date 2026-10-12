@@ -26,4 +26,9 @@ public class GitHubOptions
     /// Optional path within the repository where the content will be stored. If not specified, content will be stored at the root of the repository.
     /// </summary>
     public string? ContentPath { get; set; }
+    /// <summary>
+    /// Refuses an identifier that addresses a path outside <see cref="ContentPath"/>, through <c>../</c>, say (default).
+    /// Without the check a request follows the identifier's dot segments, out of the content path and up to the API's root.
+    /// </summary>
+    public bool Contained { get; set; } = true;
 }

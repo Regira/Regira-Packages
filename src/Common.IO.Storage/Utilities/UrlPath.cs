@@ -85,15 +85,42 @@ internal static class UrlPath
         return leadingSlash ? "/" + joined : joined;
     }
     /// <summary>The normalized path, when it lies within <paramref name="root"/>.</summary>
-    /// <exception cref="UnauthorizedAccessException">The path climbs out of the root.</exception>
+    /// <exception cref="UnauthorizedAccessException">
+    /// The path climbs out of the root, or holds a null character, where a server may end it.
+    /// </exception>
     public static string EnsureContained(string absolutePath, string root)
     {
         var normalized = NormalizePath(absolutePath);
-        var normalizedRoot = root.TrimEnd('/');
-        if (!normalized.StartsWith(normalizedRoot + "/", StringComparison.Ordinal) && normalized != normalizedRoot)
+        if (absolutePath.Contains('\0') || !IsWithin(normalized, root))
         {
             throw new UnauthorizedAccessException($"Path '{absolutePath}' escapes the root context.");
         }
         return normalized;
+    }
+    /// <summary>
+    /// <paramref name="uri"/>, when it addresses a path within <paramref name="root"/> on the root's host: its path as a
+    /// client sends it, the dot segments resolved and <c>%2e</c> read as a dot, and as a server reads it once it decodes
+    /// the percent-escapes, <c>%2f</c> and <c>%5c</c> read as a <c>/</c>.
+    /// </summary>
+    /// <exception cref="UnauthorizedAccessException">
+    /// The address leaves the root, or its path holds a null character, where a server may end it.
+    /// </exception>
+    public static Uri EnsureContained(Uri uri, Uri root)
+    {
+        var sameServer = Uri.Compare(uri, root, UriComponents.SchemeAndServer, UriFormat.UriEscaped, StringComparison.OrdinalIgnoreCase) == 0;
+        var decodedPath = ConvertBackSlashes(Uri.UnescapeDataString(uri.AbsolutePath));
+        if (!sameServer
+            || decodedPath.Contains('\0')
+            || !IsWithin(NormalizePath(uri.AbsolutePath), root.AbsolutePath)
+            || !IsWithin(NormalizePath(decodedPath), Uri.UnescapeDataString(root.AbsolutePath)))
+        {
+            throw new UnauthorizedAccessException($"Address '{uri.OriginalString}' escapes the root context.");
+        }
+        return uri;
+    }
+    private static bool IsWithin(string normalizedPath, string root)
+    {
+        var normalizedRoot = root.TrimEnd('/');
+        return normalizedPath.StartsWith(normalizedRoot + "/", StringComparison.Ordinal) || normalizedPath == normalizedRoot;
     }
 }

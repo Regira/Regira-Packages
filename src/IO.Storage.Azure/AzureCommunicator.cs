@@ -7,6 +7,7 @@ public class AzureCommunicator(AzureOptions config)
     public bool IsOpened { get; set; }
 
     internal BlobContainerClient? Container { get; set; }
+    internal bool Contained => config.Contained;
 
     private readonly string _containerName = config.ContainerName ?? throw new ArgumentNullException(nameof(config.ContainerName));
     private readonly string _connectionString = config.ConnectionString ?? throw new ArgumentNullException(nameof(config.ConnectionString));
