@@ -26,7 +26,7 @@ public class PgBackupService(PgOptions options, IProcessHelper processHelper, IL
             }
             catch (Exception ex)
             {
-                logger?.LogWarning(ex, $"Could not delete temporary file {targetPath}");
+                logger?.LogWarning(ex, "Could not delete temporary file {Path}", targetPath);
             }
         }
     }

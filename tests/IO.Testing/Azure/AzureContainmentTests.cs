@@ -108,4 +108,21 @@ public class AzureContainmentTests
             Assert.That(service.GetBlobUri("%2e%2e/other/inv-001.pdf").AbsolutePath, Is.EqualTo("/devstoreaccount1/other/inv-001.pdf"));
         });
     }
+
+    [Test]
+    public async Task The_Synchronous_Members_Make_No_Request()
+    {
+        // an endpoint nothing listens on: a request would fail, or wait out the SDK's retries
+        const string unreachable = "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:1/devstoreaccount1;";
+        var service = new BinaryBlobService(new AzureCommunicator(new AzureOptions { ConnectionString = unreachable, ContainerName = ContainerName }));
+
+        var (uri, identifier, folder) = await Task.Run(() => (
+            service.GetAbsoluteUri("invoices/inv-001.pdf"),
+            service.GetIdentifier("http://127.0.0.1:1/devstoreaccount1/uploads/invoices/inv-001.pdf"),
+            service.GetRelativeFolder("invoices/inv-001.pdf"))).WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.That(uri, Is.EqualTo("http://127.0.0.1:1/devstoreaccount1/uploads/invoices/inv-001.pdf"));
+        Assert.That(identifier, Is.EqualTo("invoices/inv-001.pdf"));
+        Assert.That(folder, Is.EqualTo("invoices"));
+    }
 }

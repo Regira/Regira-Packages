@@ -16,6 +16,9 @@
     <PackageTags>regira;payments;pom</PackageTags>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Payments.Testing" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Common.Invoicing\Common.Invoicing.csproj" />
   </ItemGroup>
 </Project>

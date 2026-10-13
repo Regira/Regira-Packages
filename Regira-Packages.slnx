@@ -165,6 +165,7 @@
     <Project Path="tests/Entities.Web.Testing/Entities.Web.Testing.csproj" />
     <Project Path="tests/Hosting.Testing/Hosting.Testing.csproj" />
     <Project Path="tests/IO.Testing/IO.Testing.csproj" />
+    <Project Path="tests/Invoicing.Testing/Invoicing.Testing.csproj" />
     <Project Path="tests/Licensing.Testing/Licensing.Testing.csproj" />
     <Project Path="tests/Media.Testing/Media.Testing.csproj" />
     <Project Path="tests/Normalizing.Testing/Normalizing.Testing.csproj" />

@@ -3,7 +3,7 @@ using Regira.System.Hosting.Background.Abstractions;
 
 namespace Regira.System.Hosting.Background.Core;
 
-public class BackgroundTaskQueue(BackgroundTaskQueue.Options? options = null) : IBackgroundTaskQueue
+public class BackgroundTaskQueue : IBackgroundTaskQueue
 {
     public class Options
     {
@@ -12,8 +12,15 @@ public class BackgroundTaskQueue(BackgroundTaskQueue.Options? options = null) : 
     }
     // https://www.c-sharpcorner.com/article/how-to-call-background-service-from-net-core-web-api/
     // https://docs.microsoft.com/en-us/aspnet/core/fundamentals/host/hosted-services
-    private readonly ConcurrentQueue<Func<CancellationToken, Task>> _workItems = new(options?.InitialQueue ?? new Queue<Func<CancellationToken, Task>>());
-    private readonly SemaphoreSlim _signal = new(options?.InitialConcurrentCount ?? 0);
+    private readonly ConcurrentQueue<Func<CancellationToken, Task>> _workItems;
+    private readonly SemaphoreSlim _signal;
+
+    public BackgroundTaskQueue(Options? options = null)
+    {
+        _workItems = new(options?.InitialQueue ?? []);
+        // every initial item is signalled, so it runs
+        _signal = new(Math.Max(options?.InitialConcurrentCount ?? 0, _workItems.Count));
+    }
 
 
     public void QueueBackgroundWorkItem(Func<CancellationToken, Task> workItem)

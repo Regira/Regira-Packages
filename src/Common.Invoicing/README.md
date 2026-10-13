@@ -129,6 +129,8 @@ catch (PeppolResponseException ex)   // it answered, but did not accept the docu
 }
 ```
 
+Every instance sends through a connection pool the package shares, so it can be registered with any lifetime. Never repeat a `Send` that may have reached the gateway: the document would go out twice.
+
 `PeppolRequestException` and `PeppolResponseException` are in `Regira.Invoicing.ViaAdValvas.Models`.
 
 Requests are sealed with `SealUtility.Generate()` — an MD5 digest over the token, sender ID, reference ID, date, and the secret key: a plain hash with the secret appended, not an HMAC.

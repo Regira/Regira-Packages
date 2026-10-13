@@ -188,9 +188,29 @@ public class PageViewWriterTests
             Assert.That(writer.ExecuteTask!.IsCompleted, Is.False, "the loop survives, backing off");
         });
 
-        // The loop is inside its 30s backoff (deliberately non-cancellable); don't wait it out.
-        using var cts = new CancellationTokenSource(500);
+        await writer.StopAsync(CancellationToken.None);
+    }
+
+    [Test]
+    public async Task Shutdown_During_The_Backoff_Flushes_Without_Waiting_It_Out()
+    {
+        var failing = true;
+        var store = new InMemoryStore<PageView> { FailWith = () => failing ? new IOException("disk full") : null };
+        var config = new AnalyticsConfig { FlushIntervalSeconds = 1, RetentionDays = 0 };
+        var (writer, queue) = Create(config, s => s.AddSingleton<IPageViewStore<PageView>>(store));
+
+        await writer.StartAsync(CancellationToken.None);
+        queue.Enqueue(Pending("/lost"));
+        await TestHostFactory.WaitUntilAsync(() => store.SaveCalls == 1);
+        failing = false;
+        queue.Enqueue(Pending("/queued"));
+
+        // the loop is inside its 30s back-off
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         await writer.StopAsync(cts.Token);
+
+        Assert.That(writer.ExecuteTask!.IsCompleted, Is.True, "the back-off ends with the host");
+        Assert.That(store.Views.Select(v => v.Path), Is.EqualTo(new[] { "/queued" }));
     }
 
     [Test]

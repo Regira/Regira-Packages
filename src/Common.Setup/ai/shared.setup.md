@@ -22,6 +22,27 @@ Keep these responsibilities separate in consumer projects:
 
 Consumers do not need the source-repository `ai/` folder for the normal one-file flow. Install `Regira.Setup` when the shared setup guides should be extracted locally through package restore and build.
 
+## Outbound HTTP Clients
+
+- **ViaAdValvas, GitHub storage, Mollie, POM, SendGrid and Mailgun** send through one connection pool per package, recycled every two minutes so a DNS change reaches a long-running process. It keeps no cookies, so nothing one instance receives rides on another's requests. Any lifetime is safe, a singleton included, and `HttpClient`'s 100-second timeout applies; there is nothing to configure.
+- **Gotenberg, Billit and Office.Clients** register named clients. Their timeout, handlers and resilience belong to the app, on that name:
+
+| Package | Client name |
+|---|---|
+| PDF.Gotenberg, Word.Gotenberg | `HttpClientName` on the registration's extension class |
+| Invoicing.Billit | `BillitConstants.HttpClientName` |
+| Office.Clients | each client's interface name, `nameof(IWordConverter)` |
+
+<!-- no-compile -->
+```csharp
+services.AddHttpClient(BillitConstants.HttpClientName)
+    .AddStandardResilienceHandler(o => o.Retry.DisableForUnsafeHttpMethods());
+```
+
+- `AddStandardResilienceHandler()` (`Microsoft.Extensions.Http.Resilience`) retries POSTs by default. A call that creates something must not repeat, so disable retries for unsafe methods, as above.
+- An app's own retry loop never repeats a create either. Mollie's `Save(payment, idempotencyKey)` makes a repeated create return the first payment. Mailgun and SendGrid take no key: never retry a send that may have reached the provider. A retryable Billit flow calls `Create`, keeps the id and then `Send(id)`, since repeating `Send(invoice)` creates a second order.
+- The handler's 10 s attempt and 30 s total timeouts cut off long conversions: raise `AttemptTimeout` and `TotalRequestTimeout` for Gotenberg and Office.Clients.
+
 ## Related Files
 
 - **Consumer bootstrap** — `get_bootstrap_guide(heading: "toc")` — canonical downstream bootstrap; committed as `./AGENTS.md` at the repo root when the MCP server is not configured

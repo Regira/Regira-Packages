@@ -3,7 +3,7 @@ using Regira.DependencyInjection;
 
 namespace Regira.System.Hosting.DependencyInjection;
 
-[Obsolete("Nothing in the Regira packages uses the typed service providers. Will be removed in v7.")]
+[Obsolete("Nothing in the Regira packages uses the typed service providers; register keyed services instead (AddKeyedSingleton, AddKeyedScoped, AddKeyedTransient). Will be removed in v7.")]
 public static class TypedServiceProviderExtensions
 {
     public static IServiceCollection AddTypedProvider<T, TService, TImplementation>(this IServiceCollection services)

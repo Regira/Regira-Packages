@@ -1020,6 +1020,10 @@ increments it (Identity lockout).
 
 `username` is used as both user name and email. With `confirmEmailUrl`, the new user is emailed that page with a Base64 `token` as its query string, percent-encoded like the reset link's. Creating an existing user is a no-op `200`.
 
+If the confirmation mail fails, `POST users` answers `500` with the user already created, and a repeat answers `200` without mailing. To resend, the app adds an endpoint of its own that mails a fresh link for the existing user (`UserManager.GenerateEmailConfirmationTokenAsync`), checking the page against `AllowedOrigins` as the base action does.
+
+A `400` comes in one of three bodies: an input that fails model validation gets ASP.NET Core's `ValidationProblemDetails` (errors under `errors`); identity errors and a page on another origin get the field errors as the body itself (`{ "Password": ["..."] }`); a malformed token gets a `ProblemDetails` without field errors. A client reads `errors` when present, else the body.
+
 ### Mailed links: allowed origins
 
 The recover and confirmation mails carry a genuine token inside a link to the page the request names, so whoever

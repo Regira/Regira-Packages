@@ -128,4 +128,32 @@ public class GitHubContainmentTests
 
         Assert.That(_server.Requests.Select(r => $"{r.Method} {r.Target}"), Is.EqualTo(new[] { "GET /repos/owner/repo/contents/other/inv-001.pdf" }));
     }
+
+    [Test]
+    public async Task The_Own_Client_Sends_The_Same_Headers()
+    {
+        using var communicator = CreateCommunicator();
+        var service = new GitHubService(communicator, new JsonSerializer());
+
+        await service.GetBytes("inv-001.pdf");
+
+        var request = _server.Requests.Single();
+        Assert.That($"{request.Headers["Authorization"]} {request.Headers["Cache-Control"]}", Is.EqualTo($"Bearer {Token} no-cache"));
+        Assert.That(request.Headers["User-Agent"], Is.EqualTo("Regira.IO.Storage.GitHub"));
+    }
+
+    [Test]
+    public async Task A_Cookie_One_Communicator_Receives_Is_Not_Sent_By_Another()
+    {
+        await using var server = new RecordingHttpServer("""{ "sha": "3d21ec53a331a6f037a91c368710b99387d012c1" }""", setCookie: "session=tenant-a; Path=/");
+        GitHubCommunicator Create(string key) => new(new GitHubOptions { Uri = new Uri(server.BaseUri, "repos/owner/repo").ToString(), Key = key });
+        using var tenantA = Create("token-a");
+        using var tenantB = Create("token-b");
+
+        await new GitHubService(tenantA, new JsonSerializer()).Exists("inv-001.pdf");
+        await new GitHubService(tenantA, new JsonSerializer()).Exists("inv-001.pdf");
+        await new GitHubService(tenantB, new JsonSerializer()).Exists("inv-001.pdf");
+
+        Assert.That(server.Requests.Select(r => r.Headers.GetValueOrDefault("Cookie")), Is.All.Null, "the shared pool keeps no cookies");
+    }
 }

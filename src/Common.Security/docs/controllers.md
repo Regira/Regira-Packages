@@ -98,6 +98,10 @@ that. See *Refresh Tokens* above.
 
 `username` is used as both the user name and the email address. When `confirmEmailUrl` is supplied, the new user is emailed that page with a Base64 `token` as its query string, percent-encoded like the reset link's; `confirm-email` decodes it and returns `400` on a malformed token. Creating a user that already exists is a no-op `200`. A self-registration override that assigns a role or tenant must check that the user did not exist before, or the role lands on whatever account the caller names. The optional `password` on the confirm-email input is not used by the base implementation — it is available to overrides.
 
+If the confirmation mail fails, `POST users` answers `500` with the user already created, and a repeat answers `200` without mailing. To resend, the app adds an endpoint of its own that mails a fresh link for the existing user (`UserManager.GenerateEmailConfirmationTokenAsync`), checking the page against `AllowedOrigins` as the base action does.
+
+A `400` comes in one of three bodies: an input that fails model validation gets ASP.NET Core's `ValidationProblemDetails` (errors under `errors`); identity errors and a page on another origin get the field errors as the body itself (`{ "Password": ["..."] }`); a malformed token gets a `ProblemDetails` without field errors. A client reads `errors` when present, else the body.
+
 ### Mailed links: allowed origins
 
 `recover`, and `POST users` with a `confirmEmailUrl`, mail a link to the page the request names, with the token as

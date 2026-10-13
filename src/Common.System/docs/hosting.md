@@ -69,6 +69,8 @@ var task = queueManager.Execute<string>(async (sp, t) =>
 });
 ```
 
+Work items run one at a time. One that throws is logged and the next one runs; a typed task records the exception and ends with status `Error`. The queue is unbounded and the task manager keeps every typed task until it is removed, so an app that queues per request removes finished tasks (`Remove(id)` after the result is read, or `Clear()`).
+
 A worked end-to-end example — enqueue from a controller, then poll the task's status — is in the
 [Web examples](https://regira.github.io/Regira-Packages/src/Common.Web/docs/examples.html).
 

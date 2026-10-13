@@ -70,7 +70,7 @@ public class EntityWriteService<TContext, TEntity, TKey>(
             await ValidateMarked(marked, item, null, EntityWriteOperation.Add, token);
         }
 
-        Logger?.LogDebug($"Adding new {typeof(TEntity).FullName}");
+        Logger?.LogDebug("Adding new {EntityType}", typeof(TEntity).FullName);
 
         DbSet.Add(item);
     }
@@ -85,7 +85,7 @@ public class EntityWriteService<TContext, TEntity, TKey>(
         // on net8.0 no query filter is ignored at all). See QueryExtensions.FilterArchivable.
         var original = await readService.Details(item.Id, ArchivedFilter.Included, token);
 
-        Logger?.LogDebug($"Modifying {typeof(TEntity).FullName} #{item.Id} {(original == null ? "" : " with original")}");
+        Logger?.LogDebug("Modifying {EntityType} #{Id}{Original}", typeof(TEntity).FullName, item.Id, original == null ? "" : " with original");
 
         // Before the preppers, over the whole graph: a Related() sync attaches each child's graph, which reaches
         // this entity through a back-reference and every sibling through this entity — their fixup, which undoes
@@ -163,7 +163,7 @@ public class EntityWriteService<TContext, TEntity, TKey>(
     {
         // an IArchivable becomes a soft delete at the save, which leaves its dependents as they are: EF must not cascade to them now
         RemoveGuarded(() => DbContext.RemoveWithoutCascade(item, () => DbSet.Remove(item)), item.Id);
-        Logger?.LogDebug($"Removing {typeof(TEntity).FullName} #{item.Id}");
+        Logger?.LogDebug("Removing {EntityType} #{Id}", typeof(TEntity).FullName, item.Id);
         return Task.CompletedTask;
     }
 
@@ -194,7 +194,7 @@ public class EntityWriteService<TContext, TEntity, TKey>(
         var matchingPreppers = preppers.FindMatchingServices(item);
         foreach (var prepper in matchingPreppers)
         {
-            Logger?.LogDebug($"Preparing {typeof(TEntity).FullName} #{item.Id} using {prepper.GetType().FullName}");
+            Logger?.LogDebug("Preparing {EntityType} #{Id} using {Prepper}", typeof(TEntity).FullName, item.Id, prepper.GetType().FullName);
             await prepper.Prepare(item, original, token);
         }
     }

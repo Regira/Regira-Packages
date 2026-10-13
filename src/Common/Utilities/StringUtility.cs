@@ -511,7 +511,7 @@ public static class StringUtility
         }
 
         var result = formatString;
-        Regex attributeRegex = new Regex("{(" + key + ")(?:}|(?::(.[^}]*)}))");
+        var attributeRegex = new Regex("{(" + Regex.Escape(key) + ")(?:}|(?::(.[^}]*)}))");
 
         foreach (Match m in attributeRegex.Matches(formatString))
         {

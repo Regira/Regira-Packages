@@ -63,8 +63,11 @@ IPayment?              payment = await svc.Details(paymentId);
 IEnumerable<IPayment>  list    = await svc.List();
 var response = await svc.Save(newPayment); // creates payment, sets newPayment.Id
 var checkoutUrl = response.CheckoutUrl;    // redirect the customer here
+// or Save(newPayment, orderId): a repeat with the same idempotency key returns the first payment
 await svc.Delete(payment!);                // cancels the payment
 ```
+
+Every instance sends through a connection pool the package shares, so it can be registered with any lifetime. Never repeat a `Save` without an idempotency key: the second creates a second payment.
 
 ### Webhook Handling
 
@@ -123,7 +126,7 @@ var paylink = response.Paylink;                  // send the payer here
 ```
 
 `Save` and `CreatePaylink` send `Amount` and `Currency`, the sender contract number coming from `PomSettings`, and set the payment's `Id` to POM's document id; `CreatePaylink` also returns POM's `PomPaymentResponse`, with the link in `Paylink`.
-Every instance sends its requests through one shared `HttpClient`; pass your own, for instance from `IHttpClientFactory`, as the third constructor argument. An instance keeps its POM token and, when POM refuses it (`401`), authenticates again and sends the request once more, so it can be registered as a singleton.
+Every instance sends through a connection pool the package shares. An instance keeps its POM token and, when POM refuses it (`401`), authenticates again and sends the request once more, so it can be registered as a singleton.
 `PomException` is thrown on API errors — check `StatusCode` and `PomResponse` for details.
 
 ---

@@ -16,6 +16,9 @@
     <PackageTags>regira;payments;mollie;gateway</PackageTags>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Payments.Testing" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Mollie.Api" Version="5.1.0" />
   </ItemGroup>
   <ItemGroup>

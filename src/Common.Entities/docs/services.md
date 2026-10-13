@@ -558,6 +558,10 @@ public abstract class EntityPrimerBase<T> : IEntityPrimer<T>
   own unit of work, and that save runs the reactors of what it wrote (up to 8 levels deep). Hand slow work to a job
   system
 - A reactor that throws is logged and skipped: the save still succeeds and the other reactors still run
+- A reaction happens at most once: a crash between the commit and the reaction loses it, the enqueue to a job
+  system included, and nothing retries a reactor that threw. Work that must happen writes a row of its own in the
+  same save (an outbox), and a hosted service delivers each row at least once, the row's id serving the receiver as
+  its deduplication key
 - Wired into the DbContext options by `UseEntities(e => e.UseDefaults())`; without `UseDefaults()`, add
   `DbContextWiring.Reactors` to `e.WireDbContext(...)`
 - Can be registered **globally** (`options.AddReactor<T>()` — a reactor on an interface or base type reaches every entity it covers) or **per entity** (`e.AddReactor<T>()` — that entity only, whatever type the reactor is written against)

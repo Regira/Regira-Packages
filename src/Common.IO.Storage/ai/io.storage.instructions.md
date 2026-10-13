@@ -357,6 +357,8 @@ var service = new GitHubService(
 );
 ```
 
+Every communicator sends through a connection pool the package shares, and every request carries its own headers, the token included.
+
 | Option | Type | Default | Description |
 |---|---|---|---|
 | `Uri` | `string` | *(required)* | GitHub API repository endpoint (`https://api.github.com/repos/{owner}/{repo}`) |
@@ -457,9 +459,11 @@ var items   = await zipManager.Unzip(archive, password);      // a BinaryFileCol
 ```csharp
 await new FileProcessor(fileService).ProcessFiles(
     new FileSearchObject { FolderUri = "exports/", Recursive = true },
-    async (identifier, svc) => { /* process each file */ }
+    async (uri, svc) => { /* process each file */ }
 );
 ```
+
+The handler runs for one file at a time and receives the file's absolute URI. `Recursive = true` lists the files of every subfolder in one listing; `processRecursively: true` lists folder by folder instead. A handler that wants parallel work adds it itself, with a bound.
 
 ### `FileNameHelper` — unique filenames
 

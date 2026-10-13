@@ -6,7 +6,7 @@
 /// <typeparam name="T">
 /// The type that defines the context or scope for the service provider.
 /// </typeparam>
-[Obsolete("Nothing in the Regira packages uses the typed service providers. Will be removed in v7.")]
+[Obsolete("Nothing in the Regira packages uses the typed service providers; register keyed services instead (AddKeyedSingleton, AddKeyedScoped, AddKeyedTransient). Will be removed in v7.")]
 public class DelegateServiceProvider<T>
 {
     public static ITypedServiceProvider<T, TService> Create<TService>(IServiceProvider p, Func<IServiceProvider, TService> func)

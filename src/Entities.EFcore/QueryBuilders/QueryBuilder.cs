@@ -96,7 +96,7 @@ public class QueryBuilder<TEntity, TKey, TSearchObject, TSortBy, TIncludes>(
                 query,
                 (filteredQuery, filter) =>
                 {
-                    _logger?.LogDebug($"Applying global filter {filter.GetType().FullName} for type {typeof(TEntity).FullName}");
+                    _logger?.LogDebug("Applying global filter {Filter} for type {EntityType}", filter.GetType().FullName, typeof(TEntity).FullName);
                     return filter.Build(filteredQuery, so);
                 }
             );
@@ -105,7 +105,7 @@ public class QueryBuilder<TEntity, TKey, TSearchObject, TSortBy, TIncludes>(
                 globallyFilteredQuery,
                 (filteredQuery, filter) =>
                 {
-                    _logger?.LogDebug($"Applying filter {filter.GetType().FullName} for type {typeof(TEntity).FullName}");
+                    _logger?.LogDebug("Applying filter {Filter} for type {EntityType}", filter.GetType().FullName, typeof(TEntity).FullName);
                     return filter.Build(filteredQuery, so);
                 }) ?? globallyFilteredQuery;
     }

@@ -10,7 +10,8 @@ public static class ServiceCollectionExtensions
     {
         services
             .Configure<MailKitConfig>(configure.Invoke)
-            .AddTransient(p => p.GetRequiredService<IOptionsSnapshot<MailKitConfig>>().Value)
+            // built from configure on every resolve, so a mailer resolves from the root provider too, in a singleton say
+            .AddTransient(p => p.GetRequiredService<IOptionsFactory<MailKitConfig>>().Create(Options.DefaultName))
             .AddTransient<IMailService, MailKitMailer>();
 
         return services;

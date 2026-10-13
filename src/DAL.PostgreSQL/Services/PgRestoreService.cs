@@ -34,7 +34,7 @@ public class PgRestoreService(PgOptions options, IProcessHelper processHelper, I
             }
             catch (Exception ex)
             {
-                logger?.LogWarning(ex, $"Could not delete temporary file {sourcePath}");
+                logger?.LogWarning(ex, "Could not delete temporary file {Path}", sourcePath);
             }
         }
     }

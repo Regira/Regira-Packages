@@ -5,18 +5,19 @@ namespace Regira.IO.Storage.Helpers;
 public class FileProcessor(IFileService fileService) : IFileProcessor
 {
     /// <summary>
-    /// 
+    /// Calls <paramref name="handleFile"/> for every file the search object lists, one file at a time, with the file's absolute URI.
     /// </summary>
-    /// <param name="so"></param>
-    /// <param name="handleFile"></param>
+    /// <param name="so">The folder, extensions and <see cref="FileSearchObject.Recursive"/> flag to list files with.</param>
+    /// <param name="handleFile">Handles one file. A caller that wants files handled in parallel adds that inside it.</param>
     /// <param name="processRecursively">
     ///     Set true when all subfolders should be processed, but not at once.
-    ///     When true, overwrites the Recursive property to false in the FileSearchObject, but calls this function recursively for each subfolder.
+    ///     When true, overrides the Recursive property to false in the FileSearchObject, and calls this function recursively for each subfolder.
+    ///     Otherwise, the search object's <see cref="FileSearchObject.Recursive"/> flag decides whether files in subfolders are listed, in one listing.
     /// </param>
-    /// <returns></returns>
     public async Task ProcessFiles(FileSearchObject so, Func<string, IFileService, Task> handleFile, bool? processRecursively = null)
     {
-        var recursive = processRecursively ?? false ? !processRecursively.Value : so.Recursive;
+        var processFolders = processRecursively == true;
+        var recursive = !processFolders && so.Recursive;
         // files
         var filesSo = new FileSearchObject
         {
@@ -27,46 +28,33 @@ public class FileProcessor(IFileService fileService) : IFileProcessor
         };
 #if NET10_0_OR_GREATER
         await foreach (var uri in fileService.ListAsync(filesSo))
+#else
+        foreach (var uri in await fileService.List(filesSo))
+#endif
         {
             var absoluteUri = fileService.GetAbsoluteUri(uri);
             await handleFile(absoluteUri, fileService);
         }
-#else
-        var fileUris = await fileService.List(filesSo);
-        // handle file
-        var handleFilesFuncs = fileUris
-            .Select(fileUri =>
-            {
-                var absoluteUri = fileService.GetAbsoluteUri(fileUri);
-                return handleFile(absoluteUri, fileService);
-            })
-            .ToArray();
-        await Task.WhenAll(handleFilesFuncs);
-#endif
 
         // recursive
-        if (processRecursively ?? so.Recursive)
+        if (processFolders)
         {
             // directories
             var dirSo = new FileSearchObject
             {
                 FolderUri = so.FolderUri,
                 Type = FileEntryTypes.Directories,
-                Recursive = recursive
+                Recursive = false
             };
 #if NET10_0_OR_GREATER
             await foreach (var uri in fileService.ListAsync(dirSo))
+#else
+            foreach (var uri in await fileService.List(dirSo))
+#endif
             {
                 var absoluteUri = fileService.GetAbsoluteUri(uri);
-                await ProcessFiles(new FileSearchObject { FolderUri = absoluteUri, Extensions = so.Extensions, Recursive = recursive }, handleFile, processRecursively);
+                await ProcessFiles(new FileSearchObject { FolderUri = absoluteUri, Extensions = so.Extensions, Recursive = false }, handleFile, processRecursively);
             }
-#else
-            var directoryUris = await fileService.List(dirSo);
-            var dirTasks = directoryUris
-                .Select(dirUri => ProcessFiles(new FileSearchObject { FolderUri = dirUri, Extensions = so.Extensions, Recursive = so.Recursive }, handleFile, processRecursively))
-                .ToArray();
-            await Task.WhenAll(dirTasks);
-#endif
         }
     }
 }

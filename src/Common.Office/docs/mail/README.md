@@ -246,7 +246,15 @@ services.AddMailKit(cfg =>
 });
 ```
 
-Each extension method registers `IMailService` as a transient service.
+Each extension method registers `IMailService` as a transient service that resolves from the root provider too, in a singleton say; its config is built from the configure action on every resolve. SendGrid and Mailgun send through a connection pool their package shares. Neither provider takes an idempotency key, so never retry a send that may have reached it.
+
+A missing key fails only when a mailer is resolved or sends. To fail at start-up instead, validate the config:
+
+```csharp
+services.AddOptions<Regira.Office.Mail.SendGrid.SendGridConfig>()
+    .Validate(c => !string.IsNullOrEmpty(c.Key), "Mail:SendGrid:Key is missing")
+    .ValidateOnStart();
+```
 
 ## Exceptions
 

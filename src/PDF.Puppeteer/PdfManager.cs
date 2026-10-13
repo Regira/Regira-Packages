@@ -15,17 +15,26 @@ namespace Regira.Office.PDF.Puppeteer;
 public class PdfManager : IHtmlToPdfService
 {
     private static readonly SemaphoreSlim DownloadLock = new(1, 1);
+    private static volatile bool _browserDownloaded;
 
     public async Task<IMemoryFile> Create(HtmlInput template, CancellationToken cancellationToken = default)
     {
-        await DownloadLock.WaitAsync(cancellationToken);
-        try
+        // once downloaded, renders no longer queue behind the lock
+        if (!_browserDownloaded)
         {
-            await new BrowserFetcher().DownloadAsync();
-        }
-        finally
-        {
-            DownloadLock.Release();
+            await DownloadLock.WaitAsync(cancellationToken);
+            try
+            {
+                if (!_browserDownloaded)
+                {
+                    await new BrowserFetcher().DownloadAsync();
+                    _browserDownloaded = true;
+                }
+            }
+            finally
+            {
+                DownloadLock.Release();
+            }
         }
 
         // Dispose the browser (and page) before returning: PdfStreamAsync buffers the whole PDF

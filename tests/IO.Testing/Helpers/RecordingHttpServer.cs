@@ -8,18 +8,20 @@ namespace IO.Testing.Helpers;
 /// <summary>
 /// An HTTP endpoint on the loopback address that records the request line and the headers of every request, so a test
 /// reads which address a client asked for. It answers <c>404 Not Found</c>, or a <c>GET</c> with
-/// <c>200 OK</c> and the JSON body it was given.
+/// <c>200 OK</c> and the JSON body it was given, with a <c>Set-Cookie</c> header when it was given one.
 /// </summary>
 public sealed class RecordingHttpServer : IAsyncDisposable
 {
     private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
     private readonly CancellationTokenSource _stop = new();
     private readonly string? _getBody;
+    private readonly string? _setCookie;
     private readonly Task _accepting;
 
-    public RecordingHttpServer(string? getBody = null)
+    public RecordingHttpServer(string? getBody = null, string? setCookie = null)
     {
         _getBody = getBody;
+        _setCookie = setCookie;
         _listener.Start();
         BaseUri = new Uri($"http://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}/");
         _accepting = Accept();
@@ -75,7 +77,8 @@ public sealed class RecordingHttpServer : IAsyncDisposable
             var (status, body) = requestLine[0] == "GET" && _getBody != null ? ("200 OK", _getBody) : ("404 Not Found", "");
             var content = Encoding.UTF8.GetBytes(body);
             var contentType = content.Length > 0 ? "Content-Type: application/json\r\n" : "";
-            var responseHead = Encoding.ASCII.GetBytes($"HTTP/1.1 {status}\r\n{contentType}Content-Length: {content.Length}\r\nConnection: close\r\n\r\n");
+            var cookie = _setCookie != null ? $"Set-Cookie: {_setCookie}\r\n" : "";
+            var responseHead = Encoding.ASCII.GetBytes($"HTTP/1.1 {status}\r\n{contentType}{cookie}Content-Length: {content.Length}\r\nConnection: close\r\n\r\n");
             await stream.WriteAsync(responseHead.Concat(content).ToArray());
         }
     }

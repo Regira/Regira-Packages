@@ -25,13 +25,13 @@ public class GitHubService(GitHubCommunicator communicator, ISerializer serializ
     public async Task<bool> Exists(string identifier)
     {
         var uri = GetAbsoluteUri(identifier);
-        var response = await communicator.Client.GetAsync(uri);
+        var response = await communicator.GetAsync(uri);
         return response.IsSuccessStatusCode;
     }
     public async Task<byte[]?> GetBytes(string identifier)
     {
         var uri = GetAbsoluteUri(identifier);
-        var response = await communicator.Client.GetAsync(uri);
+        var response = await communicator.GetAsync(uri);
         if (!response.IsSuccessStatusCode)
             return null;
         var json = await response.Content.ReadAsStringAsync();
@@ -48,7 +48,7 @@ public class GitHubService(GitHubCommunicator communicator, ISerializer serializ
     public async Task<IEnumerable<string>> List(FileSearchObject? so = null)
     {
         var listUri = GetAbsoluteUri(so?.FolderUri ?? string.Empty);
-        var response = await communicator.Client.GetAsync(listUri);
+        var response = await communicator.GetAsync(listUri);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             return [];
         response.EnsureSuccessStatusCode();
@@ -115,7 +115,7 @@ public class GitHubService(GitHubCommunicator communicator, ISerializer serializ
         var uri = FileNameUtility.GetUri(identifier, Root).Replace("#", "%23");
         if (communicator.Contained)
         {
-            UrlPath.EnsureContained(new Uri(uri), communicator.Client.BaseAddress!);
+            UrlPath.EnsureContained(new Uri(uri), communicator.RootUri);
         }
         return uri;
     }
@@ -154,7 +154,7 @@ public class GitHubService(GitHubCommunicator communicator, ISerializer serializ
                 body["sha"] = sha;
 
             var json = serializer.Serialize(body);
-            var response = await communicator.Client.PutAsync(GetAbsoluteUri(path), new StringContent(json, Encoding.UTF8, "application/json"));
+            var response = await communicator.PutAsync(GetAbsoluteUri(path), new StringContent(json, Encoding.UTF8, "application/json"));
 
             // The sha we sent is wrong: GitHub answers 409 (a cached sha outlived an external write) or
             // 422 (a required sha was missing because the read-back raced the previous write). Drop the
@@ -215,7 +215,7 @@ public class GitHubService(GitHubCommunicator communicator, ISerializer serializ
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             };
-            var response = await communicator.Client.SendAsync(request);
+            var response = await communicator.SendAsync(request);
 
             // A stale cached sha makes GitHub reject the delete with 409 (sha mismatch) or 422 (missing
             // sha). Drop the cache and retry once with a freshly fetched sha — mirroring Save. On the retry
@@ -243,7 +243,7 @@ public class GitHubService(GitHubCommunicator communicator, ISerializer serializ
     private async Task<string?> GetFileSha(string identifier)
     {
         var uri = GetAbsoluteUri(identifier);
-        var response = await communicator.Client.GetAsync(uri);
+        var response = await communicator.GetAsync(uri);
         if (!response.IsSuccessStatusCode)
             return null;
         var content = await response.Content.ReadAsStringAsync();

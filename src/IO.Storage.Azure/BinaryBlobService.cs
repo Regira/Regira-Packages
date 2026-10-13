@@ -10,18 +10,7 @@ namespace Regira.IO.Storage.Azure;
 
 public class BinaryBlobService(AzureCommunicator communicator) : IFileService
 {
-    protected internal BlobContainerClient Container
-    {
-        get
-        {
-            if (communicator.Container == null)
-            {
-                throw new Exception("ContainerClient is not opened yet!");
-            }
-
-            return communicator.Container!;
-        }
-    }
+    protected internal BlobContainerClient Container => communicator.Container;
     public string Root => Container.Uri.ToString();
 
 
@@ -182,7 +171,6 @@ public class BinaryBlobService(AzureCommunicator communicator) : IFileService
 
     public string GetAbsoluteUri(string identifier)
     {
-        communicator.Open().GetAwaiter().GetResult();
         var uri = FileNameUtility.GetUri(identifier, Root);
         if (communicator.Contained)
         {
@@ -194,13 +182,11 @@ public class BinaryBlobService(AzureCommunicator communicator) : IFileService
 
     public string GetIdentifier(string uri)
     {
-        communicator.Open().GetAwaiter().GetResult();
         return FileNameUtility.GetRelativeUri(uri, Root);
     }
 
     public string? GetRelativeFolder(string identifier)
     {
-        communicator.Open().GetAwaiter().GetResult();
         return FileNameUtility.GetRelativeFolder(identifier, Root);
     }
 

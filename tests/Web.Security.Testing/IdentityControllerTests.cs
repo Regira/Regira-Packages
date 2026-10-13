@@ -326,6 +326,27 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
         (await FindUser(newUser)).ShouldBeNull();
     }
 
+    // the three 400 bodies the guide describes
+    [Fact]
+    public async Task BadRequest_Bodies_Take_Three_Shapes()
+    {
+        var client = _factory.CreateClient();
+
+        var invalidInput = await client.PostAsJsonAsync("auth/password/reset", new { });
+        var foreignPage = await client.PostAsJsonAsync("auth/password/recover",
+            new { username = "nobody@test.local", siteUrl = "https://attacker.example/reset" });
+        var malformedToken = await client.PostAsJsonAsync("auth/password/reset",
+            new { token = "not-a-valid-base64-token!!", password = "whatever1" });
+
+        using var validation = System.Text.Json.JsonDocument.Parse(await invalidInput.Content.ReadAsStringAsync());
+        validation.RootElement.TryGetProperty("errors", out _).ShouldBeTrue("model validation answers ValidationProblemDetails");
+        using var fieldErrors = System.Text.Json.JsonDocument.Parse(await foreignPage.Content.ReadAsStringAsync());
+        fieldErrors.RootElement.TryGetProperty("SiteUrl", out _).ShouldBeTrue("BadRequest(ModelState) answers the field errors as the body");
+        using var problem = System.Text.Json.JsonDocument.Parse(await malformedToken.Content.ReadAsStringAsync());
+        problem.RootElement.GetProperty("status").GetInt32().ShouldBe(400);
+        problem.RootElement.TryGetProperty("errors", out _).ShouldBeFalse("BadRequest() answers a ProblemDetails without field errors");
+    }
+
     [Fact]
     public async Task RecoverPassword_Subject_IsNotTheCallers()
     {

@@ -8,22 +8,25 @@ namespace Regira.Invoicing.ViaAdValvas.Services;
 
 public class PeppolService(GatewaySettings settings, ISerializer serializer)
 {
+    // every instance shares one connection pool, recycled so a change to the gateway's DNS reaches a long-running process;
+    // no cookies, so nothing one instance receives rides on another's requests
+    private static readonly SocketsHttpHandler SharedHandler = new() { PooledConnectionLifetime = TimeSpan.FromMinutes(2), UseCookies = false };
+    // the handler every client goes through; a test points it at a stub
+    internal HttpMessageHandler Handler { get; init; } = SharedHandler;
+
+
     public async Task<UblDocumentResponse> Send(XDocument ublDoc)
     {
-        var sendUrl = "document?format=json";
-        using var http = new HttpClient
-        {
-            BaseAddress = new Uri(settings.Uri),
-            DefaultRequestHeaders =
-            {
-                { "ContentType", "text/plain" }
-            }
-        };
+        var sendUrl = new Uri(new Uri(settings.Uri), "document?format=json");
 
         var request = CreateRequest(ublDoc);
         // JSON should not be camelCase for AdValVas
         var serializedRequest = serializer.Serialize(request);
-        var httpResponse = await http.PostAsync(sendUrl, new StringContent(serializedRequest));
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, sendUrl);
+        // a custom header every release has sent; the Content-Type itself comes from the StringContent
+        httpRequest.Headers.TryAddWithoutValidation("ContentType", "text/plain");
+        httpRequest.Content = new StringContent(serializedRequest);
+        using var httpResponse = await new HttpClient(Handler, disposeHandler: false).SendAsync(httpRequest);
         if (!httpResponse.IsSuccessStatusCode)
         {
             throw new PeppolRequestException("Posting document failed")

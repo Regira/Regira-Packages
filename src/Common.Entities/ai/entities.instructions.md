@@ -780,6 +780,10 @@ options.AddReactor<AuditReactor>();    // global — an EntityReactorBase<IHasTi
   levels with a logged error — guard `CanReact` so a chain ends.
 - **A reactor that throws is logged and skipped** — the data is committed, so the save still succeeds and the
   other reactors still run. The save's `CancellationToken` does not cancel them.
+- **At most once** — a crash between the commit and the reaction loses it, the enqueue to a job system included,
+  and nothing retries a reactor that threw. Work that must happen writes a row of its own in the same save (an
+  outbox), and a hosted service delivers each row at least once, the row's id serving the receiver as its
+  deduplication key. The mail reactor above is the best-effort case.
 - On **every** `SaveChanges()` — the `IEntityService` path and raw `DbContext` writers, sync and async alike.
   Wired by `UseDefaults()` (`DbContextWiring.Reactors`); à la carte, add that flag to `e.WireDbContext(...)`.
 

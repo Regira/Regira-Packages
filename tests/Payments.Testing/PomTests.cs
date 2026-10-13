@@ -22,7 +22,7 @@ public class PomTests
     public async Task Save_Sets_The_New_Id_On_The_Payment()
     {
         var handler = new PomStub();
-        var service = new PaymentService(Settings, new JsonSerializer(), new HttpClient(handler));
+        var service = new PaymentService(Settings, new JsonSerializer()) { Handler = handler };
         var payment = new Payment { Amount = 49.99m, Currency = "EUR" };
 
         await service.Save(payment);
@@ -34,7 +34,7 @@ public class PomTests
     public async Task CreatePaylink_Returns_The_Pay_Link()
     {
         var handler = new PomStub();
-        var service = new PaymentService(Settings, new JsonSerializer(), new HttpClient(handler));
+        var service = new PaymentService(Settings, new JsonSerializer()) { Handler = handler };
         var payment = new Payment { Amount = 49.99m };
 
         var response = await service.CreatePaylink(payment);
@@ -45,10 +45,10 @@ public class PomTests
     }
 
     [Test]
-    public async Task Requests_Share_One_Client_And_Authenticate_Once()
+    public async Task Requests_Share_One_Handler_And_Authenticate_Once()
     {
         var handler = new PomStub();
-        var service = new PaymentService(Settings, new JsonSerializer(), new HttpClient(handler));
+        var service = new PaymentService(Settings, new JsonSerializer()) { Handler = handler };
 
         await service.Save(new Payment { Amount = 10 });
         await service.Details("POM-42");
@@ -66,7 +66,7 @@ public class PomTests
     public async Task An_Expired_Token_Is_Renewed_And_The_Request_Sent_Again()
     {
         var handler = new PomStub();
-        var service = new PaymentService(Settings, new JsonSerializer(), new HttpClient(handler));
+        var service = new PaymentService(Settings, new JsonSerializer()) { Handler = handler };
         await service.Details("POM-42");
         handler.Expired.Add("token-1");
 
@@ -89,7 +89,7 @@ public class PomTests
     public async Task A_Token_Refused_Twice_Throws()
     {
         var handler = new PomStub { ExpireEveryToken = true };
-        var service = new PaymentService(Settings, new JsonSerializer(), new HttpClient(handler));
+        var service = new PaymentService(Settings, new JsonSerializer()) { Handler = handler };
 
         var ex = await Assert.ThrowsAsync<PomException>(() => service.Details("POM-42"));
 

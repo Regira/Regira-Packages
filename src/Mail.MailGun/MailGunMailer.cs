@@ -3,6 +3,7 @@ using Regira.IO.Utilities;
 using Regira.Office.Mail.Abstractions;
 using Regira.Office.Mail.Exceptions;
 using Regira.Office.Mail.Models;
+using System.Net;
 using RestSharp;
 using RestSharp.Authenticators;
 
@@ -10,6 +11,18 @@ namespace Regira.Office.Mail.MailGun;
 
 public class MailGunMailer(MailgunConfig config) : MailerBase
 {
+    // every instance shares one connection pool, recycled so a change to Mailgun's DNS reaches a long-running process;
+    // configured as RestSharp configures a handler of its own
+    private static readonly SocketsHttpHandler SharedHandler = new()
+    {
+        PooledConnectionLifetime = TimeSpan.FromMinutes(2),
+        UseCookies = false,
+        AutomaticDecompression = DecompressionMethods.All,
+        AllowAutoRedirect = false
+    };
+    // the handler every client goes through; a test points it at a stub
+    internal HttpMessageHandler Handler { get; init; } = SharedHandler;
+
     private readonly string _mailgunApi = config.Api;
     private readonly string _mailgunKey = config.Key;
     private readonly string _domain = config.Domain;
@@ -19,9 +32,9 @@ public class MailGunMailer(MailgunConfig config) : MailerBase
     protected override async Task<IMailResponse> OnSend(IMessageObject message, CancellationToken cancellationToken = default)
     {
         var options = new RestClientOptions(_mailgunApi) { Authenticator = new HttpBasicAuthenticator("api", _mailgunKey) };
-        // The mailer is transient, so a client per send is the norm. useClientFactory has RestSharp keep one HttpClient
-        // per API endpoint and reuse its connections, where a new HttpClient per send opened new ones every time.
-        using var client = new RestClient(options, useClientFactory: true);
+        // RestSharp times a request out itself, as it does on a client of its own
+        var httpClient = new HttpClient(Handler, disposeHandler: false) { Timeout = global::System.Threading.Timeout.InfiniteTimeSpan };
+        using var client = new RestClient(httpClient, options);
         var request = BuildRequest(message);
 
         // response

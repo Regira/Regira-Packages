@@ -16,6 +16,9 @@
     <PackageTags>regira;invoicing;viaadvalvas;electronic-invoicing</PackageTags>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="Invoicing.Testing" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Common.Invoicing\Common.Invoicing.csproj" />
     <ProjectReference Include="..\Common\Common.csproj" />
   </ItemGroup>

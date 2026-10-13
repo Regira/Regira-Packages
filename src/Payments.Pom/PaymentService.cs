@@ -12,20 +12,14 @@ namespace Regira.Payments.Pom;
 /// </summary>
 /// <param name="settings">Credentials and the POM endpoint URLs.</param>
 /// <param name="serializer">A JSON serializer.</param>
-/// <param name="httpClient">The client every request goes through, for instance one from <c>IHttpClientFactory</c>.</param>
-public class PaymentService(PomSettings settings, ISerializer serializer, HttpClient httpClient) : IPaymentService
+public class PaymentService(PomSettings settings, ISerializer serializer) : IPaymentService
 {
-    // connections are recycled, so a change to POM's DNS reaches a long-running process
-    private static readonly HttpClient SharedClient = new(new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(2) });
+    // every instance shares one connection pool, recycled so a change to POM's DNS reaches a long-running process;
+    // no cookies, so nothing one instance receives rides on another's requests
+    private static readonly SocketsHttpHandler SharedHandler = new() { PooledConnectionLifetime = TimeSpan.FromMinutes(2), UseCookies = false };
+    // the handler every client goes through; a test points it at a stub
+    internal HttpMessageHandler Handler { get; init; } = SharedHandler;
     private string? _authToken;
-
-    /// <summary>
-    /// Sends every request through one <see cref="HttpClient"/> shared by all instances.
-    /// </summary>
-    public PaymentService(PomSettings settings, ISerializer serializer)
-        : this(settings, serializer, SharedClient)
-    {
-    }
 
 
     public async Task<IPayment?> Details(string paymentId)
@@ -91,6 +85,7 @@ public class PaymentService(PomSettings settings, ISerializer serializer, HttpCl
     }
     private async Task<HttpResponseMessage> SendOnce(HttpMethod method, string url, PomPayment? body)
     {
+        var httpClient = new HttpClient(Handler, disposeHandler: false);
         if (string.IsNullOrWhiteSpace(_authToken))
         {
             try
@@ -109,7 +104,7 @@ public class PaymentService(PomSettings settings, ISerializer serializer, HttpCl
         return await httpClient.SendAsync(request);
     }
 
-    [Obsolete("PaymentService sends every request through the HttpClient it was constructed with.")]
+    [Obsolete("PaymentService sends every request through a connection pool the package shares.")]
     protected async Task<HttpClient> GetPomClient()
     {
         var client = new HttpClient();
