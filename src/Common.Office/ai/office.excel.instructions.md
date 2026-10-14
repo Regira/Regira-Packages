@@ -27,7 +27,7 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 <!-- EPPlus v4 — deprecated (legacy EPPlus, Windows) -->
 <PackageReference Include="Regira.Office.Excel.EPPlus" Version="6.*" />
 
-<!-- NpoiMapper (type-mapped, generic; NPOI pinned to 2.7.1) -->
+<!-- NpoiMapper (type-mapped, generic; NPOI pinned to 2.7.2) -->
 <PackageReference Include="Regira.Office.Excel.NpoiMapper" Version="6.*" />
 ```
 
@@ -40,13 +40,13 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 | `Regira.Office.Excel.MiniExcel` | MiniExcel | ✓ | ✓ | Recommended — fast, low memory |
 | `Regira.Office.Excel.ClosedXML` | ClosedXML | — | — | Rich formatting support |
 | `Regira.Office.Excel.EPPlus` | EPPlus v4 | — | — | Deprecated — see below |
-| `Regira.Office.Excel.NpoiMapper` | NPOI + Npoi.Mapper | ✓ | — | Type-mapped via attributes; NPOI pinned to 2.7.1 |
+| `Regira.Office.Excel.NpoiMapper` | NPOI + Npoi.Mapper | ✓ | — | Type-mapped via attributes; NPOI pinned to 2.7.2 |
 
 **Default recommendation:** Use `MiniExcel` for reading/writing data — supports generics and reads and writes the sheet XML without a workbook object model. Rows are still collected into `ExcelSheet.Data`; no backend streams rows to the caller.
 
 **EPPlus is deprecated.** It stays on EPPlus 4.5.3.3, the last release under a free licence (EPPlus 5 and later need a commercial licence), which nuget.org marks as legacy and which receives no fixes. It depends on `System.Drawing.Common`, which throws on non-Windows from .NET 6 on — treat it as **Windows**. Use it only for what no other backend does — writing a `DataSet`, or the per-cell `TransformData` callback; otherwise pick MiniExcel or ClosedXML. It takes fixes for crashes, data loss and security holes only.
 
-**NpoiMapper pins NPOI to exactly 2.7.1.** From 2.8.0 the NPOI binaries on nuget.org carry an Open Source Maintenance Fee agreement that requires a paid subscription from organisations with annual revenue of US$10,000 or more. Do not raise NPOI in the application: a direct reference to 2.8 or later overrides the pin with only a restore warning (NU1608), and puts the application under that agreement.
+**NpoiMapper pins NPOI to exactly 2.7.2.** From 2.8.0 the NPOI binaries on nuget.org carry an Open Source Maintenance Fee agreement that requires a paid subscription from organisations with annual revenue of US$10,000 or more. Do not raise NPOI in the application: a direct reference overrides the pin with only a restore warning (NU1608). From 2.7.3 Npoi.Mapper throws `MissingMethodException` when it writes a cell, and 2.8 or later puts the application under that agreement.
 
 ---
 

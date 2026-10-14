@@ -39,8 +39,10 @@ public sealed class RecordingHttpServer : IAsyncDisposable
             {
                 client = await _listener.AcceptTcpClientAsync(_stop.Token);
             }
-            catch (OperationCanceledException)
+            catch (Exception) when (_stop.IsCancellationRequested)
             {
+                // DisposeAsync cancels and then stops the listener: an accept that starts in between
+                // fails with ObjectDisposedException or SocketException instead of OperationCanceledException.
                 return;
             }
             _ = Answer(client);

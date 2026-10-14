@@ -21,7 +21,7 @@
     <ProjectReference Include="..\Security.Authentication\Security.Authentication.csproj" />
   </ItemGroup>
   <ItemGroup Condition="$(TargetFramework) == 'net10.0'">
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13" />
     <!-- AspNetCore.OpenApi 10.0.10 and earlier declare Microsoft.OpenApi 2.0.0, which carries GHSA-v5pm-xwqc-g5wc
          (10.0.11 floors a patched 2.x itself). Pin it to the 2.x the rest of the solution runs on: projects that
          also reference Swashbuckle resolve that same version and serve the document fine against this

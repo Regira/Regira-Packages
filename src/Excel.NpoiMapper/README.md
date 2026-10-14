@@ -8,7 +8,7 @@ Excel backend for [Regira Office](https://regira.github.io/Regira-Packages/src/C
 <PackageReference Include="Regira.Office.Excel.NpoiMapper" Version="6.*" />
 ```
 
-NPOI is pinned to exactly 2.7.1: from 2.8.0 its binaries on nuget.org carry an Open Source Maintenance Fee EULA that requires a paid subscription above $10k annual revenue. The exact pin makes a later NPOI arriving through another package fail the restore rather than slip in.
+NPOI is pinned to exactly 2.7.2: from 2.8.0 its binaries on nuget.org carry an Open Source Maintenance Fee EULA that requires a paid subscription above $10k annual revenue, and from 2.7.3 Npoi.Mapper throws `MissingMethodException` when it writes a cell. The exact pin makes a later NPOI arriving through another package fail the restore rather than slip in.
 
 ## Documentation
 

@@ -150,7 +150,7 @@ var products = sheets.First().Data!;            // ICollection<Product>
 
 Its generic `ExcelManager<T>` uses Npoi.Mapper for property-to-column binding: good for scenarios where column names match property names (or are annotated). The untyped `ExcelManager` writes rows as the other backends do.
 
-NPOI is pinned to exactly **2.7.1**. From 2.8.0 its binaries on nuget.org carry an Open Source Maintenance Fee agreement that requires a paid subscription from organisations with annual revenue of US$10,000 or more. Keep NPOI out of your own package references: a direct reference to 2.8 or later overrides the pin with only a restore warning (NU1608), and brings the application under that agreement.
+NPOI is pinned to exactly **2.7.2**. From 2.8.0 its binaries on nuget.org carry an Open Source Maintenance Fee agreement that requires a paid subscription from organisations with annual revenue of US$10,000 or more. Keep NPOI out of your own package references: a direct reference overrides the pin with only a restore warning (NU1608). From 2.7.3 Npoi.Mapper throws `MissingMethodException` when it writes a cell, and 2.8 or later brings the application under that agreement.
 
 <!-- no-compile -->
 ```csharp
