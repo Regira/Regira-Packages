@@ -32,7 +32,7 @@ The Attachment is based on `IBinaryFile` (Part of [Regira.IO](../../Common.IO.St
 - `string? FileName` - The name of a file (not full path)
 - `string? Identifier` - Identifier in a specific context (Prefix + Filename)
 - `string? Prefix` - The folder structure, except the root folder
-- `string? Path` - The full path/Uri for this file
+- `string? Path` - Where the file is stored, relative to the file service's root: `AttachmentFileService` stores the identifier, never the absolute path, so the root can move
 - `string? ContentType` - MIME type of the file
 - `long Length` - Size of the file in bytes
 - `byte[]? Bytes` - Content as a byte array

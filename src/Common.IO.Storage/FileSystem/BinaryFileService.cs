@@ -62,6 +62,7 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
 
         var searchOptions = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
         var absoluteFolderUri = ResolveUri(folderUri);
+        var root = ResolvedRoot;
 
         IEnumerable<string> result = Array.Empty<string>();
 
@@ -69,7 +70,7 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
         {
             // files
             var files = Directory.EnumerateFiles(absoluteFolderUri, extensions, searchOptions)
-                .Select(fileUri => FileNameUtility.GetRelativeUri(fileUri, Root))
+                .Select(fileUri => FileNameUtility.GetRelativeUri(fileUri, root))
                 .Where(f => so.Extensions == null || so.Extensions.Any(e => e.TrimStart('*') == Path.GetExtension(f)));
             string[]? fileList = null;
             if (listDirectories && so.Extensions != null)
@@ -84,7 +85,7 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
             if (listDirectories)
             {
                 var folders = Directory.EnumerateDirectories(absoluteFolderUri, "", searchOptions)
-                    .Select(dirUri => FileNameUtility.GetRelativeUri(dirUri, Root));
+                    .Select(dirUri => FileNameUtility.GetRelativeUri(dirUri, root));
                 if (so.Extensions != null)
                 {
                     // a folder holds a file below it: dir2.1 holds nothing of dir2.10
@@ -159,9 +160,9 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
         => ResolveUri(identifier);
     public string GetIdentifier(string uri)
         // use forward slashes to keep identifier uniform with other IFileService implementations (e.g. Azure)
-        => FileNameUtility.GetRelativeUri(uri, Root).Replace('\\', '/');
+        => FileNameUtility.GetRelativeUri(Locate(uri), ResolvedRoot).Replace('\\', '/');
     public string? GetRelativeFolder(string identifier)
-        => FileNameUtility.GetRelativeFolder(identifier, Root);
+        => FileNameUtility.GetRelativeFolder(Locate(identifier), ResolvedRoot);
 
 
     public void CreateDirectory(string uri)
@@ -170,11 +171,24 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
         var dirPath = Path.GetDirectoryName(uri);
         Directory.CreateDirectory(dirPath ?? throw new InvalidOperationException());
     }
-    private string ResolveUri(string identifier)
+    private protected string ResolveUri(string identifier)
     {
         var uri = FileNameUtility.GetAbsoluteUri(identifier, Root);
-        return options.Contained && !string.IsNullOrWhiteSpace(Root)
-            ? FileNameUtility.EnsureContained(uri, Root)
+        return IsContained
+            ? FileNameUtility.EnsureContained(uri, FileNameUtility.ConvertForwardSlashes(Root))
             : uri;
+    }
+
+    // EnsureContained answers Path.GetFullPath, so a contained service strips its root written out in full, from a path
+    // written out the same way: as configured, a root with a '/' on Windows, dot segments or relative to the working
+    // directory did not match, and the absolute path passed for the identifier. Both separators are separators in the
+    // root, as in an identifier: on Linux a '\' would otherwise be part of a folder's name.
+    private bool IsContained => options.Contained && !string.IsNullOrWhiteSpace(Root);
+    private string ResolvedRoot => IsContained ? Path.GetFullPath(FileNameUtility.ConvertForwardSlashes(Root)) : Root;
+    /// <summary>Where <paramref name="uri"/> lands, as <see cref="ResolveUri"/> spells it, without refusing a path outside the root.</summary>
+    private string Locate(string uri)
+    {
+        var path = FileNameUtility.GetAbsoluteUri(uri, Root);
+        return IsContained ? Path.GetFullPath(path) : path;
     }
 }

@@ -47,6 +47,17 @@ public class ContainmentTests
     }
 
     [Test]
+    public void TextFileService_Traversal_Throws()
+    {
+        var svc = new TextFileService(new FileSystemOptions { RootFolder = _root });
+        Assert.Multiple(() =>
+        {
+            Assert.Throws<UnauthorizedAccessException>(() => svc.GetContents("../../outside.txt"));
+            Assert.Throws<UnauthorizedAccessException>(() => svc.Save("../../outside.txt", "text"));
+        });
+    }
+
+    [Test]
     public void FileService_Contained_False_Allows_Traversal()
     {
         var svc = new BinaryFileService(new FileSystemOptions { RootFolder = _root, Contained = false });
