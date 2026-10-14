@@ -5,6 +5,8 @@
 ## DI Registration
 
 ```csharp
+using Regira.Office.Mail.SendGrid.DependencyInjection;   // AddSendGrid
+
 services.AddSendGrid(cfg => cfg.Key = configuration["Mail:SendGrid:Key"]!);
 ```
 
@@ -54,6 +56,7 @@ public async Task SendPasswordReset(string email, string resetLink)
 
 ```csharp
 using Microsoft.AspNetCore.Identity.UI.Services;          // IEmailSender
+using Regira.Office.Mail.Abstractions;                    // IMailService
 using Regira.Security.Authentication.Web.Mail;            // IdentityMailer (package Regira.Security.Authentication.Web)
 
 services.AddSingleton<IEmailSender>(sp =>

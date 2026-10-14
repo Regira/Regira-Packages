@@ -10,6 +10,8 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 |---|---|
 | `Regira.Office.Barcodes` | Barcode and QR code generation and scanning |
 
+Exact usings: `office.namespaces.md`.
+
 > **A QR code *is* a barcode** — specifically the 2D `BarcodeFormat.QRCode`. This module treats QR as a subset of barcodes: `QRCodeInput : BarcodeInput`, and `IQRCodeService` is just a QR-restricted convenience over `IBarcodeService`. Anything QR can also be done through the general barcode services. See [Barcode vs QR — which to use](#barcode-vs-qr--which-to-use).
 
 **Related:**

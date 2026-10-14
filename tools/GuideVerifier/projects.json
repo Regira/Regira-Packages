@@ -365,7 +365,7 @@
         "Regira.Security.Authentication.OpenIdConnect.Extensions"
       ],
       "frameworkReferences": ["Microsoft.AspNetCore.App"],
-      "packages": { "Microsoft.AspNetCore.OpenApi": "10.0.12" }
+      "packages": { "Microsoft.AspNetCore.OpenApi": "10.0.13" }
     },
     {
       "name": "storage",
@@ -608,17 +608,8 @@
         "src/Common.Office/docs/mail/examples.md"
       ],
       "usings": [
-        "Microsoft.AspNetCore.Identity.UI.Services",
         "Microsoft.Extensions.Configuration",
-        "Microsoft.Extensions.DependencyInjection",
-        "Regira.Office.Mail.Abstractions",
-        "Regira.Office.Mail.Models",
-        "Regira.Office.Mail.Services",
-        "Regira.Office.Mail.SendGrid.DependencyInjection",
-        "Regira.Office.Mail.MailGun.DependencyInjection",
-        "Regira.Office.Mail.MailKit.DependencyInjection",
-        "MailKit.Security",
-        "Regira.Security.Authentication.Web.Mail"
+        "Microsoft.Extensions.DependencyInjection"
       ],
       "frameworkReferences": ["Microsoft.AspNetCore.App"]
     },

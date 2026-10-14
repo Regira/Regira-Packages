@@ -152,6 +152,8 @@ Its generic `ExcelManager<T>` uses Npoi.Mapper for property-to-column binding: g
 
 NPOI is pinned to exactly **2.7.2**. From 2.8.0 its binaries on nuget.org carry an Open Source Maintenance Fee agreement that requires a paid subscription from organisations with annual revenue of US$10,000 or more. Keep NPOI out of your own package references: a direct reference overrides the pin with only a restore warning (NU1608). From 2.7.3 Npoi.Mapper throws `MissingMethodException` when it writes a cell, and 2.8 or later brings the application under that agreement.
 
+SixLabors.ImageSharp, which NPOI uses to read pictures, is pinned to **3.1.12**: from 3.2.0 and 4.0.0, a project that references ImageSharp directly needs a Six Labors licence key to build. 3.1.12 restores with advisories GHSA-j3p4-wp97-rph4, GHSA-j9gm-c75j-xc9q and GHSA-jjfr-hcj7-qf5w (high, NU1903) and GHSA-gwg2-r3hj-4w44 and GHSA-wmxv-xphr-5c9g (moderate, NU1902), which 3.2.0 and 4.1.2 fix. The backend decodes no images; NPOI loads a picture through ImageSharp only when your code sizes it (`IPicture.Resize()`, `GetPreferredSize()`, `GetImageDimension()`). For the fixes, reference `SixLabors.ImageSharp` 3.2.0 in your application, which then needs the key: Six Labors issues one on application to open-source projects, non-profits and companies under US$1M annual revenue, and sells it otherwise. NuGet audit can keep flagging 3.2.0: it reads the GitHub Advisory Database, whose entries name only 4.1.2, while Six Labors' own advisories name 3.2.0 as well.
+
 <!-- no-compile -->
 ```csharp
 IExcelService<Order> excel = new Regira.Office.Excel.NpoiMapper.ExcelManager<Order>();

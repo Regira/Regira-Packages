@@ -2,7 +2,7 @@
 
 > **AI Agent Rule**: Follow this guide to scaffold a new Regira Entities API project from scratch.
 > Start from the **`BasicApi`** template in the shared project setup guide — `get_package(id: "Regira.Setup", section: "project.setup")` — and apply the Entities-specific additions below.
-> In consumer repositories, prefer extracted `.regira/instructions/project.setup.md` when it exists locally. If it is not available yet, use the fallback baseline in this guide and keep the API surface aligned with `app.MapOpenApi()` plus `app.MapScalarApiReference()`.
+> In consumer repositories, prefer extracted `.regira/instructions/project.setup.md` when it exists locally. If it is not available yet, use the fallback baseline in this guide and keep the API surface aligned with `app.MapOpenApi()` plus `app.MapScalarApiReference()`, both mapped inside `if (app.Environment.IsDevelopment())`.
 > When available, combine with [`entities.namespaces.md`](./entities.namespaces.md) for exact `using` directives
 > and [`entities.examples.md`](./entities.examples.md) for complete working code.
 >
@@ -284,7 +284,7 @@ Regira.Entities.Validation.FluentValidation ← optional — AbstractValidator r
 | `Microsoft.OpenApi` | **no direct reference** — it arrives through `Microsoft.AspNetCore.OpenApi`, whose range is the compatible one by definition — from **10.0.11** on it is past the 2.x advisory (10.0.12 → `[2.12.0, 3.0.0)`); 10.0.10 and earlier pull the vulnerable 2.0.0, one more reason that package is added first (below). It must stay on **2.x**: 3.x breaks the .NET 10 OpenAPI source generator, and `dotnet add package Microsoft.OpenApi` resolves 3.x with at most an NU1608 warning. Overriding it anyway? Pin by hand the version restore already resolves (`dotnet list package --include-transitive`) — anything lower fails restore with NU1605 |
 | `SQLitePCLRaw.bundle_e_sqlite3` | **no direct reference** on EF Core Sqlite **10.0.11** or later, which brings 2.1.12, past GHSA-2m69-gcr7-jv3q; on net8 or 10.0.10 and earlier pin **2.1.12** (the advisory note above) |
 | `Microsoft.EntityFrameworkCore.*` (+ provider) | major must equal the TFM's EF Core major (`net10.0` → **10.x**, see Checklist 0.5); resolve the patch at add time |
-| `Microsoft.AspNetCore.OpenApi` | major must equal your TFM (`net10.0` → **10.x**); resolve the patch at add time. ⚠️ `dotnet new webapi` pins the patch its SDK shipped with, which can sit below the floor **`Regira.Security.Authentication.Web`** sets (SDK 10.0.400 writes `10.0.11`; the floor is `10.0.12`) — adding sign-in then trips NU1605 until you raise the pin |
+| `Microsoft.AspNetCore.OpenApi` | major must equal your TFM (`net10.0` → **10.x**); resolve the patch at add time. ⚠️ `dotnet new webapi` pins the patch its SDK shipped with, which can sit below the floor **`Regira.Security.Authentication.Web`** sets (SDK 10.0.400 writes `10.0.11`; the floor is `10.0.13`) — adding sign-in then trips NU1605 until you raise the pin |
 | `Scalar.AspNetCore` | major **2**; resolve the patch at add time |
 | `Serilog.AspNetCore`, `Serilog.Settings.Configuration`, `Serilog.Sinks.Console` | latest **stable** major — never a preview; resolve the patch at add time. The console/file sinks arrive transitively with `Serilog.AspNetCore`, so add them explicitly only if you pin them |
 
@@ -323,7 +323,7 @@ dotnet add package Serilog.Settings.Configuration
 > separate choices; this combination is ordinary, not a deviation.
 > - **Via MCP:** call `get_package(id: "Regira.Setup", section: "project.setup")` to read the template.
 > - **Via local extraction:** read `.regira/instructions/project.setup.md` if it exists.
-> - **Fallback (if neither is available):** ASP.NET Core Web API project, thin `Program.cs`, DI via extension methods, `app.MapOpenApi()` (requires `Microsoft.AspNetCore.OpenApi`), `app.MapScalarApiReference()` (requires `Scalar.AspNetCore` + `using Scalar.AspNetCore;`), and no `UseSwaggerUI()`.
+> - **Fallback (if neither is available):** ASP.NET Core Web API project, thin `Program.cs`, DI via extension methods, `app.MapOpenApi()` (requires `Microsoft.AspNetCore.OpenApi`), `app.MapScalarApiReference()` (requires `Scalar.AspNetCore` + `using Scalar.AspNetCore;`), both mapped inside `if (app.Environment.IsDevelopment())`, and no `UseSwaggerUI()`.
 
 > **⚠️ Source encoding — keep `.cs` files ASCII-only.** A `.cs` file saved as UTF-8 *without* a BOM that
 > contains non-ASCII characters (`→`, `×`, `é`, an em dash, smart quotes — in comments, seed data or string
@@ -477,7 +477,7 @@ builder.Services.AddEntityServices(builder.Configuration);
 >
 > ⚠️ It only sees **constructor-injected** dependencies. `EntityControllerBase<>` resolves its `IEntityService<>` from `HttpContext.RequestServices`, so a controller ↔ `.For<>()` arity mismatch is invisible to it — that one is caught by Regira's own startup validation (§Startup validation in [`entities.instructions.md`](./entities.instructions.md)) and by the error message in `ControllerExtensions.GetRequiredEntityService`.
 
-> **OpenAPI/UI note:** If the shared project guide is not available locally yet, keep the API surface aligned with the Regira baseline here as well: use `app.MapOpenApi()` plus `app.MapScalarApiReference()` and do not add `Swashbuckle.AspNetCore` or `UseSwaggerUI()`.
+> **OpenAPI/UI note:** If the shared project guide is not available locally yet, keep the API surface aligned with the Regira baseline here as well: use `app.MapOpenApi()` plus `app.MapScalarApiReference()`, in Development only, and do not add `Swashbuckle.AspNetCore` or `UseSwaggerUI()`.
 
 > **SQLite starter note:** For the default SQLite starter/test setup, do not scaffold an initial EF migration. After `app = builder.Build()`, create a scope and call `Database.EnsureCreated()` instead:
 

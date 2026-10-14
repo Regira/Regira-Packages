@@ -215,7 +215,7 @@ return await this.Details<CreditRequest, CreditRequestDto>(id) ?? NotFound();   
 — *Role-gated transitions* is its sub-section.
 
 ### React to a committed change (status pipelines, mail, jobs)
-<!-- how_to: key=after-commit aliases=reactor,reactors,react,after-save,aftersave,committed,commit,side-effect,side-effects,event,events,trigger,pipeline,notify,notification,mail,email,send,sends,hangfire,background-job,status-changed -->
+<!-- how_to: key=after-commit aliases=reactor,reactors,react,after-save,aftersave,committed,commit,side-effect,side-effects,event,events,trigger,pipeline,notify,notification,mail,email,send,sends,hangfire,background-job,status-changed,schedule,scheduled,reminder,reminders,hosted,hostedservice,backgroundservice,periodic,periodictimer,timer -->
 What must *follow* a change — mail the customer, start a follow-up workflow, enqueue a background job — is a
 **reactor**. It runs once the save is committed (never for a failed save or a rolled-back transaction), on
 every write path that reaches the row — CRUD PATCH, a domain action, an import, a raw `DbContext` writer:
@@ -234,6 +234,50 @@ e.React(x => x.Status, OrderStatus.Shipped, (change, services, token) =>
 `change.Original` holds the stored row beside the committed `change.Entity`; a reactor runs in a DI scope of its
 own, and one that throws is logged while the save stands. Don't put this after `SaveChanges()` in a controller
 action: the other paths to the same state would skip it.
+
+**Not for a time-based trigger** (a reminder N minutes before a start): a reactor fires on a commit, never at a
+moment. Poll from a hosted service: a `BackgroundService` with a `PeriodicTimer`, whose every tick opens a scope of
+its own (`CreateAsyncScope()`, so a fresh `DbContext`), queries what is due, sends, and stamps a sent column per row.
+Declare that column `[ServerOwned]`, so a client's edit cannot clear it and send again, and stamp it through the
+`DbContext`: on the `IEntityService` path the guard restores it.
+
+<!-- no-compile -->
+```csharp
+public class DueNoticeJob(IServiceScopeFactory scopes, ILogger<DueNoticeJob> logger) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        while (await timer.WaitForNextTickAsync(stoppingToken))
+        {
+            try
+            {
+                await using var scope = scopes.CreateAsyncScope();                 // a fresh DbContext per tick
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var mailer = scope.ServiceProvider.GetRequiredService<IOrderMailer>();
+                var now = DateTime.UtcNow;
+                var due = await db.Orders.Where(x => x.NoticeSentAt == null && x.NoticeDueAt <= now)
+                    .Select(x => x.Id).ToListAsync(stoppingToken);
+                foreach (var id in due)
+                {
+                    await mailer.SendNotice(id, stoppingToken);
+                    await db.Orders.Where(x => x.Id == id)                         // the DbContext: IEntityService would restore a [ServerOwned] column
+                        .ExecuteUpdateAsync(s => s.SetProperty(x => x.NoticeSentAt, DateTime.UtcNow), CancellationToken.None);
+                }
+            }
+            catch (Exception ex) when (!stoppingToken.IsCancellationRequested)     // an HttpClient timeout is an OperationCanceledException too
+            {
+                logger.LogError(ex, "A due-notice tick failed");                   // left unhandled, it stops the host
+            }
+        }
+    }
+}
+// builder.Services.AddHostedService<DueNoticeJob>();
+```
+
+The stamp takes `CancellationToken.None`, so a shutdown that lands after the send still records it. Stamped after
+the send, a crash between the two sends that row again; stamp first instead — the update filtered on
+`NoticeSentAt == null` and reporting 1 row — for at most once, or when several instances run the job.
 
 **See:** `get_package(id: "Regira.Entities", section: "instructions", heading: "Reactors — after the commit")`.
 
@@ -743,7 +787,9 @@ keeping `Status` on `TInputDto` hands every PATCH caller a state pen. Invert the
    start a create in the initial state, so no `Add` — an import, a job — creates a request already decided. It is
    guarded by a scoped flag the trusted writer flips, or the restore would also undo the action's own write.
    That flag is why these fields are not `[ServerOwned]`: its restore has no bypass, so the action's
-   `Modify` would be reverted too.
+   `Modify` would be reverted too. A field only a trusted writer may set **on create** (a series id) takes the same
+   guard: clear it on a create unless the flag is set, and restore it from `original` on every update.
+   `[ServerOwned]` is no substitute here either: on create it keeps whatever the client sent.
 
 <!-- no-compile -->
 ```csharp
@@ -884,8 +930,8 @@ public class CreditRequestWorkflowController(IEntitySender sender) : ControllerB
 - The answer's `DetailsQuery` passes the behaviours too, as a read: an audit behaviour records the approval as a
   `Save` followed by a `Details`.
 - The other route — the fields kept on `TInputDto` behind the guard prepper, the action flipping the flag and sending
-  a `PatchCommand` — works too, but puts the state back on the input DTO every PATCH caller binds, where the guard alone
-  keeps a caller from setting it. Prefer the request.
+  a `PatchCommand` or, for a create-time field, a `SaveCommand` — works too, but puts the fields back on the input DTO
+  every caller binds, where the guard alone keeps a caller from setting them. Prefer the request.
 
 ⚠️ **Gate the transition set, not only the fields.** The guard decides *who writes the fields*; which role may
 reach which **state** is a second rule. When a generic action (`POST {id}/transitions` taking the target state)
@@ -1863,7 +1909,8 @@ whose reference is dropped by a direct `UPDATE` before any primer runs.
 
 **3. Handle the 409 on the client.** The body is a `ProblemDetails` titled **"Concurrency conflict"** — the
 constraint 409 is titled "Conflict" — so the client can tell "reload and try again" from "fix the input". Reload
-the row, which brings its current token, and let the user re-apply the edit.
+the row, which brings its current token, and let the user re-apply the edit. In a Vue SPA on `@regira/modules`: its
+`entities.patterns` → *Form validation & error handling* has the Reload recipe.
 
 What each write is checked against:
 
@@ -2078,7 +2125,7 @@ guarded — the `<img>` still 401s. (Authorization is evaluated on the *routed* 
 (§Mapped entity endpoints) the owner's registration opens both downloads at once:
 `e.Endpoints(o => o.AllowAnonymous(EntityEndpoint.Download))`. Reserve this for genuinely public assets
 (product/article pictures) — the routes are guessable; sensitive documents stay on the authenticated path
-(download them through the shared axios, which sends the bearer).
+(download them through the shared axios, which sends the bearer, and show an image from an object URL).
 
 ## An entity that references one of its own children
 

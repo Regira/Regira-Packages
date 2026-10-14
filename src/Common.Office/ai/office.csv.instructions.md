@@ -10,6 +10,8 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 |---|---|
 | `Regira.Office.Csv` | CSV reading and writing (typed + dictionary) |
 
+Exact usings: `office.namespaces.md`.
+
 **Related:**
 - **IO.Storage** — `IBinaryFile` / `IMemoryFile` used as input/output. `get_package(id: "Regira.IO.Storage", section: "io.storage.instructions")`, or `io.storage.instructions.md` locally.
 

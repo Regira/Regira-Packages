@@ -402,7 +402,8 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 > | Mint from an injected service, or re-derive the value on every save | a **prepper** (`EntityPrepperBase<T>`; `original` is `null` on create, the stored row on update) |
 > | Stamp the field even when a raw-`DbContext` writer creates the row (`Created`) | a **primer** — but it also *reverts* such a writer's updates (§Step 9) |
 > | Mint a sequential code that must not skip numbers | a **primer**: the mint and preppers run before the validators, so a create they refuse has already used its number ([`entities.patterns.md`](./entities.patterns.md) → Server-generated sequential codes) |
-> | Only a gated domain action may change it (`Status` on approve) | a **prepper** that restores it unless a scoped trusted-writer flag is set — [`entities.patterns.md`](./entities.patterns.md) → Role-gated transitions (server-owned state) |
+> | Only a gated domain action may set or change it (`Status` on approve) | a **prepper** that restores it unless a scoped trusted-writer flag is set — [`entities.patterns.md`](./entities.patterns.md) → Role-gated transitions (server-owned state) |
+> | A counter a public action bumps (views, likes) | `[ServerOwned]`, so an edit keeps it, and the bump as one statement on the `DbContext`: `await db.Products.Where(x => x.Id == id).ExecuteUpdateAsync(s => s.SetProperty(x => x.ViewCount, x => x.ViewCount + 1), token)` — atomic; no prepper, primer or reactor runs, so the concurrency token stays and an open edit is not made stale. Repeat the read's scope in the `Where` (global filters do not run on `db`). An edit writes every column, so a bump during one is lost: a count that must be exact goes on a row of its own |
 >
 > Owner-stamp from the claim, computed totals, and the primer form:
 > [`entities.patterns.md`](./entities.patterns.md) → Server-owned / immutable fields on update.
@@ -494,7 +495,17 @@ duplicate check written as a `dbContext.Set<T>().CountAsync(...)`/`AnyAsync(...)
 the same `SaveChanges()` batch, so every row in a bulk wave sees the last-flushed count and the cap is never
 reached — no error, just collectively wrong data. Add `dbContext.ChangeTracker.Entries<T>()` entries in
 `EntityState.Added` to the persisted count (§Seeding via IEntityService has the full rule). This is not a
-seeding-only concern: a batch import, a `POST /list` write and two concurrent requests have the same shape.
+seeding-only concern: a batch import, or an endpoint of the app's own that adds several rows before one
+`SaveChanges()`, has the same shape. Two concurrent requests do not: each has its own change tracker. A hard cap
+needs the database to arbitrate: a counter on the capacity row with `IHasConcurrencyToken` (409 to the loser), or a
+conditional `ExecuteUpdate … Where(x => x.Taken < x.Capacity)` in the insert's transaction, where 0 rows affected is
+reported as a 400. An overlap rule (no two bookings of one room overlap) is check-then-insert too, with no counter to
+guard: in one transaction, first update the resource's own row (an `ExecuteUpdate` of a version column), whose lock
+holds until the commit — SQLite locks the database for the write — so a second request waits and its check sees the
+first row; on PostgreSQL an exclusion constraint can refuse the overlap itself
+(`EXCLUDE USING gist (room_id WITH =, tstzrange(starts_at, ends_at) WITH &&)`, extension `btree_gist`), answered 409
+like any constraint. A `Serializable` transaction alone fails the loser with a deadlock (SQL Server) or a
+serialization error (PostgreSQL), to retry.
 
 ⚠️ **Stamp a server-owned timestamp or code only when the value is absent**, as `HasCreatedDbPrimer` does —
 an unconditional `DateTime.UtcNow` on create overwrites back-dated seed data
@@ -1633,13 +1644,50 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
    modelBuilder.Entity<ProductAttachment>().HasOne(x => x.Attachment).WithMany().HasForeignKey(x => x.AttachmentId);
    modelBuilder.Entity<Product>().HasMany(x => x.Attachments).WithOne().HasForeignKey(x => x.ObjectId).HasPrincipalKey(x => x.Id);
    ```
-6. Register **two** things: `.WithAttachments(_ => new BinaryFileService(...))` for the shared `Attachment` entity + file store + bytes→file primer + `AttachmentFileReactor` (removes a replaced or deleted attachment's file after the commit), **and** `.For<Product>(e => e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments))` for the typed per-owner services + link prepper + DTO mapping. `HasAttachments` is an extension on the **base** `EntityServiceBuilder`, so it chains on every `For<>()` tier — a complex owner registers it exactly like the simple one shown here. The bytes `Details` loads are the stored file, not new content, so saving a rename or another metadata edit leaves the file where it is; bytes or a stream set in their place replace it, stored under the file name's extension. Call `WithAttachments` once per attachment type: a second call for the same type, from another context, replaces the first one's file store and adds a file reactor that reads the other database. **Files follow the rows** — a replaced or deleted attachment's file is removed after the commit, by `AttachmentFileReactor`, once the attachment's own row no longer names it. A save that fails, a rollback — to a savepoint too — and a context without the reactor wiring leave a file no row names; an app that needs a clean store sweeps it against the stored `Path` values, as it does for the attachments of a deleted owner:
+6. Register **two** things: `.WithAttachments(_ => new BinaryFileService(...))` for the shared `Attachment` entity + file store + bytes→file primer + `AttachmentFileReactor` (removes a replaced or deleted attachment's file after the commit), **and** `.For<Product>(e => e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments))` for the typed per-owner services + link prepper + DTO mapping. `HasAttachments` is an extension on the **base** `EntityServiceBuilder`, so it chains on every `For<>()` tier — a complex owner registers it exactly like the simple one shown here. The bytes `Details` loads are the stored file, not new content, so saving a rename or another metadata edit leaves the file where it is; bytes or a stream set in their place replace it, stored under the file name's extension. Call `WithAttachments` once per attachment type: a second call for the same type, from another context, replaces the first one's file store and adds a file reactor that reads the other database. **Files follow the rows** — a replaced or deleted attachment's file is removed after the commit, by `AttachmentFileReactor`, once the attachment's own row no longer names it. A save that fails, a rollback — to a savepoint too — and a context without the reactor wiring leave a file no row names; an app that needs a clean store sweeps it against the stored `Path` values:
    - New bytes go under a key of their own, so a refused save or a rolled-back transaction leaves the stored file as it was.
    - A failed save leaves the file it wrote; the attachment keeps naming it, so a retry of the same instance saves that file instead of writing another.
    - The reactor reads the attachment's row by key, past query filters, before it removes a file: a save an interceptor suppressed, or one a rollback to a savepoint undid, keeps the file the row still names. Only that row is read, so two attachment rows naming one path (one added with another's `Path` and no content of its own) share a file that deleting either removes.
    - Removing a link, or giving it a new attachment, deletes the attachment it leaves, with its file, unless another link still names it (a new link may name an attachment its owner links already). `e.HasAttachments<…>(x => x.Attachments, a => a.HasStrictRelation = false)` keeps the attachments the owner's links leave.
-   - **Deleting the owner leaves its attachments, by design.** Its links go by the database's FK cascade, but the `Attachment` rows and their files stay: an attachment can be linked from more than one entity, so the library does not decide that it is no longer needed. Clean up in a background job that removes the `Attachment` rows no link references — through `IEntityService<Attachment, int>`, so `AttachmentFileReactor` removes each file after the commit — or with a rule of the app's own.
+   - **Deleting the owner leaves its attachments, by design.** Its links go with it, but the `Attachment` rows and their files stay: an attachment can be linked from more than one entity, so the library does not decide that it is no longer needed. To delete them with the owner, mark them in its write service: *Deleting an owner's attachments with it* below.
 7. *(web apps)* Call `options.UseAttachmentUris()` (before registering entities, on the **same** `UseEntities` options instance) and register `AddHttpContextAccessor()` so attachment DTOs resolve a `Uri`: a link to the owner's mapped download when `MapEntityEndpoints()` serves it, else to the attachment controller's `GetFile` action. The `Uri` takes the request's host, so behind a proxy (the SPA's dev server) add `app.UseForwardedHeaders(...)` with `XForwardedHost | XForwardedProto`, or it names the API's own origin (`entities.setup` → P3).
+
+> **Deleting an owner's attachments with it.** Not in a reactor: it runs after the commit, when the links are
+> gone, and its change carries no navigations. Override `RemoveItem` on the owner's write service — it runs once the
+> validators passed — and mark each attachment no other link names, so it goes in the owner's own save and
+> `AttachmentFileReactor` removes its file after the commit:
+> <!-- no-compile -->
+> ```csharp
+> // Regira.Entities.EFcore.Services, Regira.Entities.Models.Abstractions, Regira.Entities.Preppers.Abstractions,
+> // Regira.Entities.Services.Abstractions, Regira.Entities.Validators.Abstractions
+> public class ProductWriteService(AppDbContext dbContext, IEntityReadService<Product, int> readService,
+>     IEnumerable<IEntityPrepper> preppers, IEnumerable<IEntityValidator> validators, ILoggerFactory? loggerFactory = null)
+>     : EntityWriteService<AppDbContext, Product>(dbContext, readService, preppers, validators, loggerFactory)
+> {
+>     protected override async Task RemoveItem(Product item, CancellationToken token = default)
+>     {
+>         await base.RemoveItem(item, token);              // first: it attaches a loaded graph, which the query below reuses
+>         if (item is IArchivable) return;                 // a soft delete keeps them for a restore
+>         var links = await DbContext.Set<ProductAttachment>().IgnoreQueryFilters().AsTracking().Include(x => x.Attachment)
+>             .Where(x => x.ObjectId == item.Id).ToListAsync(token);
+>         foreach (var link in links)
+>         {
+>             RemoveGuarded(() => DbContext.Remove(link), item.Id);
+>             var linkedElsewhere = await DbContext.Set<ProductAttachment>().IgnoreQueryFilters()   // past query filters, as the library checks
+>                 .AnyAsync(x => x.AttachmentId == link.AttachmentId && x.ObjectId != item.Id, token);
+>             if (!linkedElsewhere && link.Attachment != null)
+>             {
+>                 RemoveGuarded(() => DbContext.Remove(link.Attachment!), item.Id);   // AttachmentFileReactor removes its file after the commit
+>             }
+>         }
+>     }
+> }
+> // .For<Product>(e => e.UseWriteService<ProductWriteService>().HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments))
+> ```
+> It reads this owner type's links only, as the library does when a link goes; an app that links one attachment from
+> several owner types checks each link type in `linkedElsewhere`. The file sweep of step 6 stays for what a failed save
+> or a rollback leaves; deleting every `Attachment` row no link names instead also takes the ones
+> `HasStrictRelation = false` keeps.
 
 > ⚠️ **A link rule belongs in the owner's validator too.** Validators scoped to the link entity run for the
 > attachment endpoints — upload, replace, update and delete. A `POST` or `PUT` of the owner whose input carries
@@ -1731,10 +1779,13 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 > derived DTO must also be declared `record` (CS8865). Extra client-supplied fields belong on a derived
 > **input** DTO; a derived **read** DTO works too (the `Uri` after-mapper matches attachments by the
 > `EntityAttachmentDto` base type).
+> A derived pair is registered on the link, through `configure`: `e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments, a => a.UseMapping<ProductAttachmentDto, ProductAttachmentInputDto>())` (the read DTO derives from `EntityAttachmentDto`). The attachment routes mapped under the owner read and bind the link's mapping — without it the base DTOs, which drop the derived fields; an attachment controller names its pair instead (`EntityAttachmentControllerBase<ProductAttachment, ProductAttachmentDto, ProductAttachmentInputDto>`). The owner's DTOs carry the same types (step 3).
 
 > **Images in `<img>` tags 401 on a secured API** — the browser sends no `Authorization` header for
-> `src` URLs. Expose the download anonymously (uploads/deletes stay guarded):
-> [`entities.patterns.md`](./entities.patterns.md) → Public (anonymous) attachment downloads.
+> `src` URLs. A public file: expose the download anonymously (uploads/deletes stay guarded):
+> [`entities.patterns.md`](./entities.patterns.md) → Public (anonymous) attachment downloads. A file that must stay
+> private keeps the guarded download, and the SPA shows it from an object URL of an authenticated download
+> (`regira_modules.vue.entities` → patterns → *Attachments (files)*).
 
 > ⚠️ **Owner scoped per user or tenant? Its files are not, until you scope the link.** The owner's global filter
 > never runs on the link entity, so every attachment route reads across owners. Add a global filter on the link

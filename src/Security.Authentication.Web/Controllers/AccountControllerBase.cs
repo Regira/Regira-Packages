@@ -26,6 +26,31 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
     /// </summary>
     private IRefreshTokenService? RefreshTokenService => HttpContext.RequestServices.GetService<IRefreshTokenService>();
 
+    /// <summary>
+    /// Whether <see cref="SignInOptions"/> let the user sign in, as <c>SignInManager.CanSignInAsync</c> decides: a
+    /// confirmed email, phone number or account, where the options require one. The account is confirmed when the
+    /// registered <see cref="IUserConfirmation{TUser}"/> says so — resolved per request, like
+    /// <see cref="RefreshTokenService"/>, so the constructor stays unchanged — and by its address otherwise.
+    /// </summary>
+    private async Task<bool> CanSignIn(TUser user)
+    {
+        var options = userManager.Options.SignIn;
+        if (options.RequireConfirmedEmail && !await userManager.IsEmailConfirmedAsync(user))
+        {
+            return false;
+        }
+        if (options.RequireConfirmedPhoneNumber && !await userManager.IsPhoneNumberConfirmedAsync(user))
+        {
+            return false;
+        }
+        if (options.RequireConfirmedAccount)
+        {
+            var confirmation = HttpContext.RequestServices.GetService<IUserConfirmation<TUser>>() ?? new DefaultUserConfirmation<TUser>();
+            return await confirmation.IsConfirmedAsync(userManager, user);
+        }
+        return true;
+    }
+
     [AllowAnonymous]
     [HttpPost]
     [Route("", Name = RouteNames.Authenticate)]
@@ -41,6 +66,11 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
             if (isLockedOut == false)
             {
                 bool isAuthenticated = await userManager.CheckPasswordAsync(user, model.Password);
+                // checked after the password: only a caller who knows it learns why the account is refused
+                if (isAuthenticated && !await CanSignIn(user))
+                {
+                    return StatusCode(StatusCodes.Status401Unauthorized, CreateFailedResponse(false) with { IsNotAllowed = true });
+                }
                 if (isAuthenticated)
                 {
                     // clear any previously accumulated failed-attempt count (no-op when already 0)

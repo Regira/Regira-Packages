@@ -351,8 +351,9 @@ services.AddJwtAuthentication(o => configuration.GetSection(AuthenticationSectio
 
 ## Refresh Tokens (self-issued JWT)
 
-`Regira.Security.Authentication.Jwt.*`. Opt-in, chained off `AddJwtAuthentication`. Closes the gap every SPA on the
-JWT scheme hits: a 2-hour access token with no way to renew it.
+`Regira.Security.Authentication.Jwt.*`. Opt-in, chained off `AddJwtAuthentication`. Closes the gap an SPA on the JWT
+scheme hits: a 2-hour access token with no way to renew it. `@regira/modules` keeps one token and does not call
+`auth/refresh-token`; an SPA on it renews through `auth/refresh` while the token is valid.
 
 ```csharp
 services.AddJwtAuthentication(o => configuration.GetSection(AuthenticationSections.Jwt).Bind(o))
@@ -931,6 +932,12 @@ the step 1 chain: `AddRoles` replaces any claims factory registered before it wi
 claim keeps its name in the token, and the SPA reads it with `useAuthStore().getClaimValue("department_id")`
 (`string | string[] | undefined`). Like a role, a changed value reaches the SPA on the next refresh.
 
+A value of the account's own, like `DepartmentId`, can live on `AppUser`. The domain record the account belongs to
+(its party) is linked from the domain instead: `Regira.Entities` → `entities.blueprints` → *Linking a party to a user
+account*. The factory looks that link up. It is registered scoped, so it can take the app's `DbContext`
+(`db.Set<PartyUser>().Where(x => x.UserId == user.Id).Select(x => (int?)x.PartyId).FirstOrDefaultAsync()`), and it adds
+the claim only when a link exists.
+
 ## Pre-built Auth Controllers (`Security.Authentication.Web`)
 
 > ⚠️ **Custom JWT over a plain (non-`IdentityUser`) entity forgoes this whole account surface.** The recipe above
@@ -1001,14 +1008,32 @@ public class UsersController : UserControllerBase<AppUser>
     [AllowAnonymous]
     public override async Task<IActionResult> Create(UserInput model, [FromServices] IEmailSender mailer)
     {
-        // the base answers 200 only for an account it created; a taken name answers 400
-        var result = await base.Create(model, mailer);
-        if (result is OkResult)
+        // The base creates the account before it mails the link, so a failed mail throws past any check on the
+        // result. Assign in finally, and only to an account this call created: a taken name answers 400.
+        var isNew = await _userManager.FindByNameAsync(model.Username) == null;
+        IActionResult? result = null;
+        try
         {
-            var user = await _userManager.FindByNameAsync(model.Username);
-            await _userManager.AddToRoleAsync(user!, "Customer");
+            result = await base.Create(model, mailer);
+            return result;
         }
-        return result;
+        finally
+        {
+            if (isNew && (result is null || result is OkResult))
+            {
+                await EnsureRole(model.Username);
+            }
+        }
+    }
+
+    // adds only what is missing
+    private async Task EnsureRole(string username)
+    {
+        var user = await _userManager.FindByNameAsync(username);   // null: the base refused the input
+        if (user != null && !await _userManager.IsInRoleAsync(user, "Customer"))
+        {
+            await _userManager.AddToRoleAsync(user, "Customer");
+        }
     }
 }
 
@@ -1019,11 +1044,77 @@ Open sign-up means anyone can create an account, and its `400` for a taken name 
 exists, as any sign-up form does: rate-limit it, and keep any role/tenant assignment server-side rather than reading it
 from the payload.
 
+### Sign-up with profile fields
+
+`Create` binds `UserInput` only. A sign-up that also takes profile fields gets an action of its own with its own
+input: it hands the account part to `base.Create` and adds the rest in the same guarded `finally`, while `POST users`
+stays guarded. The SPA posts to `users/sign-up` and lists it in its `credentialUrls`.
+
+<!-- no-compile -->
+```csharp
+public record SignUpInput
+{
+    [Required] public string Username { get; set; } = null!;
+    [Required] public string Password { get; set; } = null!;
+    public string? ConfirmEmailUrl { get; set; }
+    [Required, MaxLength(100)] public string DisplayName { get; set; } = null!;
+}
+
+// in a UsersController whose Create stays guarded (no anonymous override of it), with _userManager and
+// _db (the app's DbContext) injected; Profile is the app's own row
+[AllowAnonymous]
+[HttpPost("sign-up")]
+public async Task<IActionResult> SignUp(SignUpInput input, [FromServices] IEmailSender mailer)
+{
+    var isNew = await _userManager.FindByNameAsync(input.Username) == null;
+    IActionResult? result = null;
+    try
+    {
+        result = await base.Create(new UserInput
+        {
+            Username = input.Username,
+            Password = input.Password,
+            ConfirmEmailUrl = input.ConfirmEmailUrl
+        }, mailer);
+        return result;
+    }
+    finally
+    {
+        if (isNew && (result is null || result is OkResult))
+        {
+            await EnsureProfile(input);
+        }
+    }
+}
+
+// adds only what is missing
+private async Task EnsureProfile(SignUpInput input)
+{
+    var user = await _userManager.FindByNameAsync(input.Username);
+    if (user == null)
+    {
+        return;
+    }
+    if (!await _userManager.IsInRoleAsync(user, "Customer"))
+    {
+        await _userManager.AddToRoleAsync(user, "Customer");
+    }
+    if (!await _db.Profiles.AnyAsync(p => p.UserId == user.Id))
+    {
+        _db.Profiles.Add(new Profile { UserId = user.Id, DisplayName = input.DisplayName });
+        await _db.SaveChangesAsync();
+    }
+}
+```
+
+A domain row that is the account's party is linked as `Regira.Entities` → `entities.blueprints` → *Linking a party to
+a user account* describes.
+
 ### `AccountControllerBase<TUser>` — route `auth`
 
 | Endpoint | Anon | Request | Success | Failure |
 |---|:---:|---|---|---|
-| `POST auth?clientApp=…` | ✅ | `{ username, password }` | `200 { isAuthenticated, token }` — plus `refreshToken`, `expiresAt` when refresh tokens are registered | `401 { isLockedOut, lockedOutEnd }` |
+| `POST auth?clientApp=…` | ✅ | `{ username, password }` | `200 { isAuthenticated, token }` — plus `refreshToken`, `expiresAt` when refresh tokens are registered | `401 { isLockedOut, lockedOutEnd }`; `401 { isNotAllowed: true }` for an unconfirmed address or account (below) |
 | `POST auth/validate` |  | *(bearer)* | `204` | `401` / `403` (user gone) |
 | `POST auth/refresh` |  | *(bearer, **still valid**)* | `200 { isAuthenticated, token }` | `401` |
 | `POST auth/refresh-token` | ✅ | `{ refreshToken }` | `200 { isAuthenticated, token, refreshToken, expiresAt }` | `401`; `404` when refresh tokens are not registered |
@@ -1033,6 +1124,13 @@ from the payload.
 or every authenticated call 401s with `audience invalid`. Success resets the failed-access count; failure
 increments it (Identity lockout).
 
+An account the sign-in options refuse answers `401 { isNotAllowed: true }` once its password checks: an address not
+confirmed under `SignIn.RequireConfirmedEmail`, a phone number under `RequireConfirmedPhoneNumber`, or an account the
+registered `IUserConfirmation<TUser>` does not confirm under `RequireConfirmedAccount`, which the Identity templates
+set (Identity's default confirmation checks the address). A user you seed, or create through `POST users` without
+`confirmEmailUrl`, then needs `EmailConfirmed = true`, and `PhoneNumberConfirmed = true` under
+`RequireConfirmedPhoneNumber`, or it can never sign in.
+
 ### `PasswordControllerBase<TUser>` — route `auth/password`
 
 | Endpoint | Anon | Request | Success | Failure |
@@ -1041,16 +1139,18 @@ increments it (Identity lockout).
 | `POST auth/password/recover` | ✅ | `{ username, siteUrl }` | `200`, whether or not the user exists | `400` `siteUrl` not on an allowed origin |
 | `POST auth/password/reset` | ✅ | `{ token, password }` | `200` | `400` malformed token / identity errors |
 
-`recover` answers alike for an unknown user (no user enumeration); for a known one it emails a link — `siteUrl`, the reset **page**, with a Base64 `token` (reset token + username) as its query string, percent-encoded, so any query parser (`URLSearchParams`, vue-router's `route.query`) reads it back intact. `reset` returns `400` on a malformed token.
+`recover` answers alike for an unknown user (no user enumeration); for a known one it emails a link — `siteUrl`, the reset **page**, with its query string set to `?token=<Base64 of the reset token and user name>` (a query `siteUrl` carried is dropped), percent-encoded so any query parser (`URLSearchParams`, vue-router's `route.query`) reads it back intact. `reset` returns `400` on a malformed token.
+
+`recover` is anonymous and mails the named account on every call, so a caller can flood that inbox and spend the app's mail quota: rate-limit it like `refresh-token`. Limit by client, not by account, so a `429` reveals no more than the `200` does.
 
 ### `UserControllerBase<TUser>` — route `users`
 
 | Endpoint | Anon | Request | Success | Failure |
 |---|:---:|---|---|---|
 | `POST users` |  | `{ username, password, confirmEmailUrl? }` | `200` | `400` identity errors (a taken name: `DuplicateUserName`) / `confirmEmailUrl` not on an allowed origin |
-| `POST users/confirm-email` | ✅ | `{ token, userName }` | `200` | `400` malformed token / identity errors |
+| `POST users/confirm-email` | ✅ | `{ token }` | `200` | `400` malformed token / identity errors |
 
-`username` is used as both user name and email. With `confirmEmailUrl`, the new user is emailed that page with a Base64 `token` as its query string, percent-encoded like the reset link's. A name that is taken answers `400` with Identity's `DuplicateUserName` error and leaves the existing account alone.
+`username` is used as both user name and email. With `confirmEmailUrl`, the new user is emailed that page with its query string set to `?token=<Base64 of the confirmation token and user name>`, percent-encoded like the reset link's. The confirm page posts `{ token }` to `users/confirm-email`: the link's `token` query value as the parser decoded it. The server reads the user from the token; `userName` is accepted and not read. A name that is taken answers `400` with Identity's `DuplicateUserName` error and leaves the existing account alone.
 
 If the confirmation mail fails, `POST users` answers `500` with the user already created, and a repeat answers `400` (`DuplicateUserName`) without mailing. To resend, the app adds an endpoint of its own that mails a fresh link for the existing user (`UserManager.GenerateEmailConfirmationTokenAsync`), checking the page against `AllowedOrigins` as the base action does.
 

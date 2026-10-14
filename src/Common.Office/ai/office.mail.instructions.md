@@ -10,6 +10,8 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 |---|---|
 | `Regira.Office.Mail` | Email sending, mail DTOs for HTTP endpoints, and `.msg` / `.eml` reading |
 
+Exact usings: `office.namespaces.md`.
+
 **Related:**
 - **IO.Storage** — `INamedFile` used for email attachments. `get_package(id: "Regira.IO.Storage", section: "io.storage.instructions")`, or `io.storage.instructions.md` locally.
 
@@ -89,6 +91,8 @@ Task<IMailResponse> Send(IMessageObject message, CancellationToken cancellationT
 | `DisplayName` | `string?` | Optional display name |
 
 ```csharp
+using Regira.Office.Mail.Models;                        // MailAddress, MailRecipient
+
 MailAddress addr  = "alice@example.com";  // implicit from string
 MailAddress named = new() { Email = "alice@example.com", DisplayName = "Alice" };
 ```
@@ -104,6 +108,8 @@ construct the model, or convert into a typed variable first.
 Extends `IMailAddress` with a recipient type.
 
 ```csharp
+using Regira.Office.Mail.Models;                        // MailAddress, MailRecipient, RecipientTypes
+
 MailRecipient to  = "alice@example.com";                                              // defaults to To
 var cc  = new MailRecipient { Email = "bob@example.com",   RecipientType = RecipientTypes.Cc };
 var bcc = new MailRecipient { Email = "carol@example.com", RecipientType = RecipientTypes.Bcc };
@@ -162,6 +168,11 @@ disabled) is not supported.
 
 <!-- no-compile -->
 ```csharp
+using Regira.Office.Mail.SendGrid.DependencyInjection;   // AddSendGrid
+using Regira.Office.Mail.MailGun.DependencyInjection;    // AddMailGun
+using Regira.Office.Mail.MailKit.DependencyInjection;    // AddMailKit
+// keep the one for the provider you register; inject IMailService (Regira.Office.Mail.Abstractions)
+
 // SendGrid
 services.AddSendGrid(cfg => cfg.Key = configuration["Mail:SendGrid:Key"]!);
 
@@ -236,6 +247,9 @@ MailKit specifics:
 Implements `IMailService` and does nothing. Use in tests to suppress actual sending:
 
 ```csharp
+using Regira.Office.Mail.Abstractions;   // IMailService
+using Regira.Office.Mail.Services;       // DummyMailer
+
 services.AddSingleton<IMailService, DummyMailer>();
 ```
 
@@ -273,6 +287,7 @@ Identity's `IEmailSender`:
 
 ```csharp
 using Microsoft.AspNetCore.Identity.UI.Services;          // IEmailSender
+using Regira.Office.Mail.Abstractions;                    // IMailService
 using Regira.Security.Authentication.Web.Mail;            // IdentityMailer, IdentityMailerOptions
 
 services.AddSingleton<IEmailSender>(provider =>

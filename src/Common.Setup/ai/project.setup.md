@@ -35,9 +35,9 @@ on top of it, so every scheme fits the same scaffold. See *Authentication conven
 differ in both — so take `BasicApi` as the host and layer Template 4's auth on top rather than stripping
 Template 4 down. From `SelfHostingApiWithAuth` you want the scheme registrations closed by
 `.AddSchemeSelector()` (⚠️ last — see *Authentication conventions*), `UseAuthentication()`/`UseAuthorization()`
-in that order, `.RequireAuthorization()` on `MapControllers()`, and `.AllowAnonymous()` on the OpenAPI/Scalar
-endpoints. You do **not** want its Kestrel-from-configuration block or the Windows-Service hosting, which is
-what makes it the wrong base for an IIS/Azure/Docker app. This combination — a hosted, authenticated,
+in that order, `.RequireAuthorization()` on `MapControllers()`, and the OpenAPI/Scalar endpoints mapped in
+Development only, with `.AllowAnonymous()`. You do **not** want its Kestrel-from-configuration block or the
+Windows-Service hosting, which is what makes it the wrong base for an IIS/Azure/Docker app. This combination — a hosted, authenticated,
 controller-based API — is the ordinary shape for an Entities app, not a deviation worth declaring.
 
 ---
@@ -180,17 +180,22 @@ Used by all templates.
 
 ### OpenAPI & Scalar UI
 
-All API templates expose:
+All API templates expose, in Development only:
 - **OpenAPI JSON** `/openapi/v1.json` — `app.MapOpenApi()`
 - **Scalar UI** `/scalar` — `app.MapScalarApiReference()`
 
 Use this as the default API documentation surface for Regira projects. Do not add `Swashbuckle.AspNetCore` and do not call `app.UseSwaggerUI()` unless the user explicitly asks to deviate from the standard template.
 
+Map both inside `if (app.Environment.IsDevelopment())`. The document lists every endpoint and its schemas, the guarded ones included. `.AllowAnonymous()` only exempts the two endpoints from a fallback policy: it does not guard them, and `MapControllers().RequireAuthorization()` never covers them.
+
 ⚠️ **Adding authentication to any template? The plain `AddOpenApi()` / `MapScalarApiReference()` pair above is then incomplete** — Scalar renders every endpoint but offers no way to authenticate, so `/scalar` cannot exercise a guarded API. This applies to Templates 2–4 alike; it is not specific to `SelfHostingApiWithAuth`. Declare the schemes, and mark the operations that require one — a declared scheme only produces the auth prompt; without the operation transformer the document says nothing about which endpoints are guarded, and a generated client cannot tell:
 
 <!-- no-compile -->
 ```csharp
+using Microsoft.AspNetCore.Authentication.JwtBearer;            // JwtBearerDefaults
+using Regira.Security.Authentication.ApiKey.Models;             // ApiKeyDefaults
 using Regira.Security.Authentication.Web.OpenApi.Transformers;
+using Scalar.AspNetCore;                                        // ScalarAuthenticationOptions
 
 builder.Services.AddOpenApi(options =>
 {
@@ -201,14 +206,17 @@ builder.Services.AddOpenApi(options =>
     options.AddOperationTransformer<SecurityRequirementOperationTransformer>();
 });
 
-app.MapOpenApi().AllowAnonymous();
-app.MapScalarApiReference(options =>
+if (app.Environment.IsDevelopment())
 {
-    options.Authentication = new ScalarAuthenticationOptions
+    app.MapOpenApi().AllowAnonymous();
+    app.MapScalarApiReference(options =>
     {
-        PreferredSecuritySchemes = [ApiKeyDefaults.AuthenticationScheme, JwtBearerDefaults.AuthenticationScheme]
-    };
-}).AllowAnonymous();
+        options.Authentication = new ScalarAuthenticationOptions
+        {
+            PreferredSecuritySchemes = [ApiKeyDefaults.AuthenticationScheme, JwtBearerDefaults.AuthenticationScheme]
+        };
+    }).AllowAnonymous();
+}
 ```
 
 **Nuget packages — Web API**
@@ -309,7 +317,7 @@ public static IHostBuilder AddConfiguration(this IHostBuilder builder)
   `[Authorize]` uses, and the symptom is a 401 for a caller holding a perfectly good credential of the other kind.
   It also removes the need for an `AddAuthorization` default policy naming the schemes.
 - Authorization is **enforced globally** via `.RequireAuthorization()` on `MapControllers()`.
-- OpenAPI / Scalar endpoints are explicitly marked `.AllowAnonymous()`.
+- OpenAPI / Scalar endpoints are mapped in Development only and marked `.AllowAnonymous()` (*OpenAPI & Scalar UI*).
 - Controllers that must be public use `[AllowAnonymous]` per action.
 
 **Picking a scheme**
@@ -337,7 +345,7 @@ authentication middleware.
 ```
 
 > `Regira.Security.Authentication.Web` references `Microsoft.AspNetCore.OpenApi` and thereby **floors** it
-> (and, through it, `Microsoft.OpenApi`) — 6.3.1 floors them at `10.0.12` and `2.12.2`. Pinning either
+> (and, through it, `Microsoft.OpenApi`) — 6.6.0 floors them at `10.0.13` and `2.12.2`. Pinning either
 > lower than the resolved version fails restore with **NU1605 (package downgrade)** — resolve
 > `Microsoft.AspNetCore.OpenApi` to the latest stable patch and leave `Microsoft.OpenApi` transitive.
 >
@@ -607,9 +615,12 @@ try
 
     var app = builder.Build();
 
-    app.MapOpenApi();
-    app.MapScalarApiReference();
-    
+    if (app.Environment.IsDevelopment())
+    {
+        app.MapOpenApi();
+        app.MapScalarApiReference();
+    }
+
     app.UseHttpsRedirection();
 
     // app.UseAuthentication();
@@ -676,8 +687,11 @@ try
 
     var app = builder.Build();
 
-    app.MapOpenApi();
-    app.MapScalarApiReference();
+    if (app.Environment.IsDevelopment())
+    {
+        app.MapOpenApi();
+        app.MapScalarApiReference();
+    }
 
     app
         .UseRouting()
@@ -768,18 +782,21 @@ try
 
     var app = builder.Build();
 
-    app.MapOpenApi()
-        .AllowAnonymous();
-    app.MapScalarApiReference(options =>
+    if (app.Environment.IsDevelopment())
     {
-        options.Authentication = new ScalarAuthenticationOptions
+        app.MapOpenApi()
+            .AllowAnonymous();
+        app.MapScalarApiReference(options =>
         {
-            PreferredSecuritySchemes = [
-                ApiKeyDefaults.AuthenticationScheme,
-                JwtBearerDefaults.AuthenticationScheme
-            ]
-        };
-    }).AllowAnonymous();
+            options.Authentication = new ScalarAuthenticationOptions
+            {
+                PreferredSecuritySchemes = [
+                    ApiKeyDefaults.AuthenticationScheme,
+                    JwtBearerDefaults.AuthenticationScheme
+                ]
+            };
+        }).AllowAnonymous();
+    }
 
     app
         .UseRouting()

@@ -16,7 +16,7 @@ public abstract class UserControllerBase<TUser>(UserManager<TUser> userManager) 
 {
     /// <summary>
     /// Creates the user, and with <see cref="UserInput.ConfirmEmailUrl"/> mails it a confirmation link: that page with
-    /// the token as its query string. A name that is taken, like any refusal of Identity's, answers <c>400</c> with
+    /// its query string set to <c>?token=…</c>. A name that is taken, like any refusal of Identity's, answers <c>400</c> with
     /// Identity's error code (<c>DuplicateUserName</c>) as the key, and the existing user is left alone.
     /// <para>
     /// The page must be on one of <see cref="AccountEmailOptions.AllowedOrigins"/>, or the answer is <c>400</c> and

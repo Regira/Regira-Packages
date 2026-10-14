@@ -10,6 +10,8 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 |---|---|
 | `Regira.Office.Excel` | Excel workbook reading and writing |
 
+Exact usings: `office.namespaces.md`.
+
 **Related:**
 - **IO.Storage** — `IBinaryFile` / `IMemoryFile` used as input/output. `get_package(id: "Regira.IO.Storage", section: "io.storage.instructions")`, or `io.storage.instructions.md` locally.
 
@@ -47,6 +49,8 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 **EPPlus is deprecated.** It stays on EPPlus 4.5.3.3, the last release under a free licence (EPPlus 5 and later need a commercial licence), which nuget.org marks as legacy and which receives no fixes. It depends on `System.Drawing.Common`, which throws on non-Windows from .NET 6 on — treat it as **Windows**. Use it only for what no other backend does — writing a `DataSet`, or the per-cell `TransformData` callback; otherwise pick MiniExcel or ClosedXML. It takes fixes for crashes, data loss and security holes only.
 
 **NpoiMapper pins NPOI to exactly 2.7.2.** From 2.8.0 the NPOI binaries on nuget.org carry an Open Source Maintenance Fee agreement that requires a paid subscription from organisations with annual revenue of US$10,000 or more. Do not raise NPOI in the application: a direct reference overrides the pin with only a restore warning (NU1608). From 2.7.3 Npoi.Mapper throws `MissingMethodException` when it writes a cell, and 2.8 or later puts the application under that agreement.
+
+**NpoiMapper pins SixLabors.ImageSharp to 3.1.12**, because from 3.2.0 and 4.0.0 a project that references ImageSharp directly needs a Six Labors licence key to build. 3.1.12 restores with advisories GHSA-j3p4-wp97-rph4, GHSA-j9gm-c75j-xc9q and GHSA-jjfr-hcj7-qf5w (NU1903) and GHSA-gwg2-r3hj-4w44 and GHSA-wmxv-xphr-5c9g (NU1902), which 3.2.0 and 4.1.2 fix. The backend decodes no images: NPOI loads a picture through ImageSharp only when the application calls `IPicture.Resize()`, `GetPreferredSize()` or `GetImageDimension()`. Taking the fixes is the user's licence decision, not a routine bump: the application references `SixLabors.ImageSharp` 3.2.0 and then needs a key to build (`sixlabors.lic` in the project directory, or the `SixLaborsLicenseKey` property), which Six Labors issues on application to open-source projects, non-profits and companies under US$1M annual revenue, and sells otherwise. NuGet audit can keep flagging 3.2.0: it reads the GitHub Advisory Database, whose entries name only 4.1.2, while Six Labors' own advisories name 3.2.0 as well.
 
 ---
 

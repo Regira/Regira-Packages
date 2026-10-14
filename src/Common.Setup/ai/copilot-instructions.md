@@ -163,7 +163,7 @@ Keep setup aligned with the selected `projectTemplate`.
 - Keep `Program.cs` thin; move service registration and middleware setup into `IServiceCollection` extension methods
 - Prefer `Microsoft.Extensions.DependencyInjection` and depend on abstractions instead of concrete implementations
 - Use file-scoped namespaces
-- Web APIs use `app.MapOpenApi()` plus `app.MapScalarApiReference()` as the standard API surface. Do not add `Swashbuckle.AspNetCore` or call `UseSwaggerUI()` on the standard Regira API path unless the user explicitly asks for Swagger
+- Web APIs use `app.MapOpenApi()` plus `app.MapScalarApiReference()`, mapped in Development only, as the standard API surface (`project.setup` → *OpenAPI & Scalar UI*). Do not add `Swashbuckle.AspNetCore` or call `UseSwaggerUI()` on the standard Regira API path unless the user explicitly asks for Swagger
 - Prefer meaningful generic type names such as `TEntity`, `TKey`, and `TDto`, matching the Regira API's own generic parameters
 - Ask rather than guess when a required API, namespace, or convention is not covered by the loaded guides
 

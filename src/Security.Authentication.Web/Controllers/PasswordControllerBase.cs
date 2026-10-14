@@ -11,7 +11,7 @@ namespace Regira.Security.Authentication.Web.Controllers;
 [ApiController]
 [Route("auth/password")]
 public abstract class PasswordControllerBase<TUser>(UserManager<TUser> userManager) : ControllerBase
-    where TUser : IdentityUser
+    where TUser : IdentityUser<string>
 {
     [HttpPost]
     public virtual async Task<IActionResult> UpdatePassword([FromBody] ChangePasswordInput model)
@@ -34,8 +34,9 @@ public abstract class PasswordControllerBase<TUser>(UserManager<TUser> userManag
     }
 
     /// <summary>
-    /// Mails a reset link to the user: <see cref="RecoverPasswordInput.SiteUrl"/> with the token as its query string,
-    /// under a subject named after <see cref="AccountEmailOptions.SiteName"/>.
+    /// Mails a reset link to the user: <see cref="RecoverPasswordInput.SiteUrl"/> with its query string set to
+    /// <c>?token=…</c>, the percent-encoded Base64 of the reset token and user name, under a subject named after
+    /// <see cref="AccountEmailOptions.SiteName"/>.
     /// <para>
     /// The page must be on one of <see cref="AccountEmailOptions.AllowedOrigins"/>, or the answer is <c>400</c> and no
     /// mail is sent — whoever controls the page receives the token. Otherwise the answer is <c>200</c> whether or not the

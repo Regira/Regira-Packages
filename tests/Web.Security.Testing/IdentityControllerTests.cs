@@ -9,6 +9,7 @@ using Regira.Utilities;
 using Shouldly;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Web.Security.Testing.Infrastructure;
 using Web.Security.Testing.Infrastructure.Identity;
@@ -77,6 +78,120 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
         var ok = await client.PostAsJsonAsync("auth?clientApp=test", new { username, password });
         ok.StatusCode.ShouldBe(HttpStatusCode.OK);
         (await GetAccessFailedCount(username)).ShouldBe(0);
+    }
+
+    // An app that sets SignIn.RequireConfirmedEmail must not hand a token to an address nobody confirmed. The check
+    // comes after the password, so only a caller who knows it learns why it was refused.
+    [Fact]
+    public async Task Authenticate_UnconfirmedAddress_WhenRequired_AnswersNotAllowed()
+    {
+        const string username = "unconfirmed@test.local";
+        var factory = RequiringConfirmedEmail();
+        await SeedUser(username, "pass1", factory);
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("auth?clientApp=test", new { username, password = "pass1" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.GetProperty("isNotAllowed").GetBoolean().ShouldBeTrue();
+        body.RootElement.TryGetProperty("token", out var token).ShouldBeTrue();
+        token.ValueKind.ShouldBe(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task Authenticate_UnconfirmedAddress_WithWrongPassword_CountsTheFailureAndSaysNothingMore()
+    {
+        const string username = "unconfirmed-wrong@test.local";
+        var factory = RequiringConfirmedEmail();
+        await SeedUser(username, "pass1", factory);
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("auth?clientApp=test", new { username, password = "wrong" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.TryGetProperty("isNotAllowed", out _).ShouldBeFalse();
+        (await GetAccessFailedCount(username, factory)).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Authenticate_ConfirmedAddress_WhenRequired_ReturnsToken()
+    {
+        const string username = "confirmed@test.local";
+        var factory = RequiringConfirmedEmail();
+        await SeedUser(username, "pass1", factory, emailConfirmed: true);
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("auth?clientApp=test", new { username, password = "pass1" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await response.Content.ReadFromJsonAsync<AuthResult>())!.Token.ShouldNotBeNullOrWhiteSpace();
+    }
+
+    // SignIn.RequireConfirmedAccount, which the Identity templates set, asks the registered IUserConfirmation; the
+    // default one checks the address.
+    [Fact]
+    public async Task Authenticate_UnconfirmedAccount_WhenRequired_AnswersNotAllowed()
+    {
+        const string username = "unconfirmed-account@test.local";
+        var factory = RequiringConfirmed(o => o.RequireConfirmedAccount = true);
+        await SeedUser(username, "pass1", factory);
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("auth?clientApp=test", new { username, password = "pass1" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.GetProperty("isNotAllowed").GetBoolean().ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Authenticate_ConfirmedAccount_WhenRequired_ReturnsToken()
+    {
+        const string username = "confirmed-account@test.local";
+        var factory = RequiringConfirmed(o => o.RequireConfirmedAccount = true);
+        await SeedUser(username, "pass1", factory, emailConfirmed: true);
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("auth?clientApp=test", new { username, password = "pass1" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Authenticate_RequireConfirmedAccount_AsksTheRegisteredConfirmation()
+    {
+        const string username = "custom-confirmation@test.local";
+        var factory = RequiringConfirmed(o => o.RequireConfirmedAccount = true)
+            .WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+                services.AddScoped<IUserConfirmation<TestUser>, ConfirmsEveryone>()));
+        await SeedUser(username, "pass1", factory);
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("auth?clientApp=test", new { username, password = "pass1" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Authenticate_UnconfirmedPhoneNumber_WhenRequired_AnswersNotAllowed()
+    {
+        const string username = "unconfirmed-phone@test.local";
+        var factory = RequiringConfirmed(o => o.RequireConfirmedPhoneNumber = true);
+        await SeedUser(username, "pass1", factory, emailConfirmed: true);
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("auth?clientApp=test", new { username, password = "pass1" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.GetProperty("isNotAllowed").GetBoolean().ShouldBeTrue();
+    }
+
+    private class ConfirmsEveryone : IUserConfirmation<TestUser>
+    {
+        public Task<bool> IsConfirmedAsync(UserManager<TestUser> manager, TestUser user) => Task.FromResult(true);
     }
 
     // --- guarded-by-default ---------------------------------------------------------------------
@@ -218,6 +333,27 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
 
         var confirmed = await FindUser(newUser);
         confirmed!.EmailConfirmed.ShouldBeTrue();
+    }
+
+    // The user comes from the token, so the confirm page posts the link's token alone.
+    [Fact]
+    public async Task ConfirmEmail_WithoutUserName_Confirms()
+    {
+        const string admin = "creator-tokenonly@test.local";
+        await SeedUser(admin, "AdminPass1");
+        var client = _factory.CreateClient();
+        client.SetBearerToken(await Authenticate(client, admin, "AdminPass1"));
+
+        const string newUser = "created-tokenonly@test.local";
+        var create = await client.PostAsJsonAsync("users",
+            new { username = newUser, password = "Created1", confirmEmailUrl = "https://app.example.com/confirm-email" });
+        create.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var token = LinkToken(ExtractLink(SentEmails().Last(x => x.Email == newUser).Body));
+
+        var confirm = await _factory.CreateClient().PostAsJsonAsync("users/confirm-email", new { token });
+
+        confirm.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await FindUser(newUser))!.EmailConfirmed.ShouldBeTrue();
     }
 
     // a taken name is refused, so the caller does not take the existing account for one it made
@@ -458,7 +594,16 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
         => _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
             services.PostConfigure(change)));
 
-    private async Task SeedUser(string username, string password, WebApplicationFactory<IdentityStartup>? factory = null)
+    // A host whose Identity options require a confirmed address before sign-in.
+    private WebApplicationFactory<IdentityStartup> RequiringConfirmedEmail()
+        => RequiringConfirmed(o => o.RequireConfirmedEmail = true);
+
+    // A host whose Identity sign-in options require what `require` sets.
+    private WebApplicationFactory<IdentityStartup> RequiringConfirmed(Action<SignInOptions> require)
+        => _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.PostConfigure<IdentityOptions>(o => require(o.SignIn))));
+
+    private async Task SeedUser(string username, string password, WebApplicationFactory<IdentityStartup>? factory = null, bool emailConfirmed = false)
     {
         using var scope = (factory ?? _factory).Services.CreateScope();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<TestUser>>();
@@ -466,14 +611,14 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
         {
             return;
         }
-        var user = new TestUser { UserName = username, Email = username };
+        var user = new TestUser { UserName = username, Email = username, EmailConfirmed = emailConfirmed };
         var result = await userManager.CreateAsync(user, password);
         result.Succeeded.ShouldBeTrue(result.Errors.FirstOrDefault()?.Description);
     }
 
-    private async Task<int> GetAccessFailedCount(string username)
+    private async Task<int> GetAccessFailedCount(string username, WebApplicationFactory<IdentityStartup>? factory = null)
     {
-        using var scope = _factory.Services.CreateScope();
+        using var scope = (factory ?? _factory).Services.CreateScope();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<TestUser>>();
         var user = await userManager.FindByNameAsync(username);
         return await userManager.GetAccessFailedCountAsync(user!);

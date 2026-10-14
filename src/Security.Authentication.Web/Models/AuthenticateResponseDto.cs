@@ -20,4 +20,12 @@ public record AuthenticateResponseDto
 
     public bool? IsLockedOut { get; set; }
     public DateTime? LockedOutEnd { get; set; }
+
+    /// <summary>
+    /// <c>true</c> when the password checks but the sign-in options refuse the account: its address, phone number or
+    /// account is not confirmed while <c>SignIn.RequireConfirmedEmail</c>, <c>RequireConfirmedPhoneNumber</c> or
+    /// <c>RequireConfirmedAccount</c> is set. Omitted from the JSON otherwise.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? IsNotAllowed { get; set; }
 }

@@ -75,6 +75,11 @@ public async Task SendInvoice(IMailService mailer, string recipientEmail, byte[]
 Drive the backend choice from configuration — consuming code only sees `IMailService`.
 
 ```csharp
+using Regira.Office.Mail.SendGrid.DependencyInjection;  // AddSendGrid
+using Regira.Office.Mail.MailGun.DependencyInjection;   // AddMailGun
+using Regira.Office.Mail.MailKit.DependencyInjection;   // AddMailKit
+using MailKit.Security;                                 // SecureSocketOptions
+
 var backend = configuration["Mail:Backend"];
 
 if (backend == "mailgun")
@@ -112,6 +117,7 @@ Use `MailInput` from `Mail.Web` to receive and validate a send request over HTTP
 
 ```csharp
 using Microsoft.AspNetCore.Mvc;
+using Regira.Office.Mail.Abstractions;   // IMailService
 using Regira.Office.Mail.Web;
 
 [ApiController]
@@ -150,6 +156,12 @@ A JSON body accepted by this endpoint:
 Plug `IMailService` into the Identity email confirmation flow using `IdentityMailer`.
 
 ```csharp
+using Microsoft.AspNetCore.Identity.UI.Services;        // IEmailSender
+using Regira.Office.Mail.SendGrid.DependencyInjection;  // AddSendGrid
+using Regira.Office.Mail.Abstractions;                  // IMailService
+using Regira.Office.Mail.Models;                        // MailAddress
+using Regira.Security.Authentication.Web.Mail;          // IdentityMailer, IdentityMailerOptions
+
 services.AddSendGrid(cfg => cfg.Key = configuration["Mail:SendGrid:Key"]!);
 
 services.AddSingleton<IEmailSender>(provider =>

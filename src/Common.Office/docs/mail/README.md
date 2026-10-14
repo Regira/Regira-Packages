@@ -39,6 +39,14 @@ Regira Office.Mail provides a **unified abstraction** for sending email through 
 ## Quick Start
 
 ```csharp
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Regira.Office.Mail.SendGrid.DependencyInjection;   // AddSendGrid
+using Regira.Office.Mail.MailGun.DependencyInjection;    // AddMailGun
+using Regira.Office.Mail.MailKit.DependencyInjection;    // AddMailKit
+using Regira.Office.Mail.Abstractions;                   // IMailService
+using Regira.Office.Mail.Models;                         // MailAddress, MailRecipient
+
 IServiceCollection services  = new ServiceCollection();
 IConfiguration configuration = new ConfigurationBuilder().Build();
 
@@ -129,6 +137,8 @@ are implemented explicitly and convert to/from the concrete types.
 `MailAddress` supports implicit conversion from `string`:
 
 ```csharp
+using Regira.Office.Mail.Models;                        // MailAddress, MailRecipient
+
 MailAddress addr  = "alice@example.com";
 MailAddress named = new() { Email = "alice@example.com", DisplayName = "Alice" };
 ```
@@ -144,6 +154,8 @@ public enum RecipientTypes { To, Cc, Bcc }
 ```
 
 ```csharp
+using Regira.Office.Mail.Models;                        // MailAddress, MailRecipient, RecipientTypes
+
 MailRecipient to  = "alice@example.com";   // implicit — defaults to RecipientTypes.To
 var cc = new MailRecipient { Email = "bob@example.com",   RecipientType = RecipientTypes.Cc };
 var bcc = new MailRecipient { Email = "carol@example.com", RecipientType = RecipientTypes.Bcc };
@@ -196,6 +208,11 @@ mail; a bulk send pays one TCP, TLS and AUTH handshake per message. OAuth2 sign-
 ## DI Registration
 
 ```csharp
+using Regira.Office.Mail.SendGrid.DependencyInjection;  // AddSendGrid
+using Regira.Office.Mail.MailGun.DependencyInjection;   // AddMailGun
+using Regira.Office.Mail.MailKit.DependencyInjection;   // AddMailKit
+using MailKit.Security;                                 // SecureSocketOptions
+
 IServiceCollection services = new ServiceCollection();
 
 // SendGrid
@@ -290,6 +307,9 @@ Thrown when an invalid email address is assigned to `MailAddress.Email`.
 `DummyMailer` implements `IMailService` (via `MailerBase`) and sends nothing — it returns an empty `MailResponse`, so `Success` is `false`. Register it in tests to suppress actual sending:
 
 ```csharp
+using Regira.Office.Mail.Abstractions;                  // IMailService
+using Regira.Office.Mail.Services;                      // DummyMailer
+
 IServiceCollection services = new ServiceCollection();
 services.AddSingleton<IMailService, DummyMailer>();
 ```
@@ -329,6 +349,10 @@ public async Task<IActionResult> Send([FromBody] MailInput input, IMailService m
 `Regira.Security.Authentication.Web.Mail`) bridges `IMailService` to the ASP.NET Identity `IEmailSender` interface.
 
 ```csharp
+using Microsoft.AspNetCore.Identity.UI.Services;        // IEmailSender
+using Regira.Office.Mail.Abstractions;                  // IMailService
+using Regira.Security.Authentication.Web.Mail;          // IdentityMailer, IdentityMailerOptions
+
 IServiceCollection services = new ServiceCollection();
 services.AddSingleton<IEmailSender>(provider =>
     new IdentityMailer(

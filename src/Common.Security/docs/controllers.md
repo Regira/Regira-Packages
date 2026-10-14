@@ -60,6 +60,7 @@ Without this global requirement the non-anonymous endpoints (change-password, us
 | Endpoint | Why anonymous |
 |----------|---------------|
 | `POST auth` (authenticate) | the caller has no token yet |
+| `POST auth/refresh-token` | the refresh token is the credential; `404` unless refresh tokens are registered |
 | `POST auth/password/recover` | forgot-password entry point |
 | `POST auth/password/reset` | authorized by the emailed token |
 | `POST users/confirm-email` | authorized by the emailed token |
@@ -68,7 +69,7 @@ Without this global requirement the non-anonymous endpoints (change-password, us
 
 | Endpoint | Anon | Request body | Success | Failure |
 |----------|:----:|--------------|---------|---------|
-| `POST auth?clientApp=…` | ✅ | `{ username, password }` | `200` `{ isAuthenticated: true, token }`, plus `refreshToken` and `expiresAt` when refresh tokens are registered | `401` `{ isLockedOut, lockedOutEnd }` |
+| `POST auth?clientApp=…` | ✅ | `{ username, password }` | `200` `{ isAuthenticated: true, token }`, plus `refreshToken` and `expiresAt` when refresh tokens are registered | `401` `{ isLockedOut, lockedOutEnd }`; `401` `{ isNotAllowed: true }` for an unconfirmed address or account (below) |
 | `POST auth/validate` | | *(bearer)* | `204` | `401`, or `403` if the token is valid but the user is gone |
 | `POST auth/refresh` | | *(bearer, **still valid**)* | `200` `{ isAuthenticated: true, token }` | `401` |
 | `POST auth/refresh-token` | ✅ | `{ refreshToken }` | `200` `{ isAuthenticated: true, token, refreshToken, expiresAt }` | `401`; `404` when refresh tokens are not registered |
@@ -79,6 +80,8 @@ that. See *Refresh Tokens* above.
 
 `clientApp` becomes the token audience. A successful authenticate resets the user's failed-access count; a failed one increments it and can trigger Identity lockout.
 
+An account the sign-in options refuse answers `401` `{ isNotAllowed: true }` once its password checks: an address not confirmed under `SignIn.RequireConfirmedEmail`, a phone number under `RequireConfirmedPhoneNumber`, or an account the registered `IUserConfirmation<TUser>` does not confirm under `RequireConfirmedAccount`, which the Identity templates set (Identity's default confirmation checks the address). A user you seed, or create through `POST users` without `confirmEmailUrl`, then needs `EmailConfirmed = true`, and `PhoneNumberConfirmed = true` under `RequireConfirmedPhoneNumber`, or it can never sign in.
+
 ### `PasswordControllerBase<TUser>` — route `auth/password`
 
 | Endpoint | Anon | Request body | Success | Failure |
@@ -87,16 +90,16 @@ that. See *Refresh Tokens* above.
 | `POST auth/password/recover` | ✅ | `{ username, siteUrl }` | `200`, whether or not the user exists | `400` when `siteUrl` is not on an allowed origin |
 | `POST auth/password/reset` | ✅ | `{ token, password }` | `200` | `400` malformed token or identity errors |
 
-`recover` answers the same for an unknown user (it never reveals whether the user exists). A known user is emailed a link: `siteUrl`, the reset page, with a percent-encoded `token` as its query string, which any query parser (`URLSearchParams`, vue-router's `route.query`) reads back intact — a Base64 payload of the Identity reset token plus the username. `reset` decodes that payload and returns `400` when it is malformed.
+`recover` answers the same for an unknown user (it never reveals whether the user exists). A known user is emailed a link: `siteUrl`, the reset page, with its query string set to `?token=…`, percent-encoded so any query parser (`URLSearchParams`, vue-router's `route.query`) reads it back intact; a query `siteUrl` carried is dropped. The token is a Base64 payload of the Identity reset token plus the username. `reset` decodes that payload and returns `400` when it is malformed.
 
 ### `UserControllerBase<TUser>` — route `users`
 
 | Endpoint | Anon | Request body | Success | Failure |
 |----------|:----:|--------------|---------|---------|
 | `POST users` | | `{ username, password, confirmEmailUrl? }` | `200` | `400` identity errors, or `confirmEmailUrl` not on an allowed origin |
-| `POST users/confirm-email` | ✅ | `{ token, userName, password? }` | `200` | `400` malformed token or identity errors |
+| `POST users/confirm-email` | ✅ | `{ token }` | `200` | `400` malformed token or identity errors |
 
-`username` is used as both the user name and the email address. When `confirmEmailUrl` is supplied, the new user is emailed that page with a Base64 `token` as its query string, percent-encoded like the reset link's; `confirm-email` decodes it and returns `400` on a malformed token. A name that is taken answers `400` with Identity's `DuplicateUserName` error and leaves the existing account alone, so an override that assigns a role or tenant after the base call acts only on an account it created. The optional `password` on the confirm-email input is not used by the base implementation — it is available to overrides.
+`username` is used as both the user name and the email address. When `confirmEmailUrl` is supplied, the new user is emailed that page with its query string set to `?token=…`, percent-encoded like the reset link's: a Base64 payload of the Identity confirmation token plus the username. The confirm page posts that token back as `{ token }`; `confirm-email` reads the user from it and returns `400` on a malformed token. `userName` is accepted and not read, and `password` is accepted for overrides; the base implementation reads neither. A name that is taken answers `400` with Identity's `DuplicateUserName` error and leaves the existing account alone. An override that assigns a role or tenant does so only for an account this call created. A failed confirmation mail throws after the account exists, so it assigns in a `finally`, guarded by a check that the name was free before the call.
 
 If the confirmation mail fails, `POST users` answers `500` with the user already created, and a repeat answers `400` (`DuplicateUserName`) without mailing. To resend, the app adds an endpoint of its own that mails a fresh link for the existing user (`UserManager.GenerateEmailConfirmationTokenAsync`), checking the page against `AllowedOrigins` as the base action does.
 
@@ -104,7 +107,7 @@ A `400` comes in one of three bodies: an input that fails model validation gets 
 
 ### Mailed links: allowed origins
 
-`recover`, and `POST users` with a `confirmEmailUrl`, mail a link to the page the request names, with the token as
+`recover`, and `POST users` with a `confirmEmailUrl`, mail a link to the page the request names, with `?token=…` as
 its query string. Whoever controls that page receives the token when the link is followed, so the controllers mail a
 link only to a page on an origin the application lists in `AccountEmailOptions`:
 
@@ -176,6 +179,7 @@ used, and a guarded operation for which no scheme resolves is logged as a warnin
 - **Apply the global auth requirement** when mapping the controllers (above) — they do not self-guard with per-action `[Authorize]`, so without it the non-anonymous endpoints are exposed.
 - The authenticate failure response distinguishes a locked-out existing user from an unknown one (`isLockedOut` is `null` for unknown users) — a deliberate trade-off to weigh against username enumeration.
 - **List only your own front-end origins** in `AccountEmailOptions.AllowedOrigins`: a mailed link hands its token to the page it opens.
+- **Rate-limit the anonymous endpoints that cost something:** `auth/refresh-token` (its token is the credential) and `auth/password/recover` (it mails the named account on every call). Limit by client, not by account, so a `429` reveals no more than the `200` does.
 - Recover / confirm tokens travel in the email body and in the `siteUrl` / `confirmEmailUrl` query string; query strings can surface in server logs, browser history and referrers, so prefer short token lifetimes.
 
 ---

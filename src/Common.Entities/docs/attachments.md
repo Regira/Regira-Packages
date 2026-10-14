@@ -243,7 +243,7 @@ leaves the file where it is. Bytes or a stream set in their place replace it, st
 **Files and transactions.** A replaced or deleted attachment's file is removed after the commit, by
 `AttachmentFileReactor`, once the attachment's own row no longer names it. A save that fails, a rollback — to a
 savepoint too — and a context without the reactor wiring leave a file no row names; an application that needs a clean
-store sweeps it against the stored `Path` values, as it does for the attachments of a deleted owner:
+store sweeps it against the stored `Path` values:
 
 - New bytes go under a key of their own, so a save the database refuses, or a transaction rolled back, leaves the
   stored file as it was.
@@ -258,10 +258,15 @@ store sweeps it against the stored `Path` values, as it does for the attachments
   still names it: links can share an attachment, since a new link may name one its owner links already.
   `HasAttachments<…>(x => x.Attachments, a => a.HasStrictRelation = false)` keeps the attachments the owner's links
   leave, for attachments that outlive their links.
-- Deleting an owner keeps its attachments and their files, by design: the links go by the database's FK cascade, and an
-  attachment can be linked from more than one entity, so the library does not decide that it is no longer needed. A
-  background job removes the `Attachment` rows no link references, through `IEntityService<Attachment, int>` so that
-  `AttachmentFileReactor` removes each file, or the application applies a rule of its own.
+- Deleting an owner keeps its attachments and their files, by design: its links go with it, and an attachment can be
+  linked from more than one entity, so the library does not decide that it is no longer needed. To delete them with
+  the owner, override `RemoveItem` on the owner's write service — it runs once the validators passed — call the base
+  first, and, unless the owner is `IArchivable` (a soft delete keeps them for a restore), remove its links and each
+  attachment no other link of that owner type names, checking past query filters and removing through
+  `RemoveGuarded`, as the library removes a link's attachment. They go in the owner's own save, and
+  `AttachmentFileReactor` removes the files after the commit. Not in a reactor: it runs after the commit, when the
+  links are gone. Sweeping every `Attachment` row no link names instead also takes the ones
+  `HasStrictRelation = false` keeps. An attachment linked from several owner types needs each link type checked.
 - Without the reactor wiring (`DbContextWiring.Reactors`, part of `UseDefaults()`), no file is removed; the startup
   validation warns about such a context.
 
