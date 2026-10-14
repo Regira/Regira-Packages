@@ -11,11 +11,14 @@
     <AssemblyName>Regira.Web.HTML.RazorComponents</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.5.1</Version>
+    <Version>6.6.0</Version>
     <Description>Renders compiled Razor components to HTML with ASP.NET Core's HtmlRenderer for Regira.</Description>
     <PackageTags>regira;web;html;razor;razor-components;templates</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.Web\Common.Web.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="ai\web.html.razorcomponents.card.md" Pack="true" PackagePath="ai\" />
   </ItemGroup>
 </Project>

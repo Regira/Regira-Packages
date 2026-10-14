@@ -36,8 +36,9 @@ public static class AttachmentUriServiceCollectionExtensions
     /// <see cref="IHttpContextAccessor"/>. Call this before registering entities (e.g. at the top of the
     /// <c>UseEntities</c> options block). Requires <c>AddHttpContextAccessor()</c> on the host.
     /// <para>
-    /// The <c>Uri</c> links to the <c>GetFile</c> action on a controller named after <c>TEntityAttachment</c> —
-    /// a <c>ProductAttachment</c> resolves against <c>ProductAttachmentController</c> or
+    /// The <c>Uri</c> links to the owner's download endpoint that <c>MapEntityEndpoints()</c> maps, found by its
+    /// endpoint name. Without one it links to the <c>GetFile</c> action on a controller named after
+    /// <c>TEntityAttachment</c> — a <c>ProductAttachment</c> resolves against <c>ProductAttachmentController</c> or
     /// <c>ProductAttachmentsController</c>, either deriving from
     /// <c>EntityAttachmentControllerBase&lt;ProductAttachment&gt;</c>. Any other class name is invisible to the
     /// link generator.
@@ -45,10 +46,12 @@ public static class AttachmentUriServiceCollectionExtensions
     /// <para>
     /// The <c>Uri</c> is <see langword="null"/> — never an error — when: this option is omitted (the default
     /// <c>NullAttachmentUriResolver</c> applies); it is set on a different <c>UseEntities</c> options instance
-    /// than the one the entity was registered on; no controller under either name above is mapped, or its
-    /// download route was replaced by a custom endpoint; or there is no active request (seeding, background
-    /// work). Only the controller-lookup failure is diagnosable at runtime — it logs a warning naming the
-    /// controller names it tried, once per attachment type.
+    /// than the one the entity was registered on; neither mapped endpoints nor a controller serve the owner's
+    /// downloads (the <c>Download</c> endpoint excluded, no controller under either name above, or its download
+    /// route replaced by a custom endpoint); there is no active request (seeding, background work); or the owner is
+    /// nested inside another entity's DTO, since after-mappers run for the read root only. Only the
+    /// lookup failure is diagnosable at runtime — it logs a warning naming the controller names it tried, once
+    /// per attachment type.
     /// </para>
     /// </summary>
     public static EntityServiceCollectionOptions UseAttachmentUris(this EntityServiceCollectionOptions options)

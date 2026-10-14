@@ -166,8 +166,8 @@ Composite: `IPdfEditor + IPdfImageService + IPdfTextService`. Implemented by Pdf
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `HtmlContent` | `string?` | `null` | HTML to convert |
-| `HeaderHtmlContent` | `string?` | `null` | Repeating page header |
-| `FooterHtmlContent` | `string?` | `null` | Repeating page footer |
+| `HeaderHtmlContent` | `string?` | `null` | Repeating page header: the band's markup, a fragment such as a `<div>`, not a document |
+| `FooterHtmlContent` | `string?` | `null` | Repeating page footer: the band's markup, a fragment such as a `<div>`, not a document |
 | `HeaderHeight` | `int?` | `null` | Header height in mm; `null` is 45 pt |
 | `FooterHeight` | `int?` | `null` | Footer height in mm; `null` is 35 pt |
 | `Format` | `PageSize` | `A4` | Paper size |
@@ -230,7 +230,9 @@ advance. Each conversion starts a browser of its own, which takes one to three s
 - **Header and footer.** The header takes a band of `HeaderHeight` below the top margin and the footer a band of
   `FooterHeight` above the bottom margin, both between the left and right margins; the body starts below the header's
   band and ends above the footer's. Chromium renders each on its own: the page's stylesheets do not reach it and it
-  loads nothing by URL, so give it inline styles and images as `data:` URIs. Its text starts at 16px. An element with
+  loads nothing by URL, so give it inline styles and images as `data:` URIs. Each Chromium backend places it inside a
+  positioned `<div>`, so `<!DOCTYPE>`, `<html>`, `<head>` and `<body>` do not belong in it; a fragment works on every
+  backend. Its text starts at 16px. An element with
   the class `pageNumber` or `totalPages` gets the page number or the page count:
 
   ```html
@@ -253,13 +255,16 @@ run time, or a deployment that already runs Gotenberg for Word.Gotenberg.
 
 - **Fonts.** Text renders in the fonts installed in the Gotenberg image, not the host's, so a page laid out through
   Playwright on Windows can wrap differently. Web fonts by URL or `data:` URI render alike on every backend.
-- **URLs.** An absolute URL in the HTML is fetched from the container, where `localhost` is the container itself. HTML
-  built from user input can make the server request internal addresses, cloud metadata (`169.254.169.254`) included:
-  Gotenberg's default deny list refuses only `file:` URLs. For untrusted HTML, start the server with
-  `--chromium-allow-list` or `--chromium-deny-list` (regular expressions matched against every URL Chromium requests;
-  a refused one answers `403`) and restrict the container's outbound network. HTML that needs nothing from the network
-  takes `--chromium-deny-list=^https?://.*`; a pattern such as `^(?!data:).*` also refuses the `file:` page Gotenberg
-  loads itself.
+- **URLs.** An absolute URL in the HTML is fetched from the container, where `localhost` is the container itself, so
+  HTML built from user input can make the server request internal addresses. Gotenberg's default deny list,
+  `^file:(?!//\/tmp/).*`, refuses every `file:` URL but its own working files. A `--chromium-deny-list` (regular
+  expressions matched against every URL Chromium requests) replaces that default, so a pattern of your own keeps the
+  `file:` rule. HTML that needs nothing from the network takes `--chromium-deny-list=^(https?://|file:(?!//\/tmp/)).*`.
+  For HTML built from user input, also start the server with `--chromium-deny-private-ips`, which refuses every URL
+  whose host resolves to a loopback, private or link-local address, cloud metadata (`169.254.169.254`) included; a
+  `--chromium-allow-list` match bypasses that check. Then restrict the container's outbound network. A refused page
+  answers `403`; a refused image, frame or stylesheet is left out of the PDF. A pattern such as `^(?!data:).*` also
+  refuses the page Gotenberg loads itself, so every conversion answers `403`.
 - **Errors.** A refused request throws `HttpRequestException` carrying the status code and Gotenberg's message: `400`
   for settings Chromium refuses (margins that leave no room for content), `503` for a conversion past the server's
   `--api-timeout` (30 seconds by default). Raise that on the server as well as `Timeout` here for large documents: the

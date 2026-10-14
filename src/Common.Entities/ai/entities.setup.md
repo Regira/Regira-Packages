@@ -504,9 +504,17 @@ using (var scope = app.Services.CreateScope())
 > <!-- no-compile -->
 > ```csharp
 > if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("ResetDatabase"))
+> {
 >     dbContext.Database.EnsureDeleted();          // dotnet run -- --ResetDatabase=true
+>     // with file-system storage, also delete the uploads folder the attachments' BinaryFileService writes to
+>     if (Directory.Exists(uploadsFolder))
+>         Directory.Delete(uploadsFolder, recursive: true);
+> }
 > dbContext.Database.EnsureCreated();
 > ```
+>
+> Dropping the database leaves the stored files behind, named by no row (`entities.instructions` → *Attachments*,
+> step 6).
 >
 > **Stop the running app before rebuilding.** The host holds its own DLL, so `dotnet build` fails with
 > `MSB3027`/`MSB3021` — not an `error CS…`, which is what a build log is usually searched for — and the next

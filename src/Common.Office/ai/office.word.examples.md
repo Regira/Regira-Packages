@@ -96,6 +96,30 @@ IMemoryFile contract = await word.Create(new WordTemplateInput
 });
 ```
 
+## No Word at hand
+
+Where no one can open Word to write the template, build it in code with the Open XML SDK (`DocumentFormat.OpenXml`,
+which arrives with Word.Mini), each marker in a paragraph of its own. The result fills like a template written in
+Word:
+
+```csharp
+using DocumentFormat.OpenXml.Packaging;
+using W = DocumentFormat.OpenXml.Wordprocessing;
+
+static W.Paragraph Line(string text) => new(new W.Run(new W.Text(text)));
+
+using var stream = new MemoryStream();
+using (var document = WordprocessingDocument.Create(stream, DocumentFormat.OpenXml.WordprocessingDocumentType.Document))
+{
+    document.AddMainDocumentPart().Document = new W.Document(new W.Body(
+        Line("Contract for {{ClientName}}"),
+        Line("{{#each Sites}}"),
+        Line("Schedule {{ row_number }}: {{SiteName}}, {{SiteAddress}}"),
+        Line("{{/each}}")));
+}
+IMemoryFile template = stream.ToArray().ToMemoryFile();
+```
+
 ## Convert to PDF for signing
 
 <!-- no-compile -->
@@ -115,7 +139,8 @@ await _fileService.Save($"contracts/{client.Id}/contract-{DateTime.Today:yyyyMMd
 ### Without a vendor licence
 
 Word.Mini fills the template and a Gotenberg server produces the PDF. The example keeps to scalar
-parameters, which every creator fills the same way.
+parameters, which every creator fills the same way. Loops and their marker rows work on Word.Mini too, so the
+template of *A schedule per site* fills there unchanged.
 
 <!-- no-compile -->
 ```csharp

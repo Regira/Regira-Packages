@@ -10,6 +10,8 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 |---|---|
 | `Regira.Office.PDF` | HTML→PDF, Office documents (Word, Excel, PowerPoint)→PDF, PDF operations (merge/split/extract), printing |
 
+Exact usings: `office.namespaces.md`.
+
 **Related:**
 - **Media / Drawing** — `IImageService` required by `PdfPig.PdfService` (and `DocNET.PdfManager`): `Regira.Drawing.SkiaSharp.Services.ImageService` from package `Regira.Drawing.SkiaSharp`, registered with `services.AddSingleton<IImageService, Regira.Drawing.SkiaSharp.Services.ImageService>()`; `IImageFile` ↔ PDF conversion. `get_package(id: "Regira.Media", section: "media.instructions")`, or `media.instructions.md` locally.
 - **IO.Storage** — `IMemoryFile` used for PDF input/output. `get_package(id: "Regira.IO.Storage", section: "io.storage.instructions")`, or `io.storage.instructions.md` locally.
@@ -82,7 +84,8 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
   (when `FooterHtmlContent` is set): size one-page content (a badge) to that, or it runs onto a second page.
 - A header or footer is rendered on its own: the page's stylesheets do not reach it and it loads nothing by URL —
   inline styles, images as `data:` URIs. `<span class="pageNumber"></span>` and `<span class="totalPages"></span>`
-  are filled with the page number and count.
+  are filled with the page number and count. The Chromium backends place it inside a positioned `<div>`, so
+  `<!DOCTYPE>`, `<html>`, `<head>` and `<body>` do not belong in it; a fragment works on every backend.
 - CSS background colours and images are left out, as a printer would, and no `HtmlInput` setting turns them on:
   draw a coloured band with a border, inline SVG or an `<img>`.
 - Chromium fetches every URL the HTML names (images, frames, stylesheets, scripts) from the host it runs on, internal
@@ -94,13 +97,16 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 **Gotenberg behaviour** (`Regira.Office.PDF.Gotenberg.PdfService`, registered with `AddGotenbergPdf`):
 - Text renders in the fonts installed in the Gotenberg image, not the host's, so a page laid out through Playwright on
   Windows can wrap differently. Web fonts by URL or `data:` URI render alike on every backend.
-- An absolute URL in the HTML is fetched from the container, where `localhost` is the container itself. HTML built
-  from user input can make the server request internal addresses, cloud metadata included: Gotenberg's default deny
-  list refuses only `file:` URLs. For untrusted HTML, start the server with `--chromium-allow-list` or
-  `--chromium-deny-list` (regular expressions matched against every URL Chromium requests; a refused one answers `403`)
-  and restrict the container's outbound network. HTML that needs nothing from the network takes
-  `--chromium-deny-list=^https?://.*`; a pattern such as `^(?!data:).*` also refuses the `file:` page Gotenberg loads
-  itself.
+- An absolute URL in the HTML is fetched from the container, where `localhost` is the container itself, so HTML built
+  from user input can make the server request internal addresses. Gotenberg's default deny list,
+  `^file:(?!//\/tmp/).*`, refuses every `file:` URL but its own working files. A `--chromium-deny-list` (regular
+  expressions matched against every URL Chromium requests) replaces that default, so a pattern of your own keeps the
+  `file:` rule. HTML that needs nothing from the network takes `--chromium-deny-list=^(https?://|file:(?!//\/tmp/)).*`.
+  For HTML built from user input, also start the server with `--chromium-deny-private-ips`, which refuses every URL
+  whose host resolves to a loopback, private or link-local address, cloud metadata included; a `--chromium-allow-list`
+  match bypasses that check. Then restrict the container's outbound network. A refused page answers `403`; a refused
+  image, frame or stylesheet is left out of the PDF. A pattern such as `^(?!data:).*` also refuses the page Gotenberg
+  loads itself, so every conversion answers `403`.
 - A refused request throws `HttpRequestException` carrying the status code and Gotenberg's message: `400` for
   settings Chromium refuses (margins that leave no room for content), `503` for a conversion past the server's
   `--api-timeout` (30 s by default).
@@ -199,6 +205,8 @@ to the smaller dimension, its longer side to the larger — keeping the page's a
 IAsyncEnumerable<IImageFile>  ToImagesAsync(IMemoryFile pdf, PdfToImagesOptions? options = null);
 ```
 
+No backend implements `IPdfToImageAsyncService`; use `IPdfToImageService`.
+
 ### `IPdfTextExtractor`
 
 <!-- no-compile -->
@@ -236,8 +244,8 @@ Composite: `IPdfEditor + IPdfImageService + IPdfTextService`. Implemented by `PD
 | Property | Type | Default | Description |
 |---|---|---|---|
 | `HtmlContent` | `string?` | `null` | HTML to convert |
-| `HeaderHtmlContent` | `string?` | `null` | Repeating page header |
-| `FooterHtmlContent` | `string?` | `null` | Repeating page footer |
+| `HeaderHtmlContent` | `string?` | `null` | Repeating page header: the band's markup, a fragment such as a `<div>`, not a document |
+| `FooterHtmlContent` | `string?` | `null` | Repeating page footer: the band's markup, a fragment such as a `<div>`, not a document |
 | `HeaderHeight` | `int?` | `null` | Header height in mm; `null` is 45 pt |
 | `FooterHeight` | `int?` | `null` | Footer height in mm; `null` is 35 pt |
 | `Format` | `PageSize` | `A4` | Paper size |
@@ -324,6 +332,9 @@ IMemoryFile reportPdf = await converter.Create(new DocumentInput
 
 // Merge PDFs (PdfPig) — its IImageService comes from Regira.Drawing.SkiaSharp
 IImageService imageService = new Regira.Drawing.SkiaSharp.Services.ImageService();
+// …or both for DI (IImageService: using Regira.Media.Drawing.Services.Abstractions;)
+services.AddSingleton<IImageService, Regira.Drawing.SkiaSharp.Services.ImageService>();
+services.AddSingleton<IPdfService, Regira.Office.PDF.PdfPig.PdfService>();
 IPdfMerger merger = new Regira.Office.PDF.PdfPig.PdfService(imageService);
 IMemoryFile merged = (await merger.Merge([pdf1, pdf2, pdf3]))!;
 

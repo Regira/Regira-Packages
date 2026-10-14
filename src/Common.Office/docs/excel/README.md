@@ -41,7 +41,7 @@ var sheets        = await excel.Read(file);
 
 foreach (var sheet in sheets)
     foreach (var row in sheet.Data!)
-        Console.WriteLine(row);   // Dictionary<string, object> per row
+        Console.WriteLine(row);   // Dictionary<string, object?> per row
 
 // Write sheets to a new workbook
 IMemoryFile output = await excel.Create(sheets);

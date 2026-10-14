@@ -876,25 +876,60 @@ factory. To carry an Identity role into the token and through every gate:
        .AddSignInManager().AddDefaultTokenProviders();
    ```
 
-   Seed roles with `RoleManager<IdentityRole>.CreateAsync(new IdentityRole("Manager"))` and assign with
-   `userManager.AddToRoleAsync(user, "Manager")`.
+   Seed roles with `RoleManager<IdentityRole>.CreateAsync(new IdentityRole("Administrator"))` and assign with
+   `userManager.AddToRoleAsync(user, "Administrator")`. `"Administrator"` is the role the scaffolded SPA's
+   `$isAdmin` checks, exact and case-sensitive.
 2. **Token.** Nothing else to do: `AccountControllerBase` mints from the factory's claims, and the outbound
    map renames only `sub`/`name`/`email` — the roles land in the payload under `"role"` (one string, or an
    array for a multi-role user). It leaves out Identity's security stamp (`AspNet.Identity.SecurityStamp`): a
    JWT is readable by whoever holds it, and the stamp is the secret the email and phone token providers derive
    their one-time codes from. A subclass that mints its own claims goes through `CreateSuccessResponse` or
    `TokenClaims(claims)`, which drop it too.
-3. **Server-side gates.** `[Authorize(Roles = "Manager")]` and `User.IsInRole(...)` now work on the local JWT
+3. **Server-side gates.** `[Authorize(Roles = "Administrator")]` and `User.IsInRole(...)` now work on the local JWT
    scheme. A handler that must also admit API-key callers (`ClaimTypes.Role`) or external bearer tokens
    (`roles`) reads roles with `principal.FindRoles()`, which probes all three spellings.
 4. **SPA.** The front-end decodes the **raw** token, so it sees the payload spelling. Use
-   `authStore.hasRole("Manager")` (`regira_modules.vue.auth`) — it probes `role`, `roles` and the
+   `authStore.hasRole("Administrator")` (`regira_modules.vue.auth`) — it probes `role`, `roles` and the
    `ClaimTypes.Role` URI, mirroring `FindRoles()`. ⚠️ `hasPermission(...)` reads a `permissions` claim this
    recipe never mints — it is not a role check.
    Gate the UI on the same roles, or the SPA offers writes the API answers 403 for:
    `regira_modules.vue.entities` → `entities.patterns` → *Permission-gated UI*.
 5. **Mid-session role changes** reach the SPA on the next `POST auth/refresh` (still-valid bearer): the token
    is re-minted from a fresh claims-factory run.
+
+### A claim of your own in the token
+
+The token carries what the claims factory emits, so a claim of your own comes from a factory subclass. With roles on,
+derive from `UserClaimsPrincipalFactory<TUser, IdentityRole>`: the one-argument `UserClaimsPrincipalFactory<TUser>`
+adds no roles, so the token loses them. Without roles, derive from that one-argument base.
+
+```csharp
+using System.Security.Claims;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Options;
+
+public class AppUser : IdentityUser
+{
+    public int DepartmentId { get; set; }
+}
+
+public class AppClaimsPrincipalFactory(UserManager<AppUser> userManager, RoleManager<IdentityRole> roleManager,
+    IOptions<IdentityOptions> options)
+    : UserClaimsPrincipalFactory<AppUser, IdentityRole>(userManager, roleManager, options)
+{
+    protected override async Task<ClaimsIdentity> GenerateClaimsAsync(AppUser user)
+    {
+        var identity = await base.GenerateClaimsAsync(user);
+        identity.AddClaim(new Claim("department_id", user.DepartmentId.ToString()));
+        return identity;
+    }
+}
+```
+
+Register it with `.AddClaimsPrincipalFactory<AppClaimsPrincipalFactory>()` **after** `.AddRoles<IdentityRole>()` in
+the step 1 chain: `AddRoles` replaces any claims factory registered before it with the plain role-aware one. The
+claim keeps its name in the token, and the SPA reads it with `useAuthStore().getClaimValue("department_id")`
+(`string | string[] | undefined`). Like a role, a changed value reaches the SPA on the next refresh.
 
 ## Pre-built Auth Controllers (`Security.Authentication.Web`)
 
@@ -966,10 +1001,9 @@ public class UsersController : UserControllerBase<AppUser>
     [AllowAnonymous]
     public override async Task<IActionResult> Create(UserInput model, [FromServices] IEmailSender mailer)
     {
-        // the base answers 200 for an existing user too: assign roles only to an account this call created
-        var existed = await _userManager.FindByNameAsync(model.Username) != null;
+        // the base answers 200 only for an account it created; a taken name answers 400
         var result = await base.Create(model, mailer);
-        if (!existed && result is OkResult)
+        if (result is OkResult)
         {
             var user = await _userManager.FindByNameAsync(model.Username);
             await _userManager.AddToRoleAsync(user!, "Customer");
@@ -981,11 +1015,9 @@ public class UsersController : UserControllerBase<AppUser>
 public class AppUser : IdentityUser;   // stands for your app's own Identity user — don't declare a second one
 ```
 
-⚠️ **The base answers 200 for an existing user too, so check the account is new before you assign anything to it.**
-"On 200, add the role" adds it to whatever account the caller names — an administrator's included. The 200 itself
-stays: it does not tell a caller whether an account exists.
-
-Open sign-up means anyone can create an account: rate-limit it, and keep any role/tenant assignment server-side rather than reading it from the payload.
+Open sign-up means anyone can create an account, and its `400` for a taken name tells a caller that the account
+exists, as any sign-up form does: rate-limit it, and keep any role/tenant assignment server-side rather than reading it
+from the payload.
 
 ### `AccountControllerBase<TUser>` — route `auth`
 
@@ -1015,14 +1047,14 @@ increments it (Identity lockout).
 
 | Endpoint | Anon | Request | Success | Failure |
 |---|:---:|---|---|---|
-| `POST users` |  | `{ username, password, confirmEmailUrl? }` | `200` | `400` identity errors / `confirmEmailUrl` not on an allowed origin |
+| `POST users` |  | `{ username, password, confirmEmailUrl? }` | `200` | `400` identity errors (a taken name: `DuplicateUserName`) / `confirmEmailUrl` not on an allowed origin |
 | `POST users/confirm-email` | ✅ | `{ token, userName }` | `200` | `400` malformed token / identity errors |
 
-`username` is used as both user name and email. With `confirmEmailUrl`, the new user is emailed that page with a Base64 `token` as its query string, percent-encoded like the reset link's. Creating an existing user is a no-op `200`.
+`username` is used as both user name and email. With `confirmEmailUrl`, the new user is emailed that page with a Base64 `token` as its query string, percent-encoded like the reset link's. A name that is taken answers `400` with Identity's `DuplicateUserName` error and leaves the existing account alone.
 
-If the confirmation mail fails, `POST users` answers `500` with the user already created, and a repeat answers `200` without mailing. To resend, the app adds an endpoint of its own that mails a fresh link for the existing user (`UserManager.GenerateEmailConfirmationTokenAsync`), checking the page against `AllowedOrigins` as the base action does.
+If the confirmation mail fails, `POST users` answers `500` with the user already created, and a repeat answers `400` (`DuplicateUserName`) without mailing. To resend, the app adds an endpoint of its own that mails a fresh link for the existing user (`UserManager.GenerateEmailConfirmationTokenAsync`), checking the page against `AllowedOrigins` as the base action does.
 
-A `400` comes in one of three bodies: an input that fails model validation gets ASP.NET Core's `ValidationProblemDetails` (errors under `errors`); identity errors and a page on another origin get the field errors as the body itself (`{ "Password": ["..."] }`); a malformed token gets a `ProblemDetails` without field errors. A client reads `errors` when present, else the body.
+A `400` comes in one of three bodies: an input that fails model validation gets ASP.NET Core's `ValidationProblemDetails` (errors under `errors`); identity errors and a page on another origin get the field errors as the body itself, an identity error keyed by its code (`{ "PasswordTooShort": ["..."] }`); a malformed token gets a `ProblemDetails` without field errors. A client reads `errors` when present, else the body.
 
 ### Mailed links: allowed origins
 

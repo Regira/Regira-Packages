@@ -91,7 +91,7 @@ await links.SaveChanges();   // one flush; pipeline writes files, fills Path/Len
 ## In-code recipes (how_to)
 
 Task-oriented answers for the in-code jobs that don't map onto a single type — the source of the MCP
-`how_to` tool. Each recipe below carries a `<!-- how_to: key=… aliases=… -->` marker; the knowledge-base
+`how_to` tool (a few recipes live in other guides, under their own heading). Each recipe below carries a `<!-- how_to: key=… aliases=… -->` marker; the knowledge-base
 builder parses these markers and the body under them (up to the next heading) into the `how_to` tool's
 recipe set, so the tool and this guide never drift. To add or edit a recipe, edit the body here.
 
@@ -554,6 +554,10 @@ public class DashboardController(AppDbContext db) : ControllerBase
 }
 ```
 
+An app without controllers writes the same query as `app.MapGroup("api/dashboard").RequireAuthorization().MapGet("spend-by-month", …)`,
+its prefix spelled out: no route-prefix convention reaches a minimal API (dropping `AddControllers()`:
+[`entities.setup.md`](./entities.setup.md) → *P3: Program.cs*).
+
 This is the sanctioned shape, not a deviation — but keep it **read-only**, and know what you are outside of:
 
 - ✅ `AsNoTracking()`, `GroupBy`/`Sum` server-side. Never fetch rows to aggregate in the client, and never
@@ -590,9 +594,54 @@ This is the sanctioned shape, not a deviation — but keep it **read-only**, and
 - ✅ **These translate on SQLite, so keep the metric:** `.Year`/`.Month`/`.Date`/`.DayOfWeek` (grouping by
   month included), `AddDays`/`AddHours`, `g.Count(pred)`, a conditional `g.Sum(x => cond ? 1 : 0)`,
   `g.Select(x => x.OtherId).Distinct().Count()`, and `DateOnly` comparisons and `.Month`.
+- ⚠️ **A decimal on SQLite depends on the target.** Decimal `Sum` and `Average`, grouped too, translate on every
+  target. Decimal `Min`, `Max` and `OrderBy` (ordering by a grouped sum included) translate on `net10.0` only; EF Core 9
+  throws `NotSupportedException`, so order the grouped rows after `ToListAsync()`.
 - On the client this is a plain `useAxios()` call with its own `useFeedback()` — not a slice, not a pooled
   store. See the front-end `entities.patterns` → *Custom endpoints on a service* and *Feedback for custom
   saves*.
+
+### Export what the overview shows
+
+An export of the rows a list shows is not an aggregate: it reads through the entity service, so the keyword `Q`
+filter, the search object's filters and row security (`IGlobalFilteredQueryBuilder`) all apply. Bind the overview's
+search object from the query and call `List(IList<TSearchObject?>, IList<TSortBy>, TIncludes?, pagingInfo: null)` on
+`IEntityService<TEntity, TSearchObject, TSortBy, TIncludes>`. A direct service call is never capped, so one call
+returns every matching row; no paging loop. A mediator `ListQuery` is clamped to `MaxPageSize`, so send no
+`ListQuery` for an export.
+
+```csharp
+using Microsoft.AspNetCore.Mvc;
+using Regira.Entities.Models;
+using Regira.Entities.Models.Abstractions;
+using Regira.Entities.Services.Abstractions;
+
+public class Product : IEntityWithSerial
+{
+    public int Id { get; set; }
+    public string? Title { get; set; }
+    public decimal Price { get; set; }
+}
+public record ProductSearchObject : SearchObject
+{
+    public decimal? MaxPrice { get; set; }
+}
+public enum ProductSortBy { Default, Title, Price }
+[Flags] public enum ProductIncludes { Default = 0 }
+
+[ApiController, Route("products/export")]
+public class ProductExportController(IEntityService<Product, ProductSearchObject, ProductSortBy, ProductIncludes> products)
+    : ControllerBase
+{
+    [HttpGet]
+    public async Task<IActionResult> Export([FromQuery] ProductSearchObject so, [FromQuery] ProductSortBy[]? sortBy, CancellationToken token)
+    {
+        var rows = await products.List([so], sortBy ?? [], pagingInfo: null, token: token);
+        var csv = string.Join(Environment.NewLine, rows.Select(x => $"{x.Id};{x.Title};{x.Price}"));
+        return File(System.Text.Encoding.UTF8.GetBytes(csv), "text/csv", "products.csv");
+    }
+}
+```
 
 ## Domain actions on an entity resource
 
@@ -1097,6 +1146,32 @@ A `PatchCommand` in such a unit builds its patch with the app's JSON options, th
 rolls back the sends before it. Reactors wait for `CommitAsync`, and a rolled-back unit fires none (*Reactors* in
 `entities.instructions`).
 
+An empty patch (`JsonDocument.Parse("{}").RootElement`) is a full update: every property is marked modified, primers
+stamp `LastModified` and the token, normalizers, preppers and validators run, and Modified reactors fire. It is how to
+recompute a derived value through the mediator:
+
+```csharp
+using System.Text.Json;
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Requests;
+
+public class Shelf : IEntityWithSerial { public int Id { get; set; } public int Stock { get; set; } }
+public class ShelfDto { public int Id { get; set; } public int Stock { get; set; } }
+public class ShelfInputDto { public int Id { get; set; } public int Stock { get; set; } }
+
+public class ShelfRecompute(IEntitySender sender)
+{
+    public async Task Recompute(int id, CancellationToken token)
+    {
+        using var empty = JsonDocument.Parse("{}");
+        await sender.Send(new PatchCommand<Shelf, int, ShelfDto, ShelfInputDto>(id, empty.RootElement), token);
+    }
+}
+```
+
+A handler override opens no transaction. One that must span two saves joins any open transaction
+(`Database.CurrentTransaction` or `Transaction.Current`) and begins its own only when none is open.
+
 ### Behaviours around every operation
 
 An `IEntityPipelineBehavior<,>` registered as an open generic runs around every request — caching, or a log of the
@@ -1260,8 +1335,8 @@ app.MapEntityEndpoints().RequireAuthorization();   // GET/POST products, PUT/PAT
   `x`, `z`, `ch` and `sh` take `es` (`TicketStatus` → `ticket-statuses`, `Box` → `boxes`); anything else takes `s`, so
   an irregular noun comes out regular (`Person` → `persons`) — set `o.Route = "people"` for it.
   `app.MapEntityEndpoints(o => o.Prefix = "api")` puts every route under a base path.
-- **Per entity:** `o.Exclude(…)` trims the set, `o.AllowAnonymous(EntityEndpoint.Download)` opens the downloads an
-  `<img>` loads (§Public (anonymous) attachment downloads), `o.Disable()` leaves the entity out, and
+- **Per entity:** `o.Exclude(…)` trims the set, `o.AllowAnonymous(…)` opens chosen endpoints (public reads, §Role-gated
+  write authorization filter; the downloads an `<img>` loads, §Public (anonymous) attachment downloads), `o.Disable()` leaves the entity out, and
   `app.MapEntityEndpoints(o => o.ConfigureGroup<Product>(g => g.RequireAuthorization("Editors")))` adds a policy for one
   entity. It adds to the policy on the returned group rather than replacing it: a caller must pass both.
 - **Controllers and mapped endpoints mix.** An entity whose `EntityControllerBase` subclass MVC discovers is left to its
@@ -1557,7 +1632,10 @@ public class EntityWriteAuthorizationHandler(ILogger<EntityWriteAuthorizationHan
 ```
 
 `o.AllowAnonymous(EntityEndpoint.Download)` on a registration exempts its downloads from the policy, as
-`[AllowAnonymous]` on a download action does. A write endpoint of the app's own on the group carries no entity metadata
+`[AllowAnonymous]` on a download action does. A public catalogue opens its reads per entity the same way:
+`e.Endpoints(o => o.AllowAnonymous(EntityEndpoint.List, EntityEndpoint.Search, EntityEndpoint.Details))`, plus `Download`
+for its images; its writes stay under the policy. ⚠️ Keep `RequireAuthenticatedUser()` in the policy: the handler
+succeeds every read, so without it every mapped entity's reads are anonymous. A write endpoint of the app's own on the group carries no entity metadata
 and is refused: gate it with a policy of its own, or give it `.WithMetadata(new EntityEndpointMetadata(typeof(CreditRequest),
 EntityEndpoint.Modify))` to share the entity's entry.
 
@@ -1612,6 +1690,7 @@ e.Prepare(async (order, dbContext) =>
 
 - Throw `EntityInputException<Order>` on a rule breach — parameterized by the **serviced** entity (`Order`, the one with the `.For<>()`/controller), **not** the related `Product`. Both still return 400 (the registered filter matches the non-generic base), but the generated action's own `catch` is on its closed `EntityInputException<TEntity>`, so only the matching type argument gets the action's own 400 — another reaches the filter, and a host without it answers 500 — and any `catch` you write should be on the base for the same reason.
 - On **update** the decrement would compound — diff against the original quantities (prepper-with-original, or a primer branching on `EntityState.Modified`) and apply only the delta.
+- ⚠️ Two concurrent orders can read the same stock and lose a decrement; where that matters, give `Product` `IHasConcurrencyToken` so the losing save answers 409 (§Optimistic concurrency (stale-write detection)).
 
 ## Server-owned / immutable fields on update
 
@@ -1839,41 +1918,44 @@ Three consequences follow from the child owning the write:
 
 - The amounts stay **off `TInputDto`** — same rule as any server-owned field; a client must not be able to
   state a total.
-- The value is **eventually consistent**: it settles when the parent is next saved, not when a child moves.
-  Attaching an intervention to an invoice therefore has to save the invoice too, or the total lags.
-- **Seeding needs a second pass over the parents.** At create time the total is necessarily `0`, so add a
-  final wave that re-`Modify()`s every parent purely to re-run this hook — see §Bulk insert / update.
-- **Settle it from the child with a reactor.** On the child's registration, re-save the parents a committed change
-  touched — the old one too when the FK moved — so the prepper above re-sums them:
+- Without the reactor below, the value is **eventually consistent**: it settles when the parent is next saved,
+  not when a child moves. Attaching an intervention to an invoice then has to save the invoice too, or the total lags.
+- Without the reactor below, **seeding needs a second pass over the parents.** At create time the total is
+  necessarily `0`, so add a final wave that re-`Modify()`s every parent purely to re-run this hook — see §Bulk
+  insert / update.
 
-  <!-- no-compile -->
-  ```csharp
-  e.React(
-      change => change.Kind != EntityChangeKind.Modified || change.HasChanged(x => x.InvoiceId) || change.HasChanged(x => x.TotalCost),
-      async (change, services, token) =>
-      {
-          var db = services.GetRequiredService<AppDbContext>();
-          var invoices = services.GetRequiredService<IEntityService<Invoice, int>>();
-          foreach (var id in new[] { change.Entity.InvoiceId, change.Original?.InvoiceId }.OfType<int>().Distinct())
-          {
-              // the bare row, detached and without navigations: List and Details apply the registered includes, and an
-              // included to-one would ride into Modify as a graph to attach
-              var invoice = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, token);
-              if (invoice != null) await invoices.Modify(invoice, token);
-          }
-          await invoices.SaveChanges(token);
-      });
-  ```
+**Settle it from the child with a reactor.** On the child's registration, re-save the parents a committed change
+touched — the old one too when the FK moved — so the prepper above re-sums them:
 
-  The reactor runs after the child's save committed, in a scope of its own, so the parent's save is a second
-  commit: a failure there is logged and the child's save stands. With it registered, seeding needs no second pass
-  over the parents: seed the parents first, and each child wave settles them.
-- ⚠️ **A query filter on the child also hides its rows from this recompute.** A dependent you query directly
-  carries `HasQueryFilter(x => !x.Parent!.IsArchived)` (§Step 11) — and that filter applies here too, while
-  the parent is *still archived at the moment the prepper runs*. A restore (`PATCH {"isArchived": false}`)
-  therefore sums zero rows and writes the total to `0`, returns 200, and logs nothing. Add
-  `IgnoreQueryFilters()` to the aggregate query, scoped by the parent FK so it can only ever see this
-  aggregate's own children.
+<!-- no-compile -->
+```csharp
+e.React(
+    change => change.Kind != EntityChangeKind.Modified || change.HasChanged(x => x.InvoiceId) || change.HasChanged(x => x.TotalCost),
+    async (change, services, token) =>
+    {
+        var db = services.GetRequiredService<AppDbContext>();
+        var invoices = services.GetRequiredService<IEntityService<Invoice, int>>();
+        foreach (var id in new[] { change.Entity.InvoiceId, change.Original?.InvoiceId }.OfType<int>().Distinct())
+        {
+            // the bare row, detached and without navigations: List and Details apply the registered includes, and an
+            // included to-one would ride into Modify as a graph to attach
+            var invoice = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, token);
+            if (invoice != null) await invoices.Modify(invoice, token);
+        }
+        await invoices.SaveChanges(token);
+    });
+```
+
+The reactor runs after the child's save committed, in a scope of its own, so the parent's save is a second
+commit: a failure there is logged and the child's save stands. With it registered, seeding needs no second pass
+over the parents: seed the parents first, and each child wave settles them.
+
+> ⚠️ **A query filter on the child also hides its rows from this recompute.** A dependent you query directly
+> carries `HasQueryFilter(x => !x.Parent!.IsArchived)` (§Step 11) — and that filter applies here too, while
+> the parent is *still archived at the moment the prepper runs*. A restore (`PATCH {"isArchived": false}`)
+> therefore sums zero rows and writes the total to `0`, returns 200, and logs nothing. Add
+> `IgnoreQueryFilters()` to the aggregate query, scoped by the parent FK so it can only ever see this
+> aggregate's own children.
 
 ## Server-generated sequential codes
 
@@ -1954,6 +2036,9 @@ The primer is also what keeps the sequence gapless: it runs inside `SaveChanges(
 create they refuse uses no number. Minted in a prepper or with `e.ServerOwned(x => x.Code, mint)`, which run
 before the validators, the refused create has already taken its number, and the next one skips it. Only a save that
 then fails in the database still leaves a gap.
+
+A `[Normalized]` property or `e.AddNormalizer<>()` sees a value a primer set: the normalizer interceptor runs after the
+primer interceptor in the same `SaveChanges` (`entities.instructions` → *Write-pipeline order*).
 
 ⚠️ **Primer vs prepper when a second writer exists.** A prepper runs only on the entity-service write path
 (`IEntityService.Add`/`Modify`/`Save` — so `original` is `null` on create, the stored row on update). A
@@ -2156,6 +2241,9 @@ full set with `e.AddDefaultInterceptors()` or select pieces à la carte with `e.
 | `ArchivedQueryFilter` | Applies the soft-delete filter (`e => !e.IsArchived`) to every `IArchivable` entity type — see §Soft Delete |
 | `ConcurrencyTokens` | Declares `IHasConcurrencyToken.ConcurrencyToken` a concurrency token on every implementing entity type — see §Optimistic concurrency |
 | `Reactors` | Runs registered reactors once a save's changes are committed (entities.instructions §Step 9 → Reactors) |
+
+The three interceptor rows run in table order inside `SaveChanges`; reactors run after the commit; the conventions
+shape the model and run at no save (`entities.instructions` → *Write-pipeline order*).
 
 > **À-la-carte pattern (no `UseDefaults()`):**
 > ```csharp

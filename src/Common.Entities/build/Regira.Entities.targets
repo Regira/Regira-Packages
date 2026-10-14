@@ -11,7 +11,7 @@
   </PropertyGroup>
 
   <!--
-    Copies Entities AI instruction files into the consuming project's
+    Copies Entities AI instruction files into the solution root's
     .regira/instructions/ folder. Existing files are left untouched; missing ones are copied on the next build.
   -->
   <Target Name="RegiraEntitiesExtractAiFiles"

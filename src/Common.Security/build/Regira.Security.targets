@@ -2,16 +2,21 @@
 
   <PropertyGroup>
     <_RegiraSecurityFilesRoot>$(MSBuildThisFileDirectory)..\ai\</_RegiraSecurityFilesRoot>
+    <!--
+      Extract only when a solution context is present, so files land once at the
+      solution root. Per-project builds (SolutionDir undefined) are skipped to
+      avoid scattering duplicate copies into every consuming project folder.
+    -->
     <_RegiraBaseDir Condition="'$(SolutionDir)' != '' And '$(SolutionDir)' != '*Undefined*'">$(SolutionDir)</_RegiraBaseDir>
-    <_RegiraBaseDir Condition="'$(_RegiraBaseDir)' == ''">$(ProjectDir)</_RegiraBaseDir>
   </PropertyGroup>
 
   <!--
-    Copies Security AI instruction files into the consuming project's
+    Copies Security AI instruction files into the solution root's
     .regira/instructions/ folder. Existing files are left untouched; missing ones are copied on the next build.
   -->
   <Target Name="RegiraSecurityExtractAiFiles"
-          BeforeTargets="BeforeBuild">
+          BeforeTargets="BeforeBuild"
+          Condition="'$(_RegiraBaseDir)' != ''">
 
     <!-- Per-file gating: a file the consumer already has is never overwritten, and a guide
          added by a package upgrade still lands — a single already-extracted sentinel would

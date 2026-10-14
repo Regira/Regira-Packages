@@ -508,8 +508,8 @@ public class OrderLineInputDto   // no UnitPrice — it is server-owned, resolve
 // Entities/Orders/OrderNormalizer.cs — folds customer + product text into the order so one ?q= hits all three.
 // EntityNormalizerBase.HandleNormalize is a no-op: compose the whole value here and assign it. Never append to
 // item.NormalizedContent — that self-concatenates on every save until [MaxLength] silently truncates it.
-// Run the result through INormalizer: ?q= terms are normalized before matching (§Normalizing contract).
-public class OrderNormalizer(WebshopDbContext dbContext, INormalizer normalizer) : EntityNormalizerBase<Order>
+// Run the result through the base's DefaultPropertyNormalizer: ?q= terms are normalized before matching (§Normalizing contract).
+public class OrderNormalizer(WebshopDbContext dbContext, INormalizer? normalizer = null) : EntityNormalizerBase<Order>(normalizer)
 {
     public override async Task HandleNormalize(Order item, CancellationToken token = default)
     {
@@ -518,7 +518,7 @@ public class OrderNormalizer(WebshopDbContext dbContext, INormalizer normalizer)
             .Where(p => productIds.Contains(p.Id))
             .Select(p => p.Title)
             .ToListAsync(token);
-        item.NormalizedContent = normalizer.Normalize(string.Join(' ',
+        item.NormalizedContent = DefaultPropertyNormalizer.Normalize(string.Join(' ',
             new[] { item.Code, item.Customer?.Name }
                 .Concat(productTitles)
                 .Where(s => !string.IsNullOrWhiteSpace(s))));
@@ -996,13 +996,13 @@ options.AddGlobalFilterQueryBuilder<FilterHasNormalizedContentQueryBuilder>();
 
 <!-- no-compile -->
 ```csharp
-// Uses INormalizer to manually control normalization output:
-public class ProductNormalizer(INormalizer normalizer) : EntityNormalizerBase<Product>
+// Passes INormalizer to the base and normalizes through the inherited DefaultPropertyNormalizer:
+public class ProductNormalizer(INormalizer? normalizer = null) : EntityNormalizerBase<Product>(normalizer)
 {
     // INormalizer.Normalize(string) is synchronous (returns string) — do not await it.
     public override Task HandleNormalize(Product item, CancellationToken token = default)
     {
-        item.NormalizedContent = normalizer.Normalize($"{item.Title} {item.Description}".Trim());
+        item.NormalizedContent = DefaultPropertyNormalizer.Normalize($"{item.Title} {item.Description}".Trim());
         return Task.CompletedTask;
     }
 }

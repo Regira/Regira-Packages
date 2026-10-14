@@ -15,8 +15,9 @@ public abstract class UserControllerBase<TUser>(UserManager<TUser> userManager) 
   where TUser : IdentityUser<string>, new()
 {
     /// <summary>
-    /// Creates the user, unless one by that name exists, and with <see cref="UserInput.ConfirmEmailUrl"/> mails it a
-    /// confirmation link: that page with the token as its query string.
+    /// Creates the user, and with <see cref="UserInput.ConfirmEmailUrl"/> mails it a confirmation link: that page with
+    /// the token as its query string. A name that is taken, like any refusal of Identity's, answers <c>400</c> with
+    /// Identity's error code (<c>DuplicateUserName</c>) as the key, and the existing user is left alone.
     /// <para>
     /// The page must be on one of <see cref="AccountEmailOptions.AllowedOrigins"/>, or the answer is <c>400</c> and
     /// nothing is created or sent. Throws <see cref="InvalidOperationException"/> when a page is given and no origin is
@@ -37,29 +38,24 @@ public abstract class UserControllerBase<TUser>(UserManager<TUser> userManager) 
             }
         }
 
-        var user = await userManager.FindByNameAsync(model.Username);
-        if (user == null)
+        var user = new TUser { UserName = model.Username, Email = model.Username };
+        var response = await userManager.CreateAsync(user, model.Password);
+        if (!response.Succeeded)
         {
-            user = new TUser { UserName = model.Username, Email = model.Username };
-            var response = await userManager.CreateAsync(user, model.Password);
-            if (!response.Succeeded)
-            {
-                // error
-                ModelState.AddIdentityErrors(response.Errors);
-                return BadRequest(ModelState);
-            }
-            if (confirmPage != null)
-            {
-                var confirmToken = await userManager.GenerateEmailConfirmationTokenAsync(user);
-                var token = System.Text.Json.JsonSerializer.Serialize(new UserTokenModel { Token = confirmToken, Username = user.UserName! }).Base64Encode();
-                var body = $@"Welcome {model.Username},
+            ModelState.AddIdentityErrors(response.Errors);
+            return BadRequest(ModelState);
+        }
+        if (confirmPage != null)
+        {
+            var confirmToken = await userManager.GenerateEmailConfirmationTokenAsync(user);
+            var token = System.Text.Json.JsonSerializer.Serialize(new UserTokenModel { Token = confirmToken, Username = user.UserName! }).Base64Encode();
+            var body = $@"Welcome {model.Username},
 Please follow link below to confirm email
 {confirmPage.WithToken(token)}
 
 Token: {token}
 ";
-                await mailer.SendEmailAsync(user.Email, "Welcome", body);
-            }
+            await mailer.SendEmailAsync(user.Email, "Welcome", body);
         }
 
         return Ok();

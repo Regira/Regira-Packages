@@ -61,7 +61,7 @@ public abstract class PasswordControllerBase<TUser>(UserManager<TUser> userManag
         {
             var resetToken = await userManager.GeneratePasswordResetTokenAsync(user);
             var token = System.Text.Json.JsonSerializer.Serialize(new UserTokenModel { Token = resetToken, Username = user.UserName! }).Base64Encode();
-            var subject = $"{options.SiteName} password reset".Trim().Capitalize()!;
+            var subject = $"{options.SiteName} Password Reset".Trim();
             var body = $@"Follow link below to reset password
 {resetPage.WithToken(token)}
 

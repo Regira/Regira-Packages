@@ -183,7 +183,8 @@ internal sealed class MiniTemplateWalk(WordprocessingDocument doc, IEnumerable<O
 
     /// <summary>
     /// Fills each field in the <c>w:t</c> that holds its tag; a line ending in the value becomes a line break in the
-    /// same run, as Word's Shift+Enter.
+    /// same run, as Word's Shift+Enter. The value is neutralised, so MiniWord, which runs after, leaves it whole
+    /// (<see cref="TagLikeText"/>).
     /// </summary>
     protected override void Fill(OpenXmlElement paragraph, IReadOnlyList<TemplateField> fields)
     {
@@ -193,7 +194,7 @@ internal sealed class MiniTemplateWalk(WordprocessingDocument doc, IEnumerable<O
             foreach (var field in fields)
             {
                 // an evaluator, so a '$' in the value is written as it is
-                value = field.Pattern.Replace(value, _ => field.Value);
+                value = field.Pattern.Replace(value, _ => TagLikeText.Neutralise(field.Value));
             }
             if (value == text.Text)
             {

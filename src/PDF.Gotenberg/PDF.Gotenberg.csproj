@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Office.PDF.Gotenberg</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.5.1</Version>
+    <Version>6.6.0</Version>
     <Description>HTML to PDF conversion through the Chromium route of a Gotenberg server for Regira Office.</Description>
     <PackageTags>regira;office;pdf;gotenberg;chromium;html-to-pdf</PackageTags>
   </PropertyGroup>
@@ -23,5 +23,8 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Office.PDF.Testing" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="ai\pdf.gotenberg.card.md" Pack="true" PackagePath="ai\" />
   </ItemGroup>
 </Project>

@@ -19,7 +19,9 @@ public class EntityEndpointOptions
     public string? Route { get; set; }
     /// <summary>Whether <c>MapEntityEndpoints()</c> leaves the entity out (<see cref="Disable"/>).</summary>
     public bool IsDisabled { get; private set; }
+    /// <summary>The endpoints <c>MapEntityEndpoints()</c> leaves out of the entity's set (<see cref="Exclude"/>).</summary>
     public IReadOnlySet<EntityEndpoint> Excluded => _excluded;
+    /// <summary>The endpoints open to anonymous callers whatever policy secures the rest (<see cref="AllowAnonymous"/>).</summary>
     public IReadOnlySet<EntityEndpoint> Anonymous => _anonymous;
     /// <summary>The read DTO the endpoints answer with; <c>null</c> = the one <c>UseMapping&lt;TDto, TInputDto&gt;()</c> declared.</summary>
     public Type? DtoType { get; private set; }
@@ -41,8 +43,10 @@ public class EntityEndpointOptions
     }
 
     /// <summary>
-    /// Opens these endpoints to anonymous callers when a policy secures the rest — <see cref="EntityEndpoint.Download"/>
-    /// for files an <c>&lt;img&gt;</c> loads.
+    /// Opens these endpoints to anonymous callers when a policy secures the rest — any <see cref="EntityEndpoint"/>, e.g.
+    /// <see cref="EntityEndpoint.List"/>, <see cref="EntityEndpoint.Search"/> and <see cref="EntityEndpoint.Details"/> for
+    /// public reads, or <see cref="EntityEndpoint.Download"/> for files an <c>&lt;img&gt;</c> loads. The attachment
+    /// endpoints follow the owner's registration.
     /// </summary>
     public EntityEndpointOptions AllowAnonymous(params EntityEndpoint[] endpoints)
     {

@@ -338,6 +338,116 @@ public class MiniTests() : WordTestsBase(new WordService(), "Mini")
         Assert.That(ex!.Message, Does.Contain("section"));
     }
 
+    /// <summary>
+    /// MiniWord puts each tag-like piece of a filled text (<c>&lt;b&gt;</c>) on a line of its own; a value is written as
+    /// given, wherever its tag sits.
+    /// </summary>
+    [Test]
+    public async Task A_Tag_Like_Global_Value_Is_Written_As_Given()
+    {
+        var input = new WordTemplateInput { Template = Docx.Document("Dear {{Name}},") };
+        input.GlobalParameters = new Dictionary<string, object> { ["Name"] = "Casey <b>Customer</b>" };
+
+        using var output = await Mini.Create(input);
+        var text = await Mini.GetText(input);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Is.EqualTo("Dear Casey <b>Customer</b>,\n"));
+            Assert.That(Docx.Count<W.Break>(output), Is.Zero);
+        });
+    }
+
+    [Test]
+    public async Task A_Tag_Like_Collection_Value_Is_Written_As_Given()
+    {
+        var input = new WordTemplateInput { Template = Docx.Document([Docx.Table(["{{Items.Name}}"])]) };
+        input.CollectionParameters!.Add("Items", new List<IDictionary<string, object>>
+        {
+            new Dictionary<string, object> { ["Name"] = "Pen <blue>" },
+            new Dictionary<string, object> { ["Name"] = "Ink </b> refill" }
+        });
+
+        using var output = await Mini.Create(input);
+        var text = await Mini.GetText(input);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Does.Contain("Pen <blue>\n").And.Contain("Ink </b> refill\n"));
+            Assert.That(Docx.Count<W.Break>(output), Is.Zero);
+        });
+    }
+
+    [Test]
+    public async Task A_Tag_Like_Loop_Value_Is_Written_As_Given()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document("{{#each Orders}}", "Order for {{Customer}}", "{{/each}}"),
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
+            {
+                ["Orders"] = [new Dictionary<string, object> { ["Customer"] = "Casey <b>Customer</b>" }]
+            }
+        };
+
+        using var output = await Mini.Create(input);
+        var text = await Mini.GetText(input);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Is.EqualTo("Order for Casey <b>Customer</b>\n"));
+            Assert.That(Docx.Count<W.Break>(output), Is.Zero);
+        });
+    }
+
+    /// <summary>
+    /// A row of a nested loop is written as given too: the restore reads the written document, not the input, whose rows
+    /// can nest and hold objects of any kind.
+    /// </summary>
+    [Test]
+    public async Task A_Tag_Like_Value_In_A_Nested_Loop_Is_Written_As_Given()
+    {
+        var input = new WordTemplateInput
+        {
+            Template = Docx.Document("{{#each Orders}}", "{{#each Lines}}", "Line {{Product}}", "{{/each}}", "{{/each}}"),
+            CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
+            {
+                ["Orders"] =
+                [
+                    new Dictionary<string, object>
+                    {
+                        ["Lines"] = new List<IDictionary<string, object>> { new Dictionary<string, object> { ["Product"] = "Pen <blue>" } }
+                    }
+                ]
+            }
+        };
+
+        var text = await Mini.GetText(input);
+
+        Assert.That(text, Is.EqualTo("Line Pen <blue>\n"));
+    }
+
+    /// <summary>The space a value ends with, before a tab, is kept.</summary>
+    [Test]
+    public async Task A_Tag_Like_Value_Before_A_Tab_Keeps_Its_Trailing_Space()
+    {
+        var paragraph = new W.Paragraph(new W.Run(
+            new W.Text("{{Name}} ") { Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve },
+            new W.TabChar(),
+            new W.Text("Paid")));
+        var input = new WordTemplateInput { Template = Docx.Document([paragraph]) };
+        input.GlobalParameters = new Dictionary<string, object> { ["Name"] = "Casey <b>Customer</b>" };
+
+        using var output = await Mini.Create(input);
+        var text = await Mini.GetText(input);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Is.EqualTo("Casey <b>Customer</b> \tPaid\n"));
+            Assert.That(Docx.Count<W.Break>(output), Is.Zero);
+        });
+    }
+
     /// <summary>A container that ends as the template wrote it — here in a content control — gets no paragraph added.</summary>
     [Test]
     public async Task A_Container_Ending_As_The_Template_Wrote_It_Is_Left_As_It_Is()

@@ -220,6 +220,26 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
         confirmed!.EmailConfirmed.ShouldBeTrue();
     }
 
+    // a taken name is refused, so the caller does not take the existing account for one it made
+    [Fact]
+    public async Task CreateUser_WithTakenName_AnswersBadRequestAndKeepsTheExistingUser()
+    {
+        const string admin = "creator-taken@test.local";
+        await SeedUser(admin, "AdminPass1");
+        const string existing = "taken@test.local";
+        await SeedUser(existing, "Existing1");
+        var client = _factory.CreateClient();
+        client.SetBearerToken(await Authenticate(client, admin, "AdminPass1"));
+
+        var create = await client.PostAsJsonAsync("users", new { username = existing, password = "Created1" });
+
+        create.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        using var body = System.Text.Json.JsonDocument.Parse(await create.Content.ReadAsStringAsync());
+        body.RootElement.TryGetProperty("DuplicateUserName", out _).ShouldBeTrue();
+        (await client.PostAsJsonAsync("auth?clientApp=test", new { username = existing, password = "Existing1" }))
+            .StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
     // --- emailed links ------------------------------------------------------------------------
 
     // The caller names the page a link opens, so anyone could have the application mail a genuine reset token
@@ -362,6 +382,23 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
         email.ShouldNotBeNull();
         email.Subject.ShouldNotContain("555-0100");
         email.Subject.ShouldBe("Example Password Reset");
+    }
+
+    [Fact]
+    public async Task RecoverPassword_Subject_KeepsTheSiteNameAsWritten()
+    {
+        var factory = WithAccountEmails(o => o.SiteName = "ExampleHub");
+        const string username = "recover-subject-casing@test.local";
+        await SeedUser(username, "OldPass1", factory);
+        var client = factory.CreateClient();
+
+        var recover = await client.PostAsJsonAsync("auth/password/recover",
+            new { username, siteUrl = "https://app.example.com/reset-password" });
+        recover.StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        var email = factory.Services.GetRequiredService<SentEmailStore>().Last;
+        email.ShouldNotBeNull();
+        email.Subject.ShouldBe("ExampleHub Password Reset");
     }
 
     [Fact]

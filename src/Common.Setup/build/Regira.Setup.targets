@@ -11,7 +11,7 @@
   </PropertyGroup>
 
   <!--
-    Copies shared Regira setup guides into the consuming project's
+    Copies shared Regira setup guides into the solution root's
     .regira/instructions/ folder. Existing files are left untouched; missing ones are copied on the next build.
   -->
   <Target Name="RegiraSetupExtractAiFiles"
@@ -39,7 +39,7 @@
   </Target>
 
   <!--
-    Copies copilot-instructions.md into the consuming project's
+    Copies copilot-instructions.md into the solution root's
     .github/instructions/ folder on first build, giving VS Code Copilot
     Regira-aware context without any manual setup.
   -->
@@ -64,7 +64,7 @@
   </Target>
 
   <!--
-    Copies Regira slash commands into the consuming project's
+    Copies Regira slash commands into the solution root's
     .claude/commands/ folder. Existing files are left untouched; missing ones are copied on the next build.
   -->
   <Target Name="RegiraSetupExtractCommandFiles"

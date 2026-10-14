@@ -12,15 +12,24 @@ namespace Regira.Entities.DependencyInjection.Preppers;
 public static class ServiceCollectionPrepperExtensions
 {
     // Preppers
+    /// <summary>
+    /// Registers a prepper class for every entity it is scoped to — an interface or base type reaches every entity
+    /// implementing it. A class registered more than once runs once.
+    /// </summary>
     public static IServiceCollection AddPrepper<TPrepper>(this IServiceCollection services)
         where TPrepper : class, IEntityPrepper
-        => services.AddTransient<IEntityPrepper, TPrepper>();
+    {
+        // TryAddEnumerable: the same interface-scoped prepper added in several For<>() blocks must not run twice per save
+        services.TryAddEnumerable(ServiceDescriptor.Transient<IEntityPrepper, TPrepper>());
+        return services;
+    }
 
+    /// <inheritdoc cref="AddPrepper{TPrepper}(IServiceCollection)"/>
     public static IServiceCollection AddPrepper<TEntity, TPrepper>(this IServiceCollection services)
         where TPrepper : class, IEntityPrepper<TEntity>
     {
         AddPrepper<TPrepper>(services);
-        services.AddTransient<IEntityPrepper<TEntity>, TPrepper>();
+        services.TryAddEnumerable(ServiceDescriptor.Transient<IEntityPrepper<TEntity>, TPrepper>());
         return services;
     }
     public static IServiceCollection AddPrepper<TImplementation>(this IServiceCollection services, Func<IServiceProvider, TImplementation> factory)
@@ -44,17 +53,18 @@ public static class ServiceCollectionPrepperExtensions
         => services.AddTransient<IEntityPrepper>(p => new EntityPrepper<TContext, TEntity>(p.GetRequiredService<TContext>(), prepareFunc));
 
 
+    /// <inheritdoc cref="AddPrepper{TPrepper}(IServiceCollection)"/>
     public static EntityServiceCollectionOptions AddPrepper<TImplementation>(this EntityServiceCollectionOptions options)
         where TImplementation : class, IEntityPrepper
     {
-        options.Services.AddTransient<IEntityPrepper, TImplementation>();
+        options.Services.AddPrepper<TImplementation>();
         return options;
     }
+    /// <inheritdoc cref="AddPrepper{TPrepper}(IServiceCollection)"/>
     public static EntityServiceCollectionOptions AddPrepper<TImplementation, TKey>(this EntityServiceCollectionOptions options)
         where TImplementation : class, IEntityPrepper<TKey>
     {
-        options.AddPrepper<TImplementation>();
-        options.Services.AddTransient<IEntityPrepper<TKey>, TImplementation>();
+        options.Services.AddPrepper<TKey, TImplementation>();
         return options;
     }
     public static EntityServiceCollectionOptions AddPrepper<TContext, TEntity>(this EntityServiceCollectionOptions options, Func<TEntity, TContext, Task> prepareFunc)

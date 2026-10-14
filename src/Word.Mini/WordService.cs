@@ -52,10 +52,32 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
         var values = GetMiniValue(input);
         var ms = new MemoryStream();
         await ms.SaveAsByTemplateAsync(TrimTags(ResolveBlocks(templateBytes, input)), values, cancellationToken);
+        RestoreTagLikeText(ms);
         // SaveAsByTemplateAsync leaves the stream at its end; rewind so consumers reading
         // Stream directly (rather than through GetStream()) see the content.
         ms.Position = 0;
         return ms.ToBinaryFile(ContentTypes.DOCX);
+    }
+
+    /// <summary>
+    /// Takes out the word joiners that kept a tag-like value whole through MiniWord (<see cref="TagLikeText"/>), so the
+    /// document's text equals the values as given.
+    /// </summary>
+    private static void RestoreTagLikeText(MemoryStream document)
+    {
+        // read-only first: an editable package is written again when it closes, changed or not
+        document.Position = 0;
+        using (var doc = WordprocessingDocument.Open(document, false))
+        {
+            if (!TagLikeText.IsHeldIn(ContentRoots(doc.MainDocumentPart).Select(content => content.Root)))
+            {
+                return;
+            }
+        }
+
+        document.Position = 0;
+        using var editable = WordprocessingDocument.Open(document, true);
+        TagLikeText.Restore(ContentRoots(editable.MainDocumentPart).Select(content => content.Root));
     }
 
     /// <summary>
@@ -144,6 +166,7 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
     /// parameter key, an image name, a collection key or a collection's field — holding one of
     /// <c>. \ ^ $ | ? * + ( ) [ ] { }</c> is refused with an <see cref="ArgumentException"/> naming it.
     /// </para>
+    /// <para>A text value, a collection row's included, is neutralised so MiniWord writes it whole (<see cref="TagLikeText"/>).</para>
     /// </summary>
     internal static Dictionary<string, object> GetMiniValue(WordTemplateInput input)
     {
@@ -170,7 +193,7 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
             {
                 throw Unreadable(parameter.Key);
             }
-            Add(parameter.Key, parameter.Value);
+            Add(parameter.Key, TagLikeText.Neutralise(parameter.Value));
         }
         foreach (var image in input.Images ?? [])
         {
@@ -191,7 +214,7 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
             {
                 throw Unreadable($"{collection.Key}.{field}");
             }
-            Add(collection.Key, collection.Value!);
+            Add(collection.Key, collection.Value?.Select(TagLikeText.Neutralise).ToList()!);
         }
 
         // the template's tags are trimmed (TrimTags), so a key spelled with spaces is reached by its trimmed form;
