@@ -162,6 +162,7 @@
         "System.Xml.Linq",
         "Microsoft.AspNetCore.Builder",
         "Microsoft.Extensions.DependencyInjection",
+        "Microsoft.Extensions.Hosting",
         "Regira.System",
         "Regira.System.Abstractions",
         "Regira.IO.Abstractions",

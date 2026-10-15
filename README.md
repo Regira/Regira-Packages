@@ -29,7 +29,7 @@ Regira is a collection of .NET libraries providing unified abstractions for comm
 | [EF Core](src/DAL.EFcore) | Entity Framework Core extensions and utilities |
 | [MongoDB](src/DAL.MongoDB) | MongoDB connectivity and backup/restore |
 | [MySQL](src/DAL.MySQL) | MySQL/MariaDB connectivity and backup/restore |
-| [PostgreSQL](src/DAL.PostgreSQL) | PostgreSQL connectivity and backup/restore |
+| [PostgreSQL](src/DAL.PostgreSQL) | PostgreSQL backup/restore (pg_dump / pg_restore) |
 | [SQL Server](src/DAL.SqlServer) | SQL Server backup/restore |
 
 ---

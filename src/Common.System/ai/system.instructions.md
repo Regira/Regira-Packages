@@ -99,6 +99,11 @@ Work items run one at a time. One that throws is logged and the next one runs; a
 ### Windows Service Installer
 
 ```csharp
+using Microsoft.Extensions.Hosting.WindowsServices;   // WindowsServiceHelpers
+
+if (WindowsServiceHelpers.IsWindowsService()) builder.Host.UseWindowsService();
+
+var app = builder.Build();
 app.AddWindowsServiceInstaller(new WindowsServiceOptions
 {
     ServiceName       = "MyApi",
@@ -107,7 +112,9 @@ app.AddWindowsServiceInstaller(new WindowsServiceOptions
 });
 ```
 
-Generates `install.bat` / `uninstall.bat` scripts using `sc.exe`.
+Generates `install.bat` / `uninstall.bat` scripts using `sc.exe`. The installer only writes the scripts: the host must
+also call `UseWindowsService()` to run as a service. `Microsoft.Extensions.Hosting.WindowsServices` comes with
+`Regira.System.Hosting`.
 
 ---
 

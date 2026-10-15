@@ -53,8 +53,12 @@ Task<IMemoryFile> WriteFile(IEnumerable<T> items,  CsvOptions? options = null, C
 
 | Property | Type | Default | Description |
 |---|---|---|---|
-| `IgnoreBadData` | `bool` | `false` | Skip malformed rows instead of throwing |
+| `IgnoreBadData` | `bool` | `false` | Read a field with a stray quote as it stands instead of throwing `BadDataException` |
 | `PreserveWhitespace` | `bool` | `false` | Keep leading/trailing whitespace in cell values |
+
+Both are public fields, read only from the options passed to the `CsvManager` constructor
+(`new CsvManager<Product>(new CsvHelperOptions { IgnoreBadData = true })`); per-call options apply only `Delimiter` and
+`Culture`. A per-call object sets both, so its default `","` replaces the constructor's delimiter.
 
 ---
 
@@ -68,6 +72,17 @@ Task<IMemoryFile> WriteFile(IEnumerable<T> items,  CsvOptions? options = null, C
 ---
 
 ## Usage
+
+There is no `Add…` extension: register the classes yourself. A `CsvManager` keeps nothing but the options it was
+constructed with, so a singleton is safe:
+
+```csharp
+using Regira.Office.Csv.Abstractions;
+using Regira.Office.Csv.CsvHelper;
+
+services.AddSingleton<ICsvService, CsvManager>();                     // rows as dictionaries
+services.AddSingleton(typeof(ICsvService<>), typeof(CsvManager<>));   // typed rows: ICsvService<Product>
+```
 
 <!-- no-compile -->
 ```csharp

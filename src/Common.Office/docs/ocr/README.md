@@ -7,7 +7,7 @@ Regira OCR provides optical character recognition via two underlying engines. Bo
 | Project | Package | Engine | Languages |
 |---------|---------|--------|-----------|
 | `OCR.Tesseract` | `Regira.Office.OCR.Tesseract` | Tesseract 5 | English, Dutch (configurable) |
-| `OCR.PaddleOCR` | `Regira.Office.OCR.PaddleOCR` | PaddleOCR (ONNX) | Multi-script — 10 PP-OCRv5 models (see table below) |
+| `OCR.PaddleOCR` | `Regira.Office.OCR.PaddleOCR` | PaddleOCR (ONNX) | Multi-script — 12 PP-OCRv5 models (see table below) |
 
 ## Installation
 

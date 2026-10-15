@@ -37,7 +37,15 @@ services.UseEntities<AppDbContext>(options =>
 
 Without a key, the **free tier** applies automatically — no configuration for dev/CI: **5 simple + 2 complex registrations**, two independent buckets (counted separately, not a shared pool of 7), one slot per distinct entity type, and one extra *simple* slot per attachment owner (the per-owner join entity via `HasAttachments`; the shared `Attachment` base via `WithAttachments` is free infrastructure, however many owners use it). Exceeding either bucket throws at startup naming the offenders. **Classify each entity and tally the budget before scaffolding — the decision table, the simple/complex definitions, and a worked example live in [§Step 0](#step-0--classify-every-entity-before-scaffolding), the canonical spot.**
 
-Store paid keys under `Regira:LicenseKeys` in `appsettings.json`. A single key can cover multiple products; add more keys to the array to combine them — the system picks the best per product (paid always wins over free). Obtain a key at [https://regira.com/licensing](https://regira.com/licensing).
+Store paid keys under `Regira:LicenseKeys` in configuration: user-secrets in development, the environment or a key vault in production. A single key can cover multiple products; add more keys to the array to combine them — the system picks the best per product (paid always wins over free). Obtain a key at [https://regira.com/licensing](https://regira.com/licensing).
+
+```json
+{ "Regira": { "LicenseKeys": [ "<your-license-key>" ] } }
+```
+
+```bash
+dotnet user-secrets set "Regira:LicenseKeys:0" "<key>"   # Regira__LicenseKeys__0 in the environment
+```
 
 The keys are read when the first `For<>()` runs. A key that was not registered by then — `UseRegira()` after `UseEntities()`, a misspelled section, a single string under `LicenseKeys`, which must be an array — leaves the free tier, and the startup error opens with *No Regira license key covering regira.entities was registered*.
 
@@ -132,7 +140,7 @@ The two rules that are easy to get wrong and that `entities.setup.md` assumes yo
 >
 > | Decision | Pick | Consequence |
 > |---|---|---|
-> | **Addressable or owned?** | independently addressable **entity**, or **owned child** (order lines, join / share / member rows) | Owned child → `e.Related()` on the parent, **no `.For<>()`, no controller, no budget slot**; the SPA edits it inside the parent form. Give it its own `.For<>()` + controller only when clients must address its rows outside the parent. Deciding late is the most expensive rework (§Relationship Patterns — Decision Table). |
+> | **Addressable or owned?** | independently addressable **entity**, or **owned child** (order lines, join / share / member rows) | Owned child → `e.Related()` on the parent, **no `.For<>()`, no controller, no budget slot**; the SPA edits it inside the parent form. Give it its own `.For<>()` + controller only when clients must address its rows outside the parent. Deciding late is the most expensive rework (§Relationship Patterns — Decision Table). A child with files of its own is an entity: `HasAttachments` chains on a `For<>()` builder only, and its link takes one more simple slot. |
 > | **Simple or complex?** | **simple** = `For<>()` without `TSortBy`/`TIncludes`; **complex** = `For<…, TSortBy, TIncludes>()` | Sets the `.For<>()` overload, the `EntityControllerBase<>` generics (Step 13), and which endpoints exist. Complex is required for typed sorting/includes and the batch `POST /list` & `POST /search`; `GET /search` (with `count`) exists for simple too. An attachment owner's `HasAttachments` join entity is classified **simple**. |
 > | **⚠️ Who writes it?** | one writer per save path | A parent's `Related()` sync and the child's own `IEntityService<T>` coexist **only while the parent's input DTO leaves that collection `null`** (the sync then no-ops). Send it and the parent wins — `[]` deletes every row, and fields missing from the child input DTO reset to default: silent data loss. Startup validation warns for top-level `Related()` pairings only (a nested one isn't detected). Need an owned child's own endpoint (a per-row toggle)? Supported — keep the collection off the parent's input DTO and give each field a narrow route. |
 >
@@ -1720,6 +1728,11 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 > `e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments, a => a.AddValidator<ProductAttachmentValidator>())`,
 > or anywhere with `options.AddValidator<T>()`. `e.AddValidator<T>()` on the owner's builder takes only the owner's
 > validators (**CS0311**).
+
+> **Transforming a file before it is stored** (resizing a photo, turning it upright) is a prepper's job, split the same
+> way: the owner's preppers see `NewBytes` on its links, the link's preppers see an upload as a `Stream` on its
+> `Attachment`. Two preppers on the `UseEntities` options cover both: [`entities.patterns.md`](./entities.patterns.md) →
+> *Transform uploaded files before they are stored (resize photos)* (`how_to` key `transform-uploads`).
 
 > ⚠️ **Marking one attachment as the primary one? Mark the link entity, don't point the owner at it.** An
 > owner FK to one of its own attachments makes the two tables reference each other: SQL Server refuses the

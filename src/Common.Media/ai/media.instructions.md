@@ -34,11 +34,14 @@
 |---|---|---|
 | **Recommended** | ✓ | – |
 | **Cross-platform** | ✓ (Win / Linux / macOS) | Windows only |
-| **Default resize quality** | 80 | 100 |
-| **EXIF auto-rotate** | – | ✓ |
+| **Default resize quality** | 80 on the class, 100 through `IImageService` | ignored: a resize re-encodes at 80 |
+| **EXIF auto-rotate** | – | – |
 | **Engine** | Google Skia | GDI+ (`System.Drawing.Common`) |
 
 Both implement `IImageService` and are interchangeable.
+
+Neither backend applies a photo's EXIF orientation: read it with SkiaSharp's `SKCodec.Create(stream).EncodedOrigin` and
+turn the image before resizing. `Rotate` turns clockwise for positive degrees.
 
 ---
 
@@ -139,6 +142,11 @@ Task<IImageFile?> Parse(byte[] rawBytes, ImageSize size, ImageFormat? format = n
 Task<IImageFile?> Parse(IMemoryFile file)
 ```
 
+Decoding allocates width × height × 4 bytes whatever the file size: a 20 MB upload can declare 50,000 × 50,000 px.
+SkiaSharp's `Parse` and `GetDimensions`, and every transform on either backend, decode the whole image. Check an
+upload's header first with `SKCodec.Create(stream)` (its `Info` holds the size, read without decoding) and reject one
+above, say, 40 million pixels.
+
 ### Format
 
 <!-- no-compile -->
@@ -160,7 +168,10 @@ Task<IImageFile> FlipHorizontal(IImageFile input)
 Task<IImageFile> FlipVertical(IImageFile input)
 ```
 
-> SkiaSharp default quality: 80. GDI default quality: 100.
+> The default `quality` follows the type you call through: 100 on `IImageService`, 80 on the concrete SkiaSharp
+> `ImageService`. On SkiaSharp, a quality below 100 re-encodes as JPEG, which drops transparency even when the output
+> stays PNG: pass 100 for a PNG with alpha. GDI ignores `quality`: a resize re-encodes in the source's own format at
+> 80, so a JPEG loses detail and a PNG keeps its alpha.
 
 ### Color
 

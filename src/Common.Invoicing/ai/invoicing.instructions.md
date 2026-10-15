@@ -147,6 +147,37 @@ Some fields are fixed rather than taken from the invoice:
 - Tax category `S` (standard rate) on every line. Peppol refuses `S` with a 0 % rate (BR-S-05), so an exempt,
   zero-rated or reverse-charge line needs its category changed in the returned `XDocument`
 
+For exempt 0 % lines, post-process the document: set each 0 % category to `E`, and give each VAT breakdown's
+`TaxCategory` an exemption reason (BR-E-10), right after `Percent` as the schema orders it. A line's
+`ClassifiedTaxCategory` takes no reason:
+
+```csharp
+using System.Xml.Linq;
+
+public static class UblExemptions
+{
+    // ubl = converter.Convert(input).MarkExemptCategories("Exempt under article 44 of the VAT Code");
+    public static XDocument MarkExemptCategories(this XDocument ubl, string exemptionReason)
+    {
+        XNamespace cac = Regira.Invoicing.Peppol.PeppolNamespaces.CAC;
+        XNamespace cbc = Regira.Invoicing.Peppol.PeppolNamespaces.CBC;
+        var zeroRated = ubl.Descendants(cac + "TaxCategory")             // TaxTotal/TaxSubtotal
+            .Concat(ubl.Descendants(cac + "ClassifiedTaxCategory"))     // InvoiceLine/Item
+            .Where(category => (decimal?)category.Element(cbc + "Percent") == 0)
+            .ToList();
+        foreach (var category in zeroRated)
+        {
+            category.Element(cbc + "ID")!.Value = "E";
+            if (category.Name == cac + "TaxCategory")
+            {
+                category.Element(cbc + "Percent")!.AddAfterSelf(new XElement(cbc + "TaxExemptionReason", exemptionReason));
+            }
+        }
+        return ubl;
+    }
+}
+```
+
 Not written: `IInvoiceLine.Code`, `IInvoiceLine.EndDate` and a payee bank account.
 
 ---

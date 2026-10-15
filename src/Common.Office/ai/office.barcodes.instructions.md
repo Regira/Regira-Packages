@@ -63,6 +63,15 @@ Each backend lives in its own namespace. Note that **QRCoder is write-only QR** 
 | `…UziGranot` | — | `Regira.Office.Barcodes.UziGranot.QRCodeService` |
 | `…QRCoder` | — | `Regira.Office.Barcodes.QRCoder.QRCodeWriter` *(write-only — `IQRCodeWriter`, no `Read`)* |
 
+There is no `Add…` extension: register the classes yourself. None keeps state between calls, so a singleton is safe:
+
+```csharp
+using Regira.Office.Barcodes.Abstractions;
+
+services.AddSingleton<IBarcodeService, Regira.Office.Barcodes.ZXing.BarcodeService>();
+services.AddSingleton<IQRCodeService, Regira.Office.Barcodes.ZXing.QRCodeService>();
+```
+
 ---
 
 ## Interfaces
@@ -124,8 +133,8 @@ Task<BarcodeReadResult?>  Read(IImageFile img, BarcodeFormat? format = null, Can
 | `Content` | `string` | *(required)* | Data to encode |
 | `Format` | `BarcodeFormat` | `Code128` | Barcode format (e.g. `BarcodeFormat.Code128`) |
 | `Size` | `ImageSize` | `400 × 100` | Output image dimensions |
-| `Color` | `Color` | `Black` | Foreground color |
-| `BackgroundColor` | `Color` | `White` | Background color |
+| `Color` | `Color` | `Black` | Foreground color (ignored by QRCoder and UziGranot, which always draw black) |
+| `BackgroundColor` | `Color` | `White` | Background color (ignored by Spire, QRCoder and UziGranot, which always draw white) |
 
 A `string` converts implicitly to a `BarcodeInput` (`Content`-only), so `await bc.Create("ABC-1234")` works.
 

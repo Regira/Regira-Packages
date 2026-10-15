@@ -17,6 +17,7 @@ most common source of a missing `using`.
 | `Regira.IO.Storage.Abstractions` | `IFileService`, `ITextFileService`, `IFileProcessor`, `FileEntryTypes` |
 | `Regira.IO.Storage` | `FileSearchObject`, `DefaultTextFileService` |
 | `Regira.IO.Abstractions` | `IMemoryFile`, `IBinaryFile`, `IMemoryBytesFile`, `IMemoryStreamFile` — assembly **`Regira.Common`** |
+| `Regira.IO.Models` | `BinaryFileItem` (the concrete `IBinaryFile`) — assembly **`Regira.Common`** |
 | `Regira.IO.Extensions` | `MemoryFileExtensions`, `BinaryFileExtensions` — `GetBytes()`, `GetStream()`, `HasPath()`; assembly **`Regira.Common`** |
 | `Regira.IO.Storage.Utilities` | `FileDataSource`, `BinaryFileCollectionExtensions` |
 | `Regira.IO.Storage.Helpers` | `FileProcessor`, `FileNameHelper`, `ExportHelper`, `IExportHelper`, `OnExistsAction`, `Options` |

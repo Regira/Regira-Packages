@@ -3,7 +3,10 @@
 namespace Regira.Office.Models;
 
 /// <summary>
-/// Margins in points; <c>ImagePrintInputModel</c> reads them in hundredths of an inch.
+/// Margins in the unit of the input that holds them: on a <see cref="Regira.Office.PDF.Abstractions.PdfInputBase"/>,
+/// units of its <c>DPI</c> (PDF points at 72; at the default 96, 37.8 is 10 mm); points on a document or Word input;
+/// hundredths of an inch on <c>ImagePrintInputModel</c>. A new instance starts every side at
+/// <see cref="DEFAULT_MARGIN"/>, 25 mm in points.
 /// </summary>
 public class Margins : IEquatable<Margins>
 {

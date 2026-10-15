@@ -30,7 +30,13 @@ string plain = legacy.Decrypt(storedCipher);
 
 ### AesEncrypter
 
-AES with a random salt prepended per encryption. Slower but produces different ciphertext on each call — recommended for stored secrets.
+AES-256 with a random salt per value, so it produces different ciphertext on each call — recommended for stored secrets.
+The costly step, PBKDF2 over the secret (about 0.2 s), runs once per secret in a process and is cached; each value then
+gets a key of its own from its salt with HKDF, in microseconds, so decrypting in an EF value converter stays cheap. The
+text is `aes1:` and Base64, 64 bytes longer than the cipher: 32 of salt and a 32-byte HMAC-SHA256 tag, so a value that
+was changed, or encrypted with another secret, throws `CryptographicException`. A value without that prefix, written before 6.6.0,
+still decrypts, paying the derivation on its first read in a process; decrypt and encrypt it again to move it. A version
+before 6.6.0 cannot read the `aes1:` format.
 Encrypting needs a secret, `CryptoOptions.Secret` or a key passed to `Encrypt`, and throws `InvalidOperationException`
 without one. `Decrypt` without one uses the built-in key, so what an earlier version encrypted with it stays readable.
 
@@ -38,6 +44,11 @@ without one. `Decrypt` without one uses the built-in key, so what an earlier ver
 var enc = new AesEncrypter(new CryptoOptions { Secret = "my-app-key" });
 string cipher = enc.Encrypt("sensitive value");
 ```
+
+A value converter still decrypts the column whenever the entity loads, even into a DTO that drops it, and a read DTO
+that carries it sends the plain value to every client. For a value few screens show (a bank account), store the
+ciphertext in a plain property encrypted by a prepper from a write-only input, keep it out of the read DTOs (a masked
+copy can serve the lists), and decrypt it in an endpoint of its own that returns one value.
 
 ### CryptoOptions
 

@@ -276,7 +276,12 @@ public async Task<IActionResult> Send([FromBody] MailInput input, IMailService m
 
 ## Message File Reading
 
-Use `Regira.Office.Mail.MSGReader` when the task is reading existing `.msg` or `.eml` files rather than sending mail. This guide does not define its concrete reader API, so inspect the package source before relying on specific types or methods.
+`Regira.Office.Mail.MSGReader` reads a stored message into an `IMessageObject`: `MsgParser` (`.msg`) and `EmlParser`
+(`.eml`), both `IMessageParser`, parameterless and stateless, with no `Add…` extension:
+`IMessageObject message = await new EmlParser().Parse(bytes.ToMemoryFile());`. `Body` is the HTML part when there is
+one, else the text part; `IsHtml` is true only for the HTML part. `To` holds To, Cc and Bcc with their
+`RecipientType`; only `EmlParser` fills `ReplyTo`. `EmlParser` expects CRLF line endings: convert a lone `\n` to
+`\r\n` first, or a quoted-printable part keeps an `=` at each soft break and loses its line breaks.
 
 ---
 
@@ -296,5 +301,7 @@ services.AddSingleton<IEmailSender>(provider =>
         new IdentityMailerOptions { Sender = "no-reply@example.com" }
     ));
 ```
+
+It sends Identity's `htmlMessage` as an HTML body (`IsHtml` stays `true`).
 
 ---

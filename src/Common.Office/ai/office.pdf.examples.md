@@ -15,7 +15,7 @@ IMemoryFile invoicePdf = await pdf.Create(new HtmlInput
     FooterHtmlContent = "<p style='text-align:center;font-size:9pt'>Page <span class='pageNumber'></span> of <span class='totalPages'></span></p>",
     FooterHeight      = 15,
     Format            = PageSize.A4,
-    Margins           = new Margins { Top = 20, Bottom = 20, Left = 15, Right = 15 }
+    Margins           = new[] { DimensionsUtility.MmToPt(15f), DimensionsUtility.MmToPt(20f) }, // left/right, top/bottom
 });
 
 await _fileService.Save($"invoices/{invoice.Number}.pdf", invoicePdf.GetBytes()!);

@@ -34,7 +34,7 @@
 
 ## Encryption
 
-### `IEncrypter`
+### `IEncrypter` — `Regira.Security.Abstractions`
 
 <!-- no-compile -->
 ```csharp
@@ -50,10 +50,18 @@ which is published with the source.
 
 ### `AesEncrypter` — AES with random salt
 
-Slower but produces different ciphertext on each call. **Recommended for stored secrets.** Encrypting needs a secret —
-`CryptoOptions.Secret`, read from configuration, or a key passed to `Encrypt` — and throws `InvalidOperationException`
-without one. `Decrypt` without one uses the built-in key, so what an earlier version encrypted with it stays readable;
-to move such values to a secret, decrypt them without it and encrypt them with it.
+Produces different ciphertext on each call. **Recommended for stored secrets.** The costly step, 500,000 PBKDF2-SHA512
+iterations over the secret (`CryptoUtility.DefaultIterations`, about 0.2 s), runs once per secret in a process and is
+cached; each value then gets a key of its own from its random salt in microseconds, so an EF value converter or a list
+projection decrypts 50 rows in milliseconds. The text is `aes1:` and the Base64 of 32 bytes of salt, the cipher (the
+value's bytes padded to the next 16) and a 32-byte HMAC-SHA256 tag: size a column for it, a 34-character IBAN taking 157
+characters. A value that was changed, or encrypted with another secret, throws `CryptographicException`. A value written
+without the `aes1:` prefix, by `Regira.Security` before 6.6.0, still decrypts; it pays the derivation the first time a
+process reads it, then comes from the cache. Decrypt and encrypt it again to move it to the `aes1:` format, which a
+version before 6.6.0 cannot read: mind a rollback, or a second application reading the same data. Encrypting needs a
+secret — `CryptoOptions.Secret`, read from configuration, or a key passed to `Encrypt` — and throws
+`InvalidOperationException` without one. `Decrypt` without one uses the built-in key, so what an earlier version
+encrypted with it stays readable; to move such values to a secret, decrypt them without it and encrypt them with it.
 
 ```csharp
 using Regira.Security.Encryption; // AesEncrypter
@@ -63,6 +71,14 @@ var enc = new AesEncrypter(new CryptoOptions { Secret = "my-app-key" });
 string cipher = enc.Encrypt("sensitive value");
 string plain  = enc.Decrypt(cipher);
 ```
+
+**An encrypted column: decrypt one value on demand.** A value converter decrypts the column whenever the entity loads
+— through an `Include` on a list that never shows it, into a DTO that drops it — and a read DTO that carries it sends
+the plain value to every client that lists the entity. For a value few screens show (a bank account, a national
+number), keep the ciphertext in a plain `string` property instead: a prepper encrypts it from a write-only input field
+(`NewBankAccount`) and can store a masked copy beside it for the lists (`BE71 •••• 6769`); the read DTOs leave the
+ciphertext out; and an endpoint of its own returns the one decrypted value, behind an authorization of its own
+(`GET parties/{id}/bank-account`). A value converter stays the shortcut for a column every read needs in plain text.
 
 ### `CryptoOptions`
 
@@ -285,6 +301,26 @@ throws `InvalidOperationException: OwnerId is missing` at startup:
 The keys themselves belong in user-secrets or the environment (`Authentication:ApiKeys:0:Key`), not in
 `appsettings.json`; configuration merges the entries by index. A key never set throws at startup, naming the path to
 set.
+
+### API keys from your own store
+
+`AddApiKeyAuthentication()` registers no `IApiKeyOwnerService`; the handler resolves whichever is registered, and
+`AddInMemoryApiKeyAuthentication` is one. For keys in your database, implement it over your `DbContext` and register
+it instead:
+
+<!-- no-compile -->
+```csharp
+using Regira.Security.Authentication.ApiKey.Abstraction; // IApiKeyOwnerService
+
+services.AddScoped<IApiKeyOwnerService, DbApiKeyOwnerService>();
+services.AddApiKeyAuthentication();
+```
+
+- The handler calls only `FindByKey`, and `null` gives 401.
+- Generate the key on the server from 32 or more random bytes, show it once, and store and look it up by its
+  unsalted SHA-256: a key that random needs no salt, and a salted hash cannot be looked up.
+- Revoke with a `RevokedAt` that `FindByKey` filters on.
+- Do not also call `AddInMemoryApiKeyAuthentication`, since the last registration wins.
 
 ### ⚠️ Claims emitted per scheme — the two spellings
 
@@ -853,7 +889,7 @@ Users in the same DB, no roles — the happy path (details in the sections below
 5. List the SPA's origin for the mailed links: bind `AccountEmailOptions` from `Authentication:AccountEmails`, validated on start, with `AllowedOrigins: [ "https://app.example.com" ]` and the app's `SiteName` — the snippet is in *Mailed links: allowed origins* below. ⚠️ Without an origin, password recovery throws.
 6. Subclass the three base controllers with forwarding ctors (below).
 7. `app.UseAuthentication()` **before** `app.UseAuthorization()`; `MapControllers().RequireAuthorization()` — the bases carry no `[Authorize]`.
-8. Seed the first user via `UserManager<AppUser>`.
+8. Seed the first user via `UserManager<AppUser>`, with its password from user-secrets (`Seeding:AdminPassword`), never from an `appsettings*.json` file, and never seed a known password outside Development.
 9. **Front-end:** install `authPlugin` after router + axios and pass `clientApp: "<your audience>"` — the SPA's `login()` appends it as `?clientApp=`, so it must equal the API's `Jwt:Audience`. Leave `loginUrl` unset unless the login endpoint isn't `auth`.
 10. **Dev cross-origin:** either proxy the SPA's `/api` through Vite (no CORS needed) or point the SPA straight at the API origin and add a CORS policy allowing that origin. The full recipe (proxy config, URL alignment, HTTPS-redirect trap) is in the front-end guide: `regira_modules.vue.entities` → `entities.setup` → *Calling the API in dev* / *The URL contract*.
 
@@ -1163,7 +1199,7 @@ set (Identity's default confirmation checks the address). A user you seed, or cr
 | `POST auth/password/recover` | ✅ | `{ username, siteUrl }` | `200`, whether or not the user exists | `400` `siteUrl` not on an allowed origin |
 | `POST auth/password/reset` | ✅ | `{ token, password }` | `200` | `400` malformed token / identity errors |
 
-`recover` answers alike for an unknown user (no user enumeration); for a known one it emails a link — `siteUrl`, the reset **page**, with its query string set to `?token=<Base64 of the reset token and user name>` (a query `siteUrl` carried is dropped) — the Base64 of the UTF-8 JSON of a `UserTokenModel` (`{"Token":"…","Username":"…"}`, `System.Text.Json` defaults, so PascalCase keys; `reset` reads them case-sensitively), percent-encoded so any query parser (`URLSearchParams`, vue-router's `route.query`) reads it back intact. `reset` returns `400` on a malformed token.
+`recover` answers alike for an unknown user (no user enumeration); for a known one it emails a link — `siteUrl`, the reset **page**, with its query string set to `?token=<Base64 of the reset token and user name>` (a query `siteUrl` carried is dropped) — the Base64 of the UTF-8 JSON of a `UserTokenModel` (`{"Token":"…","Username":"…"}`, `System.Text.Json` defaults, so PascalCase keys; `reset` reads them case-sensitively), percent-encoded so any query parser (`URLSearchParams`, vue-router's `route.query`) reads it back intact. `reset` returns `400` on a malformed token. The body is plain English text, though `IEmailSender` calls it `htmlMessage`: `Follow link below to reset password`, the link, a blank line, `Token: <token>`. `POST users` sends `Welcome <username>,`, `Please follow link below to confirm email`, the link and the token, subject `Welcome`. `IdentityMailer` sends it as HTML, so an `IEmailSender` that renders HTML must encode the body (it carries the user name) or take out the link, its only http(s) URL.
 
 `recover` is anonymous and mails the named account on every call, so a caller can flood that inbox and spend the app's mail quota: rate-limit it like `refresh-token`. Limit by client, not by account, so a `429` reveals no more than the `200` does.
 
@@ -1215,7 +1251,7 @@ services.AddOptions<AccountEmailOptions>()
 - `SiteName` starts the reset mail's subject ("Example Password Reset"); the request's `siteName` is ignored.
 - ⚠️ **The check runs in the base actions.** An override of `RecoverPassword` or `Create` that mails a link of its
   own instead of calling the base must check the page itself, with `AccountLinks.FindAllowedPage`. To change only a mail's
-  wording or layout, wrap the `IEmailSender`: it receives the subject and the body, link included.
+  wording or layout, wrap the `IEmailSender`: it receives the subject and the plain-text body, link included.
 
 ---
 
@@ -1230,7 +1266,7 @@ services.AddOptions<AccountEmailOptions>()
 | `IHasher` | `Regira.Security.Abstractions` |
 | `Hasher` (PBKDF2) | `Regira.Security.Hashing` |
 | `SimpleHasher` (obsolete) | `Regira.Security.Hashing` |
-| `IEncrypter` | `Regira.Security.Encryption` |
+| `IEncrypter` | `Regira.Security.Abstractions` (assembly `Regira.Common`, which `Regira.Security` brings) |
 | `SymmetricEncrypter` (obsolete, decrypting only) | `Regira.Security.Encryption` |
 | `AesEncrypter` | `Regira.Security.Encryption` |
 | `CryptoOptions` | `Regira.Security.Core` |

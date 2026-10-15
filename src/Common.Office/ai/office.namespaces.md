@@ -24,6 +24,7 @@ the provider only at registration.
 | `Regira.Media.Drawing.Models.Abstractions` | `IImageFile` (extends `IMemoryFile`) — what the barcode/QR and image services return; assembly `Regira.Media` |
 | `Regira.Media.Drawing.Dimensions` | `ImageSize` — `PdfToImagesOptions.Size`; assembly `Regira.Media` |
 | `Regira.Media.Drawing.Enums` | `ImageFormat` — `PdfToImagesOptions.Format`; assembly `Regira.Media` |
+| `Regira.Media.Drawing.Models` | `ImageFile` — the `IImageFile` you build from bytes for a barcode reader or OCR (`new ImageFile { Bytes = … }`); assembly `Regira.Media` |
 
 ⚠️ `GetBytes()` is an extension in **`Regira.IO.Extensions`** — a file object with no `using` for it looks
 like it has no content accessor at all.
@@ -99,7 +100,8 @@ size or error correction.
 | `Regira.Office.Csv.CsvHelper` | `CsvManager`, `CsvHelperOptions` |
 | `Regira.Office.OCR.Abstractions` | `IOcrService` |
 | `Regira.Office.OCR.Models.DTO` | `OcrResult` |
-| `Regira.Office.OCR.Tesseract` · `…PaddleOCR` | `OcrManager`, `Options` |
+| `Regira.Office.OCR.Tesseract` | `OcrManager`, `OcrManager.Options` (`Language`, `DataDirectory`) |
+| `Regira.Office.OCR.PaddleOCR` | `OcrManager` — parameterless, no options |
 | `Regira.Office.VCards.Abstractions` | `IVCardService`, `VCardVersion`, `VCardPropertyType`, `VCardTelType`, `VCardGenderSex` |
 | `Regira.Office.VCards.Models` | `VCard`, `VCardName`, `VCardAddress`, `VCardEmail`, `VCardTel`, `VCardOrganization`, `VCardBirthdate`, `VCardGender`, `VPhoto` |
 | `Regira.Office.VCards.FolkerKinzel` | `VCardManager` |
@@ -138,7 +140,7 @@ Regira.Office.PDF.Gotenberg.DependencyInjection → ServiceCollectionExtensions 
 Regira.Office.Barcodes.Abstractions            → IQRCodeService, IBarcodeService
 Regira.Office.Barcodes.Models                  → QRCodeInput, BarcodeInput, BarcodeFormat
 Regira.Media.Drawing.Models.Abstractions       → IImageFile          (the return type)
-Regira.Office.Barcodes.ZXing                   → QRCodeService       (registration only)
+Regira.Office.Barcodes.ZXing                   → QRCodeService, BarcodeService  (registration only)
 ```
 
 ### Merge / split / read an existing PDF
@@ -168,7 +170,11 @@ Regira.Office.Word.Gotenberg.DependencyInjection → ServiceCollectionExtensions
 Regira.Office.Mail.Abstractions  → IMailService
 Regira.Office.Mail.Models        → MessageObject, MailAddress, MailRecipient, RecipientTypes
 Regira.Office.Mail.SendGrid      → SendGridMailer, SendGridConfig
-Regira.Office.Mail.SendGrid.DependencyInjection → ServiceCollectionExtensions
+Regira.Office.Mail.SendGrid.DependencyInjection → ServiceCollectionExtensions  (AddSendGrid)
+Regira.Office.Mail.MailKit       → MailKitMailer, MailKitConfig       (any SMTP server)
+Regira.Office.Mail.MailKit.DependencyInjection  → ServiceCollectionExtensions  (AddMailKit)
+Regira.Office.Mail.MailGun       → MailGunMailer, MailgunConfig
+Regira.Office.Mail.MailGun.DependencyInjection  → ServiceCollectionExtensions  (AddMailGun)
 ```
 
 ### Read or write a spreadsheet

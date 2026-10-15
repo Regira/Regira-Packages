@@ -172,7 +172,7 @@ Composite: `IPdfEditor + IPdfImageService + IPdfTextService`. Implemented by Pdf
 | `FooterHeight` | `int?` | `null` | Footer height in mm; `null` is 35 pt |
 | `Format` | `PageSize` | `A4` | Paper size |
 | `Orientation` | `PageOrientation` | `Portrait` | Portrait / Landscape |
-| `Margins` | `Margins` | `10mm` all | Page margins, in units of `DPI`; `Margins.ModifyDpi` measures them at another. A `float[]` gives one value for every side, two for left and right then top and bottom, three for top, left and right, bottom, four for top, right, bottom, left |
+| `Margins` | `Margins` | `10mm` all | Page margins, in units of `DPI`; `Margins.ModifyDpi` measures them at another. A `float[]` gives one value for every side, two for left and right then top and bottom, three for top, left and right, bottom, four for top, right, bottom, left. A `new Margins()` starts every side at `Margins.DEFAULT_MARGIN` (70.85, 25 mm at 72 DPI), not at this default: set all four sides |
 | `DPI` | `int` | `96` | Units per inch of `Margins` |
 
 ### DocumentInput

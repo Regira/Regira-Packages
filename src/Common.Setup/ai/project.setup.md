@@ -21,7 +21,7 @@ The nearest default per app shape; mix elements from several templates, or devia
 | Standard hosted API (IIS / Azure / Docker) **with** auth — incl. an authenticated Entities API | `BasicApi` + the auth registrations from `SelfHostingApiWithAuth` |
 | Lightweight self-hosted internal API, no auth | `SelfHostingApi` |
 | Self-hosted API protected by API key and/or JWT Bearer | `SelfHostingApiWithAuth` |
-| Must be deployable as a Windows Service | `SelfHostingApi` |
+| Must be deployable as a Windows Service | `SelfHostingApi`; with API key or JWT, `SelfHostingApiWithAuth` |
 | Self-hosted, controller-based routing with enforced authorization | `SelfHostingApiWithAuth` |
 | Minimal API endpoints with authentication | `SelfHostingApiWithAuth` |
 | Users sign in with a work Microsoft account (Entra ID), or any OpenID Connect provider | `SelfHostingApiWithAuth` + `AddEntraIdSignIn` / `AddOidcAuthentication` |
@@ -381,7 +381,7 @@ dotnet user-secrets set "Authentication:ApiKeys:0:Key" "<a new GUID>"
 ```
 
 In production, set them from a key vault or the environment (`Authentication__Jwt__Secret`,
-`Authentication__ApiKeys__0__Key`).
+`Authentication__ApiKeys__0__Key`). A seeded account's password is a secret too.
 
 Section names are constants on `AuthenticationSections` (`using Regira.Security.Authentication.Core.Models;`)
 holding the full configuration path — `AuthenticationSections.Jwt` is `"Authentication:Jwt"`:

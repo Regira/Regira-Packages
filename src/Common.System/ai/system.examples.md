@@ -18,7 +18,10 @@
 ## Program.cs
 
 ```csharp
+using Microsoft.Extensions.Hosting.WindowsServices;   // WindowsServiceHelpers
+
 builder.Host.UseWebHostOptions();
+if (WindowsServiceHelpers.IsWindowsService()) builder.Host.UseWindowsService();
 
 builder.Services.UseBackgroundQueue();
 
@@ -40,8 +43,8 @@ public IActionResult StartExport([FromServices] IBackgroundTaskQueue queue)
 {
     queue.QueueBackgroundWorkItem(async token =>
     {
-        var data   = await _dataService.QueryAsync(token);
-        var excel  = _excelService.Export(data);
+        var data = await _dataService.QueryAsync(token);
+        using var excel = await _excelService.Create([new ExcelSheet { Name = "Report", Data = data.Cast<object>().ToList() }], token);
         await _fileService.Save("reports/latest.xlsx", excel.GetBytes()!);
     });
     return Accepted();

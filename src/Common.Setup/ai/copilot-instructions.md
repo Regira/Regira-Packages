@@ -129,7 +129,7 @@ Rely on this file plus local project conventions for these; there is no `*.instr
 | DAL.EFcore | EF Core extensions and repository utilities | `Regira.DAL.EFcore` |
 | DAL.MongoDB | MongoDB connectivity and backup or restore workflows. A filter or sort names a field as the serializer stores it: camelCase with `Regira.Serializing.Newtonsoft` | `Regira.DAL.MongoDB` |
 | DAL.MySQL | MySQL or MariaDB connectivity and backup workflows | `Regira.DAL.MySQL`, `Regira.DAL.MySQL.MySqlBackup` |
-| DAL.PostgreSQL | PostgreSQL connectivity | `Regira.DAL.PostgreSQL` |
+| DAL.PostgreSQL | PostgreSQL backup and restore (`pg_dump` / `pg_restore`). Not needed for EF Core: use `Npgsql.EntityFrameworkCore.PostgreSQL` | `Regira.DAL.PostgreSQL` |
 | DAL.SqlServer | SQL Server backup and restore (native `.bak`) | `Regira.DAL.SqlServer` |
 | Globalization | Phone number parsing and formatting | `Regira.Globalization.LibPhoneNumber` |
 | Serializing | Newtonsoft.Json-based serialization | `Regira.Serializing.Newtonsoft` |

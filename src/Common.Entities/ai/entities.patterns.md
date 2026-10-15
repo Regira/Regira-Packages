@@ -125,6 +125,66 @@ await links.SaveChanges(); // pipeline writes the file, fills Path/Length, assig
 **See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "Bulk insert / update")`
 and `get_package(id: "Regira.Entities", section: "examples", heading: "Attachments")`.
 
+### Transform uploaded files before they are stored (resize photos)
+<!-- how_to: key=transform-uploads aliases=resize,orient,exif,compress,photo,image,upload,thumbnail -->
+A prepper changes a file before it is stored: every prepper runs in `Add`/`Modify`/`Save`, and `AttachmentPrimer`
+stores the file after them, inside `SaveChanges()`. Which preppers run, and where they find the content, depends on
+the route; the attachment routes sit under the owner's:
+
+| Route | Preppers | The content |
+|---|---|---|
+| the owner's `POST` / `PUT`, with `Attachments` | the owner's | `NewBytes` and `NewFileName` on each link |
+| `POST {objectId}/files`, `PUT {objectId}/files/{id}` | the link's | a `Stream` on the link's `Attachment`, `Bytes` null |
+| `PUT {objectId}/attachments/{id}` | the link's | `NewBytes` on the link |
+
+Register both preppers on the `UseEntities` options: a prepper registered there runs before the link preppers
+`HasAttachments` adds, which hand `NewBytes` to the link's `Attachment`. Registered after them, a prepper replaces
+`NewBytes` too late.
+
+```csharp
+using Regira.Entities.Attachments.Abstractions;   // IHasAttachments, IEntityAttachment
+using Regira.Entities.Preppers.Abstractions;      // EntityPrepperBase
+using Regira.IO.Extensions;                       // HasStream(), GetBytes()
+
+public interface IPhotoShrinker { byte[] Shrink(byte[] file); }   // yours: turn upright, resize, re-encode; other files as they are
+
+// the owner's POST / PUT
+public class OwnerPhotoPrepper(IPhotoShrinker photos) : EntityPrepperBase<IHasAttachments>
+{
+    public override Task Prepare(IHasAttachments modified, IHasAttachments? original, CancellationToken token = default)
+    {
+        foreach (var link in modified.Attachments ?? [])
+        {
+            if (link.NewBytes?.Length > 0) link.NewBytes = photos.Shrink(link.NewBytes);
+        }
+        return Task.CompletedTask;
+    }
+}
+
+// the link's own routes
+public class LinkPhotoPrepper(IPhotoShrinker photos) : EntityPrepperBase<IEntityAttachment>
+{
+    public override Task Prepare(IEntityAttachment modified, IEntityAttachment? original, CancellationToken token = default)
+    {
+        if (modified.NewBytes?.Length > 0) modified.NewBytes = photos.Shrink(modified.NewBytes);
+        if (modified.Attachment is { } file && file.HasStream())
+        {
+            file.Bytes = photos.Shrink(file.GetBytes()!);
+            file.Stream = null;   // the primer stores the Stream when there is one
+        }
+        return Task.CompletedTask;
+    }
+}
+// services.UseEntities<AppDbContext>(o => o.AddPrepper<OwnerPhotoPrepper>().AddPrepper<LinkPhotoPrepper>())   // before .For<>()
+// AddPrepper on the options: Regira.Entities.DependencyInjection.Preppers
+```
+
+- The owner's prepper reaches every owner through the non-generic `IHasAttachments`, which an owner implements
+  next to `IHasAttachments<TAttachment>`.
+- Clear `Stream` once read: `AttachmentPrimer` stores the `Stream` when there is one, and records its length.
+
+**See:** `get_package(id: "Regira.Entities", section: "instructions", heading: "Write-pipeline order")`.
+
 ### Download an owner's attachments as one ZIP
 <!-- how_to: key=zip-owner-attachments aliases=zip,archive,download,bundle,attachments,files -->
 Read the owner first, so row security decides (out of scope is a 404), then its links through the link service
@@ -165,11 +225,11 @@ Every file is read into memory: cap the count or the summed `Length` for owners 
 ### Mark one child as the primary / featured one
 <!-- how_to: key=primary-child aliases=featured,cover,primary,default,main,thumbnail,flag,attachment -->
 Put the marker on the **child** — a flag, or a rank column it already has (an attachment link entity's
-`SortOrder`, assigned from the incoming array position). A foreign key from the owner to one of its own child
-rows makes the two tables reference each other: SQL Server refuses the migration (Msg 1785) and every owner
-`DELETE` answers 500 with EF's *circular dependency*, which no primer can fix — EF orders deletes from the
-**original** foreign-key values. If the reference has to stay, map it `DeleteBehavior.ClientSetNull` and drop it
-in a save of its own.
+`SortOrder`, assigned from the incoming array position on an owner save; an upload through `POST {objectId}/files`
+gets 0). A foreign key from the owner to one of its own child rows makes the two tables reference each other: SQL
+Server refuses the migration (Msg 1785) and every owner `DELETE` answers 500 with EF's *circular dependency*, which
+no primer can fix — EF orders deletes from the **original** foreign-key values. If the reference has to stay, map it
+`DeleteBehavior.ClientSetNull` and drop it in a save of its own.
 
 **See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "An entity that references one of its own children")`.
 

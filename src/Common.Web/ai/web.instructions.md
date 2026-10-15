@@ -191,6 +191,11 @@ worker, console app or class library uses `Microsoft.NET.Sdk.Razor`. A project o
 `<EnableDefaultRazorGenerateItems>false</EnableDefaultRazorGenerateItems>`, so the SDK leaves them as template text
 rather than taking them for MVC views. `PreserveCompilationContext` is not needed.
 
+A component's class is the root namespace plus its folder: `Templates/Mail/Welcome.razor` is
+`MyApp.Templates.Mail.Welcome`. `[Parameter]` and `RenderFragment` need no `@using`; the model's namespace and
+components in other folders do, so put those in `Templates/_Imports.razor`. The `AddTransient` line is the whole
+registration: `AddRazorComponents()` is not needed. A template may start with `<!DOCTYPE html>`.
+
 ### Rendering behaviour
 
 - **Encoding.** Values are HTML-encoded. `@((MarkupString)value)` writes markup.

@@ -102,9 +102,17 @@ The non-generic `ExcelSheet` is `ExcelSheet<object>`.
 
 ## Usage
 
+There is no `Add…` extension: register the backend yourself. An `ExcelManager` keeps nothing but the options it was
+constructed with, so a singleton is safe:
+
 <!-- no-compile -->
 ```csharp
-// Construct directly (no DI extensions — pick any implementation)
+services.AddSingleton<IExcelService, Regira.Office.Excel.MiniExcel.ExcelManager>();
+```
+
+<!-- no-compile -->
+```csharp
+// Or construct one directly — pick any implementation
 IExcelService excel = new Regira.Office.Excel.MiniExcel.ExcelManager();
 
 // Read all sheets — from an IBinaryFile: bytes.ToBinaryFile(contentType), not ToMemoryFile() (an IMemoryFile is no IBinaryFile, CS1503)

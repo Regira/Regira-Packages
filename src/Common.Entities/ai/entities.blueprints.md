@@ -435,6 +435,10 @@ options.UseMapsterMapping(cfg =>
 });
 ```
 
+System.Text.Json reads `partyType` only as the first property of a request body; a client that sends `id` first gets
+400 *must specify a type discriminator*. To accept it anywhere (.NET 9+):
+`services.ConfigureDefaultJsonOptions(mvc => mvc.JsonSerializerOptions.AllowOutOfOrderMetadataProperties = true, http => http.SerializerOptions.AllowOutOfOrderMetadataProperties = true);`
+
 Relationship DTOs come in a parent and a child flavor so each side embeds only the *other* party (`PartyParentDto { Parent }`, `PartyChildDto { Child }` — both extending a shared `PartyRelationshipDto` with ids, type, dates, contact data). Use a flat, non-polymorphic `PartySimpleDto` (with a plain `PartyType` string) inside them to stop the nesting from recursing.
 
 ### Controller
@@ -1004,9 +1008,10 @@ public class AppUserRepository(AccountsDbContext dbContext, UserManager<AppIdent
         var result = string.IsNullOrWhiteSpace(model.NewPassword)
             ? await userManager.CreateAsync(item)                  // Identity owns hashing + validation
             : await userManager.CreateAsync(item, model.NewPassword);
-        // …then reconcile claims (diff original vs incoming: RemoveRange / AddRange / update changed values)
+        // …then reconcile claims unless model.UserClaims is null (not sent: untouched; [] removes them all, as Related() does)
     }
     // Details/Count/Modify/Save/Remove follow the same shape; Save = upsert on existence.
+    // UserManager has already saved the user: this flushes only the claim diff, so "affected" is 0 for a save without claim changes.
     public Task<int> SaveChanges(CancellationToken token = default) => dbContext.SaveChangesAsync(token);
 }
 ```
@@ -1033,6 +1038,7 @@ public class AppUserController : EntityControllerBase<AppUserEntity, string, App
 - The query-builder generics are typed on the **inner** `IdentityUser` type, while the `For<>()` generics use the **exposed** model — the mapper bridges the two.
 - Exclude `NewPassword` from the read DTO; hash only via `userManager.PasswordHasher` on update. Deleting goes through `userManager.DeleteAsync`.
 - Startup warns that `?q=` is ignored for `AppUserEntity`: the check looks for a filter registered on the exposed type, and this one is registered on the inner type. The warning stands by design when that filter reads `so.Q`; without such a filter, `?q=` really is ignored.
+- `POST` and `PUT` answer `affected: 0` unless claims changed: read `isNew` and `item`.
 
 ---
 
@@ -1133,7 +1139,7 @@ budget slots.
 **See:** `get_package(id: "Regira.Entities", section: "blueprints", heading: "EntityLabels")`.
 
 ### Make an app multi-tenant (row-level isolation)
-<!-- how_to: key=multi-tenancy aliases=tenant,tenants,tenancy,multitenant,tenantid,isolation -->
+<!-- how_to: key=multi-tenancy aliases=tenant,tenants,tenancy,multitenant,tenantid,isolation,company,companies,per-company,organisation,organization -->
 Copy the **Multi-tenancy blueprint**: an `IHasTenantId { string TenantId }` marker on tenant-owned
 entities, plus two registrations inside `UseEntities`:
 

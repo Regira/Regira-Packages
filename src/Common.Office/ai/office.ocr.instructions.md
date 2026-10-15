@@ -35,7 +35,7 @@ Exact usings: `office.namespaces.md`.
 | Package | Engine | Languages | Platform |
 |---|---|---|---|
 | `Regira.Office.OCR.Tesseract` | Tesseract 5 | English, Dutch + configurable | Cross-platform |
-| `Regira.Office.OCR.PaddleOCR` | PaddleOCR (ONNX) | English, Chinese | Windows only |
+| `Regira.Office.OCR.PaddleOCR` | PaddleOCR (ONNX) | 12 scripts: English, Latin, Chinese, Korean, Arabic, Cyrillic, East Slavic, Devanagari, Greek, Tamil, Telugu, Thai | Windows only |
 
 ---
 
@@ -48,8 +48,21 @@ Task<OcrResult> Read(IMemoryFile imgFile, string? lang = null, CancellationToken
 
 `OcrResult` exposes `string Language` and `string? Text`.
 
-Pass `lang` as an ISO 639-1 code (`"en"`, `"nl"`, `"zh"`). When `null`, the implementation's configured default is used.
-Both implementations set `OcrResult.Text` to `null` when no text is detected.
+Pass `lang` as an ISO 639-1 code (`"en"`, `"nl"`, `"zh"`). When `null`, Tesseract uses its `Options.Language` and
+PaddleOCR the English model. When no text is detected, `Text` is an empty string, not `null`; it is declared `string?`,
+so test it with `string.IsNullOrWhiteSpace`.
+
+There is no `Add…` extension: register the backend yourself. Neither `OcrManager` keeps state between calls (each
+`Read` builds its own engine), so a singleton is safe:
+
+```csharp
+using Regira.Office.OCR.Abstractions;
+
+services.AddSingleton<IOcrService, Regira.Office.OCR.PaddleOCR.OcrManager>();
+```
+
+Tesseract takes its `Options` through the constructor, so register an instance:
+`services.AddSingleton<IOcrService>(new Regira.Office.OCR.Tesseract.OcrManager(new() { DataDirectory = "./tessdata" }));`.
 
 ---
 
@@ -91,8 +104,10 @@ OcrResult nl = await ocr.Read(imageFile, lang: "nl");
 ```
 
 `lang` selects the PP-OCRv5 model for that language's **script**, not the language itself: `"zh"`/`"cn"` → Chinese,
-`"ko"` → Korean, `"ru"`/`"uk"`/`"be"` → East Slavic, `"el"` → Greek, `"th"` → Thai, other Latin-script codes
-(`"nl"`, `"fr"`, `"de"`, `"es"`, …) → Latin. `"en"`, unknown codes, and `null` use the English model.
+`"ko"` → Korean, `"ar"`/`"fa"`/`"ur"`/`"ug"` → Arabic, `"ru"`/`"uk"`/`"be"` → East Slavic,
+`"bg"`/`"mk"`/`"sr"`/`"mn"` → Cyrillic, `"hi"`/`"mr"`/`"ne"`/`"sa"` → Devanagari, `"el"` → Greek, `"ta"` → Tamil,
+`"te"` → Telugu, `"th"` → Thai, and the Latin-script codes it lists (`"nl"`, `"fr"`, `"de"`, `"es"`, `"pl"`, `"tr"`,
+`"vi"`, …) → Latin. `"en"`, unknown codes, and `null` use the English model.
 
 > Depends on `OpenCvSharp4.runtime.win` — **Windows only**.
 
@@ -100,7 +115,7 @@ OcrResult nl = await ocr.Read(imageFile, lang: "nl");
 
 ## Notes
 
-- Input is `IMemoryFile` — use `bytes.ToBinaryFile()` or any `IFileService.GetBytes()` result.
+- Input is any `IMemoryFile`: `bytes.ToMemoryFile("image/png")` or `ToBinaryFile()`.
 - Tesseract is the cross-platform choice; PaddleOCR is Windows-only but bundles models automatically.
 
 ---

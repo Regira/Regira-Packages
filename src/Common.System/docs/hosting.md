@@ -77,7 +77,12 @@ A worked end-to-end example — enqueue from a controller, then poll the task's 
 ### Windows Service installer
 
 ```csharp
-var app = WebApplication.Create();
+using Microsoft.Extensions.Hosting.WindowsServices;   // WindowsServiceHelpers
+
+var builder = WebApplication.CreateBuilder(args);
+if (WindowsServiceHelpers.IsWindowsService()) builder.Host.UseWindowsService();
+
+var app = builder.Build();
 app.AddWindowsServiceInstaller(new WindowsServiceOptions
 {
     ServiceName        = "MyApi",
@@ -86,7 +91,9 @@ app.AddWindowsServiceInstaller(new WindowsServiceOptions
 });
 ```
 
-Generates `install.bat` / `uninstall.bat` scripts using `sc.exe`.
+Generates `install.bat` / `uninstall.bat` scripts using `sc.exe`. The installer only writes the scripts: the host must
+also call `UseWindowsService()` to run as a service. `Microsoft.Extensions.Hosting.WindowsServices` comes with
+`Regira.System.Hosting`.
 
 ---
 
