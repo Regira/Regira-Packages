@@ -23,8 +23,9 @@
 - **Mailed links go only to allowed origins:** bind `AccountEmailOptions`
   (`Regira.Security.Authentication.Web.Models`) from `Authentication:AccountEmails`, validated on start, with
   `AllowedOrigins` = the SPA's origin and the app's `SiteName`. A `siteUrl` / `confirmEmailUrl` on another origin
-  answers `400`; **with none listed, `recover` throws** (500). An override that mails a link of its own checks the
-  page itself — `security.instructions` → *Mailed links: allowed origins*.
+  answers `400`; **with none listed, `recover` throws** (500). An override, or a minimal-API endpoint, that mails a link of
+  its own checks the page with `AccountLinks.FindAllowedPage` — `security.instructions` → *Pre-built Auth
+  Controllers* (*An endpoint of your own that mails a token link*).
 - **Version floor:** floors `Microsoft.OpenApi` at **2.12.2** and `Microsoft.AspNetCore.OpenApi` at
   **10.0.13** on net10 — a direct pin of either below the resolved version fails restore with NU1605, and
   nothing restores or builds until it is cleared. Leave `Microsoft.OpenApi` **transitive**:

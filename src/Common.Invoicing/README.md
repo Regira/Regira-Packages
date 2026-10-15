@@ -68,7 +68,26 @@ XDocument Convert(UblDocumentInput input);
 Produces a UBL 2.1 `Invoice` document.
 
 ```csharp
-IInvoice invoice = new Invoice { /* lines, parties, tax, etc. */ };
+IInvoice invoice = new Invoice
+{
+    Code = "INV-001",
+    IssueDate = DateTime.Today,
+    Supplier = new InvoiceParty
+    {
+        Code = "BE0123456789",                                                         // VAT number
+        Title = "Fleet Services",
+        Identifiers = [new PartyIdentifier { Scheme = "0208", Value = "0123456789" }],   // Peppol participant ID
+        Address = new PartyAddress { Street = "Stationsstraat 1", PostalCode = "9000", City = "Gent", CountryCode = "BE" }
+    },
+    Customer = new InvoiceParty
+    {
+        Code = "BE0987654321",
+        Title = "Transport Co",
+        Identifiers = [new PartyIdentifier { Scheme = "0208", Value = "0987654321" }],
+        Address = new PartyAddress { Street = "Kaai 12", PostalCode = "2000", City = "Antwerpen", CountryCode = "BE" }
+    },
+    InvoiceLines = [new InvoiceLine { Title = "Brake service", Quantity = 1, UnitPriceExcl = 100, VatPercentage = 21 }]
+};
 
 var converter = new UblConverter();
 XDocument ubl = converter.Convert(new UblDocumentInput
@@ -82,6 +101,24 @@ XDocument ubl = converter.Convert(new UblDocumentInput
 payment terms note. The converter writes `AccountingSupplierParty` from `Supplier` alone, so a document converted
 without it has no seller, which Peppol validation refuses (EN 16931 rule BR-06).
 
+### How the model maps to UBL
+
+| Member | UBL element |
+|--------|-------------|
+| `IInvoiceParty.Code` | `PartyTaxScheme/CompanyID`, `PartyLegalEntity/CompanyID` and `PartyIdentification/ID`: the VAT number with its country prefix (BR-CO-09) |
+| `IInvoiceParty.Identifiers` | The first entry is the `EndpointID` (the Peppol participant ID) with `Scheme` as its `schemeID`. Without one, `Code` is split on `:`, and a code without `:` gets scheme `9956` (`UblDefaults.EndpointSchemeId`); a VAT number is no valid endpoint, so always give the identifier |
+| `IInvoiceParty.Title` | `PartyName/Name`, `PartyLegalEntity/RegistrationName` and `Contact/Name` |
+| `IInvoiceParty.Address` | `PostalAddress`. Peppol requires one with a `CountryCode` for both parties (BR-08 to BR-11) |
+| `IInvoiceParty.ContactData` | `Contact/Telephone` and `Contact/ElectronicMail`: the first phone and e-mail entry |
+| `IInvoice.Code` | `ID`, `OrderReference/ID` and each attachment's `ID` |
+| `IInvoiceLine.Title` | `Item/Name` |
+| `IInvoiceLine.Description` | The line `Note` |
+| `IInvoiceLine.VatPercentage` | `ClassifiedTaxCategory/Percent`, and one `TaxSubtotal` per rate |
+
+VAT is computed per rate: the sum of the rate's rounded line amounts times the rate, rounded once, half away from zero
+(BR-CO-17). The VAT total, `TaxInclusiveAmount` and `PayableAmount` follow from those subtotals, so compute a printed
+invoice's totals the same way.
+
 ### What the converter writes
 
 Some fields are fixed rather than taken from the invoice:
@@ -90,7 +127,9 @@ Some fields are fixed rather than taken from the invoice:
 - Invoice type code `380`, a commercial invoice, for every document. `IInvoice.InvoiceType` is not read, so the converter writes no credit notes
 - Currency `EUR`
 - Payment means `1` (not defined), with `RemittanceInfo` as the payment ID
-- Tax category `S` (standard rate) on every line
+- Tax category `S` (standard rate) on every line. Peppol refuses `S` with a 0 % rate (BR-S-05), so an exempt, zero-rated or reverse-charge line needs its category changed in the returned `XDocument`
+
+Not written: `IInvoiceLine.Code`, `IInvoiceLine.EndDate` and a payee bank account.
 
 ---
 

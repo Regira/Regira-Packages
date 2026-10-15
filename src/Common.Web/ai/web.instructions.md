@@ -57,8 +57,10 @@ All three implementations share this interface.
 ### `HtmlTemplateParser` — simple `{token}` placeholders
 
 Replaces `{key}` tokens with the model's values. The model goes through the `ISerializer` first, so a key is the
-serialized name: Regira's JSON serializer camel-cases property names (`Name` → `{name}`, `Customer.Name` →
-`{customer.name}`) and keeps dictionary keys as written. A token with no value — a missing key, or a null the serializer leaves out — stays in the output as written.
+serialized name. Give it Regira's Newtonsoft serializer, `Regira.Serializing.Newtonsoft.Json.JsonSerializer` (package
+`Regira.Serializing.Newtonsoft`): the parser reads nested objects and collections as the dictionaries and lists it
+returns. It camel-cases property names (`Name` → `{name}`, `Customer.Name` → `{customer.name}`), keeps dictionary
+keys as written, writes a `bool` as `1` or `0` and leaves nulls out. A token with no value — a missing key, or a null the serializer leaves out — stays in the output as written.
 
 A block repeats its content once for each item of a collection, with that item's keys and a 1-based `{rowNr}`. Its
 name is letters only and starts lowercase. A block is not a condition: a `true` flag renders nothing.
@@ -80,7 +82,7 @@ encodes every text value, at the top level and in blocks; set it whenever the mo
 
 <!-- no-compile -->
 ```csharp
-var parser = new HtmlTemplateParser(jsonSerializer) { HtmlEncode = true };
+var parser = new HtmlTemplateParser(new Regira.Serializing.Newtonsoft.Json.JsonSerializer()) { HtmlEncode = true };
 string html = await parser.Parse(template, order);
 ```
 

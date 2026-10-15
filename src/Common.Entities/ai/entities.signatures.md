@@ -735,8 +735,9 @@ using Regira.Entities.DependencyInjection.Extensions;
 // automatically (AddDbContext only needs the provider; assignability match — an abstract-base registration
 // also wires derived provider-specific contexts, in any registration order). UTC date handling itself is on
 // by default process-wide (DateTimeDefaults.UseUtc) — disable with UseUtc(false).
-// The normalized-content Q filter (FilterHasNormalizedContentQueryBuilder)
-// is added ONLY on the parameterless overload — UseDefaults(cfg => …) skips it, so register it yourself then.
+// The normalized-content Q filter (FilterHasNormalizedContentQueryBuilder) is added with or without the configure
+// callback: UseDefaults(d => d.ConfigureNormalizing(o => …)) only changes the normalizer's options, for the stored
+// and the query side alike. UseNormalizerDefaults(…) registers the normalizer only, not the Q filter.
 public static EntityServiceCollectionOptions UseDefaults(
     this EntityServiceCollectionOptions options,
     Action<EntityDefaultNormalizingOptions>? configure = null);

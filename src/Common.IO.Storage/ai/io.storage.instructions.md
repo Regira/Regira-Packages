@@ -344,7 +344,7 @@ var service = new SftpService(communicator);
 **Package:** `Regira.IO.Storage.GitHub`
 
 ```csharp
-ISerializer jsonSerializer = new JsonSerializer();   // e.g. Regira.Serializing.Newtonsoft
+ISerializer jsonSerializer = new Regira.Serializing.Newtonsoft.Json.JsonSerializer();   // package Regira.Serializing.Newtonsoft
 
 var service = new GitHubService(
     new GitHubCommunicator(new GitHubOptions

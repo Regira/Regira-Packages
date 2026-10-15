@@ -305,6 +305,8 @@ public interface ICacheProvider
 }
 ```
 
+`Set`'s `duration` is in seconds; `null` takes the provider's default, and a provider without expiry, such as `DictionaryCacheProvider`, ignores it.
+
 A provider's `Keys`, and enumerating it, return the entries under its key prefix, with the prefix left off; `RemoveAll` removes those entries. A provider without a prefix covers every entry in its store. End a prefix with a separator, such as `"users:"`: a prefix matches by its start, so `user` would also cover the entries of a `users` provider.
 
 ### DictionaryCacheProvider

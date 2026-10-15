@@ -25,7 +25,9 @@ namespace Regira.Office.PDF.MiniPdf;
 /// <item><c>.docx</c> — <see cref="DocumentInput.Format"/>, with or without <see cref="DocumentInput.Orientation"/>,
 /// and <see cref="DocumentInput.Margins"/>. <c>Orientation</c> alone throws: MiniPdf replaces the page size as a
 /// whole, so it needs the paper size to turn.</item>
-/// <item><c>.xlsx</c> — <see cref="DocumentInput.Orientation"/>.</item>
+/// <item><c>.xlsx</c> — <see cref="DocumentInput.Orientation"/>. No fit-to-width is applied: unless the workbook's own page
+/// setup scales a sheet to one page wide, columns past the page width print on further pages. The sheet name is not
+/// printed.</item>
 /// <item><c>.pptx</c> — none; a slide keeps the presentation's slide size.</item>
 /// </list>
 /// <para>

@@ -29,16 +29,24 @@ holding a perfectly good credential of the other kind.
 {
   "Authentication": {
     "ApiKeys": [
-      { "OwnerId": "ci-pipeline", "Key": "ci-secret-key", "Roles": ["read"] }
+      { "OwnerId": "ci-pipeline", "Roles": ["read"] }
     ],
     "Jwt": {
-      "Secret": "at-least-64-characters-for-the-HS512-default-or-startup-throws-0123",
       "Authority": "https://portal.example",
       "Audience": "staff-spa",
       "LifeSpan": 3600
     }
   }
 }
+```
+
+The secrets stay out of the file — user-secrets in development, a key vault or the environment in production —
+so startup fails until they are set:
+
+```bash
+dotnet user-secrets init
+dotnet user-secrets set "Authentication:Jwt:Secret" "<64 or more random characters>"
+dotnet user-secrets set "Authentication:ApiKeys:0:Key" "<a new GUID>"
 ```
 
 `Authentication:Jwt:Secret` must be ≥ 64 bytes for the `HS512` default (≥ 48 for `HS384`, ≥ 32 for `HS256`) — a

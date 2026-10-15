@@ -58,6 +58,10 @@ fields, so an object keyed by owner name throws `InvalidOperationException` at s
 ]
 ```
 
+The keys themselves belong in user-secrets or the environment (`Authentication:ApiKeys:0:Key`), not in
+`appsettings.json`; configuration merges the entries by index. A key never set throws at startup, naming the path to
+set.
+
 ---
 
 ## Overview

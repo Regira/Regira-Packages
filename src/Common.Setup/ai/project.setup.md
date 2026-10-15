@@ -359,16 +359,29 @@ authentication middleware.
 {
   "Authentication": {
     "ApiKeys": [
-      { "OwnerId": "MyUser", "Key": "REPLACE-WITH-GUID", "Roles": ["read"] }
+      { "OwnerId": "MyUser", "Roles": ["read"] }
     ],
     "Jwt": {
-      "Secret": "REPLACE-WITH-RANDOM-SECRET-OF-AT-LEAST-64-CHARS-TO-FIT-HS512-SIGNING-KEYS!!",
       "Audience": "my-spa",
       "LifeSpan": 7200
     }
   }
 }
 ```
+
+The JWT secret and the API keys never go in `appsettings.json`: a placeholder left there is a signing key or an API
+key anyone can read, and a long one even passes the length check. Leave them out of the file, so startup fails until
+they are set — a missing `Secret` throws from `AddJwtAuthentication`, a missing `Key` from `ToApiKeyOwners()` — and
+set them per environment. Configuration merges arrays by index, so `ApiKeys:0:Key` completes the first entry:
+
+```bash
+dotnet user-secrets init
+dotnet user-secrets set "Authentication:Jwt:Secret" "<64 or more random characters>"
+dotnet user-secrets set "Authentication:ApiKeys:0:Key" "<a new GUID>"
+```
+
+In production, set them from a key vault or the environment (`Authentication__Jwt__Secret`,
+`Authentication__ApiKeys__0__Key`).
 
 Section names are constants on `AuthenticationSections` (`using Regira.Security.Authentication.Core.Models;`)
 holding the full configuration path — `AuthenticationSections.Jwt` is `"Authentication:Jwt"`:
@@ -397,7 +410,7 @@ Only add the blocks the app registers a scheme for:
 ```
 
 `ClientSecret` is required for interactive sign-in (`AddEntraIdSignIn`) and unused for API protection
-(`AddEntraIdBearer`). Keep it out of `appsettings.json` — use user-secrets or a key vault.
+(`AddEntraIdBearer`). Keep it out of `appsettings.json` like the JWT secret: user-secrets or a key vault.
 
 > **⚠️ JWT secret length must match the signing algorithm.** The default algorithm is **HS512**, which
 > requires a key of **≥ 64 bytes (512 bits)**; a shorter secret throws from `AddJwtAuthentication` at

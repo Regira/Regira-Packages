@@ -270,10 +270,15 @@ run time, or a deployment that already runs Gotenberg for Word.Gotenberg.
   `--api-timeout` (30 seconds by default). Raise that on the server as well as `Timeout` here for large documents: the
   whole HTML, `data:` images included, goes over HTTP on every call.
 
-Start a server and register the service:
+Start a server and register the service. The hardening flags follow the image's `gotenberg` command; single quotes
+keep a shell from reading the `!` and the parentheses of the pattern:
 
 ```bash
 docker run --rm -p 3000:3000 gotenberg/gotenberg:8
+# HTML that needs nothing from the network
+docker run --rm -p 3000:3000 gotenberg/gotenberg:8 gotenberg '--chromium-deny-list=^(https?://|file:(?!//\/tmp/)).*'
+# HTML built from user input that loads public URLs
+docker run --rm -p 3000:3000 gotenberg/gotenberg:8 gotenberg --chromium-deny-private-ips
 ```
 
 ```csharp
@@ -325,6 +330,9 @@ It applies the `DocumentInput` settings per source format:
 
 Any other source — `.doc`, `.xls`, `.odt`, `.rtf`, a PDF — throws `NotSupportedException`. The format is read from
 the package's parts, not from the file name or content type. Every visible sheet of a workbook is rendered, in order.
+`PdfService` applies no fit-to-width: unless the workbook's own page setup scales a sheet to one page wide (Excel's
+*Scale to Fit*, width 1 page), columns past the page width print on further pages, and the sheet name is not printed.
+For a wide sheet, use `Orientation = PageOrientation.Landscape`, fewer or narrower columns, or a `.docx` table.
 
 Neither MiniPdf nor `PdfService` limits a document's size. Each part is read whole into memory, so a small `.xlsx`,
 `.docx` or `.pptx` whose compressed parts expand to gigabytes exhausts the process's memory. For uploads, cap the

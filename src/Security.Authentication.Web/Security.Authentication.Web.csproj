@@ -13,7 +13,7 @@
     <NoWarn>1701;1702;1591</NoWarn>
     <Version>6.6.0</Version>
     <Description>ASP.NET Core authentication middleware and OpenAPI integration for Regira.</Description>
-    <PackageTags>regira;security;authentication;web;aspnetcore;openapi</PackageTags>
+    <PackageTags>regira;security;authentication;web;aspnetcore;openapi;identity;accounts;signup;login;password;reset;confirm;users</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.Office\Common.Office.csproj" />

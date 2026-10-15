@@ -41,8 +41,8 @@ Both accept and return the shared `IPayment` model and can be registered as sing
 
 | Property | Type | Description |
 |---|---|---|
-| `Api` | `string` | Mollie API base URL |
-| `Key` | `string` | Mollie API key (`test_...` or `live_...`) |
+| `Api` | `string` | Not read: the Mollie client calls Mollie's API itself |
+| `Key` | `string` | Mollie API key. A `test_…` key is test mode — there is no separate switch; a `live_…` key takes real payments |
 | `MaxPageSize` | `int` | Default `250` |
 | `RedirectFactory` | `Func<IPayment, string>?` | Builds redirect URL per payment |
 | `WebhookFactory` | `Func<IPayment, string>?` | Builds webhook URL per payment |
@@ -53,7 +53,6 @@ Both accept and return the shared `IPayment` model and can be registered as sing
 ```csharp
 var svc = new Regira.Payments.Mollie.Services.PaymentService(new MollieConfig
 {
-    Api             = "https://api.mollie.com/v2",
     Key             = configuration["Mollie:Key"]!,
     RedirectFactory = p => $"https://myapp.com/payment/return/{p.Id}",
     WebhookFactory  = p => $"https://myapp.com/payment/webhook/{p.Id}"

@@ -9,8 +9,10 @@ namespace Regira.Security.Authentication.Web.Controllers;
 /// <summary>
 /// The links the account mails carry. The caller names the page a link opens, and only a page on one of
 /// <see cref="AccountEmailOptions.AllowedOrigins"/> gets one: whoever controls that page receives the token.
+/// The base controllers check every link with it; an action or endpoint of the application's own that mails a
+/// token link checks its page the same way.
 /// </summary>
-internal static class AccountLinks
+public static class AccountLinks
 {
     public const string NotAllowed = "The page must be on an origin the application allows.";
 

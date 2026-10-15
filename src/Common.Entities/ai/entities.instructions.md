@@ -39,6 +39,8 @@ Without a key, the **free tier** applies automatically — no configuration for 
 
 Store paid keys under `Regira:LicenseKeys` in `appsettings.json`. A single key can cover multiple products; add more keys to the array to combine them — the system picks the best per product (paid always wins over free). Obtain a key at [https://regira.com/licensing](https://regira.com/licensing).
 
+The keys are read when the first `For<>()` runs. A key that was not registered by then — `UseRegira()` after `UseEntities()`, a misspelled section, a single string under `LicenseKeys`, which must be an array — leaves the free tier, and the startup error opens with *No Regira license key covering regira.entities was registered*.
+
 ---
 
 ## Quick Agent Playbook
@@ -568,6 +570,10 @@ written — changing the entity is a prepper's job.
 
 <!-- no-compile -->
 ```csharp
+// using Regira.Entities.Validators.Abstractions;           ← EntityWriteOperation, EntityValidatorBase<>, IEntityValidatorContext<>
+// using Regira.Entities.DependencyInjection.Validators;    ← AddValidator<>()
+// using Microsoft.EntityFrameworkCore;                     ← AnyAsync
+
 // inline — the second form receives the request's DbContext, typed as the registration's TContext (db.Orders compiles),
 // and the write's cancellation token; async ctx => … takes neither
 // the write awaits an async delegate, so an error added after an await still refuses it
@@ -853,6 +859,8 @@ Add `DbSet<YourEntity>` and configure any relationships in `OnModelCreating`.
 >     .UseSqlite(cs)
 >     .ConfigureWarnings(w => w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning)));
 > ```
+>
+> The ignore covers every such pair in the context, reference data included. Regira's startup validation (net10.0) still reports each separately registered dependent behind a required foreign key that has no query filter of its own.
 >
 > **Mirror the parent's archived filter onto a dependent?** Per dependent:
 >
@@ -1352,7 +1360,7 @@ one, closed over `SearchObject<TKey>`.
 
 > **Hiding archived rows is part of `UseDefaults()`** (`DbContextWiring.ArchivedQueryFilter`): the `e => !e.IsArchived` EF query filter is wired into the context's options, so archived rows are hidden on every list/count *and* inside included collections without a line in the `DbContext`. The registered query builder translates the opt-ins on top of it — a caller opts in per request with `?archived=included` (both) or `?archived=only` (the recycle bin); flip the app-wide default with `DefaultArchivedFilter = ArchivedFilter.Included` on `UseEntities()`. ⚠️ The wiring reaches contexts resolved from DI only: a hand-constructed `new AppDbContext(options)` takes `.AddArchivedQueryFilter()` on its options builder. Startup validation errors out naming the entity when a model ends up without the filter. Full round-trip: [`entities.patterns.md`](./entities.patterns.md) → Soft Delete.
 - **Default entity normalizer** — `DefaultEntityNormalizer` (processes `[Normalized]`).
-- **The normalized-content `Q` filter** — `FilterHasNormalizedContentQueryBuilder` — **but only on the parameterless path.** `UseDefaults()` registers it; `UseDefaults(cfg => …)` (passing a normalizing configure callback) does **not**, so register it yourself in that case.
+- **The normalized-content `Q` filter** — `FilterHasNormalizedContentQueryBuilder`, with or without a normalizing configure callback: `UseDefaults(d => d.ConfigureNormalizing(…))` only changes the normalizer's options, for the stored and the query side alike.
 
 > **→ See:** §Quick Reference: Built-in Services (this file) for the full list of registered classes.
 
@@ -1480,6 +1488,16 @@ services.UseEntities<AppDbContext>(options =>
 | 5 | `Transform` — default `NoChanges`, so **case is preserved, never uppercased** | `Cafe ACME 1` |
 
 ⚠️ **Rule 2 is why raw text in `NormalizedContent` can never be found.** `A.C.M.E.` stored raw stays `A.C.M.E.`, while `?q=ACME` and `?q=A.C.M.E.` both normalize to `ACME` — no match, no error. Always write `NormalizedContent` through `[Normalized]` or an injected `INormalizer`; never by string concatenation.
+
+**Case-insensitive `?q=` comes from the database, not the normalizer.** Rule 5 keeps case on both sides and the filter compares with `LIKE`: SQLite ignores ASCII case, PostgreSQL and a case-sensitive SQL Server collation do not, so there `?q=acme` misses `ACME`. For the same result on every provider, lowercase both sides:
+
+<!-- no-compile -->
+```csharp
+// using Regira.Normalizing.Models;   ← TextTransform
+options.UseDefaults(d => d.ConfigureNormalizing(n => n.Transform = TextTransform.ToLowerCase));
+```
+
+The transform applies to every `[Normalized]` property. Rows stored before keep their case until a save changes them, so lowercase them once (`UPDATE … SET NormalizedContent = LOWER(NormalizedContent)`; after rule 2 the content is ASCII).
 
 ### Attribute-Based (Recommended)
 
@@ -1769,7 +1787,7 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 > }
 > ```
 >
-> `GetBytes` reads the stored file for an `Attachment` loaded any way, through the `DbContext` too.
+> `GetBytes` reads the stored file for an `Attachment` loaded any way, through the `DbContext` too. To hand them to a client as one file: [`entities.patterns.md`](./entities.patterns.md) → *Download an owner's attachments as one ZIP*.
 
 > **Ordering & extending the DTOs.** Attachment order travels by **array position**, not by a client-sent
 > value: on every parent save the pipeline assigns `SortOrder = index` over the incoming collection
@@ -2040,7 +2058,7 @@ accepts search objects matching its own key type, so non-int entities need the m
 Generated endpoints ship **anonymous** — no controller base carries `[Authorize]`. Every scaffolded endpoint, including delete and attachment download, is public until the app adds authorization.
 
 - Put `[Authorize]` on your controller subclass (use `[AllowAnonymous]` per action for exceptions): `[Authorize] public class ProductController : EntityControllerBase<Product, ProductDto, ProductInputDto>;`. Mapped endpoints take it on the group — `app.MapEntityEndpoints().RequireAuthorization()` — with `e.Endpoints(o => o.AllowAnonymous(…))` for the exceptions.
-- **Row-level scoping:** register a global filter query builder that applies the caller's scope (tenant/owner) to every query — inject `IHttpContextAccessor` in its constructor and filter on the claim. Register it once, app-wide, with `options.AddGlobalFilterQueryBuilder<OwnerFilter>()` inside `UseEntities(options => …)` (`using Regira.Entities.DependencyInjection.QueryBuilders;`), not per entity: an `e.AddFilter<T>()` filter is bound to that entity's search object and is not a global filter. The claim reaches the principal the same way whichever scheme authenticated the caller (bearer token, cookie session, API key), so the filter needs no knowledge of which one is in use. The filter pipeline runs on **every controller path**: List, Search, `Details(id)` (the id goes through the same filters), and the write endpoints' existence checks — so `PUT`/`PATCH`/`DELETE` on a foreign row 404 as well.
+- **Row-level scoping:** register a global filter query builder that applies the caller's scope (tenant/owner) to every query — inject `IHttpContextAccessor` in its constructor and filter on the claim. Register it once, app-wide, with `options.AddGlobalFilterQueryBuilder<OwnerFilter>()` inside `UseEntities(options => …)` (`using Regira.Entities.DependencyInjection.QueryBuilders;`), not per entity: an `e.AddFilter<T>()` filter is bound to that entity's search object and is not a global filter. The claim reaches the principal the same way whichever scheme authenticated the caller (bearer token, cookie session, API key), so the filter needs no knowledge of which one is in use. The filter pipeline runs on **every controller path**: List, Search, `Details(id)` (the id goes through the same filters), and the write endpoints' existence checks — so `PUT`/`PATCH`/`DELETE` on a foreign row 404 as well. Global filters are registered transient and resolved with the entity service, in the scope its `DbContext` comes from, so a filter may inject scoped services (the `DbContext`, a current-user service); a background job resolves the entity service from a scope it creates.
 - **What a scoping filter cannot do:** validate **create** (the client supplies the FK — stamp/verify `OwnerId` from the claim in a prepper, never trust the body) or guard **direct `IEntityService` calls** in custom code, which bypass the controller's filtered existence checks. Two variants of the create hole bite hardest:
   - ⚠️ **An owner's row scope does not reach its attachments.** The per-owner link entity (`ProductAttachment`) has no owner column and no navigation back, so a filter that scopes the owner never runs on it. Every attachment route — `GET attachments`, `attachments/{id}`, `{objectId}/attachments`, both downloads (`files/{id}`, `{objectId}/files/{name}`), and the link's `PUT` and `DELETE` — then reads across owners: any signed-in user lists, downloads, edits and deletes every user's files. Give a row-scoped owner with attachments a second global filter, on the **link** entity, that reruns the owner's scope through the owner's `DbSet` (`db.Products.Any(p => p.Id == link.ObjectId && p.OwnerId == userId)`) with the same exemptions, registered app-wide beside the owner's — the shape is in [`entities.examples.md`](./entities.examples.md) → Attachments. With it, those routes answer 404 for another owner's file; check one by id as a second user.
   - ⚠️ **An attachment upload is a create no filter sees, the link filter included.** `POST /{owner}/{id}/files` takes the owner id from the **route**, stamps it on a new link row and saves — no query runs, so no global filter applies, and any authenticated caller can attach a file to a row they cannot read. Add a validator on the **link** entity (registered on its `HasAttachments` builder: §Attachments, the link-rule callout after step 7) that re-runs the owner's scope over the owner's `DbSet` on `Add` and adds an error when it resolves nothing — which answers **400**, not the 404 the read path gives a foreign row, since the write pipeline maps only 400 and 409. Override the controller's `virtual Add` and return `NotFound()` instead where the two must agree.

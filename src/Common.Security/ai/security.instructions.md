@@ -282,6 +282,10 @@ throws `InvalidOperationException: OwnerId is missing` at startup:
 ]
 ```
 
+The keys themselves belong in user-secrets or the environment (`Authentication:ApiKeys:0:Key`), not in
+`appsettings.json`; configuration merges the entries by index. A key never set throws at startup, naming the path to
+set.
+
 ### ⚠️ Claims emitted per scheme — the two spellings
 
 The schemes do **not** agree on the role claim type, which decides whether a `RequireClaim` policy holds for
@@ -966,6 +970,26 @@ public class UsersController(UserManager<AppUser> userManager)
 
 **Required services:** `AddIdentityCore<TUser>().AddEntityFrameworkStores<…>().AddDefaultTokenProviders()` (`AddDefaultTokenProviders` is mandatory — recover/confirm generate Identity tokens); `AddJwtAuthentication(…)` for `ITokenHelper`; an `IEmailSender` (Regira's `IdentityMailer`); `AccountEmailOptions` listing the origins the mailed links may point at (*Mailed links: allowed origins* below). Token payloads use `System.Text.Json` internally — no serializer registration needed.
 
+**An endpoint of your own that mails a token link** — a minimal-API host (there is no endpoint mapper: the
+account endpoints are these controllers), a resend-confirmation action, or an override that does not call the base —
+reuses the request and token models in `Regira.Security.Authentication.Web.Models` (`AuthenticateInput`,
+`RecoverPasswordInput`, `ResetPasswordInput`, `UserTokenModel`, …) and checks the page with `AccountLinks`, the check
+the base actions run:
+
+<!-- no-compile -->
+```csharp
+// using Regira.Security.Authentication.Web.Controllers;   ← AccountLinks
+// using Regira.Security.Authentication.Web.Models;        ← AccountEmailOptions, UserTokenModel
+var page = accountEmailOptions.Value.FindAllowedPage(input.SiteUrl);   // IOptions<AccountEmailOptions>; throws when no origin is listed
+if (page == null) return Results.BadRequest(AccountLinks.NotAllowed);  // another origin: send nothing
+var resetToken = await userManager.GeneratePasswordResetTokenAsync(user);
+var token = Convert.ToBase64String(Encoding.UTF8.GetBytes(
+    JsonSerializer.Serialize(new UserTokenModel { Token = resetToken, Username = user.UserName! })));
+await emailSender.SendEmailAsync(user.Email!, subject, $"<a href=\"{page.WithToken(token)}\">Reset your password</a>");
+```
+
+Check the page before looking the user up, so the answer reveals no account.
+
 ### Authorization: guarded by default
 
 **Rule: every endpoint requires an authenticated user unless it declares `[AllowAnonymous]`.** The controllers carry no per-action `[Authorize]` — the host MUST apply a global requirement when mapping them, or the non-anonymous endpoints are silently public:
@@ -1139,7 +1163,7 @@ set (Identity's default confirmation checks the address). A user you seed, or cr
 | `POST auth/password/recover` | ✅ | `{ username, siteUrl }` | `200`, whether or not the user exists | `400` `siteUrl` not on an allowed origin |
 | `POST auth/password/reset` | ✅ | `{ token, password }` | `200` | `400` malformed token / identity errors |
 
-`recover` answers alike for an unknown user (no user enumeration); for a known one it emails a link — `siteUrl`, the reset **page**, with its query string set to `?token=<Base64 of the reset token and user name>` (a query `siteUrl` carried is dropped), percent-encoded so any query parser (`URLSearchParams`, vue-router's `route.query`) reads it back intact. `reset` returns `400` on a malformed token.
+`recover` answers alike for an unknown user (no user enumeration); for a known one it emails a link — `siteUrl`, the reset **page**, with its query string set to `?token=<Base64 of the reset token and user name>` (a query `siteUrl` carried is dropped) — the Base64 of the UTF-8 JSON of a `UserTokenModel` (`{"Token":"…","Username":"…"}`, `System.Text.Json` defaults, so PascalCase keys; `reset` reads them case-sensitively), percent-encoded so any query parser (`URLSearchParams`, vue-router's `route.query`) reads it back intact. `reset` returns `400` on a malformed token.
 
 `recover` is anonymous and mails the named account on every call, so a caller can flood that inbox and spend the app's mail quota: rate-limit it like `refresh-token`. Limit by client, not by account, so a `429` reveals no more than the `200` does.
 
@@ -1152,7 +1176,7 @@ set (Identity's default confirmation checks the address). A user you seed, or cr
 
 `username` is used as both user name and email. With `confirmEmailUrl`, the new user is emailed that page with its query string set to `?token=<Base64 of the confirmation token and user name>`, percent-encoded like the reset link's. The confirm page posts `{ token }` to `users/confirm-email`: the link's `token` query value as the parser decoded it. The server reads the user from the token; `userName` is accepted and not read. A name that is taken answers `400` with Identity's `DuplicateUserName` error and leaves the existing account alone.
 
-If the confirmation mail fails, `POST users` answers `500` with the user already created, and a repeat answers `400` (`DuplicateUserName`) without mailing. To resend, the app adds an endpoint of its own that mails a fresh link for the existing user (`UserManager.GenerateEmailConfirmationTokenAsync`), checking the page against `AllowedOrigins` as the base action does.
+If the confirmation mail fails, `POST users` answers `500` with the user already created, and a repeat answers `400` (`DuplicateUserName`) without mailing. To resend, the app adds an endpoint of its own that mails a fresh link for the existing user (`UserManager.GenerateEmailConfirmationTokenAsync`), checking the page against `AllowedOrigins` with `AccountLinks.FindAllowedPage`, as the base action does.
 
 A `400` comes in one of three bodies: an input that fails model validation gets ASP.NET Core's `ValidationProblemDetails` (errors under `errors`); identity errors and a page on another origin get the field errors as the body itself, an identity error keyed by its code (`{ "PasswordTooShort": ["..."] }`); a malformed token gets a `ProblemDetails` without field errors. A client reads `errors` when present, else the body.
 
@@ -1190,7 +1214,7 @@ services.AddOptions<AccountEmailOptions>()
   when a link is first needed. A `POST users` without `confirmEmailUrl` needs nothing.
 - `SiteName` starts the reset mail's subject ("Example Password Reset"); the request's `siteName` is ignored.
 - ⚠️ **The check runs in the base actions.** An override of `RecoverPassword` or `Create` that mails a link of its
-  own instead of calling the base must check the page against `AllowedOrigins` itself. To change only a mail's
+  own instead of calling the base must check the page itself, with `AccountLinks.FindAllowedPage`. To change only a mail's
   wording or layout, wrap the `IEmailSender`: it receives the subject and the body, link included.
 
 ---

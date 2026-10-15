@@ -264,6 +264,49 @@ public class StaleReferenceTests
             Assert.That(Note(persisted, _firstNoteId).TicketId, Is.EqualTo(_ticketId));
         });
     }
+
+    [Test]
+    public async Task Rows_Of_Separate_Reads_Sharing_A_Principal_Cannot_Be_Modified_In_One_Save()
+    {
+        // each Details call allocates its own instance of the shared Open status
+        using var scope = _sp.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Ticket, int>>();
+        var first = (await service.Details(_ticketId))!;
+        var second = (await service.Details(_otherTicketId))!;
+        Assert.That(first.Status, Is.Not.SameAs(second.Status));
+
+        first.Subject = "Printer, floor 2";
+        second.Subject = "Scanner, floor 2";
+        await service.Modify(first);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+        {
+            await service.Modify(second);
+            await service.SaveChanges();
+        });
+    }
+
+    [Test]
+    public async Task Rows_Of_One_List_Sharing_A_Principal_Are_Modified_In_One_Save()
+    {
+        using (var scope = _sp.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Ticket, int>>();
+            var rows = await service.List();
+            Assert.That(rows.Select(x => x.Status), Is.All.SameAs(rows[0].Status), "one read resolves the shared status to one instance");
+
+            foreach (var row in rows)
+            {
+                row.Subject += ", floor 2";
+                await service.Modify(row);
+            }
+            await service.SaveChanges();
+        }
+
+        using var readScope = _sp.CreateScope();
+        var saved = await readScope.ServiceProvider.GetRequiredService<IEntityService<Ticket, int>>().List();
+        Assert.That(saved.Select(x => x.Subject), Is.EquivalentTo(new[] { "Printer, floor 2", "Scanner, floor 2" }));
+    }
 }
 
 /// <summary>

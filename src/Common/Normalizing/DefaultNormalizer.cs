@@ -23,17 +23,18 @@ public class DefaultNormalizer(NormalizeOptions? options) : INormalizer
         {
             output = output.RemoveDiacritics()!;
         }
-        output = Regex.Replace(output, @"[^a-z0-9\s\-_,!;&']", string.Empty, RegexOptions.IgnoreCase);
+        // invariant: under a Turkish culture, I is no case variant of i and would be deleted
+        output = Regex.Replace(output, @"[^a-z0-9\s\-_,!;&']", string.Empty, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
         output = Regex.Replace(output, $@"[{_options.CharsToSpace}]", " ").Trim();
         output = Regex.Replace(output, @"\s+", " ").Trim();
         output = Regex.Replace(output, @"\s", " ");
         switch (_options.Transform)
         {
             case TextTransform.ToUpperCase:
-                output = output.ToUpper();
+                output = output.ToUpperInvariant();
                 break;
             case TextTransform.ToLowerCase:
-                output = output.ToLower();
+                output = output.ToLowerInvariant();
                 break;
         }
         return output;

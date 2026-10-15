@@ -110,6 +110,16 @@ Exact usings: `office.namespaces.md`.
 - A refused request throws `HttpRequestException` carrying the status code and Gotenberg's message: `400` for
   settings Chromium refuses (margins that leave no room for content), `503` for a conversion past the server's
   `--api-timeout` (30 s by default).
+
+The flags follow the image's `gotenberg` command; single quotes keep a shell from reading the `!` and the parentheses
+of the pattern:
+
+```bash
+# HTML that needs nothing from the network
+docker run --rm -p 3000:3000 gotenberg/gotenberg:8 gotenberg '--chromium-deny-list=^(https?://|file:(?!//\/tmp/)).*'
+# HTML built from user input that loads public URLs
+docker run --rm -p 3000:3000 gotenberg/gotenberg:8 gotenberg --chromium-deny-private-ips
+```
 - The whole HTML, `data:` images included, goes over HTTP on every call.
 - `AddGotenbergPdf` registers `IHtmlToPdfService` on an `HttpClient` named
   `Regira.Office.PDF.Gotenberg.DependencyInjection.ServiceCollectionExtensions.HttpClientName` (add handlers or
@@ -272,6 +282,9 @@ MiniPdf applies them per source format:
 
 Any other source — `.doc`, `.xls`, `.odt`, `.rtf`, a PDF — throws `NotSupportedException`. The format is read from
 the package's parts, not from the file name or content type. Every visible sheet of a workbook is rendered, in order.
+`PdfService` applies no fit-to-width: unless the workbook's own page setup scales a sheet to one page wide (Excel's
+*Scale to Fit*, width 1 page), columns past the page width print on further pages, and the sheet name is not printed.
+For a wide sheet, use `Orientation = PageOrientation.Landscape`, fewer or narrower columns, or a `.docx` table.
 
 MiniPdf sets no size limit: each part is read whole into memory, so a small file whose compressed parts expand to
 gigabytes exhausts the process's memory. For uploads, cap the file's size and the summed `Length` and count of its zip

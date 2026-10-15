@@ -963,7 +963,11 @@ public async Task<IActionResult> GetOffspring([FromQuery] IList<int> ids, [FromQ
 
 Expose ASP.NET Core Identity users with the same List/Search/Details/Save surface, DTO mapping and SearchObject filtering as any entity — one custom `IEntityRepository` implementation wrapping `UserManager<TUser>`, then a plain thin controller. Password hashing, validation and claim storage stay Identity's job.
 
-**Budget:** 1 complex slot.
+**Budget:** 1 complex slot as shown. A simple slot works when the users need no `SortBy` and no `Includes`:
+`For<AppUserEntity, string, AppUserSearchObject>`, an `IEntityRepository<AppUserEntity, string, AppUserSearchObject>`
+and the five-type `EntityControllerBase<AppUserEntity, string, AppUserSearchObject, AppUserDto, AppUserInputDto>`;
+claims are then loaded always or never. Need users only as names to pick or assign? Leave them unexposed and link a
+party of the domain to the account instead (*Stakeholders* → *Linking a party to a user account*).
 
 ### Exposed model + repository over UserManager
 
@@ -1028,6 +1032,7 @@ public class AppUserController : EntityControllerBase<AppUserEntity, string, App
 - The repository, not the framework, applies filters/sorting/paging/includes — you implement `IEntityRepository` from scratch, so inject the registered `IFilteredQueryBuilder<...>` set and run them in `List`/`Count` (that keeps SearchObject filters in their own classes).
 - The query-builder generics are typed on the **inner** `IdentityUser` type, while the `For<>()` generics use the **exposed** model — the mapper bridges the two.
 - Exclude `NewPassword` from the read DTO; hash only via `userManager.PasswordHasher` on update. Deleting goes through `userManager.DeleteAsync`.
+- Startup warns that `?q=` is ignored for `AppUserEntity`: the check looks for a filter registered on the exposed type, and this one is registered on the inner type. The warning stands by design when that filter reads `so.Q`; without such a filter, `?q=` really is ignored.
 
 ---
 
@@ -1081,6 +1086,7 @@ public class CountryController : EntityControllerBase<Country, string, SearchObj
 
 ### Gotchas
 
+- Startup warns that `?q=` is ignored for the virtual entity: no filter is registered for it. The warning stands by design when the service applies `Q` itself, as above.
 - You own everything the pipeline normally does: apply `Q`, ordering and `PagingInfo` yourself (`PageQuery` from `Regira.DAL.Paging`, or `PageItems` from `Regira.Utilities`); registered query builders/processors don't run against in-memory data.
 - Ranked matching beats plain `Contains` for picker UX — weight exact code/name matches above prefix above substring, and boost the caller's own country (`IHasDefault`).
 - Write endpoints exist on the controller but return 500 from the `NotImplementedException` — add `[ApiExplorerSettings(IgnoreApi = true)]` overrides or authorization if that surface bothers you; the reference apps simply never call them.

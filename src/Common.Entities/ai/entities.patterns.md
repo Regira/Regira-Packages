@@ -125,6 +125,43 @@ await links.SaveChanges(); // pipeline writes the file, fills Path/Length, assig
 **See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "Bulk insert / update")`
 and `get_package(id: "Regira.Entities", section: "examples", heading: "Attachments")`.
 
+### Download an owner's attachments as one ZIP
+<!-- how_to: key=zip-owner-attachments aliases=zip,archive,download,bundle,attachments,files -->
+Read the owner first, so row security decides (out of scope is a 404), then its links through the link service
+`HasAttachments` registered, and zip their bytes under de-duplicated names:
+
+<!-- no-compile -->
+```csharp
+// using Regira.Entities.Attachments.Models;   ← EntityAttachmentSearchObject
+// using Regira.IO.Models;                      ← BinaryFileItem
+// using Regira.IO.Storage.Compression;         ← Zip() — package Regira.IO.Storage
+[HttpGet("{id}/files.zip")]
+public async Task<IActionResult> DownloadAll(int id, CancellationToken token)
+{
+    if (await vehicles.Details(id, token) == null) return NotFound();                 // IEntityService<Vehicle, int>
+    var links = await vehicleAttachments.List(new EntityAttachmentSearchObject { ObjectId = [id] }, token: token);   // IEntityService<VehicleAttachment, int>
+    var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var entries = new List<BinaryFileItem>();
+    foreach (var link in links.Where(x => x.Attachment != null))
+    {
+        var bytes = await files.GetBytes(link.Attachment!, token);                      // IAttachmentFileService<Attachment, int>
+        if (bytes == null) continue;
+        var fileName = link.Attachment!.FileName ?? $"file-{link.Id}";                  // may hold virtual folders (a/b.pdf)
+        var name = fileName;
+        var extension = Path.GetExtension(fileName);
+        for (var i = 2; !names.Add(name); i++)                                          // a repeated name overwrites the earlier entry
+            name = $"{fileName[..^extension.Length]} ({i}){extension}";
+        entries.Add(new BinaryFileItem { FileName = name, Bytes = bytes });             // no Identifier: it would name the entry
+    }
+    var zip = entries.Zip();                                                            // stream-backed, positioned at 0
+    return File(zip.Stream!, "application/zip", $"vehicle-{id}.zip");
+}
+```
+
+Every file is read into memory: cap the count or the summed `Length` for owners with many large files.
+
+**See:** `get_package(id: "Regira.IO.Storage", section: "io.storage.instructions", heading: "ZIP / Compression")`.
+
 ### Mark one child as the primary / featured one
 <!-- how_to: key=primary-child aliases=featured,cover,primary,default,main,thumbnail,flag,attachment -->
 Put the marker on the **child** — a flag, or a rank column it already has (an attachment link entity's
@@ -447,7 +484,7 @@ scoped to that category                  count  43 | items   0   ← 43 rows nob
 
 Startup validation reports this shape (`ArchivableReferenceDataValidator`, a **warning** naming both entities) — it fires only for a dependent that is separately registered, since an `e.Related()` child is never queried on its own.
 
-**If it really is an aggregate parent**, suppress the warning per context with `.ConfigureWarnings(w => w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning))` on the `AddDbContext` options. And for any dependent you **also query directly**, mirror the filter — `modelBuilder.Entity<OrderLine>().HasQueryFilter(x => !x.Order!.IsArchived)` — which is what keeps its count and items in agreement. Each such dependent needs its own, and one without a navigation back to the parent needs that navigation first (*Attachments on an archivable owner*, below). A filter you add to a dependent that is **not itself `IArchivable`** never collides with the named archived filter: the archived filter only touches `IArchivable` types, so your filter on such a dependent is unopposed.
+**If it really is an aggregate parent**, suppress the warning per context with `.ConfigureWarnings(w => w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning))` on the `AddDbContext` options. The ignore covers every such pair in the context, reference data included; Regira's startup validation still reports each separately registered dependent behind a required foreign key without a query filter of its own. And for any dependent you **also query directly**, mirror the filter — `modelBuilder.Entity<OrderLine>().HasQueryFilter(x => !x.Order!.IsArchived)` — which is what keeps its count and items in agreement. Each such dependent needs its own, and one without a navigation back to the parent needs that navigation first (*Attachments on an archivable owner*, below). A filter you add to a dependent that is **not itself `IArchivable`** never collides with the named archived filter: the archived filter only touches `IArchivable` types, so your filter on such a dependent is unopposed.
 
 **What mirroring costs.** `?archived=` opts in on the queried entity only, and a mirrored filter is your own filter on a dependent that is not `IArchivable` — no opt-in ever lifts it. An archived parent's children are then unreachable through the API for everyone, the administrator who archived it included. When they must stay readable, don't mirror: keep the parent out of the children's reads — no `Include` of it, no filter through its navigation, and the one field their list shows denormalised onto them (`AssetCode` on the record) — so no join exists for the archived filter to drop rows through. Startup validation still warns, since it inspects the model's shape rather than your queries; with no read joining the parent, that warning stands by design.
 
@@ -652,7 +689,8 @@ filter, the search object's filters and row security (`IGlobalFilteredQueryBuild
 search object from the query and call `List(IList<TSearchObject?>, IList<TSortBy>, TIncludes?, pagingInfo: null)` on
 `IEntityService<TEntity, TSearchObject, TSortBy, TIncludes>`. A direct service call is never capped, so one call
 returns every matching row; no paging loop. A mediator `ListQuery` is clamped to `MaxPageSize`, so send no
-`ListQuery` for an export.
+`ListQuery` for an export. Uncapped also means unbounded: keep such an endpoint behind authorization, or, where a
+caller can reach it anonymously, require a filter or pass `new PagingInfo { PageSize = max }`.
 
 ```csharp
 using Microsoft.AspNetCore.Mvc;
@@ -758,7 +796,8 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
   a principal they share — two allocations of the same employee — so modifying both in one save tracks that principal
   twice and throws *"…cannot be tracked because another instance with the same key value…"*, a 500. Clear the shared
   reference navigation on each and keep its key (`source.Employee = null; next.Employee = null;`), so only the key
-  decides.
+  decides. Rows read by one `List()` call share one instance of each principal, so `Modify` each and save once
+  without clearing it.
 - **Answer with a re-read, exactly as `GET /{id}` would.** `this.Details<TEntity, TDto>(id)`
   (`Regira.Entities.Web.Controllers`) reads the row back through the service, maps it to the read DTO and
   wraps it as `{ "item": … }`, so a client reads `data.item` on every route and the SPA service needs no
@@ -932,6 +971,10 @@ public class CreditRequestWorkflowController(IEntitySender sender) : ControllerB
 - The other route — the fields kept on `TInputDto` behind the guard prepper, the action flipping the flag and sending
   a `PatchCommand` or, for a create-time field, a `SaveCommand` — works too, but puts the fields back on the input DTO
   every caller binds, where the guard alone keeps a caller from setting them. Prefer the request.
+- **A transition that also creates rows** — an approval that adds a decision row — does both in its handler, on the
+  same scope's `DbContext`: a `SaveCommand` for the new row, `IEntityService.Modify` followed by `SaveChanges()` for
+  the transition, and a transaction around them when they must succeed together (*Several sends in one transaction*).
+  Hold the trusted-writer flag around the `Modify` only: a create sent while it is set keeps whatever its input carries.
 
 ⚠️ **Gate the transition set, not only the fields.** The guard decides *who writes the fields*; which role may
 reach which **state** is a second rule. When a generic action (`POST {id}/transitions` taking the target state)
@@ -1181,11 +1224,14 @@ public class StockMove(AppDbContext db, IEntitySender sender)
 
 The handlers resolve their services from the scope the sender came from, so every send writes through that same
 `DbContext` and joins its transaction — and a later send's preppers and validators see the rows an earlier one saved.
-A `PatchCommand` in such a unit builds its patch with the app's JSON options, the ones it passes along:
+A `PatchCommand` in such a unit takes the app's JSON options, which merge the patch into the stored row. Those options
+leave nulls out, so serialize the patch itself with options that write them, or a `null` meant to clear a field sends
+nothing:
 
 ```csharp
 // options: IOptions<Microsoft.AspNetCore.Mvc.JsonOptions>.Value.JsonSerializerOptions (minimal APIs: Http.Json.JsonOptions)
-// var patch = JsonSerializer.SerializeToElement(new { endDate = DateTime.UtcNow }, options);
+// var patchOptions = new JsonSerializerOptions(options) { DefaultIgnoreCondition = JsonIgnoreCondition.Never };   // System.Text.Json.Serialization
+// var patch = JsonSerializer.SerializeToElement(new { endDate = DateTime.UtcNow, note = (string?)null }, patchOptions);
 // await sender.Send(new PatchCommand<Assignment, int, AssignmentDto, AssignmentInputDto>(id, patch, options), token);
 ```
  A send that throws leaves the transaction uncommitted, and disposing `tx`
@@ -1561,13 +1607,12 @@ public class WriteAuthorizationFilter(ILogger<WriteAuthorizationFilter> logger) 
     public Task OnAuthorizationAsync(AuthorizationFilterContext context)
     {
         var action = context.ActionDescriptor as ControllerActionDescriptor;
-        var route = action?.AttributeRouteInfo?.Template ?? "";
+        var method = context.HttpContext.Request.Method;
 
-        // Reads: every GET, plus the two POST query overloads. Everything else writes — including the
-        // attachment controller's upload/replace and any custom action, which is the safe default.
-        var isRead = HttpMethods.IsGet(context.HttpContext.Request.Method)
-            || route.EndsWith("/search", StringComparison.OrdinalIgnoreCase)
-            || route.EndsWith("/list", StringComparison.OrdinalIgnoreCase);
+        // Reads: every GET, plus the two POST query overloads (POST list, POST search). Everything else writes —
+        // including the attachment controller's upload/replace and any custom action, which is the safe default.
+        var isRead = HttpMethods.IsGet(method)
+            || (HttpMethods.IsPost(method) && action?.ActionName is "List" or "Search");
 
         // A write is public only when its ACTION says so: sign-in, password recovery, confirm-email, a
         // self-registration override. [AllowAnonymous] on a controller opens its reads, never its writes.
@@ -1603,7 +1648,8 @@ public class WriteAuthorizationFilter(ILogger<WriteAuthorizationFilter> logger) 
 
 ⚠️ **`POST` is not a reliable "write" signal here** — `POST /{entity}/search` and `POST /{entity}/list` are
 the array-of-search-objects **read** overloads, so a bare method test 403s the reader's own list screen.
-Hence the two route exclusions above.
+Hence the exclusion above, by method and action name rather than by route: a custom action whose route ends in
+`/search` stays a write. Don't name a writing action `List` or `Search`.
 
 ⚠️ **Every writing controller needs an entry — the account controllers included.** `auth/validate` and
 `auth/refresh` are guarded `POST`s every identity must reach: give `AccountController` an empty entry, or the
@@ -1697,6 +1743,29 @@ EntityEndpoint.Modify))` to share the entity's entry.
 > ⚠️ **The sync rewrites whole rows, not just the fields you own at collection level.** Once the parent sends the collection, `UpdateRelatedCollection` marks every matched row `Modified` and writes **all** its values from the payload — so the per-row field resets to `default` on every list save unless a parent-level `e.Prepare(entity, dbContext)` hook (registered **before** `Related()`) re-stamps it from the store first.
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — *Additional Patterns > Sortable owned child with a per-row toggle* for the full slice: entity, both DTOs, the guard, the PATCH controller, and the registration-order and covariance caveats.
+
+## Reordering separately registered rows
+
+A row with a `For<>()` of its own (`ISortable`, not a `Related()` child) has no parent DTO to carry the order, so the
+reorder is a collection-level action of its own: `POST /{resource}/sort` with the ids in their new order.
+
+<!-- no-compile -->
+```csharp
+// on CategoryController — a POST, so the write-authorization filter gates it with the controller's writes;
+// on mapped endpoints give it .WithMetadata(new EntityEndpointMetadata(typeof(Category), EntityEndpoint.Modify))
+[HttpPost("sort")]
+public async Task<IActionResult> Sort([FromBody] int[] ids, [FromServices] IEntityService<Category, int> service, CancellationToken token)
+{
+    if (ids.Length > 500) return BadRequest();                                      // one Modify, one re-read, per row
+    var rows = await service.List(new SearchObject<int> { Ids = ids }, token: token);   // row security applies
+    if (rows.Count != ids.Distinct().Count()) return NotFound();                    // an id the caller cannot see
+    var sorted = rows.OrderBy(x => Array.IndexOf(ids, x.Id)).ToList();               // List keeps its own order, not the ids'
+    sorted.SetSortOrder();                                                           // Regira.Entities.Extensions
+    foreach (var row in sorted) await service.Modify(row, token);                    // one List: shared principals are one instance
+    await service.SaveChanges(token);
+    return NoContent();
+}
+```
 
 ## Renamed DTO property
 
@@ -1976,14 +2045,20 @@ touched — the old one too when the FK moved — so the prepper above re-sums t
 
 <!-- no-compile -->
 ```csharp
+// services.AddScoped<SettledInvoices>(); — the reactions of one committed save share one scope
+public sealed class SettledInvoices : HashSet<int> { }
+
 e.React(
     change => change.Kind != EntityChangeKind.Modified || change.HasChanged(x => x.InvoiceId) || change.HasChanged(x => x.TotalCost),
     async (change, services, token) =>
     {
         var db = services.GetRequiredService<AppDbContext>();
         var invoices = services.GetRequiredService<IEntityService<Invoice, int>>();
+        var settled = services.GetRequiredService<SettledInvoices>();
         foreach (var id in new[] { change.Entity.InvoiceId, change.Original?.InvoiceId }.OfType<int>().Distinct())
         {
+            // re-summed once per committed save: the reactions start after the whole save committed
+            if (!settled.Add(id)) continue;
             // the bare row, detached and without navigations: List and Details apply the registered includes, and an
             // included to-one would ride into Modify as a graph to attach
             var invoice = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, token);
@@ -1995,7 +2070,9 @@ e.React(
 
 The reactor runs after the child's save committed, in a scope of its own, so the parent's save is a second
 commit: a failure there is logged and the child's save stands. With it registered, seeding needs no second pass
-over the parents: seed the parents first, and each child wave settles them.
+over the parents: seed the parents first, and each child wave settles them. Each changed row is one reaction, so
+without `SettledInvoices` a wave of a hundred lines re-saves their invoice a hundred times; with it, once per save.
+A flag the seeder sets in its own scope never reaches the reactor, which runs in another.
 
 > ⚠️ **A query filter on the child also hides its rows from this recompute.** A dependent you query directly
 > carries `HasQueryFilter(x => !x.Parent!.IsArchived)` (§Step 11) — and that filter applies here too, while

@@ -85,7 +85,9 @@ internal sealed class ArchivableReferenceDataValidator : IEntityRegistrationVali
                 $"Archiving one {principalName} hides the rows of {names} that reference it from list results while /search still counts them, " +
                 "so pages come back short and count disagrees with items. Nothing errors. " +
                 $"ACTION: decide what {principalName} is: reference data that should not be IArchivable, a foreign key that should be optional, " +
-                "or an aggregate parent whose dependents mirror its filter. See entities.patterns → Soft Delete.");
+                $"an aggregate parent whose dependents mirror its filter, or a parent kept out of the reads of {names} (no Include, no filter " +
+                "through its navigation), in which case this warning stands by design. " +
+                "See entities.patterns → Soft Delete → Before you make reference data IArchivable (What mirroring costs).");
         }
     }
 
