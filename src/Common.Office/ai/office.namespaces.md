@@ -78,6 +78,12 @@ the size or the colours (there is no error-correction option).
 | `Regira.Office.Word.Drawing` | `WordImageCreator`, `WordToImageLayerOptions` |
 | **Providers** | `Regira.Office.Word.Spire` → `WordService`, `DocumentBuilder`, `WordDocumentSettings`; `Regira.Office.Word.Syncfusion` → `WordService`, `DocumentBuilder`, `WordDocumentSettings`, `SyncfusionWordConfig`; `Regira.Office.Word.Aspose` → `WordService`, `DocumentBuilder`, `WordDocumentSettings`, `AsposeWordConfig`; `Regira.Office.Word.Mini` → `WordService`; `Regira.Office.Word.Gotenberg` → `WordService`, `GotenbergWordConfig`; `Regira.Office.Word.Gotenberg.DependencyInjection` → `ServiceCollectionExtensions` |
 
+⚠️ **`Paragraph` is ambiguous.** `Regira.Office.Word.Models.Paragraph` and
+`DocumentFormat.OpenXml.Wordprocessing.Paragraph` collide (CS0104) in a file that builds a template in code and
+fills it. Alias the Open XML namespace, `using W = DocumentFormat.OpenXml.Wordprocessing;`, as *No Word at hand*
+does (`office.word.examples`). `HorizontalAlignment` collides the same way with
+`DocumentFormat.OpenXml.Drawing.Wordprocessing`.
+
 ## Mail
 
 | Namespace | Types |

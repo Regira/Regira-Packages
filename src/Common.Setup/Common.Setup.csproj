@@ -22,8 +22,6 @@
   <ItemGroup>
     <None Include="ai\project.setup.md" Pack="true" PackagePath="ai\" />
     <None Include="ai\shared.setup.md" Pack="true" PackagePath="ai\" />
-    <None Include="ai\CLAUDE.md" Pack="true" PackagePath="ai\" />
-    <None Include="ai\copilot-instructions.md" Pack="true" PackagePath="ai\" />
     <None Include="ai\commands\new-project.md" Pack="true" PackagePath="ai\commands\" />
     <None Include="ai\commands\new-entity.md" Pack="true" PackagePath="ai\commands\" />
     <None Include="ai\commands\sync-guides.md" Pack="true" PackagePath="ai\commands\" />

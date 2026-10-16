@@ -439,7 +439,7 @@ public class OrderLine : IEntityWithSerial, IHasTimestamps, ISortable
     public int ProductId { get; set; }
     public Product? Product { get; set; }
     public int Quantity { get; set; }
-    public decimal UnitPrice { get; set; }
+    [ServerOwned] public decimal UnitPrice { get; set; }   // the price it was ordered at
     public decimal SubTotal { get; set; }
     public int SortOrder { get; set; }
     public DateTime Created { get; set; }
@@ -497,7 +497,7 @@ public class OrderInputDto
     public OrderStatus Status { get; set; } = OrderStatus.Pending;
     public ICollection<OrderLineInputDto>? OrderLines { get; set; }
 }
-public class OrderLineInputDto   // no UnitPrice — it is server-owned, resolved from Product.Price in Prepare (price-tampering guard)
+public class OrderLineInputDto   // no UnitPrice — it is server-owned, set by OrderPricingPrepper (price-tampering guard)
 {
     public int Id { get; set; }
     public int OrderId { get; set; }
@@ -541,6 +541,47 @@ public class OrderQueryBuilder : IFilteredQueryBuilder<Order, int, OrderSearchOb
     }
 }
 
+// Entities/Orders/OrderPricingPrepper.cs — a stored line keeps the price it was ordered at; a new line, or one whose
+// product changed, takes the product's current price, never the client's (price-tampering guard).
+// Three-way on the incoming collection — the Related() contract (Step 5):
+//   null = not sent, stored lines untouched   |   [] = delete-all   |   populated = the new set.
+// Only null may skip the recompute, and even then Total must come from the PERSISTED lines:
+// returning early leaves Total at the DTO's default (0) on every status-only PATCH.
+// For Order the [] case is refused by the validator below, which runs after every prepper — but
+// keep the three-way: an aggregate that allows delete-all needs it.
+// A rule spanning a scalar and the lines (a supplier certified for every line's product) is no
+// different: a PATCH of the scalar alone arrives with OrderLines == null, so validate it against the
+// persisted lines here too — inside the populated branch only, it is bypassable.
+public class OrderPricingPrepper(WebshopDbContext dbContext) : EntityPrepperBase<Order>
+{
+    public override async Task Prepare(Order modified, Order? original, CancellationToken token = default)
+    {
+        if (modified.OrderLines == null)
+        {
+            modified.Total = modified.Id > 0
+                ? await dbContext.OrderLines.AsNoTracking()
+                    .Where(l => l.OrderId == modified.Id)
+                    .SumAsync(l => l.SubTotal, token)
+                : 0m;
+            return;
+        }
+        // original is read like Details, and Includes below loads the lines on every read
+        var stored = original?.OrderLines?.ToDictionary(l => l.Id) ?? [];
+        var productIds = modified.OrderLines.Select(l => l.ProductId).Distinct().ToList();
+        var prices = await dbContext.Products
+            .Where(p => productIds.Contains(p.Id))
+            .ToDictionaryAsync(p => p.Id, p => p.Price, token);
+        foreach (var line in modified.OrderLines)
+        {
+            line.UnitPrice = stored.TryGetValue(line.Id, out var storedLine) && storedLine.ProductId == line.ProductId
+                ? storedLine.UnitPrice
+                : prices.GetValueOrDefault(line.ProductId);
+            line.SubTotal = line.Quantity * line.UnitPrice;
+        }
+        modified.Total = modified.OrderLines.Sum(l => l.SubTotal);   // [] sums to 0 — the delete-all case
+    }
+}
+
 // Entities/Orders/OrderManager.cs — EntityWrappingServiceBase: behavior around the call
 // Override Add/Modify (not Save): the controller write path calls Save(), and the base Save()
 // routes to this service's own Add()/Modify() based on IEntity.IsNew() — so wrapping logic belongs there.
@@ -563,39 +604,8 @@ public static EntityServiceCollection<WebshopDbContext> AddOrders(this IEntitySe
             .Include(x => x.OrderLines!.OrderBy(l => l.SortOrder))
                 .ThenInclude(ol => ol.Product!));
         e.Related(x => x.OrderLines, item => item.OrderLines?.SetSortOrder()); // resolves because OrderLine : ISortable (IEnumerable<OrderLine> is covariant to IEnumerable<ISortable>); if the element type isn't statically ISortable, cast: (item.OrderLines as IEnumerable<ISortable>)?.SetSortOrder()
-        e.Prepare(async (order, dbContext) =>   // typed overload hands the strongly-typed DbContext
-        {
-            // Three-way on the incoming collection — the Related() contract (Step 5):
-            //   null = not sent, stored lines untouched   |   [] = delete-all   |   populated = the new set.
-            // Only null may skip the recompute, and even then Total must come from the PERSISTED lines:
-            // returning early leaves Total at the DTO's default (0) on every status-only PATCH.
-            // For Order the [] case is refused by the validator below, which runs after every prepper — but
-            // keep the three-way: an aggregate that allows delete-all needs it.
-            // A rule spanning a scalar and the lines (a supplier certified for every line's product) is no
-            // different: a PATCH of the scalar alone arrives with OrderLines == null, so validate it against the
-            // persisted lines here too — inside the populated branch only, it is bypassable.
-            if (order.OrderLines == null)
-            {
-                order.Total = order.Id > 0
-                    ? await dbContext.OrderLines.AsNoTracking()
-                        .Where(l => l.OrderId == order.Id)
-                        .SumAsync(l => l.SubTotal)
-                    : 0m;
-                return;
-            }
-            // UnitPrice is server-owned: resolve it from the Product, never trust client input (price-tampering guard).
-            var productIds = order.OrderLines.Select(l => l.ProductId).ToList();
-            var prices = await dbContext.Products
-                .Where(p => productIds.Contains(p.Id))
-                .ToDictionaryAsync(p => p.Id, p => p.Price);
-            foreach (var line in order.OrderLines)
-            {
-                line.UnitPrice = prices.GetValueOrDefault(line.ProductId);
-                line.SubTotal = line.Quantity * line.UnitPrice;
-            }
-            order.Total = order.OrderLines.Sum(line => line.SubTotal);   // [] sums to 0 — the delete-all case
-        });
-        // Validators run after every prepper, so the rule sees the synced lines. Same three-way as Prepare() above:
+        e.AddPrepper<OrderPricingPrepper>();   // after Related(): it wins over the lines' [ServerOwned] restore
+        // Validators run after every prepper, so the rule sees the synced lines. Same three-way as the prepper above:
         // null = not sent (a status-only PATCH), leave the stored lines alone; [] = an explicit delete-all, which
         // would strand the order without lines. Treating null like [] rejects every partial update that doesn't
         // resend the full child list. (EntityWriteOperation: Regira.Entities.Validators.Abstractions)
@@ -841,7 +851,8 @@ e.Prepare(async (order, dbContext) =>
         .Where(p => productIds.Contains(p.Id))
         .ToDictionaryAsync(p => p.Id, p => p.Price);
     foreach (var line in order.OrderItems)
-        // Pull the authoritative unit price from the DB rather than trusting the client.
+        // Pull the authoritative unit price from the DB rather than trusting the client. This re-prices every line
+        // on each save; to keep a stored line's price, compare with original (the Order example's OrderPricingPrepper).
         line.UnitPrice = prices.TryGetValue(line.ProductId, out var price) ? price : line.UnitPrice;
 
     order.TotalAmount = order.OrderItems.Sum(x => x.Quantity * x.UnitPrice);   // [] sums to 0 — delete-all

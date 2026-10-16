@@ -81,6 +81,7 @@ The local file-extraction system (`dotnet build` → `.regira/instructions/`) re
 
 Run this checklist before any code generation:
 
+- [ ] **The app's `AGENTS.md`:** in an existing app, it was read first. A new app gets one, with `.mcp.json` and `CLAUDE.md`, once its template and packages are chosen (*The app's own AGENTS.md*)
 - [ ] **If using licensed packages (e.g. `Regira.Entities.DependencyInjection`, `Regira.Office.Clients`):** on the **free tier, no `UseRegira()` call is needed** — free limits apply automatically. With license keys, store them under `Regira:LicenseKeys` and call `services.UseRegira(configuration)` **before** any module setup calls (e.g. `UseEntities()`). A single key can cover multiple products; add more keys to the array to combine them — the system picks the best per product (paid always wins over free).
 - [ ] **If MCP is configured:** used `get_package_toc` to discover section keys, `get_section_toc` to list headings, and `get_package` (with `section=` and optional `heading=`) to read the relevant guides for each installed Regira module — no build step required
 - [ ] **If MCP is not configured:** `dotnet restore` and `dotnet build` succeeded so installed Regira packages could extract their embedded `ai/*.md` files into `.regira/instructions/`, and that folder was checked for `*.instructions.md` files and relevant setup references at the solution root (a build of a single project extracts nothing — see *Default workflow* below)
@@ -176,6 +177,85 @@ Template consequences:
 6. Before generating entity models, services, controllers, DI registrations, or infrastructure code, read the applicable primary guides (`*.instructions.md`, `project.setup.md`, `shared.setup.md`) following the **minimum viable read** in *Guide loading rules* — either via MCP or from `.regira/instructions/`. Skipping the relevant primary guides is a workflow violation.
 7. If guides are unavailable both via MCP and locally, verify the restore/build succeeded, then continue with the setup baseline and package routing table in this file.
 8. Generate code that stays consistent with the selected `projectTemplate`, installed Regira packages, any extracted local guides, and local project conventions.
+9. Write the app's `AGENTS.md`, `.mcp.json` and `CLAUDE.md` (*The app's own AGENTS.md* below), and update `AGENTS.md` whenever a decision it records changes.
+
+## The app's own AGENTS.md
+
+An app keeps its own decisions in `AGENTS.md` at its repository root. A later session, another agent or a developer
+then starts from what this app chose instead of rediscovering it. Write it when you create the app, once its template
+and packages are chosen, with two small files beside it:
+
+- `.mcp.json`, holding the Regira server from *MCP server* above (and any other server the app uses).
+- `CLAUDE.md`, holding the single line `@AGENTS.md`, so Claude Code reads the same file. Codex, Copilot and Cursor read
+  `AGENTS.md` itself.
+
+Write it by these rules:
+
+- **Facts and pointers, not copies.** Record what the app decided and the guide that explains it. Guide text copied
+  into it goes stale with the next package upgrade, and then contradicts the MCP.
+- **Short:** under about 100 lines, since every session loads it.
+- **No secrets:** name the user-secrets keys, never their values.
+- **Current:** update it in the same change as anything its last section lists.
+- **True when written:** check each fact against the code before you finish: the ports against `launchSettings.json`
+  and `vite.config.ts`, the counts against the start-up tier line, *no exceptions* against the files that declare more
+  than one top-level type, and the deviations against the README's.
+- **Read first in an existing app.** Its decisions are the app's declared conventions and take precedence over this
+  guide's defaults. Where one contradicts a package's actual API, correct the file.
+- **This guide is not that file.** Where this guide was copied in as the repository's `AGENTS.md` (no MCP), move it to
+  `.regira/bootstrap.md` and write the app's own in its place.
+
+The template; leave out the lines that do not apply:
+
+```markdown
+# <App name>
+
+<What the app does and for whom, in one or two sentences.>
+
+## Run
+
+- API: `dotnet run --project <path>`, http://localhost:<port>. Front-end: `npm run dev` in `<folder>`, http://localhost:<port>.
+- Services: <each Docker container, with its name and port> | none.
+- Data: <the database, how seeding runs and how to reset it>.
+
+## Regira
+
+- Guides: the Regira MCP in `.mcp.json` (without it, `.regira/bootstrap.md` and `.regira/instructions/`). Start with
+  `get_bootstrap_guide(heading: "toc")` (`platform: "frontend"` for the SPA), and look a type up with `get_type`
+  instead of guessing it.
+- Packages, all on Regira <version>:
+  - `<package>`: <what the app uses it for>
+- Entities: <n> simple and <n> complex registrations, <within the free tier | licensed: the key is the user secret
+  `Regira:LicenseKeys:0`>.
+- Front-end: `@regira/modules` <version>; slices from `scaffold.mjs` under `src/entities/`; ejected components:
+  <list> | none.
+
+## Layout
+
+- <Single project | Layered solution> (`entities.setup` → *Project Structure*).
+- One type per file, named after it; <the grouping this app allows | no exceptions>.
+- <Each folder beyond `Entities/`, and what it holds.>
+
+## Conventions
+
+- The bootstrap's setup baseline applies. Deviations from it and from the guides' recommended patterns (a pattern
+  replaced, a pipeline bypassed, a stand-in production must replace, such as a logging mail sender), each with its
+  reason: <list> | none.
+
+## Secrets
+
+- User secrets of `<project>`: <key names>. Never a value in a file in the repository.
+
+## Before a change is done
+
+- `dotnet build <solution>`, `dotnet list package --vulnerable --include-transitive`, <tests>, and `npm run build`
+  (vue-tsc) in `<folder>`.
+
+## Keep this file current
+
+Update this file in the same change when the app moves to the layered solution, adds a host or a second `DbContext`,
+adds, removes or upgrades a Regira package, goes beyond the free tier, or adds a service, a port, a secret or a
+deviation.
+```
 
 ## Regira package routing
 

@@ -98,19 +98,22 @@ All templates use Serilog with console + rolling file sinks configured from `app
 
 **Packages**
 
-```xml
-<PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="*" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="*" />
-    <PackageReference Include="Serilog.Extensions.Hosting" Version="*" />
-    <PackageReference Include="Serilog.Settings.Configuration" Version="*" />
-    <PackageReference Include="Serilog.Sinks.Console" Version="*" />
-    <PackageReference Include="Serilog.Sinks.File" Version="*" />
+Add each package with `dotnet add package`, which writes the version it resolves; never commit `Version="*"`
+(`entities.setup` → *Known-good package versions*).
+
+```bash
+dotnet add package Microsoft.Extensions.Configuration.UserSecrets
+dotnet add package Microsoft.Extensions.Hosting
+dotnet add package Serilog.Extensions.Hosting
+dotnet add package Serilog.Settings.Configuration
+dotnet add package Serilog.Sinks.Console
+dotnet add package Serilog.Sinks.File
 ```
 
-**Packages — Web APIs **
+**Packages — Web APIs**
 
-```xml
-<PackageReference Include="Serilog.AspNetCore" Version="*" />
+```bash
+dotnet add package Serilog.AspNetCore
 ```
 
 **Bootstrap pattern (web APIs)**
@@ -220,9 +223,9 @@ if (app.Environment.IsDevelopment())
 ```
 
 **Nuget packages — Web API**
-```xml
-<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="*" />
-<PackageReference Include="Scalar.AspNetCore" Version="*" />
+```bash
+dotnet add package Microsoft.AspNetCore.OpenApi
+dotnet add package Scalar.AspNetCore
 ```
 
 > **⚠️ On the native `Microsoft.AspNetCore.OpenApi`/Scalar path, `Microsoft.OpenApi` must stay on 2.x** _(while on .NET 10 — remove once the OpenAPI source generator supports 3.x)_. (This does **not** apply to a Swashbuckle setup, which supports 3.x.)
@@ -268,11 +271,8 @@ All API templates include this launch profile, opening the Scalar UI on start.
 Enrich console apps with appsettings, user secrets and environment variables.
 (Not applicable to APIs since they implement user secrets by default.)
 
-**.csproj file — Console App**
+**.csproj file — Console App** — add the package with `dotnet add package Microsoft.Extensions.Configuration.UserSecrets`, then:
 ```xml
-  <!-- NuGet package -->
-  <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="*" />
-
   <!-- include appsettings.json in output for console apps -->
   <ItemGroup>
     <Content Include="appsettings.json">
@@ -339,9 +339,9 @@ reverse proxy the OIDC callback fails with "Correlation failed" unless `UseForwa
 authentication middleware.
 
 **Nuget packages**
-```xml
-<PackageReference Include="Regira.Security.Authentication" Version="*" />
-<PackageReference Include="Regira.Security.Authentication.Web" Version="*" />
+```bash
+dotnet add package Regira.Security.Authentication
+dotnet add package Regira.Security.Authentication.Web
 ```
 
 > `Regira.Security.Authentication.Web` references `Microsoft.AspNetCore.OpenApi` and thereby **floors** it
@@ -451,8 +451,8 @@ using Regira.Security.Authentication.OpenIdConnect.Models; // OidcAuthOptions, E
 - Kestrel is always configured from `appsettings.json` via `options.Configure(context.Configuration.GetSection("Kestrel"))`.
 
 **Nuget packages**
-```xml
-<PackageReference Include="Regira.System.Hosting" Version="*" />
+```bash
+dotnet add package Regira.System.Hosting
 ```
 
 **appsettings.json — Kestrel block**

@@ -32,7 +32,7 @@ consumer projects on `dotnet build`.
 ```
 src/
   Common.Setup/
-    ai/                  # project.setup.md, shared.setup.md, CLAUDE.md, copilot-instructions.md (consumer-facing)
+    ai/                  # project.setup.md, shared.setup.md (consumer-facing)
       commands/          # slash commands
     build/               # Regira.Setup.props, Regira.Setup.targets
   Common.Entities/       # hub — ai/ (entities.instructions.md, entities.signatures.md, ...) + build/
@@ -63,8 +63,8 @@ when a task reveals a durable lesson or a pitfall too small for a guide section.
 1. Create `src/{Family}.{Provider}/` with a `.csproj` and source files
 2. Document it **in the hub's guide** — the provider table in `{family}.instructions.md`, its
    registration call, and anything that behaves unlike its siblings. Do not start a second guide
-3. Add it to the `Main packages and defaults` column of both routing tables (`ai/AGENTS.md`,
-   `src/Common.Setup/ai/copilot-instructions.md`), saying when to pick it
+3. Add it to the `Main packages and defaults` column of the routing table in `ai/AGENTS.md`, saying when to
+   pick it
 4. Give it its own `ai/` only for what the hub guide cannot carry — the `using` set of a provider-only
    namespace (`Entities.EFcore`, `Entities.Web` ship just a `namespaces.md`) or a package card
    (`Security.Authentication*`). A provider `build/` folder is for unrelated MSBuild work, such as

@@ -233,7 +233,7 @@ The spike, against DocumentFormat.OpenXml 3.5.1:
    - `office.word.examples.md` if the licence-free pairing earns an example there.
    - `docs/word/README.md`: *Projects*, *Installation*, the backend lists in *Collection tables* and *Conditional blocks*, and a `### Word.OpenXml` section under *Implementation notes*.
    - `docs/word/examples.md`: *Example 8* pairs Word.Mini with Word.Gotenberg, and could pair Word.OpenXml instead.
-   - The routing tables in `ai/AGENTS.md` and `src/Common.Setup/ai/copilot-instructions.md`.
+   - The routing table in `ai/AGENTS.md`.
    - The `office-word` group in `tools/GuideVerifier/projects.json`.
    - CHANGELOG bullets for `Regira.Office.Word.OpenXml` and for `Regira.Office`, whose assembly gains the `InternalsVisibleTo` entry, plus Word.Mini if decision 5 picks option 2.
    - `ai/learnings.md` for whatever the importer teaches.

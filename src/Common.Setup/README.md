@@ -3,10 +3,11 @@
 Shared setup guides and slash commands for AI coding agents working in a Regira consumer solution. The package carries no code: on `dotnet build`, its build targets copy these files from the package to the solution root:
 
 - the shared setup guides `project.setup.md` and `shared.setup.md` → `.regira/instructions/`
-- `copilot-instructions.md` → `.github/instructions/`
 - the slash commands `new-project`, `new-entity`, `sync-guides` and `evaluate` → `.claude/commands/`
 
 A file that already exists is never overwritten, and a file added by a package upgrade is copied on the next build. The `.regira` and `.claude` folders are excluded from the project's default items.
+
+The app's own `AGENTS.md`, with a one-line `CLAUDE.md` and a `.mcp.json` beside it, is not in this package: the agent writes it from the template in the consumer bootstrap (*The app's own AGENTS.md*), and Claude Code, Copilot, Codex and Cursor all read it.
 
 ## Installation
 

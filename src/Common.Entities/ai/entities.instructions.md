@@ -281,6 +281,9 @@ Interfaces, with the services each turns on.
 
 - Inherit from `SearchObject` and add filter properties as needed.
 - Prefer using `ICollection<TKey>` for FK filters to allow multiple values.
+- A `DateTime?` filter compares as UTC in an EF query, as a request body does: a `Z` or an offset is converted, and
+  a value without one is taken as UTC. Before using it in memory, call `.AsUtc()` (`Regira.Utilities`) —
+  §UseDefaults() — What It Registers, *UTC date handling*.
 
 ```csharp
 // Base record (SearchObject is shortcut for SearchObject<int>)
@@ -370,7 +373,7 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 - Exclude auto-generated fields (`Created`, `LastModified`, `NormalizedContent`) from `InputDto`
 - Exclude secured fields (e.g. `Password`) from DTOs
 - ⚠️ **`IsArchived` is the exception — keep it on `TInputDto`.** It reads like an auto-generated *and* server-owned flag, so it gets excluded by reflex. The write path stays archived-inclusive either way, but a DTO that cannot express the flag can never clear it, so **restore becomes impossible** — and the row is invisible meanwhile (lists hide it, `GET /{id}` 404s). Generated forms hide the field; they don't drop it. Round-trip: [`entities.patterns.md`](./entities.patterns.md) → Soft Delete
-- Server-owned fields (generated codes like `Order.Code`, computed totals, and **per-line prices** — an order/invoice line's `UnitPrice` is a textbook price-tampering vector) stay off `InputDto` and are set server-side. Declare each one `[ServerOwned]` (or `e.ServerOwned(x => x.Code, mint)` to mint on create as well) and the write path restores it from the stored row on every update — recipe below. One of the two per field is enough: `e.ServerOwned(…, mint)` mints and protects, the attribute only protects. `UseDefaults()` registers the attribute's restore before every `For<>()`, so an entity's own prepper that recomputes the field (a total) runs after it and wins
+- Server-owned fields (generated codes like `Order.Code`, computed totals, and **per-line prices** — an order/invoice line's `UnitPrice` is a textbook price-tampering vector) stay off `InputDto` and are set server-side. Declare each one `[ServerOwned]` (or `e.ServerOwned(x => x.Code, mint)` to mint on create as well) and the write path restores it from the stored row on every update — recipe below. One of the two per field is enough: `e.ServerOwned(…, mint)` mints and protects, the attribute only protects. `UseDefaults()` registers the attribute's restore before every `For<>()`, so an entity's own prepper that recomputes the field (a total) runs after it and wins. A `Related()` child's restore (`[ServerOwned]` on the child, or `r.ServerOwned(…)`) runs inside that `Related()` sync, at its place in the registration order: a prepper registered after `Related()` wins over it, one registered before it is overwritten
 - When using Attachments, exclude full File paths, since the FileService accepts relative paths (identifiers)
 - Try to facilitate mapping by keeping DTO structure similar to the entity (e.g. nested related entities instead of flattening)
 - Use navigation properties in DTOs instead of flattening related entity data: this preserves structure and enables richer client-side handling (e.g. avoid `CategoryTitle`, but use `Category`=>`Title`)
@@ -515,7 +518,7 @@ holds until the commit — SQLite locks the database for the write — so a seco
 first row; on PostgreSQL an exclusion constraint can refuse the overlap itself
 (`EXCLUDE USING gist (room_id WITH =, tstzrange(starts_at, ends_at) WITH &&)`, extension `btree_gist`), answered 409
 like any constraint. A `Serializable` transaction alone fails the loser with a deadlock (SQL Server) or a
-serialization error (PostgreSQL), to retry.
+serialization error (PostgreSQL), to retry. The locking code: `entities.patterns` → *Overlap rule under concurrency*.
 
 ⚠️ **Stamp a server-owned timestamp or code only when the value is absent**, as `HasCreatedDbPrimer` does —
 an unconditional `DateTime.UtcNow` on create overwrites back-dated seed data
@@ -662,7 +665,9 @@ read as the rule (`ValueTooLarge`, `order.notOpen`). The 400 body is in §Respon
   wherever it is registered. A prepper class registered twice runs once; each `Prepare(...)` delegate is a prepper of
   its own.
 - **Children are validated through their parent.** Validators check the entity a write service saves, not the rows a
-  `Related()` sync writes — validate `Lines` from the `Order` validator (key `Lines[0].Quantity`). A validator scoped
+  `Related()` sync writes — validate `Lines` from the `Order` validator (key `Lines[0].Quantity`). `ctx.Item.Lines`
+  holds the rows being saved, without the stored rows the sync marks `Deleted`, and is `null` when the request leaves
+  the collection out (a PATCH of a scalar): a rule over the whole set then reads the stored rows. A validator scoped
   to a child without a `For<>()` never runs; startup validation warns — except for FluentValidation (below).
 - ⚠️ **A lookup through the `DbContext` skips row security.** Global filters (tenant, owner) scope the entity
   services' reads, not `db`: `db.Customers.AnyAsync(…)` sees every tenant's rows, so it accepts another tenant's
@@ -1364,7 +1369,7 @@ one, closed over `SearchObject<TKey>`.
 `options.UseDefaults()` is a convenience method that registers, in one call:
 
 - **Paging defaults** — `DefaultPageSize = 10`, `MaxPageSize = 100` (override either afterwards). An omitted `pageSize` uses the default; a `pageSize <= 0` opts out and falls back to the max; every request is capped by `MaxPageSize`.
-- **UTC date handling** — on by default, one policy per process (`Regira.Utilities.DateTimeDefaults.UseUtc`): timestamps are written as UTC, request-body `DateTime`s are read as UTC by `ConfigureDefaultJsonOptions()` (a local offset is converted, an offset-less value is taken as UTC — so a prepper compares them with `original` on one clock), and the built-in `Created`/`LastModified` filters normalize their inputs. A `DateTime` on your own SearchObject is bound as sent: call `.AsUtc()` (`Regira.Utilities`) on it in your filter. Disable with `e.UseUtc(false)` → values are used as given with `DateTime.Now` timestamps, and the UTC convention's converter goes inert automatically.
+- **UTC date handling** — on by default, one policy per process (`Regira.Utilities.DateTimeDefaults.UseUtc`): timestamps are written as UTC, request-body `DateTime`s are read as UTC by `ConfigureDefaultJsonOptions()` (a local offset is converted, an offset-less value is taken as UTC — so a prepper compares them with `original` on one clock), and the built-in `Created`/`LastModified` filters normalize their inputs. A `DateTime` on your own SearchObject compares as UTC in an EF query (the UTC convention converts the parameter like the column: an offset is converted, an offset-less value is taken as UTC); call `.AsUtc()` (`Regira.Utilities`) before using it in memory. Disable with `e.UseUtc(false)` → values are used as given with `DateTime.Now` timestamps, and the UTC convention's converter goes inert automatically.
 - **Default primers** — `HasCreatedDbPrimer`, `HasLastModifiedDbPrimer`, `ArchivablePrimer`, `HasConcurrencyTokenDbPrimer` (timestamps, soft-delete stamping, concurrency-token minting).
 - **Automatic DbContext wiring** (`AddDefaultInterceptors()`) — `UseEntities<TContext>()` contributes the primer/normalizer/auto-truncate/reactor interceptors, the UTC date convention, the archived query filter and the concurrency-token convention to the context's options itself, so `AddDbContext` only needs the provider and the `DbContext` needs no Regira call. Matches by assignability: an abstract-base registration (`UseEntities<AppContextBase>()`) also wires derived provider-specific contexts, in any registration order. Fine-grained control via `e.WireDbContext(DbContextWiring …)`: `None` opts out; without `UseDefaults()` use `e.AddDefaultInterceptors()` for the full set or pick pieces à la carte (e.g. `DbContextWiring.PrimerInterceptors`).
 - **Default global query filters** — `FilterIdsQueryBuilder`, `FilterArchivablesQueryBuilder`, `FilterHasCreatedQueryBuilder`, `FilterHasLastModifiedQueryBuilder`. These are int-keyed; for full key-typed filtering of a non-int entity also call `AddDefaultGlobalQueryFilters<TKey>()`. The query builder runs one variant per filter family and prefers the key-matching one, so a non-int entity's key-agnostic defaults (the archived opt-ins, timestamp/`Q` filtering) still apply when only the int variant is registered.
@@ -1640,6 +1645,11 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 > **→ See:** [`entities.signatures.md`](./entities.signatures.md) — Attachments
 > **→ See:** `io.storage.instructions` — the `IFileService` file-store contract behind attachments (read before
 > wiring a store). `get_package(id: "Regira.IO.Storage", section: "io.storage.instructions")`, or `io.storage.instructions.md` locally.
+
+> **Downloads run no script.** A file's content type follows its name, every download is served with
+> `X-Content-Type-Options: nosniff`, and every file but a PDF with `Content-Security-Policy: sandbox`, so an uploaded
+> SVG or HTML page cannot script the API's origin (§Security & Authorization). Restrict what untrusted users may upload in a link validator
+> (below).
 
 1. Create a class inheriting the **`EntityAttachment`** base and set `ObjectType` in the constructor:
    `public class ProductAttachment : EntityAttachment { public ProductAttachment() => ObjectType = nameof(Product); }`.

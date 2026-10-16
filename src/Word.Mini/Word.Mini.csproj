@@ -12,7 +12,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
     <Version>6.6.0</Version>
-    <Description>Word document generation and content extraction using MiniWord for Regira Office.</Description>
+    <Description>Fills Word (.docx) templates in process with MiniWord (placeholders, conditions, loops and images) and extracts their text and images, for Regira Office. Pair it with Word.Gotenberg for PDF.</Description>
     <PackageTags>regira;office;word;miniword;docx</PackageTags>
   </PropertyGroup>
   <ItemGroup>

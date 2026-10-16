@@ -330,6 +330,7 @@ services.AddSingleton<IEmailSender>(provider =>
     ));
 ```
 
-It sends Identity's `htmlMessage` as an HTML body (`IsHtml` stays `true`).
+It sends Identity's `htmlMessage` unchanged as an HTML body (`IsHtml` stays `true`), encoding nothing
+(`security.instructions` → *PasswordControllerBase*).
 
 ---

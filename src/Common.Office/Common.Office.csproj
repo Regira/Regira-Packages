@@ -54,6 +54,7 @@
   </ItemGroup>
   <!-- AI instruction files -->
   <ItemGroup>
+    <None Include="ai\office.card.md" Pack="true" PackagePath="ai\" />
     <None Include="ai\office.instructions.md" Pack="true" PackagePath="ai\" />
     <None Include="ai\office.namespaces.md" Pack="true" PackagePath="ai\" />
     <None Include="ai\office.pdf.instructions.md" Pack="true" PackagePath="ai\" />

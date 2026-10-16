@@ -255,6 +255,13 @@ var service = new BinaryFileService(new FileSystemOptions { RootFolder = "/var/a
 `List` answers identifiers with `/` between folders on every platform, as `Save` does, so they compare and split
 the same everywhere; either separator is accepted back.
 
+**Serving a stored file from a controller.** Return it through Regira.Web's `this.File(file, inline)`
+(`Regira.Web.Extensions`; `web.instructions` → *ControllerExtensions*), not ASP.NET's `File(stream, contentType,
+name)`: it answers 404 for a missing file and sends `X-Content-Type-Options: nosniff` and, for every file but a PDF,
+`Content-Security-Policy: sandbox`, so an upload named `.html` or `.svg` runs no script on the API's origin. The
+content type follows the name:
+`return this.File(new BinaryFileItem { FileName = name, Stream = await files.GetStream(identifier) }, inline: false);`
+
 **Credential-protected network share (UNC)** — use `NetworkFileService` with a `NetworkShareCommunicator`; it authenticates lazily on the first file operation. Windows only (WNet API) — on other platforms mount the share at OS level and use plain `FileSystemOptions`. Dispose the communicator on shutdown; connections are ref-counted per share + user process-wide, so only disposing the last communicator on a share releases it. Use `Reconnect()` — not `Close()` + `Open()` — to recover a connection cancelled outside the process.
 
 ```csharp

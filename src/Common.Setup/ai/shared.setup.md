@@ -2,18 +2,19 @@
 
 > **Role:** Load this file for setup rules reused by multiple module guides and for consumer-guide sync or distribution mechanics.
 >
-> **Boundaries:** Use the consumer bootstrap — `get_bootstrap_guide(heading: "toc")`, or `./AGENTS.md` at the repo root — for module discovery, top-level routing, and the execution-oriented consumer workflow. Use the project setup guide — `get_package(id: "Regira.Setup", section: "project.setup")` — for project-template choice and baseline app shape.
+> **Boundaries:** Use the consumer bootstrap — `get_bootstrap_guide(heading: "toc")`, or its copy in `.regira/bootstrap.md` — for module discovery, top-level routing, and the execution-oriented consumer workflow. Use the project setup guide — `get_package(id: "Regira.Setup", section: "project.setup")` — for project-template choice and baseline app shape.
 
 Use this file when a module guide needs shared setup without repeating it.
 
 ## Consumer Local Guides
 
 - **Source repository**: the full `ai/` folder is available locally, so this file can point to adjacent guides.
-- **Consumer project**: the normal entrypoint is `./AGENTS.md`; extracted `.regira/instructions/*.md` files are optional local guidance.
+- **Consumer project**: the normal entrypoint is the consumer bootstrap over the MCP, and `./AGENTS.md` is the app's own file (bootstrap → *The app's own AGENTS.md*); extracted `.regira/instructions/*.md` files are optional local guidance.
 
 Keep these responsibilities separate in consumer projects:
 
-- `./AGENTS.md` decides project template, module selection, package routing, and when extracted local guides must be read before code generation.
+- The consumer bootstrap decides project template, module selection, package routing, and when extracted local guides must be read before code generation.
+- `./AGENTS.md` records what was decided for this app: its packages, layout, conventions and deviations. The app writes and maintains it.
 - `.regira/instructions/*.md` are optional local guides created by package extraction.
 - `Regira.Setup` is the package path for extracting the shared setup guides `project.setup.md` and `shared.setup.md` during build.
 - Module packages that ship AI files can extract their own module-specific guides during build through their package targets.
@@ -45,7 +46,7 @@ services.AddHttpClient(BillitConstants.HttpClientName)
 
 ## Related Files
 
-- **Consumer bootstrap** — `get_bootstrap_guide(heading: "toc")` — canonical downstream bootstrap; committed as `./AGENTS.md` at the repo root when the MCP server is not configured
+- **Consumer bootstrap** — `get_bootstrap_guide(heading: "toc")` — canonical downstream bootstrap; copied to `.regira/bootstrap.md` when the MCP server is not configured, since `./AGENTS.md` is the app's own file
 - **Project setup guide** — `get_package(id: "Regira.Setup", section: "project.setup")` — canonical shared project-template guide; extractable to `.regira/instructions/project.setup.md` through `Regira.Setup`
 
 ## Authoring Rules

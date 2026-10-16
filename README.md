@@ -106,13 +106,15 @@ All packages target `net8.0` and `net10.0`. See [docs/quickstart.md](docs/quicks
 
 ## Using Regira in your project
 
-AI assistance for Regira centers on a hosted MCP server. **Connecting it is usually all you need** — the agent can both discover packages and fetch the same bootstrap guidance an `AGENTS.md` file provides, without installing anything first.
+AI assistance for Regira centers on a hosted MCP server. **Connecting it is usually all you need** — the agent can both discover packages and fetch the bootstrap guidance, without installing anything first.
 
 It's also lighter on tokens: the agent pulls only the guidance relevant to the task on demand, instead of loading full instruction files into its context window up front.
 
+The agent writes one file of its own: an `AGENTS.md` at the app's root that records what it decided for this app (its packages, layout, conventions and deviations), with a `.mcp.json` for the Regira server and a one-line `CLAUDE.md` beside it. Later sessions, other agents and developers start from that file and keep it current.
+
 Two optional layers add repo-local context when you want it:
 
-- **Bootstrap file** — committing an `AGENTS.md` file gives the agent the setup workflow even when the MCP server isn't connected.
+- **Bootstrap file** — a copy of the bootstrap guide gives the agent the setup workflow even when the MCP server isn't connected.
 - **Per-package guides** — guide files extracted locally on `dotnet build` give the agent detailed implementation instructions for the packages you've installed.
 
 ### Connect the MCP server (recommended)
@@ -163,7 +165,7 @@ The hosted server lives at `https://mcp.regira.com/mcp`. No key or sign-up is ne
 
 ### Optional — Commit a bootstrap file
 
-If you're not connecting the MCP server, copy [ai/AGENTS.md](ai/AGENTS.md) into the root of your application repository as `AGENTS.md`. This gives the agent the full Regira project setup workflow: NuGet configuration, project templates, and which packages to install for common scenarios.
+If you're not connecting the MCP server, copy [ai/AGENTS.md](ai/AGENTS.md) into your application repository as `.regira/bootstrap.md`. This gives the agent the full Regira project setup workflow: NuGet configuration, project templates, and which packages to install for common scenarios. In a new, empty folder you can copy it to the root as `AGENTS.md` instead, so the agent loads it on its own: it moves the copy to `.regira/bootstrap.md` when it writes the app's own `AGENTS.md`.
 
 This works for both a new empty folder and an existing application that needs extra Regira features. With the MCP server connected, the agent retrieves this same guide via `get_bootstrap_guide`, so copying the file is unnecessary.
 

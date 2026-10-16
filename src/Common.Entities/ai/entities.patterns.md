@@ -858,6 +858,10 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
 }
 ```
 
+- **Keep the action typed `ActionResult<DetailsResult<TDto>>`.** `NotFound()`, `Forbid()` and
+  `ValidationProblem(…)` convert to it, as above. `this.Details<…>(id)` answers `null` for a missing row, otherwise an
+  `ActionResult` whose `Result` is the `OkObjectResult` (its `Value` stays `null`); from an `IActionResult` action
+  return `(await this.Details<TEntity, TDto>(id))?.Result ?? NotFound()`.
 - **Either form returns a 400 `ValidationProblemDetails` here.** `ModelState` + `ValidationProblem` as above, or
   `throw new EntityInputException<CreditRequest>(…) { InputErrors = { [nameof(item.Status)] = "…" } }` — the
   filter `ConfigureDefaultJsonOptions()` registers maps the exception on **any** action, so this controller
@@ -1355,6 +1359,78 @@ public class ShelfRecompute(IEntitySender sender)
 
 A handler override opens no transaction. One that must span two saves joins any open transaction
 (`Database.CurrentTransaction` or `Transaction.Current`) and begins its own only when none is open.
+
+### Overlap rule under concurrency
+
+An overlap validator (no two bookings of one room overlap) checks, then the save inserts, so two simultaneous
+requests can both pass it. Take the booked rooms' locks first, in a transaction the save joins: the second request
+waits at its `ExecuteUpdate`, and its validator then sees the first booking.
+
+```csharp
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using Regira.Entities.Models.Abstractions;
+using Regira.Entities.Web.Controllers.Abstractions;
+using Regira.Entities.Web.Models;
+
+public class MeetingRoom : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } public int BookingVersion { get; set; } }
+public class Reservation : IEntityWithSerial
+{
+    public int Id { get; set; }
+    public DateTime Start { get; set; }
+    public DateTime End { get; set; }
+    public ICollection<ReservationRoom>? Rooms { get; set; }
+}
+public class ReservationRoom : IEntityWithSerial { public int Id { get; set; } public int ReservationId { get; set; } public int MeetingRoomId { get; set; } }
+public class ReservationDto { public int Id { get; set; } public DateTime Start { get; set; } public DateTime End { get; set; } }
+public class ReservationRoomInputDto { public int Id { get; set; } public int MeetingRoomId { get; set; } }
+public class ReservationInputDto
+{
+    public int Id { get; set; }
+    public DateTime Start { get; set; }
+    public DateTime End { get; set; }
+    public ICollection<ReservationRoomInputDto>? Rooms { get; set; }
+}
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+{
+    public DbSet<MeetingRoom> MeetingRooms => Set<MeetingRoom>();
+}
+
+[Route("api/reservations")]
+public class ReservationController(AppDbContext db) : EntityControllerBase<Reservation, ReservationDto, ReservationInputDto>
+{
+    public override Task<ActionResult<SaveResult<ReservationDto>>> Create([FromBody] ReservationInputDto model)
+        => WithRoomsLocked(model, () => base.Create(model));
+    public override Task<ActionResult<SaveResult<ReservationDto>>> Modify([FromRoute] int id, [FromBody] ReservationInputDto model)
+        => WithRoomsLocked(model, () => base.Modify(id, model));
+    public override Task<ActionResult<SaveResult<ReservationDto>>> Save([FromBody] ReservationInputDto model)
+        => WithRoomsLocked(model, () => base.Save(model));
+
+    private Task<ActionResult<SaveResult<ReservationDto>>> WithRoomsLocked(ReservationInputDto model,
+        Func<Task<ActionResult<SaveResult<ReservationDto>>>> save)
+    {
+        var roomIds = model.Rooms?.Select(r => r.MeetingRoomId).Distinct().ToList() ?? [];
+        var token = HttpContext.RequestAborted;
+        return db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            db.ChangeTracker.Clear();
+            await using var tx = await db.Database.BeginTransactionAsync(token);
+            // a write on each booked room: its lock holds until the commit (SQLite locks the whole database)
+            await db.MeetingRooms.Where(r => roomIds.Contains(r.Id))
+                .ExecuteUpdateAsync(s => s.SetProperty(r => r.BookingVersion, r => r.BookingVersion + 1), token);
+            var result = await save();   // preppers, the overlap validator and SaveChanges, inside the transaction
+            await tx.CommitAsync(token); // a refused write throws past this line, and disposing tx rolls back
+            return result;
+        });
+    }
+}
+```
+
+`BookingVersion` is an `int` column on the booked resource, there only to be written. The controller's
+`AppDbContext` is the one the entity services write through, so the save joins the transaction (*Several sends in one
+transaction* above). A `PATCH` that can move a booking locks the stored rooms the same way: override `Patch` and read
+the stored row's room ids. On PostgreSQL an exclusion constraint refuses the overlap without code
+(`entities.instructions` → *Step 8*).
 
 ### Behaviours around every operation
 
@@ -1980,7 +2056,9 @@ invoice number, source-system id).
 
 **Computed from the stored graph?** A `Total` diffed against the original lines needs the whole prior row —
 use a prepper instead: `EntityPrepperBase<T>.Prepare(modified, original, …)` hands you the full `original`
-entity (`null` on create); register with `e.AddPrepper<T>()`.
+entity (`null` on create); register with `e.AddPrepper<T>()`. An order line keeps the price it was ordered at the
+same way: price only the lines new to the order, or whose product changed, and take the rest from `original`
+(`entities.examples` → *Order + OrderLine entities*).
 
 **Another service writes the field through the raw `DbContext`?** `[ServerOwned]`/`e.ServerOwned(…)` already
 handles it — it is a prepper, so it never runs on that writer's save. Only the primer form above needs the
