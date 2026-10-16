@@ -12,7 +12,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
     <Version>6.6.0</Version>
-    <Description>Abstractions for payment processing in Regira.</Description>
+    <Description>Guides for the Mollie and POM payment providers. The IPayment and IPaymentService abstractions are in Regira.Invoicing (namespace Regira.Invoicing.Payments).</Description>
     <PackageTags>regira;payments;invoicing</PackageTags>
   </PropertyGroup>
   <ItemGroup>

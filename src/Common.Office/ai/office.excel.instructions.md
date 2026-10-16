@@ -37,12 +37,14 @@ Exact usings: `office.namespaces.md`.
 
 ## Backend Comparison
 
-| Package | Backend | Generic `<T>` | Low memory | Notes |
-|---|---|---|---|---|
-| `Regira.Office.Excel.MiniExcel` | MiniExcel | ✓ | ✓ | Recommended — fast, low memory |
-| `Regira.Office.Excel.ClosedXML` | ClosedXML | — | — | Rich formatting support |
-| `Regira.Office.Excel.EPPlus` | EPPlus v4 | — | — | Deprecated — see below |
-| `Regira.Office.Excel.NpoiMapper` | NPOI + Npoi.Mapper | ✓ | — | Type-mapped via attributes; NPOI pinned to 2.7.2 |
+| Package | Backend | Generic `<T>` | Low memory | Reads `.xls` | Notes |
+|---|---|---|---|---|---|
+| `Regira.Office.Excel.MiniExcel` | MiniExcel | ✓ | ✓ | — | Recommended — fast, low memory |
+| `Regira.Office.Excel.ClosedXML` | ClosedXML | — | — | — | Writes plain values (`Options.DateFormat` for dates). For fills, formulas, frozen panes or filters, use ClosedXML's `XLWorkbook` directly; the package brings it |
+| `Regira.Office.Excel.EPPlus` | EPPlus v4 | — | — | — | Deprecated — see below |
+| `Regira.Office.Excel.NpoiMapper` | NPOI + Npoi.Mapper | ✓ | — | ✓ | Type-mapped via attributes; NPOI pinned to 2.7.2 |
+
+Only NpoiMapper reads the legacy binary `.xls` (Excel 97–2003); the other backends throw on it (`FileFormatException` on ClosedXML, `InvalidDataException` on MiniExcel and EPPlus). Every backend writes `.xlsx`.
 
 **Default recommendation:** Use `MiniExcel` for reading/writing data — supports generics and reads and writes the sheet XML without a workbook object model. Rows are still collected into `ExcelSheet.Data`; no backend streams rows to the caller.
 
@@ -80,7 +82,7 @@ Composite: `IExcelReader + IExcelWriter` (and their generic variants).
 
 ### Behaviour shared by the backends
 
-- **Read** — row 1 holds the keys: a blank header becomes `Column{n}` (its column number), a key taken already, from the left and case-insensitively, the first free `{key}_2`, `{key}_3`, … (`Value`, `Value`, `Value_2` reads as `Value`, `Value_2`, `Value_2_2`). A sheet without rows reads as an empty `Data`. Each row is a `Dictionary<string, object?>`: an empty cell is `null`, text a `string`, a number a `double`, a boolean a `bool`, a date cell a `DateTime`, except on EPPlus, which reads a date as `double` unless its number format holds `yyyy`.
+- **Read** — row 1 holds the keys: a blank header becomes `Column{n}` (its column number), a key taken already, from the left and case-insensitively, the first free `{key}_2`, `{key}_3`, … (`Value`, `Value`, `Value_2` reads as `Value`, `Value_2`, `Value_2_2`). A sheet without rows reads as an empty `Data`. Each row is a `Dictionary<string, object?>`: an empty cell is `null`, text a `string`, a number a `double`, a boolean a `bool`, a date cell a `DateTime`, except on EPPlus, which reads a date as `double` unless its number format holds `yyyy`. The row's keys compare case-sensitively (`Name` is not `name`). Blank rows differ per backend: MiniExcel and EPPlus return them as rows of `null`s, ClosedXML skips them, and NpoiMapper skips only rows that were never written, so on those two a row's index is not its sheet row number.
 - **Create** — the header row holds every key the rows use (case-insensitive, first spelling, first-seen order); a row holding two keys that differ only in case (`Id` beside `ID`) throws `ArgumentException`; a row without a key gets an empty cell, and each cell keeps its own value's type; a property holding an object is written as its `ToString()`. NpoiMapper's untyped `ExcelManager` writes object rows this way too, without Npoi.Mapper's attributes; its typed `ExcelManager<T>` maps through Npoi.Mapper. An empty or `null` `Data` writes an empty sheet (a typed writer keeps its header row).
 - **Sheet names** — a missing `Name` becomes `Sheet-{n}` (`Sheet {n}` on EPPlus). A name Excel refuses throws `ArgumentException`: empty, over 31 characters, holding `: \ / ? * [ ]`, starting or ending with `'`, `History`, or used twice (case-insensitive).
 - **`Options.DateFormat`** — the number format of the `DateTime` cells written; they stay dates. Defaults: `null` on ClosedXML (the library's own date format), `"yyyy/MM/dd"` on EPPlus, `"yyyy-MM-dd hh:mm:ss"` on NpoiMapper. MiniExcel's is `[Obsolete]` and ignored: it writes Excel's built-in date format; use ClosedXML to format dates.
@@ -97,6 +99,8 @@ Composite: `IExcelReader + IExcelWriter` (and their generic variants).
 | `Data` | `ICollection<T>?` | Rows — `Dictionary<string, object?>` per row for the non-generic sheet, `T` for typed |
 
 The non-generic `ExcelSheet` is `ExcelSheet<object>`.
+
+No backend writes charts, cell styles beyond `DateFormat`, or formulas (a string starting with `=` is written as text). Post-process the created bytes with the Open XML SDK (`DocumentFormat.OpenXml`, which ClosedXML brings), or build the workbook with ClosedXML's `XLWorkbook` directly.
 
 ---
 

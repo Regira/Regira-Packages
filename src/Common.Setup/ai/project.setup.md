@@ -184,7 +184,7 @@ All API templates expose, in Development only:
 - **OpenAPI JSON** `/openapi/v1.json` — `app.MapOpenApi()`
 - **Scalar UI** `/scalar` — `app.MapScalarApiReference()`
 
-Use this as the default API documentation surface for Regira projects. Do not add `Swashbuckle.AspNetCore` and do not call `app.UseSwaggerUI()` unless the user explicitly asks to deviate from the standard template.
+Use this as the default API documentation surface for Regira projects. Do not add `Swashbuckle.AspNetCore` and do not call `app.UseSwaggerUI()` unless the user explicitly asks to deviate from the standard template. When the user asks for Swagger UI, use `Regira.Web.Swagger` instead of the Scalar pair (`web.instructions` → *Web.Swagger*): `AddSwaggerGen(o => JwtAuthenticationExtensions.AddJwtAuthentication(o))` (`using Regira.Web.Swagger.Security;`), then `app.UseSwagger(); app.UseSwaggerUI();` inside the Development block.
 
 Map both inside `if (app.Environment.IsDevelopment())`. The document lists every endpoint and its schemas, the guarded ones included. `.AllowAnonymous()` only exempts the two endpoints from a fallback policy: it does not guard them, and `MapControllers().RequireAuthorization()` never covers them.
 
@@ -324,7 +324,7 @@ public static IHostBuilder AddConfiguration(this IHostBuilder builder)
 
 | The app needs | Use |
 |---|---|
-| A SPA or mobile client against your own user table | `AddJwtAuthentication` (+ `AddRefreshTokens` so sessions survive token expiry) |
+| A SPA or mobile client against your own user table | `AddJwtAuthentication` (+ `AddRefreshTokens` for a client that renews with a refresh token; `@regira/modules` does not) |
 | Machine-to-machine callers | `AddApiKeyAuthentication` |
 | A server-rendered app, Blazor Server, or same-site SPA | `AddCookieAuthentication` |
 | Staff signing in with their work Microsoft account | `AddEntraIdSignIn` (browser) |

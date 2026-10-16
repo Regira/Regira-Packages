@@ -4,6 +4,7 @@ using Regira.Office.PDF.Internal;
 using Regira.Office.PDF.Models;
 using Microsoft.Playwright;
 using Regira.IO.Extensions;
+using Regira.Office.MimeTypes;
 
 namespace Regira.Office.PDF.MsPlaywright;
 
@@ -56,6 +57,6 @@ public class PdfManager : IHtmlToPdfService
             HeaderTemplate = layout.HeaderTemplate,
             FooterTemplate = layout.FooterTemplate
         });
-        return bytes.ToMemoryFile();
+        return bytes.ToMemoryFile(ContentTypes.PDF);
     }
 }

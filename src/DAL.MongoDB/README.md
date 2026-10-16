@@ -21,12 +21,12 @@ Regira DAL.MongoDB provides lightweight MongoDB connectivity using the MongoDB D
 | Property | Type | Description |
 |----------|------|-------------|
 | `Host` | `string` | Hostname / replica set |
-| `DatabaseName` | `string` | Target database |
+| `DatabaseName` | `string` | Target database. Required by `MongoCommunicator` and every repository; in a connection string it is the path, `mongodb://host:27017/mydb` |
 | `Port` | `string` | Port (default `27017`) |
 | `Username` | `string?` | Auth username |
 | `Password` | `string?` | Auth password |
 | `AuthenticationDatabase` | `string?` | `authSource` — the database holding the credentials, when that is not `DatabaseName`. Left empty, MongoDB resolves it itself: `DatabaseName`, or `admin` when no database is named |
-| `UseSecure` (UseTls) | `bool` | TLS/SSL |
+| `UseSecure` (UseTls) | `bool` | TLS/SSL. Off unless set (`MongoDefaults.UseTls` is `false`) |
 | `UseSrv` | `bool` | The `mongodb+srv://` scheme, where DNS supplies the hosts and the port |
 | `UriOptions` | `IList<KeyValuePair<string, string>>` | Every other connection-string option — `authMechanism`, `replicaSet`, `directConnection`, `readPreference`, `tlsCAFile`, … — in order and unescaped, a repeated one once per occurrence; an explicit `tls=false` is kept too, and left out while `UseSecure` is on |
 
@@ -54,7 +54,12 @@ The underlying `IMongoDatabase` (`Database`) is `protected internal` — it is n
 
 Extend this to build a repository (`TEntity` must be a class with a parameterless constructor). The base constructor takes the communicator, an `ISerializer`, id accessor delegates, and an optional collection name. Override `GetFilter()`, `SortResult()`, and `PageResult()` for custom queries.
 
-The entity is stored as the JSON the `ISerializer` writes, so a filter or a sort names a field the way that serializer does: camelCase with `Regira.Serializing.Newtonsoft`. The search object reaches the overrides as a dictionary whose keys are read regardless of case.
+The defaults: `GetFilter` matches `id` only (as an `ObjectId` when it parses as one), and `List` and `Count` both apply it;
+`SortResult` keeps the stored order; `PageResult` reads `page` and `pageSize`, where `page` is zero-based (it skips
+`page × pageSize` documents); the collection is named `typeof(TEntity).FullName` unless you pass a name; `Save` of an item
+without an id inserts it and sets its id to the generated `_id`.
+
+The entity is stored as the JSON the `ISerializer` writes, so a filter or a sort names a field the way that serializer does: camelCase with `Regira.Serializing.Newtonsoft`. The search object reaches the overrides as a dictionary whose keys are read regardless of case. With Newtonsoft's defaults a `bool` is stored as `1`/`0` and a date as an ISO-8601 string, not a BSON date: compare dates as strings of one format, or store a numeric copy (Unix milliseconds) for range filters and sorting.
 
 ```csharp
 public class Product
@@ -89,7 +94,7 @@ CRUD methods:
 ```csharp
 Task<TEntity?>             Details(object id)
 Task<IEnumerable<TEntity>> List(object? searchObject = null)
-Task<long>                 Count(object? searchObject = null)
+Task<long>                 Count(object? searchObject = null)   // the documents GetFilter matches, without paging
 Task<long>                 Save(TEntity item)     // inserted (1) or modified count
 Task<long>                 Delete(TEntity item)   // deleted count
 ```

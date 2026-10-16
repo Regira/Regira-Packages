@@ -421,8 +421,11 @@ public abstract class EntityControllerBase<TEntity, TKey, TSo, TSortBy, TInclude
 ```
 
 **The generated actions are `virtual`** — override one to add an `[Authorize]` policy (administrators manage
-reference data) without re-implementing it. Signatures are identical on both bases; the complex one adds the
-`[FromBody] TSo[]` overloads of `List`/`Search`:
+reference data) without re-implementing it. Signatures are identical on both bases except `List` and `Search`: on
+the complex base they take `([FromQuery] TSo so, [FromQuery] PagingInfo pagingInfo, [FromQuery] TIncludes[] includes,
+[FromQuery] TSortBy[] sortBy)`, and its `[FromBody] TSo[] so` overloads (`POST list`, `POST search`) have the same
+tail. An override repeats all four: a method with only the first two is no override but a second action on the same
+route, and routing fails as ambiguous. The simple base's signatures:
 
 <!-- no-compile -->
 ```csharp
@@ -1021,11 +1024,6 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
     bool HasEntityService();
     bool HasService<TService>();
 
-    // Elevate to typed search object builder
-    EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject>
-        WithSearchObject<TSearchObject>()
-        where TSearchObject : class, ISearchObject<TKey>, new();
-
     // Mapping
     MappedEntityServiceBuilder<TContext, TEntity, TKey, TDto, TInputDto>
         UseMapping<TDto, TInputDto>(Action<IEntityMapConfigurator>? mapAction = null);
@@ -1249,7 +1247,7 @@ public class RelatedEntityBuilder<TContext, TRelated, TRelatedKey>
 
 ### EntitySearchObjectServiceBuilder
 
-Returned by `WithSearchObject<TSearchObject>()`. Inherits all `EntityServiceBuilder` methods.
+Returned by `.For<TEntity, TKey, TSearchObject>()`, an `int` key included. Inherits all `EntityServiceBuilder` methods.
 **Only listing new / changed members:**
 
 <!-- no-compile -->
@@ -1258,12 +1256,6 @@ public partial class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, T
     : EntityServiceBuilder<TContext, TEntity, TKey>
     where TSearchObject : class, ISearchObject<TKey>, new()
 {
-    // NEW: elevate to full-featured builder
-    ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes>
-        Complex<TSortBy, TIncludes>()
-        where TSortBy : struct, Enum
-        where TIncludes : struct, Enum;
-
     // CHANGED: constraint uses TSearchObject instead of SearchObject<TKey>
     EntitySearchObjectServiceBuilder<...> UseEntityService<TService>()
         where TService : class, IEntityService<TEntity, TKey, TSearchObject>;
@@ -1301,10 +1293,6 @@ public partial class EntityIntServiceBuilder<TContext, TEntity>
     : EntityServiceBuilder<TContext, TEntity, int>
     where TEntity : class, IEntity<int>
 {
-    // Advance to SearchObject variant
-    EntityIntServiceBuilder<TContext, TEntity, TSearchObject> WithSearchObject<TSearchObject>()
-        where TSearchObject : class, ISearchObject<int>, new();
-
     // Int-key shortcuts (no TRelatedKey / TContext parameter needed)
     EntityIntServiceBuilder<TContext, TEntity> Prepare(Func<TEntity, TContext, Task> prepareFunc);
 
@@ -1323,25 +1311,16 @@ public partial class EntityIntServiceBuilder<TContext, TEntity>
         Func<TEntity, TProp>? mintOnCreate = null);
 }
 
-// For<TEntity, TSearchObject>() or WithSearchObject() → EntityIntServiceBuilder<TContext, TEntity, TSearchObject>
-public class EntityIntServiceBuilder<TContext, TEntity, TSearchObject>
-    : EntitySearchObjectServiceBuilder<TContext, TEntity, int, TSearchObject>
-    where TEntity : class, IEntity<int>
-    where TSearchObject : class, ISearchObject<int>, new()
-{
-    // Advance to full-featured
-    ComplexEntityIntServiceBuilder<TContext, TEntity, TSearchObject, TSortBy, TIncludes>
-        Complex<TSortBy, TIncludes>()
-        where TSortBy : struct, Enum
-        where TIncludes : struct, Enum;
-}
+// There is no For<TEntity, TSearchObject>(): a search object on an int key is For<TEntity, int, TSearchObject>(),
+// which returns EntitySearchObjectServiceBuilder<TContext, TEntity, int, TSearchObject> (above).
+// No builder method adds a search object, TSortBy or TIncludes later: pick the For<>() overload up front.
 ```
 
 ---
 
 ### ComplexEntityServiceBuilder
 
-Returned by `.For<TEntity, TKey, TSearchObject, TSortBy, TIncludes>()` or `.Complex<TSortBy, TIncludes>()`.
+Returned by `.For<TEntity, TKey, TSearchObject, TSortBy, TIncludes>()`.
 Inherits all `EntitySearchObjectServiceBuilder` methods.
 **Only listing new / changed members:**
 
@@ -1402,7 +1381,9 @@ included) return `ComplexEntityIntServiceBuilder<...>`.
 
 ### MappedEntityServiceBuilder
 
-Returned by `UseMapping<TDto, TInputDto>()`. Inherits all builder methods.
+Returned by `UseMapping<TDto, TInputDto>()`. It inherits the base `EntityServiceBuilder<TContext, TEntity, TKey>` only:
+on a search-object or complex builder call `UseMapping` last, because the typed `Filter`, `SortBy` and `Includes` are
+gone after it (CS1061).
 
 > ⚠️ The class-based `After<TImplementation>()` overloads live on the **base (untyped)** variant and return it — `TDto`/`TInputDto` are lost, so the typed `.After(...)`/`.AfterInput(...)` shortcuts no longer compile after them (CS1061). Chain the typed shortcuts first, or keep both after-mappers inline.
 

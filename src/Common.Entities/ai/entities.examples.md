@@ -492,7 +492,7 @@ public class OrderInputDto
 {
     public int Id { get; set; }
     public Guid? AggregateKey { get; set; }
-    [MaxLength(16)] public string? Code { get; set; }
+    [MaxLength(16)] public string? Code { get; set; }   // the client may suggest one; a code only the server sets is e.ServerOwned(…) (patterns → Server-owned fields)
     public Guid CustomerId { get; set; }
     public OrderStatus Status { get; set; } = OrderStatus.Pending;
     public ICollection<OrderLineInputDto>? OrderLines { get; set; }
@@ -557,8 +557,8 @@ public static EntityServiceCollection<WebshopDbContext> AddOrders(this IEntitySe
     => services.For<Order, OrderSearchObject, EntitySortBy, OrderIncludes>(e =>
     {
         e.AddFilter<OrderQueryBuilder>();
-        e.SortBy((query, sortBy) => query.OrderByDescending(x => x.Created));
-        e.Includes((query, includes) => query
+        e.SortBy((query, sortBy) => query.OrderByDescending(x => x.Created));   // one fixed order: sortBy is ignored
+        e.Includes((query, includes) => query                                  // every read includes customer and lines: includes is ignored
             .Include(x => x.Customer!)
             .Include(x => x.OrderLines!.OrderBy(l => l.SortOrder))
                 .ThenInclude(ol => ol.Product!));
@@ -1100,7 +1100,7 @@ services
     .For<Product>(e => e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments));
 // Note: UseAttachmentUris() lives in Regira.Entities.Web.Attachments.DependencyInjection, and must be set
 // on this same options instance. A null Uri is never an error — entities.instructions § Attachments lists
-// all four causes and which one logs a warning.
+// all five causes and which one logs a warning.
 ```
 
 **Owner scoped per user (or tenant)?** The owner's global filter never reaches the link: `ProductAttachment` has no

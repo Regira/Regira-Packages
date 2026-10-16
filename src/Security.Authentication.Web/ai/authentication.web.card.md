@@ -11,7 +11,7 @@
   `UserControllerBase<TUser>` (`users`), with `TUser : IdentityUser<string>`. `[ApiController]` + the routes
   are on the bases — **do not repeat `[ApiController]`/`[Route]` on the subclass**.
 - **Subclass with a forwarding ctor** (the bases' ctors are protected):
-  `AccountControllerBase<AppUser>(ITokenHelper, UserManager<AppUser>, IUserClaimsPrincipalFactory<AppUser>, ILogger)`;
+  `AccountControllerBase<AppUser>(ITokenHelper, UserManager<AppUser>, IUserClaimsPrincipalFactory<AppUser>, ILogger? logger = null)`;
   `PasswordControllerBase<AppUser>(UserManager<AppUser>)`; `UserControllerBase<AppUser>(UserManager<AppUser>)`.
   **No `ISerializer`** — payloads use `System.Text.Json` internally.
 - **Required services:** `AddIdentityCore<AppUser>().AddEntityFrameworkStores<TCtx>().AddSignInManager().AddDefaultTokenProviders()`,

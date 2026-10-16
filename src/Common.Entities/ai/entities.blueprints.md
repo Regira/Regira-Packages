@@ -151,8 +151,10 @@ public class SupplierNormalizer(INormalizer normalizer, ContactDataNormalizer co
 }
 ```
 
-Normalize phone numbers with `Regira.Globalization.LibPhoneNumber`'s `PhoneNumberFormatter` inside the
-contact-data normalizer, so `0475…` and `+32 475…` match the same search.
+`ContactDataNormalizer` and `AddressNormalizer` are app classes too: an `EntityNormalizerBase<IContactDetails>` that
+fills `NormalizedValue` and an `EntityNormalizerBase<AddressBase>` that fills `NormalizedContent`, each registered with
+`services.AddTransient<…>()`. Normalize phone numbers with `Regira.Globalization.LibPhoneNumber`'s
+`PhoneNumberFormatter` inside the contact-data normalizer, so `0475…` and `+32 475…` match the same search.
 
 ### DTOs
 
@@ -474,6 +476,10 @@ public class PartyUser : IEntityWithSerial
 ```
 
 (For entities that carry the user key directly, the framework offers the `IHasUserId` marker — `Regira.Entities.Models.Abstractions` — as a convention; no built-in services attach to it.)
+
+Enforce the 1:1 with unique indexes — `modelBuilder.Entity<PartyUser>().HasIndex(x => x.UserId).IsUnique();`, and the
+same on `PartyId` — and scope a signed-in user's rows by the claim with a global filter, as *Multi-tenancy* →
+*Global filter + primer* does.
 
 ### Gotchas
 
@@ -882,6 +888,23 @@ public static class CategoryDbFunctions
 
 Semantics: **Offspring** walks parent→child from the seed ids (`Level` 0-based, `RootId` = the seed); **Ancestors** walks child→parent; **Family** = both directions with signed levels (negative = ancestors). `@ids = NULL` seeds from *every* edge. Archived nodes are pruned at every step — the global archived filter can't reach inside a TVF, so the SQL must re-apply it.
 
+**A single `ParentId` column** (a plain tree) needs no join table: seed and recurse on the entity table itself, with
+the same columns, so §1 and §3 apply unchanged (add the archived pruning as above):
+
+```sql
+WITH offspring (ParentId, ChildId, Level, RootId) AS (
+    SELECT     c.ParentId, c.Id, 0, c.ParentId
+    FROM       Categories c
+    WHERE      @ids IS NULL OR @ids = '' OR c.ParentId IN (SELECT CAST(value AS INT) FROM OPENJSON(@ids))
+    UNION ALL
+    SELECT     c.ParentId, c.Id, offspring.Level + 1, offspring.RootId
+    FROM       Categories c
+    INNER JOIN offspring ON offspring.ChildId = c.ParentId
+    WHERE      @max_level IS NULL OR offspring.Level < @max_level
+)
+SELECT * FROM offspring;
+```
+
 **Creating the functions.** With migrations: `migrationBuilder.Sql(CategoryDbFunctions.CREATE_GetCategoryOffspring)` (one per statement). With `EnsureCreated()`: execute after schema creation, provider-gated —
 
 <!-- no-compile -->
@@ -975,6 +998,12 @@ party of the domain to the account instead (*Stakeholders* → *Linking a party 
 
 ### Exposed model + repository over UserManager
 
+`AppIdentityUser` (your `IdentityUser` subclass, with a `UserClaims` navigation), `AccountsDbContext` (its
+`IdentityDbContext`), `UserClaimModel` (a claim DTO: `Id`, `ClaimType`, `ClaimValue`), `AppUserSearchObject` and
+`AppUserIncludes` are app code. Implement every `List`, `Count` and `Details` overload of `IEntityRepository<…>`; the
+untyped ones delegate to the typed. Roles, when the model carries them, reconcile as claims do: `GetRolesAsync`, then
+`AddToRolesAsync` and `RemoveFromRolesAsync` for the difference.
+
 <!-- no-compile -->
 ```csharp
 // The exposed entity model (NOT the IdentityUser itself): string-keyed, carries claims + write-only password
@@ -1002,6 +1031,20 @@ public class AppUserRepository(AccountsDbContext dbContext, UserManager<AppIdent
         return mapper.Map<List<AppUserEntity>>(items);             // inner IdentityUser -> exposed entity model
     }
 
+    public Task<long> Count(IList<AppUserSearchObject?> searchObjects, CancellationToken token = default)
+        => Filter(dbContext.Users, searchObjects).LongCountAsync(token);
+
+    public async Task<AppUserEntity?> Details(string id, CancellationToken token = default)
+    {
+        var item = await dbContext.Users.Include(x => x.UserClaims).AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, token);
+        return item == null ? null : mapper.Map<AppUserEntity>(item);
+    }
+
+    // each search object filters on its own and the results are united, as the framework's query builder does
+    private IQueryable<AppIdentityUser> Filter(IQueryable<AppIdentityUser> query, IList<AppUserSearchObject?> searchObjects)
+        => searchObjects.Count == 0 ? query
+            : searchObjects.Select(so => queryFilters.Aggregate(query, (q, f) => f.Build(q, so))).Aggregate((a, b) => a.Union(b));
+
     public async Task Add(AppUserEntity model, CancellationToken token = default)
     {
         var item = mapper.Map<AppIdentityUser>(model);
@@ -1010,7 +1053,7 @@ public class AppUserRepository(AccountsDbContext dbContext, UserManager<AppIdent
             : await userManager.CreateAsync(item, model.NewPassword);
         // …then reconcile claims unless model.UserClaims is null (not sent: untouched; [] removes them all, as Related() does)
     }
-    // Details/Count/Modify/Save/Remove follow the same shape; Save = upsert on existence.
+    // Modify/Save/Remove follow Add's shape through UserManager (UpdateAsync, DeleteAsync); Save = upsert on existence.
     // UserManager has already saved the user: this flushes only the claim diff, so "affected" is 0 for a save without claim changes.
     public Task<int> SaveChanges(CancellationToken token = default) => dbContext.SaveChangesAsync(token);
 }
@@ -1029,6 +1072,7 @@ services.For<AppUserEntity, string, AppUserSearchObject, EntitySortBy, AppUserIn
 });
 
 // Controller — the standard thin base:
+[Route("user-accounts")]
 public class AppUserController : EntityControllerBase<AppUserEntity, string, AppUserSearchObject, EntitySortBy, AppUserIncludes, AppUserDto, AppUserInputDto>;
 ```
 
@@ -1036,7 +1080,8 @@ public class AppUserController : EntityControllerBase<AppUserEntity, string, App
 
 - The repository, not the framework, applies filters/sorting/paging/includes — you implement `IEntityRepository` from scratch, so inject the registered `IFilteredQueryBuilder<...>` set and run them in `List`/`Count` (that keeps SearchObject filters in their own classes).
 - The query-builder generics are typed on the **inner** `IdentityUser` type, while the `For<>()` generics use the **exposed** model — the mapper bridges the two.
-- Exclude `NewPassword` from the read DTO; hash only via `userManager.PasswordHasher` on update. Deleting goes through `userManager.DeleteAsync`.
+- Exclude `NewPassword` from the read DTO, and set a new password through `UserManager` so its password validators run: `await userManager.ResetPasswordAsync(user, await userManager.GeneratePasswordResetTokenAsync(user), model.NewPassword)` (token providers: `AddDefaultTokenProviders()`). Never store `PasswordHasher.HashPassword(...)` yourself: it skips the validators. Deleting goes through `userManager.DeleteAsync`.
+- `UserControllerBase` (`Regira.Security.Authentication.Web`) already owns the `users` route: route this controller elsewhere, as `user-accounts` above.
 - Startup warns that `?q=` is ignored for `AppUserEntity`: the check looks for a filter registered on the exposed type, and this one is registered on the inner type. The warning stands by design when that filter reads `so.Q`; without such a filter, `?q=` really is ignored.
 - `POST` and `PUT` answer `affected: 0` unless claims changed: read `isNew` and `item`.
 
@@ -1074,7 +1119,8 @@ public class CountryRepository(ICultureContext cultureContext) : IEntityService<
             ? query.Select(x => new { country = x, weight = CalculateWeight(x, so) })   // relevance: exact > initials > prefix > contains
                    .Where(x => x.weight > 0).OrderByDescending(x => x.weight).Select(x => x.country)
             : query.OrderBy(x => x.Iso2Code == cultureContext.CountryCode ? 0 : 1).ThenBy(x => x.Title);
-        // apply pagingInfo manually (PageItems), map to Country, return
+        var page = query.AsQueryable().PageQuery(pagingInfo);   // PagingInfo.Page is 1-based; PageItems takes a 0-based index
+        return Task.FromResult<IList<Country>>(page.Select(x => Convert(x)!).ToList());
     }
 
     // untyped overloads delegate via ObjectUtility.Create<SearchObject<string>>(so);
@@ -1093,7 +1139,7 @@ public class CountryController : EntityControllerBase<Country, string, SearchObj
 ### Gotchas
 
 - Startup warns that `?q=` is ignored for the virtual entity: no filter is registered for it. The warning stands by design when the service applies `Q` itself, as above.
-- You own everything the pipeline normally does: apply `Q`, ordering and `PagingInfo` yourself (`PageQuery` from `Regira.DAL.Paging`, or `PageItems` from `Regira.Utilities`); registered query builders/processors don't run against in-memory data.
+- You own everything the pipeline normally does: apply `Q`, ordering and `PagingInfo` yourself (`PageQuery(pagingInfo)` from `Regira.DAL.Paging`, or `PageItems(pageSize, page - 1)` from `Regira.Utilities`, which takes a zero-based index); registered query builders/processors don't run against in-memory data.
 - Ranked matching beats plain `Contains` for picker UX — weight exact code/name matches above prefix above substring, and boost the caller's own country (`IHasDefault`).
 - Write endpoints exist on the controller but return 500 from the `NotImplementedException` — add `[ApiExplorerSettings(IgnoreApi = true)]` overrides or authorization if that surface bothers you; the reference apps simply never call them.
 

@@ -410,7 +410,7 @@ await new ExportHelper(source, target)
     .Export(new FileSearchObject { FolderUri = "backups/", Recursive = true });
 ```
 
-### FileNameUtility — path helpers
+### FileNameUtility (`Regira.IO.Storage.FileSystem`) — path helpers
 
 <!-- no-compile -->
 ```csharp

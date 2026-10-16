@@ -70,7 +70,7 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
         {
             // files
             var files = Directory.EnumerateFiles(absoluteFolderUri, extensions, searchOptions)
-                .Select(fileUri => FileNameUtility.GetRelativeUri(fileUri, root))
+                .Select(fileUri => ToIdentifier(FileNameUtility.GetRelativeUri(fileUri, root)))
                 .Where(f => so.Extensions == null || so.Extensions.Any(e => e.TrimStart('*') == Path.GetExtension(f)));
             string[]? fileList = null;
             if (listDirectories && so.Extensions != null)
@@ -85,11 +85,11 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
             if (listDirectories)
             {
                 var folders = Directory.EnumerateDirectories(absoluteFolderUri, "", searchOptions)
-                    .Select(dirUri => FileNameUtility.GetRelativeUri(dirUri, root));
+                    .Select(dirUri => ToIdentifier(FileNameUtility.GetRelativeUri(dirUri, root)));
                 if (so.Extensions != null)
                 {
                     // a folder holds a file below it: dir2.1 holds nothing of dir2.10
-                    folders = folders.Where(d => fileList?.Any(f => f.StartsWith(d + Path.DirectorySeparatorChar)) == true);
+                    folders = folders.Where(d => fileList?.Any(f => f.StartsWith(d + '/')) == true);
                 }
                 result = result.Concat(folders);
             }
@@ -161,6 +161,9 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
     public string GetIdentifier(string uri)
         // use forward slashes to keep identifier uniform with other IFileService implementations (e.g. Azure)
         => FileNameUtility.GetRelativeUri(Locate(uri), ResolvedRoot).Replace('\\', '/');
+    // the OS separator becomes '/', as Save answers on every platform; a '\' in a Linux file name stays part of the name
+    private static string ToIdentifier(string relativeUri)
+        => Path.DirectorySeparatorChar == '/' ? relativeUri : relativeUri.Replace(Path.DirectorySeparatorChar, '/');
     public string? GetRelativeFolder(string identifier)
         => FileNameUtility.GetRelativeFolder(Locate(identifier), ResolvedRoot);
 

@@ -24,6 +24,7 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Invoicing.Billit\Invoicing.Billit.csproj" />
     <ProjectReference Include="..\..\src\Invoicing.UblSharp\Invoicing.UblSharp.csproj" />
     <ProjectReference Include="..\..\src\Invoicing.ViaAdValvas\Invoicing.ViaAdValvas.csproj" />
     <ProjectReference Include="..\..\src\Serializing.Newtonsoft\Serializing.Newtonsoft.csproj" />

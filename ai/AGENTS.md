@@ -154,6 +154,7 @@ Keep setup aligned with the selected `projectTemplate`. This file must remain en
 - Keep `Program.cs` thin and move service registration or middleware setup into extension methods.
 - Prefer `Microsoft.Extensions.DependencyInjection` and depend on abstractions instead of concrete implementations.
 - Use file-scoped namespaces.
+- By default, put one top-level type in each file, named after it, and split a guide example that shows several types in one code block. Be pragmatic about small types that always change together, but weigh review, merge conflicts between developers or agents, and growth (`entities.setup` → *Project Structure*).
 - Prefer meaningful generic type names such as `TEntity`, `TKey`, and `TDto`, matching the Regira API's own generic parameters.
 - For standard Web APIs, OpenAPI plus Scalar is the default API surface: use `app.MapOpenApi()` plus `app.MapScalarApiReference()`, and do not add `Swashbuckle.AspNetCore` or call `UseSwaggerUI()` on the standard Regira API path. Add Swagger only when the user explicitly requests it.
 - Ask for feedback instead of guessing missing APIs, namespaces, signatures, or project-specific conventions.

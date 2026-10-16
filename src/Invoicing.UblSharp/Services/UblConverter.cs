@@ -125,6 +125,6 @@ public class UblConverter : IUblConverter
     }
     protected internal decimal GetAmount(ICollection<InvoiceLine>? lines, Func<InvoiceLine, decimal> selector)
     {
-        return lines?.Sum(x => decimal.Round(selector(x), 2)) ?? 0;
+        return lines?.Sum(x => PeppolUtility.RoundAmount(selector(x))) ?? 0;
     }
 }

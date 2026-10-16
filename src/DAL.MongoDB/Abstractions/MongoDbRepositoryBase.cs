@@ -44,7 +44,7 @@ public abstract class MongoDbRepositoryBase<TEntity>(
     }
     public virtual Task<long> Count(object? o = null)
     {
-        var filter = FilterDefinition<BsonDocument>.Empty;
+        var filter = GetFilter(GetSearchObject(o));
         return Collection.CountDocumentsAsync(filter);
     }
 

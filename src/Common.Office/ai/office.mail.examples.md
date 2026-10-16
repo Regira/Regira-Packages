@@ -10,6 +10,13 @@ using Regira.Office.Mail.SendGrid.DependencyInjection;   // AddSendGrid
 services.AddSendGrid(cfg => cfg.Key = configuration["Mail:SendGrid:Key"]!);
 ```
 
+`OrderMailer` below also takes an `IHtmlParser` (package `Regira.Web`, with the serializer from `Regira.Serializing.Newtonsoft`):
+
+<!-- no-compile -->
+```csharp
+services.AddSingleton<IHtmlParser>(new Regira.Web.HTML.HtmlTemplateParser(new Regira.Serializing.Newtonsoft.Json.JsonSerializer()) { HtmlEncode = true });
+```
+
 ## Send order confirmation
 
 <!-- no-compile -->
@@ -18,7 +25,6 @@ using Regira.IO.Abstractions;                 // IMemoryFile
 using Regira.IO.Extensions;                   // GetBytes()
 using Regira.IO.Models;                       // BinaryFileItem
 using Regira.Office.Mail.Abstractions;        // IMailService
-using Regira.Office.Mail.Exceptions;          // MailException
 using Regira.Office.Mail.Models;              // MessageObject, MailAddress, MailRecipient, RecipientTypes
 using Regira.Web.HTML.Abstractions;           // IHtmlParser (package Regira.Web)
 
@@ -43,9 +49,8 @@ public class OrderMailer(IMailService mailer, IHtmlParser htmlParser)
             ]
         };
 
-        var result = await mailer.Send(message);
-        if (!result.Success)
-            throw new MailException($"Failed to send order confirmation: {result.Content}");
+        // a refusal throws MailException, whose ResponseContent holds the provider's reason; a returned response is a success
+        await mailer.Send(message);
     }
 }
 ```

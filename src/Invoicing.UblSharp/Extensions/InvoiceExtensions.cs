@@ -90,7 +90,7 @@ internal static class InvoiceExtensions
             Price = new PriceType
             {
                 BaseQuantity = 1,
-                PriceAmount = PeppolUtility.BuildAmountType(Math.Abs(line.UnitPriceExcl))
+                PriceAmount = PeppolUtility.BuildPriceAmountType(Math.Abs(line.UnitPriceExcl))
             }
         };
     }
@@ -114,13 +114,13 @@ internal static class InvoiceExtensions
     {
         var firstLine = lines.First();
         // the same rounded line amounts as LineExtensionAmount
-        var taxableAmount = lines.Sum(line => decimal.Round(line.GetTaxExclusiveAmount(), 2));
+        var taxableAmount = lines.Sum(line => PeppolUtility.RoundAmount(line.GetTaxExclusiveAmount()));
         var taxCategoryId = PeppolUtility.BuildCodeTypeIdentifierType(taxCategoryCode);
         return new TaxSubtotalType
         {
             TaxableAmount = PeppolUtility.BuildAmountType(taxableAmount),
             // BR-CO-17: VAT is rounded once per rate, not per line
-            TaxAmount = PeppolUtility.BuildAmountType(decimal.Round(taxableAmount * firstLine.VatPercentage / 100, 2, MidpointRounding.AwayFromZero)),
+            TaxAmount = PeppolUtility.BuildAmountType(taxableAmount * firstLine.VatPercentage / 100),
             TaxCategory = new TaxCategoryType
             {
                 ID = taxCategoryId,

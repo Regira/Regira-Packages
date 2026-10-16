@@ -37,9 +37,14 @@ var message = new MessageObject
     IsHtml  = true
 };
 
-var result = await mailer.Send(message);
-if (!result.Success)
-    logger.LogError("Mail failed: {Status} — {Content}", result.Status, result.Content);
+try
+{
+    await mailer.Send(message);   // a returned response is a success
+}
+catch (MailException ex)          // Regira.Office.Mail.Exceptions: the provider refused it
+{
+    logger.LogError(ex, "Mail failed: {Content}", ex.ResponseContent);
+}
 ```
 
 ---
@@ -118,6 +123,7 @@ Use `MailInput` from `Mail.Web` to receive and validate a send request over HTTP
 ```csharp
 using Microsoft.AspNetCore.Mvc;
 using Regira.Office.Mail.Abstractions;   // IMailService
+using Regira.Office.Mail.Exceptions;     // MailException
 using Regira.Office.Mail.Web;
 
 [ApiController]
@@ -127,12 +133,15 @@ public class MailController(IMailService mailer) : ControllerBase
     [HttpPost("send")]
     public async Task<IActionResult> Send([FromBody] MailInput input)
     {
-        var message = input.ToMessageObject();
-        var result  = await mailer.Send(message);
-
-        return result.Success
-            ? Ok(new { result.Status })
-            : StatusCode(502, new { result.Status, result.Content });
+        try
+        {
+            var result = await mailer.Send(input.ToMessageObject());
+            return Ok(new { result.Status });
+        }
+        catch (MailException ex)   // the provider refused the message
+        {
+            return StatusCode(502, new { ex.ResponseContent });
+        }
     }
 }
 ```

@@ -1,3 +1,4 @@
+using Regira.Office.MimeTypes;
 using Regira.Office.Models;
 using Regira.Office.PDF.Abstractions;
 using Regira.Office.PDF.Models;
@@ -40,6 +41,14 @@ public abstract class HtmlToPdfTestsBase(IHtmlToPdfService backend, string outpu
         var page = pdf.Pages[0];
         Assert.That(page.Width, Is.EqualTo(expected.Width * PointsPerMm).Within(Tolerance));
         Assert.That(page.Height, Is.EqualTo(expected.Height * PointsPerMm).Within(Tolerance));
+    }
+
+    [Test]
+    public async Task The_File_Is_A_Pdf()
+    {
+        using var file = await Backend.Create(new HtmlInput { HtmlContent = "<p>Page</p>" });
+
+        Assert.That(file.ContentType, Is.EqualTo(ContentTypes.PDF));
     }
 
     [Test]

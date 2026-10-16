@@ -194,6 +194,10 @@ public class PaymentService(PomSettings settings, ISerializer serializer) : IPay
         {
             item.Currency = payment.Currency;
         }
+        if (payment.ExpiresAt.HasValue)
+        {
+            item.ExpiryDate = payment.ExpiresAt.Value;
+        }
 
         return item;
     }

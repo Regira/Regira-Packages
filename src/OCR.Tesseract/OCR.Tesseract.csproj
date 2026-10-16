@@ -16,7 +16,9 @@
     <PackageTags>regira;office;ocr;tesseract</PackageTags>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Tesseract" Version="5.2.0" />
+    <!-- PrivateAssets="none": Tesseract delivers its native libraries (x64/x86 leptonica and tesseract50) only
+         through its build/ targets, which NuGet withholds from a consumer of this package by default. -->
+    <PackageReference Include="Tesseract" Version="5.2.0" PrivateAssets="none" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.Office\Common.Office.csproj" />

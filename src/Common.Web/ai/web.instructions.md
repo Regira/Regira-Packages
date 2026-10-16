@@ -110,7 +110,8 @@ string html = await parser.Parse(razorTemplate, model);
 ### `RazorLight.RazorTemplateParser` — full Razor syntax
 
 Compiles the `@model` directive as written. Encodes every value a template writes with `@`; `@Raw(value)` writes a
-value unencoded.
+value unencoded. The host project needs `<PreserveCompilationContext>true</PreserveCompilationContext>`: without it
+the first `Parse` throws `RazorLightException` (*Can't load metadata reference from the entry assembly*).
 
 <!-- no-compile -->
 ```csharp
@@ -126,6 +127,14 @@ Both Razor parsers compile a template into an assembly that stays loaded until t
 
 RazorLight's `Options.TemplateKey` is `[Obsolete]` and ignored: a parser renders the template it is given.
 
+**A runtime Razor template is code.** RazorLight and RazorEngineCore compile it as C# and run it in the API process,
+with that process's file system, network and configuration; there is no sandbox. Let only trusted administrators edit
+one, keep user text in the model (where `@` encodes it), and for templates end users write use `HtmlTemplateParser`
+with `HtmlEncode = true`, which replaces tokens and runs nothing. Each edited or previewed version compiles a new
+assembly that stays loaded until the process exits. A template that does not compile throws the engine's own exception
+(RazorLight's `TemplateCompilationException`, RazorEngineCore's `RazorEngineCompilationException`), which lists each
+error with its line.
+
 ---
 
 ## Razor Components
@@ -133,8 +142,9 @@ RazorLight's `Options.TemplateKey` is `[Obsolete]` and ignored: a parser renders
 `Regira.Web.HTML.RazorComponents` renders a Razor component — a `.razor` file compiled with the application — to HTML
 with ASP.NET Core's `HtmlRenderer`. It turns a template and a model into HTML as the parsers above do, but it takes a
 component type, not template text, so it implements `IHtmlComponentRenderer` rather than `IHtmlParser`. A template is
-checked at build time and nothing compiles at runtime. Templates that change without a rebuild — stored in a database,
-edited by users, deployed as files — need RazorLight instead.
+checked at build time and nothing compiles at runtime. Templates that change without a rebuild — stored in a database
+or deployed as files — need RazorLight instead, edited by trusted administrators only: a runtime Razor template runs
+as C# in the API (*Compiled Razor templates*). Templates end users edit belong to `HtmlTemplateParser`.
 
 ### `IHtmlComponentRenderer`
 
@@ -189,7 +199,8 @@ The `.razor` files compile in the consuming project, which needs the Razor SDK: 
 worker, console app or class library uses `Microsoft.NET.Sdk.Razor`. A project on the Razor SDK that also holds
 `.cshtml` template files for RazorLight or RazorEngineCore sets
 `<EnableDefaultRazorGenerateItems>false</EnableDefaultRazorGenerateItems>`, so the SDK leaves them as template text
-rather than taking them for MVC views. `PreserveCompilationContext` is not needed.
+rather than taking them for MVC views. `PreserveCompilationContext` is not needed for the components; RazorLight
+needs it (above).
 
 A component's class is the root namespace plus its folder: `Templates/Mail/Welcome.razor` is
 `MyApp.Templates.Mail.Welcome`. `[Parameter]` and `RenderFragment` need no `@using`; the model's namespace and
@@ -217,9 +228,9 @@ registration: `AddRazorComponents()` is not needed. A template may start with `<
 
 | Engine | Class | When to use | HTML-encodes model values |
 |---|---|---|---|
-| `HtmlTemplateParser` | `Regira.Web.HTML` | Simple token replacement, no Razor | Only with `HtmlEncode = true`; `{key:raw}` writes markup |
-| `RazorEngineCore` | `Regira.Web.HTML.RazorEngineCore` | Full Razor, no layout support | Only with `HtmlEncode = true`; `@Raw(value)` writes markup |
-| `RazorLight` | `Regira.Web.HTML.RazorLight` | Full Razor, keeps `@model` | Yes; `@Raw(value)` writes markup |
+| `HtmlTemplateParser` | `Regira.Web.HTML` | Simple token replacement, no Razor; the one for templates end users edit | Only with `HtmlEncode = true`; `{key:raw}` writes markup |
+| `RazorEngineCore` | `Regira.Web.HTML.RazorEngineCore` | Full Razor, no layout support. Templates run as C#: trusted editors only | Only with `HtmlEncode = true`; `@Raw(value)` writes markup |
+| `RazorLight` | `Regira.Web.HTML.RazorLight` | Full Razor, keeps `@model`. Templates run as C#: trusted editors only | Yes; `@Raw(value)` writes markup |
 | Razor components | `Regira.Web.HTML.RazorComponents` | Templates that ship with the app: checked at build time, no runtime compiler, no third-party dependency. Not for templates that change without a rebuild | Yes; `@((MarkupString)value)` writes markup |
 
 ---
@@ -245,7 +256,9 @@ app.UseRequestLocalization(options => options
 Extension on `MvcOptions` from **`Regira.Web`** (`using Regira.Web.Routing;`). It prepends the prefix to
 **every** controller: an attribute-routed selector is combined with it (`[Route("products")]` →
 `api/v1/products`), and a selector with no route model of its own takes the prefix as its route. It
-registers at the head of `opts.Conventions` so it runs before conventions that read the finished route.
+registers at the head of `opts.Conventions` so it runs before conventions that read the finished route. An absolute
+template (`/x` or `~/x`, on a controller or an action) is not combined and skips the prefix: write the base into it
+(`[HttpPost("/api/v1/shipments/{id}/invoice")]`).
 
 ```csharp
 services.AddControllers(options =>
@@ -303,6 +316,9 @@ builder.Services.AddSwaggerGen(o =>
     ApiKeyAuthenticationExtensions.AddApiKeyAuthentication(o, parameterName: "X-Api-Key");
 });
 ```
+
+The package brings Swashbuckle (`using Regira.Web.Swagger.Security;` for the two extensions). Serve the document and
+the UI inside the Development block: `app.UseSwagger(); app.UseSwaggerUI();`.
 
 Display enums as strings in Swagger:
 

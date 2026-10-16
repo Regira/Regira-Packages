@@ -146,7 +146,7 @@ on top of it, so every scheme fits the same scaffold. Pick by what the caller pr
 | The caller is | Register | Read |
 |---|---|---|
 | A machine or service holding a shared secret | `AddApiKeyAuthentication` | *API Key Authentication* |
-| A SPA or mobile client against your own user table | `AddJwtAuthentication` (+ `AddRefreshTokens`) | *JWT Authentication*, *Refresh Tokens (self-issued JWT)* |
+| A SPA or mobile client against your own user table | `AddJwtAuthentication` (+ `AddRefreshTokens` for a client that renews with a refresh token; `@regira/modules` does not) | *JWT Authentication*, *Refresh Tokens (self-issued JWT)* |
 | A browser session — server-rendered, Blazor Server, same-site SPA | `AddCookieAuthentication` | *Cookie Authentication* |
 | Presenting tokens an external authority issued (Entra ID, Auth0, Keycloak, Okta) | `AddBearerAuthentication` / `AddEntraIdBearer` | *External Bearer Authentication (OIDC / Entra ID)* |
 | Signing in interactively through a provider | `AddOidcAuthentication` / `AddEntraIdSignIn` | *Interactive Sign-in (OpenID Connect)* |
@@ -173,6 +173,9 @@ registered scheme authenticates a given request. Claims differ per scheme — re
 | `LifeSpan` | `int` | `7200` | Token lifetime in seconds |
 | `NameClaimType` | `string` | `"name"` | Claim used as user name |
 | `RoleClaimType` | `string` | `"role"` | Claim used as role |
+| `AuthenticationScheme` | `string` | `"Bearer"` | Scheme name (`JwtBearerDefaults.AuthenticationScheme`) |
+| `IncludeIssuedDate` | `bool` | `true` | Writes the issued-at time into each token |
+| `UseJwtClaimTypes` | `bool` | `true` | Writes `sub`/`name`/`email` and reads `sub` back as `ClaimTypes.NameIdentifier` (process-wide claim maps) |
 
 A `Secret` shorter than its algorithm allows throws `InvalidOperationException` from
 `AddJwtAuthentication`, naming the byte count it got and the one it needs. Set `ValidateSecretLength = false`
@@ -666,7 +669,16 @@ policy scheme, which forwards by credential and so cannot sign anyone in.
    symptom is "users get logged out at random" — never an error, and not reproducible on one machine.
 3. **A cookie authenticates ambiently, so state-changing endpoints need antiforgery.** A bearer token does not,
    because the caller has to attach it. Moving from JWT to cookies inherits a vulnerability class the JWT scheme
-   did not have.
+   did not have. In ASP.NET Core: `services.AddAntiforgery(o => o.HeaderName = "X-XSRF-TOKEN")`, controllers
+   registered with `AddControllersWithViews()` (the antiforgery filters are view services: with `AddControllers()`
+   alone, `[AutoValidateAntiforgeryToken]` throws *No service for type AutoValidateAntiforgeryTokenAuthorizationFilter*),
+   and `[AutoValidateAntiforgeryToken]` on the cookie-authenticated controllers, which checks every POST, PUT, PATCH
+   and DELETE, the sign-in included. An anonymous `GET` hands the SPA its token,
+   `antiforgery.GetAndStoreTokens(HttpContext).RequestToken`, which it sends back in `X-XSRF-TOKEN`. A token is bound
+   to the user it was issued to: fetch a new one after sign-in and after sign-out. With `SameSite` `Lax` (the
+   default) or `Strict`, current browsers send no cookie with a cross-site write, which stops classic CSRF; a sibling
+   subdomain is same-site and still sends it, so keep antiforgery wherever other apps share the site, and always with
+   `SameSite = None`. The complete controller: `security.examples` → *The same portal on cookie sessions*.
 4. **Set `IsApi` for anything a script calls.** The framework default `302`s to an HTML login page, which `fetch`
    follows transparently — the caller gets `200` and a page of HTML where it expected JSON, and cross-origin it
    surfaces as an opaque CORS error.
@@ -884,7 +896,7 @@ Users in the same DB, no roles — the happy path (details in the sections below
 
 1. `AppUser : IdentityUser`; make the app `DbContext : IdentityDbContext<AppUser>` (users in the same DB).
 2. `services.AddIdentityCore<AppUser>().AddEntityFrameworkStores<AppDbContext>().AddSignInManager().AddDefaultTokenProviders();`
-3. `services.AddJwtAuthentication(o => configuration.GetSection(AuthenticationSections.Jwt).Bind(o));` — set `Authentication:Jwt:Secret` (**≥ 64 bytes for the HS512 default**, or startup throws — counted as ASCII, so a non-ASCII character is one byte, not the two or three UTF-8 would give it) and **`Authentication:Jwt:Audience` = the SPA's `clientApp`**. `Authentication:Jwt:Authority` is optional for these self-issued tokens: it is written into each token as its issuer and checked on the way in, and left unset, tokens carry no issuer and none is checked. Leave `Algorithm` unset (or `"HS512"`). Add `.AddRefreshTokens()` if the SPA needs to survive access-token expiry, and `.AddSchemeSelector()` last if more than one scheme is registered.
+3. `services.AddJwtAuthentication(o => configuration.GetSection(AuthenticationSections.Jwt).Bind(o));` — set `Authentication:Jwt:Secret` (**≥ 64 bytes for the HS512 default**, or startup throws — counted as ASCII, so a non-ASCII character is one byte, not the two or three UTF-8 would give it) and **`Authentication:Jwt:Audience` = the SPA's `clientApp`**. `Authentication:Jwt:Authority` is optional for these self-issued tokens: it is written into each token as its issuer and checked on the way in, and left unset, tokens carry no issuer and none is checked. Leave `Algorithm` unset (or `"HS512"`). Add `.AddRefreshTokens()` only for a client that calls `auth/refresh-token` (`@regira/modules` does not: it renews through `auth/refresh`), and `.AddSchemeSelector()` last if more than one scheme is registered.
 4. Register an `IEmailSender` — the interface is **`Microsoft.AspNetCore.Identity.UI.Services.IEmailSender`** (ASP.NET Core shared framework, no package to add; not a Regira type). Use Regira's `IdentityMailer`, which needs a registered Regira `IMailService` and an `IdentityMailerOptions` (`Regira.Office` → `office.mail.instructions` → *ASP.NET Identity Integration*), or a dev logger that prints the link. No `ISerializer` needed.
 5. List the SPA's origin for the mailed links: bind `AccountEmailOptions` from `Authentication:AccountEmails`, validated on start, with `AllowedOrigins: [ "https://app.example.com" ]` and the app's `SiteName` — the snippet is in *Mailed links: allowed origins* below. ⚠️ Without an origin, password recovery throws.
 6. Subclass the three base controllers with forwarding ctors (below).
@@ -1005,6 +1017,14 @@ public class UsersController(UserManager<AppUser> userManager)
 ```
 
 **Required services:** `AddIdentityCore<TUser>().AddEntityFrameworkStores<…>().AddDefaultTokenProviders()` (`AddDefaultTokenProviders` is mandatory — recover/confirm generate Identity tokens); `AddJwtAuthentication(…)` for `ITokenHelper`; an `IEmailSender` (Regira's `IdentityMailer`); `AccountEmailOptions` listing the origins the mailed links may point at (*Mailed links: allowed origins* below). Token payloads use `System.Text.Json` internally — no serializer registration needed.
+
+**A second credential** (a PIN, a one-time code) goes in your `AccountControllerBase<TUser>` subclass, so it shares
+the `auth` route and the response the SPA reads. Check `userManager.IsLockedOutAsync(user)` first, verify the
+credential, and count a failure with `userManager.AccessFailedAsync(user)`, the lockout the password uses; check the
+`IdentityResult` it returns, since an uncounted failure lets parallel guesses through. On success,
+`return Ok(await CreateSuccessResponse((await claimsFactory.CreateAsync(user)).Claims, clientApp, user.Id));` (the
+three-argument overload, which also issues a refresh token when they are on); on failure,
+`Unauthorized(CreateFailedResponse(isLockedOut))`. Allow it only for the roles that need it, and rate-limit the action.
 
 **An endpoint of your own that mails a token link** — a minimal-API host (there is no endpoint mapper: the
 account endpoints are these controllers), a resend-confirmation action, or an override that does not call the base —

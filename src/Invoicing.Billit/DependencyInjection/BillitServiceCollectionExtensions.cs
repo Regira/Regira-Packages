@@ -1,6 +1,8 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Regira.Invoicing.Billit.Config;
 using Regira.Invoicing.Billit.Services;
+using Regira.Invoicing.Invoices.Abstractions;
 
 namespace Regira.Invoicing.Billit.DependencyInjection;
 
@@ -19,6 +21,8 @@ public static class BillitServiceCollectionExtensions
             .AddTransient<IInvoiceManager, InvoiceManager>()
             .AddTransient<IPartyManager, PartyManager>()
             .AddTransient<IPeppolManager, PeppolManager>();
+        // the abstraction, unless the app registered an IInvoiceService of its own
+        services.TryAddTransient<IInvoiceService>(p => p.GetRequiredService<IInvoiceManager>());
 
         return services;
     }

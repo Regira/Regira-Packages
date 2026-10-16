@@ -8,6 +8,8 @@ Razor template engine for [Regira Web](https://regira.github.io/Regira-Packages/
 <PackageReference Include="Regira.Web.HTML.RazorEngineCore" Version="6.*" />
 ```
 
+A template compiles to C# and runs in your process with no sandbox: let only trusted administrators edit one.
+
 ## Documentation
 
 - [HTML Template Parsing](https://regira.github.io/Regira-Packages/src/Common.Web/#html-template-parsing) — the shared `IHtmlParser` contract, how the three template engines differ and template caching

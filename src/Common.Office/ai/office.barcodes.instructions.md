@@ -140,7 +140,7 @@ A `string` converts implicitly to a `BarcodeInput` (`Content`-only), so `await b
 
 ### `QRCodeInput`
 
-A subclass of `BarcodeInput` used by the QR services. Its constructor sets `Format = BarcodeFormat.QRCode` and a square `Size`. A `string` converts implicitly, so `await qr.Create("https://…")` works.
+A subclass of `BarcodeInput` used by the QR services. Its constructor sets `Format = BarcodeFormat.QRCode` and a square `Size` of 400 × 400 (`BarcodeDefaults.Size.Width`). A `string` converts implicitly, so `await qr.Create("https://…")` works.
 
 ### `BarcodeReadResult`
 
@@ -167,7 +167,14 @@ BarcodeReadResult? result = await bc.Read(barcode);
 Console.WriteLine(result?.Contents?[0]);  // "ABC-1234"
 ```
 
-> **Output format:** all backends encode the result as **JPEG** regardless of the requested format. Save with a `.jpg` extension, or re-encode via `IImageService.ChangeFormat`.
+> **Output format:** all backends return a **JPEG**; `BarcodeInput` has no output-format option. Save with a `.jpg` extension, or re-encode via `IImageService.ChangeFormat`.
+
+**Quiet zone.** ZXing draws each format's quiet zone, the blank border a reader needs, inside the requested `Size`.
+Keep it when you place the image: an EAN or UPC cropped to its bars does not decode.
+
+**GS1-128** (an SSCC, application identifier 00): `BarcodeFormat` has no GS1 value. On ZXing, prefix `Content` with
+FNC1, `(char)0x00F1`, and use `Code128`: `new BarcodeInput { Content = "ñ" + "00" + sscc, Format = BarcodeFormat.Code128 }`.
+Reading it back returns the digits without the FNC1.
 
 ---
 

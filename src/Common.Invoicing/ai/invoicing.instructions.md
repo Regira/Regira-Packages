@@ -24,6 +24,9 @@
 
 <!-- ViaAdValvas — transmit UBL documents via AdValVas AP gateway -->
 <PackageReference Include="Regira.Invoicing.ViaAdValvas" Version="6.*" />
+
+<!-- the ISerializer Billit's managers and PeppolService take -->
+<PackageReference Include="Regira.Serializing.Newtonsoft" Version="6.*" />
 ```
 
 ---
@@ -35,7 +38,7 @@
 | Property | Type | Description |
 |---|---|---|
 | `PartyId` | `string?` | Your Billit party ID |
-| `Api.BaseUrl` | `string?` | Billit API base URL |
+| `Api.BaseUrl` | `string?` | The Billit API root (production or sandbox, from Billit). Required: there is no default, and a missing one throws `NullReferenceException` when the first manager is created |
 | `Api.Key` | `string?` | API key |
 
 ### DI Registration
@@ -49,7 +52,10 @@ services.AddBillit(sp => new BillitConfig
     PartyId = configuration["Billit:PartyId"],
     Api     = new() { BaseUrl = configuration["Billit:Api:Url"], Key = configuration["Billit:Api:Key"] }
 });
-// Registers: IInvoiceManager, IFileManager, IPartyManager, IPeppolManager
+// Registers: IInvoiceManager, IFileManager, IPartyManager, IPeppolManager (transient).
+// IInvoiceManager extends IInvoiceService, which AddBillit registers too (an IInvoiceService of your own wins).
+// The managers also need an ISerializer, which AddBillit does not register:
+services.AddSingleton<Regira.Serializing.Abstractions.ISerializer, Regira.Serializing.Newtonsoft.Json.JsonSerializer>();
 ```
 
 ### `IInvoiceManager`
@@ -72,7 +78,8 @@ Task<ISendInvoiceResult>   Send(IInvoice input);         // creates the invoice,
 XDocument Convert(UblDocumentInput input);
 ```
 
-Produces a UBL 2.1 `Invoice` document.
+Produces a UBL 2.1 `Invoice` document. `IUblDocumentValidator` and `IUblDocumentManager` are `[Obsolete]`: no package
+implements them, so validate with a Peppol validator of your own choice.
 
 ```csharp
 IInvoice invoice = new Invoice
@@ -117,16 +124,17 @@ XDocument ubl = converter.Convert(new UblDocumentInput
 | Member | UBL element |
 |---|---|
 | `IInvoiceParty.Code` | `PartyTaxScheme/CompanyID`, `PartyLegalEntity/CompanyID` and `PartyIdentification/ID`: give the VAT number with its country prefix (`BE0123456789`, rule BR-CO-09) |
-| `IInvoiceParty.Identifiers` | The first entry is the `EndpointID`, the Peppol participant ID, with `Scheme` as its `schemeID` (`0208` for a Belgian enterprise number). Without one, `Code` is split on `:`, and a code without `:` gets scheme `9956` (`UblDefaults.EndpointSchemeId`); a VAT number is no valid endpoint, so always give the identifier |
+| `IInvoiceParty.Identifiers` | The first entry is the `EndpointID`, the Peppol participant ID, with `Scheme` as its `schemeID` (`0208` for a Belgian enterprise number). Without one, `Code` is split on `:`, and a code without `:` gets scheme `9956` (`UblDefaults.EndpointSchemeId`), the legacy Belgian enterprise-number scheme that `0208` replaces; a Belgian VAT number is an endpoint only under scheme `9925` (`9925:BE0123456749`). Always give the identifier |
 | `IInvoiceParty.Title` | `PartyName/Name`, `PartyLegalEntity/RegistrationName` and `Contact/Name` |
 | `IInvoiceParty.Address` | `PostalAddress`. Peppol requires one with a `CountryCode` for both parties (BR-08 to BR-11); `IInvoiceParty` implementations without the property write none |
 | `IInvoiceParty.ContactData` | `Contact/Telephone` and `Contact/ElectronicMail`: the first phone and the first e-mail entry |
-| `IInvoice.Code` | `ID`, `OrderReference/ID` and each attachment's `ID` |
+| `IInvoice.Code` | `ID`, `OrderReference/ID` and each attachment's `ID`. `BuyerReference` (BT-10) is not written: when the buyer gave one, add it to the returned `XDocument` |
+| `IInvoice.IssueDate`, `DueDate` | `IssueDate`, `DueDate` |
 | `IInvoice.Description` | The invoice `Note` |
 | `IInvoice.Attachments` | `AdditionalDocumentReference`, each file embedded |
 | `IInvoiceLine.Title` | `Item/Name` |
 | `IInvoiceLine.Description` | The line `Note` |
-| `IInvoiceLine.Quantity`, `UnitPriceExcl` | `InvoicedQuantity` (unit `NAR`), `Price/PriceAmount` and `LineExtensionAmount`, each rounded to two decimals. A negative price is written as a negative quantity |
+| `IInvoiceLine.Quantity`, `UnitPriceExcl` | `InvoicedQuantity` (unit `NAR`); `Price/PriceAmount` with the price's own decimals; `LineExtensionAmount`, quantity × price rounded to two decimals, half away from zero like every amount in the document. A negative price is written as a negative quantity |
 | `IInvoiceLine.VatPercentage` | `ClassifiedTaxCategory/Percent`, and one `TaxSubtotal` per rate |
 | `IInvoiceLine.StartDate` | The line's `InvoicePeriod/StartDate`. The earliest and latest start dates form the invoice's `InvoicePeriod` |
 
@@ -199,7 +207,7 @@ Not written: `IInvoiceLine.Code`, `IInvoiceLine.EndDate` and a payee bank accoun
 
 <!-- no-compile -->
 ```csharp
-var service = new PeppolService(gatewaySettings, jsonSerializer);
+var service = new PeppolService(gatewaySettings, new Regira.Serializing.Newtonsoft.Json.JsonSerializer());   // the ISerializer it takes
 
 try
 {

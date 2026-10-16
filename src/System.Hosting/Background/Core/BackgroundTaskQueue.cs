@@ -7,6 +7,10 @@ public class BackgroundTaskQueue : IBackgroundTaskQueue
 {
     public class Options
     {
+        /// <summary>
+        /// The queue's initial signal count, not a concurrency limit: <see cref="QueuedHostedService"/> runs work items one at a time.
+        /// Leave it at 0; every <see cref="InitialQueue"/> item is signalled anyway.
+        /// </summary>
         public int InitialConcurrentCount { get; set; }
         public IEnumerable<Func<CancellationToken, Task>>? InitialQueue { get; set; }
     }

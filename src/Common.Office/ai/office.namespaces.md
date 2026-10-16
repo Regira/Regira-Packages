@@ -24,7 +24,7 @@ the provider only at registration.
 | `Regira.Media.Drawing.Models.Abstractions` | `IImageFile` (extends `IMemoryFile`) — what the barcode/QR and image services return; assembly `Regira.Media` |
 | `Regira.Media.Drawing.Dimensions` | `ImageSize` — `PdfToImagesOptions.Size`; assembly `Regira.Media` |
 | `Regira.Media.Drawing.Enums` | `ImageFormat` — `PdfToImagesOptions.Format`; assembly `Regira.Media` |
-| `Regira.Media.Drawing.Models` | `ImageFile` — the `IImageFile` you build from bytes for a barcode reader or OCR (`new ImageFile { Bytes = … }`); assembly `Regira.Media` |
+| `Regira.Media.Drawing.Models` | `ImageFile` — the `IImageFile` you build from bytes for a barcode reader or OCR (`new ImageFile { Bytes = … }`); `Color` — `BarcodeInput.Color` and `BackgroundColor`; assembly `Regira.Media` |
 
 ⚠️ `GetBytes()` is an extension in **`Regira.IO.Extensions`** — a file object with no `using` for it looks
 like it has no content accessor at all.
@@ -41,7 +41,7 @@ like it has no content accessor at all.
 | `Regira.Office.PDF.Drawing` | `PdfImageCreator`, `PdfToImageLayerOptions` |
 | `Regira.Office.PDF.Printer` | `PdfPrinterInput` |
 | `Regira.Media.Drawing.Services.Abstractions` | `IImageService` — the constructor argument of PdfPig's `PdfService` and DocNET's `PdfManager`; assembly `Regira.Media` |
-| **Providers** | `Regira.Office.PDF.SelectPdf` · `…DocNET` · `…Spire` · `…Puppeteer` · `…MsPlaywright` → `PdfManager`; `Regira.Office.PDF.MiniPdf` · `…PdfPig` · `…Gotenberg` → `PdfService`, and `Regira.Office.PDF.Gotenberg.DependencyInjection` → `ServiceCollectionExtensions` (`AddGotenbergPdf`); `Regira.Office.PDF.PDFtoPrinter` · `…PockyBum522` → `PdfPrinter` |
+| **Providers** | `Regira.Office.PDF.SelectPdf` · `…DocNET` · `…Spire` · `…Puppeteer` · `…MsPlaywright` → `PdfManager`; `Regira.Office.PDF.MiniPdf` · `…PdfPig` · `…Gotenberg` → `PdfService`, and `Regira.Office.PDF.Gotenberg.DependencyInjection` → `ServiceCollectionExtensions` (`AddGotenbergPdf`); `Regira.Office.PDF.PDFtoPrinter` · `…PockyBum522` · `…Spire` → `PdfPrinter` (`IPdfPrinter`) |
 
 ## Barcodes & QR
 
@@ -59,7 +59,7 @@ like it has no content accessor at all.
 
 `QRCodeInput` has an implicit conversion from `string`, so `qr.Create("https://…")` and
 `qr.Create(new QRCodeInput { Content = "…" })` are both valid — the object form is only needed when you set
-size or error correction.
+the size or the colours (there is no error-correction option).
 
 ## Excel
 
@@ -107,6 +107,7 @@ size or error correction.
 | `Regira.Office.VCards.FolkerKinzel` | `VCardManager` |
 | `Regira.Office.Printing.Abstractions` | `IPrintService` |
 | `Regira.Office.Printing.Models` | `ImagePrintInputModel`, `Duplex`, `PaperSourceKind` |
+| `Regira.Printing.GDI` | `PrintService` — the Windows `IPrintService` (prints an image through GDI); package `Regira.Printing.GDI` |
 
 ## Remote clients (`Regira.Office.Clients`)
 

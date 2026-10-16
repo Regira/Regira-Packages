@@ -181,6 +181,7 @@
 | Namespace | Types |
 |---|---|
 | `Regira.Entities.Web.Controllers.Abstractions` | `EntityControllerBase<>` |
+| `Regira.Entities.Web.Controllers` | `ControllerExtensions` *(`this.Details/List/Search/Save/Patch/Delete<…>(…)` on any `ControllerBase`: a custom action that answers like the generated ones)* |
 | `Regira.Entities.Web.Models` | `SaveResult<>`, `DeleteResult<>`, `DetailsResult<>`, `ListResult<>`, `SearchResult<>` *(the generated actions' return types — needed to override one)* |
 | `Microsoft.AspNetCore.Mvc` | `[ApiController]`, `[Route]`, `ControllerBase` |
 | `Regira.Entities.Web.Endpoints` | `MapEntityEndpoints()` *(on `IEndpointRouteBuilder`)*, `Endpoints()` *(on the `For<>()` builders)*, `EntityEndpointOptions`, `EntityEndpointsOptions`, `EntityEndpoint`, `EntityEndpointMetadata`, `EntityExceptionEndpointFilter` — the mapped endpoints, instead of controllers (`entities.patterns` → *Mapped entity endpoints*) |

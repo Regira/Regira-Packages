@@ -182,6 +182,10 @@ public class LinkPhotoPrepper(IPhotoShrinker photos) : EntityPrepperBase<IEntity
 - The owner's prepper reaches every owner through the non-generic `IHasAttachments`, which an owner implements
   next to `IHasAttachments<TAttachment>`.
 - Clear `Stream` once read: `AttachmentPrimer` stores the `Stream` when there is one, and records its length.
+- Both preppers run for every owner and every file: when only some owners hold photos, return early for the others
+  (`modified is not Product` in the owner's, `modified.ObjectType != nameof(Product)` in the link's). When the
+  shrinker changes the format, rename to match — `link.NewFileName = Path.ChangeExtension(link.NewFileName, ".jpg")`,
+  or the upload's `file.FileName` — since the stored `ContentType` follows the file name.
 
 **See:** `get_package(id: "Regira.Entities", section: "instructions", heading: "Write-pipeline order")`.
 
@@ -230,6 +234,12 @@ gets 0). A foreign key from the owner to one of its own child rows makes the two
 Server refuses the migration (Msg 1785) and every owner `DELETE` answers 500 with EF's *circular dependency*, which
 no primer can fix — EF orders deletes from the **original** foreign-key values. If the reference has to stay, map it
 `DeleteBehavior.ClientSetNull` and drop it in a save of its own.
+
+**One file per owner** (a profile photo): a link validator,
+`e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments, a => a.AddValidator<OnePhotoValidator>())`,
+refuses a second link for the same owner, so the client replaces the file of the existing link
+(`PUT {objectId}/files/{id}`) instead of uploading another. The owner's save runs only the owner's validators: repeat
+the rule there (at most one entry in `Attachments`), or keep `Attachments` off its input DTO.
 
 **See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "An entity that references one of its own children")`.
 
@@ -375,6 +385,23 @@ public class DueNoticeJob(IServiceScopeFactory scopes, ILogger<DueNoticeJob> log
 The stamp takes `CancellationToken.None`, so a shutdown that lands after the send still records it. Stamped after
 the send, a crash between the two sends that row again; stamp first instead — the update filtered on
 `NoticeSentAt == null` and reporting 1 row — for at most once, or when several instances run the job.
+
+**At a time of day** (a nightly backup, a 07:00 mail), sleep until the next run instead of ticking:
+
+<!-- no-compile -->
+```csharp
+// in ExecuteAsync, in place of the PeriodicTimer loop
+var at = new TimeOnly(7, 0);
+while (!stoppingToken.IsCancellationRequested)
+{
+    var next = DateTime.Today + at.ToTimeSpan();
+    if (next <= DateTime.Now) next = next.AddDays(1);
+    // slices of at most an hour, so a clock or daylight-saving change is picked up
+    for (var wait = next - DateTime.Now; wait > TimeSpan.Zero; wait = next - DateTime.Now)
+        await Task.Delay(wait < TimeSpan.FromHours(1) ? wait : TimeSpan.FromHours(1), stoppingToken);
+    // then the tick's body above: its own scope, the work, the try/catch
+}
+```
 
 **See:** `get_package(id: "Regira.Entities", section: "instructions", heading: "Reactors — after the commit")`.
 
@@ -634,7 +661,8 @@ out stays as it is. The action reads the body itself, so `application/json` is a
 client sends it with `service.patch(id, { isActive: false })` (front-end `entities.patterns` → *State toggle*).
 <!-- no-compile -->
 ```csharp
-// Server-side (seeding/jobs) — there is no service.Patch; load, flip, Modify, persist:
+// Server-side (seeding/jobs): IEntityService has no Patch — load, flip, Modify, persist;
+// or send a PatchCommand through IEntitySender (§Entity operations outside a controller):
 var item = await service.Details(id);
 item!.IsActive = false;
 await service.Modify(item);
@@ -1273,6 +1301,7 @@ public class StockMove(AppDbContext db, IEntitySender sender)
         // a retrying strategy (EnableRetryOnFailure) replays the whole unit, so the transaction starts inside it
         await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
+            db.ChangeTracker.Clear();   // a replay must not reuse what the failed attempt tracked
             await using var tx = await db.Database.BeginTransactionAsync(token);
             await sender.Send(new SaveCommand<Shelf, int, ShelfDto, ShelfInputDto>(from), token);
             await sender.Send(new SaveCommand<Shelf, int, ShelfDto, ShelfInputDto>(to), token);
@@ -1281,6 +1310,9 @@ public class StockMove(AppDbContext db, IEntitySender sender)
     }
 }
 ```
+
+A retrying strategy runs the lambda again on the same `DbContext`, whose change tracker still holds the failed
+attempt's rows: clear it first, as above.
 
 The handlers resolve their services from the scope the sender came from, so every send writes through that same
 `DbContext` and joins its transaction — and a later send's preppers and validators see the rows an earlier one saved.
@@ -2045,9 +2077,9 @@ What each write is checked against:
 
 | Write | Checked against |
 |---|---|
-| `PUT` carrying the token | the client's token — a stale one answers 409 |
+| `PUT` carrying the token, or a `SaveCommand` your own code sends with the token it read | the client's token — a stale one answers 409 |
 | `PUT` without it (`null`, empty, `Guid.Empty`, `0`) | nothing the client read: it writes, only a write racing it is caught, and the empty value never overwrites the token (the marker's primer still mints a new one). `[VersionStamp(Required = true)]` on the token refuses it instead — 400 naming the token (below), before anything is attached — for a client that must always prove what it read; on the marker, put the attribute on the implementing `ConcurrencyToken` property. An insert is never refused |
-| `PATCH` | the token in the body when it carries one; otherwise the merge base supplies the value read at `PATCH` time |
+| `PATCH`, or a `PatchCommand` | the token in the body when it carries one; otherwise the merge base supplies the value read at `PATCH` time |
 | `DELETE`, and child rows a save drops | no client token reaches them — only a write racing them is caught |
 | Your own code on the raw `DbContext` (load, copy the DTO, `SaveChanges()`) | the token the entity was **loaded** with — copying the client's token onto a tracked entity changes only its current value, so a stale client wins. Set the original yourself: `db.Entry(order).Property(x => x.ConcurrencyToken).OriginalValue = dto.ConcurrencyToken` |
 | Owned children (`Related()`) | each child's own token, when it declares one; one stale child fails the whole save. A CLR type EF maps more than once — a shared-type entity, an owned type with several owners — has no single model to read its token from, so only a write racing it is caught |
@@ -2216,10 +2248,12 @@ public class RequestCodePrimer(RequestCodeGenerator codes) : EntityPrimerBase<Re
 
 The restore holds on the service's `Modify` path too: it tracks the stored row's values as the entry's originals, so
 `OriginalValues` is the stored code even for an entity that arrived detached.
-The primer is also what keeps the sequence gapless: it runs inside `SaveChanges()`, after the validators, so a
-create they refuse uses no number. Minted in a prepper or with `e.ServerOwned(x => x.Code, mint)`, which run
-before the validators, the refused create has already taken its number, and the next one skips it. Only a save that
-then fails in the database still leaves a gap.
+The primer also keeps refused creates from using a number: it runs inside `SaveChanges()`, after the validators.
+Minted in a prepper or with `e.ServerOwned(x => x.Code, mint)`, which run before the validators, a refused create has
+already taken its number. A number the primer hands out is still spent for the life of the process when the save then
+fails in the database or a surrounding transaction rolls back, so the codes are unique and ordered, not gapless. Where
+numbers must be gapless (invoices), keep the counter in a table and increment it inside the insert's transaction, so a
+rollback returns the number.
 
 A `[Normalized]` property or `e.AddNormalizer<>()` sees a value a primer set: the normalizer interceptor runs after the
 primer interceptor in the same `SaveChanges` (`entities.instructions` → *Write-pipeline order*).
@@ -2379,9 +2413,12 @@ Use a global `EntityPrimerBase<TInterface>` to stamp `CreatedBy`/`ModifiedBy` on
 - Define an audit interface (e.g. `IAuditable`) with `CreatedBy` and `ModifiedBy` properties
 - Implement `EntityPrimerBase<IAuditable>` — check `EntityState.Added` vs `Modified`
 - Register globally via `options.AddPrimer<UserTrackingPrimer>()`
-- Runs via the primer interceptor — auto-wired by `UseDefaults()`; without it, select `e.WireDbContext(DbContextWiring.PrimerInterceptors)`
+- Runs via the primer interceptor — auto-wired by `UseDefaults()`; without it, select `options.WireDbContext(DbContextWiring.PrimerInterceptors)` on the `UseEntities` options
 
-> **→ See:** [`entities.examples.md`](./entities.examples.md) — Additional Patterns > Primers
+An audit kept outside the database (MongoDB, a log service) is a reactor instead: it runs once the save is committed,
+and never for a rolled-back one (`entities.instructions` → *Reactors — after the commit*).
+
+> **→ See:** [`entities.examples.md`](./entities.examples.md) — Additional Patterns > Primers (the mechanism; read the user from `IHttpContextAccessor` in `PrepareAsync`)
 
 ## Hierarchical Data (Self-referencing)
 

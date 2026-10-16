@@ -8,6 +8,9 @@ Razor template engine for [Regira Web](https://regira.github.io/Regira-Packages/
 <PackageReference Include="Regira.Web.HTML.RazorLight" Version="6.*" />
 ```
 
+- The host project sets `<PreserveCompilationContext>true</PreserveCompilationContext>`; without it the first `Parse` throws `RazorLightException`.
+- A template compiles to C# and runs in your process with no sandbox: let only trusted administrators edit one.
+
 ## Documentation
 
 - [HTML Template Parsing](https://regira.github.io/Regira-Packages/src/Common.Web/#html-template-parsing) — the shared `IHtmlParser` contract, how the three template engines differ, template caching

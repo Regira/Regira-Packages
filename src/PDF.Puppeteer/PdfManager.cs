@@ -2,6 +2,7 @@ using PuppeteerSharp;
 using PuppeteerSharp.Media;
 using Regira.IO.Abstractions;
 using Regira.IO.Extensions;
+using Regira.Office.MimeTypes;
 using Regira.Office.PDF.Abstractions;
 using Regira.Office.PDF.Internal;
 using Regira.Office.PDF.Models;
@@ -64,6 +65,6 @@ public class PdfManager : IHtmlToPdfService
             FooterTemplate = layout.FooterTemplate
         });
 
-        return pdfStream.ToMemoryFile();
+        return pdfStream.ToMemoryFile(ContentTypes.PDF);
     }
 }

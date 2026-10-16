@@ -12,7 +12,7 @@
 
 ## Sub-Modules
 
-| Sub-Module | Namespace | Covers | Instructions |
+| Sub-Module | Namespace root (types and exact usings: `office.namespaces.md`) | Covers | Instructions |
 |---|---|---|---|
 | **Barcodes** | `Regira.Office.Barcodes` | Barcode and QR code generation and scanning | `./office.barcodes.instructions.md` |
 | **CSV** | `Regira.Office.Csv` | CSV reading and writing (typed + dictionary) | `./office.csv.instructions.md` |

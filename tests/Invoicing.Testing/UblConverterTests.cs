@@ -110,4 +110,53 @@ public class UblConverterTests
         var empty = doc.Descendants().Where(e => !e.HasElements && string.IsNullOrWhiteSpace(e.Value)).Select(e => e.Name.LocalName);
         Assert.That(empty, Is.Empty);
     }
+
+    [TestCase(3, 1.2345)]
+    [TestCase(100, 1.2345)]
+    [TestCase(7, 0.335)]
+    [TestCase(2500, 0.0125)]
+    public void A_Line_Amount_Is_Its_Quantity_Times_Its_Price(decimal quantity, decimal unitPrice)
+    {
+        var doc = Convert(CreateInvoice(new InvoiceLine { Title = "Bolts", Quantity = quantity, UnitPriceExcl = unitPrice, VatPercentage = 21 }));
+
+        var line = doc.Descendants(Cac + "InvoiceLine").Single();
+        var price = Amount(line.Element(Cac + "Price")!, "PriceAmount");
+        var lineAmount = Amount(line, "LineExtensionAmount");
+        // PEPPOL-EN16931-R120: the line amount is quantity × price, within 0.02; the price keeps its decimals
+        // (UBL-DT-01 leaves PriceAmount out of its two-decimal limit)
+        Assert.That(price, Is.EqualTo(unitPrice));
+        Assert.That(Math.Abs(lineAmount - quantity * price), Is.LessThanOrEqualTo(0.02m));
+        // BR-DEC-23: the line amount has at most two decimals
+        Assert.That(lineAmount, Is.EqualTo(decimal.Round(lineAmount, 2)));
+    }
+
+    [Test]
+    public void Amounts_Round_Half_Away_From_Zero()
+    {
+        // 7 × 0.335 = 2.345: half away from zero gives 2.35 (half to even would give 2.34), on the line and in every total
+        var doc = Convert(CreateInvoice(new InvoiceLine { Title = "Washers", Quantity = 7, UnitPriceExcl = 0.335m, VatPercentage = 21 }));
+
+        var line = doc.Descendants(Cac + "InvoiceLine").Single();
+        var subtotal = doc.Root!.Element(Cac + "TaxTotal")!.Element(Cac + "TaxSubtotal")!;
+        var totals = doc.Root!.Element(Cac + "LegalMonetaryTotal")!;
+        Assert.That(Amount(line, "LineExtensionAmount"), Is.EqualTo(2.35m));
+        Assert.That(Amount(subtotal, "TaxableAmount"), Is.EqualTo(2.35m));
+        Assert.That(Amount(totals, "LineExtensionAmount"), Is.EqualTo(2.35m));
+        Assert.That(Amount(totals, "TaxExclusiveAmount"), Is.EqualTo(2.35m));
+        // 2.35 × 21 % = 0.4935
+        Assert.That(Amount(subtotal, "TaxAmount"), Is.EqualTo(0.49m));
+        Assert.That(Amount(totals, "PayableAmount"), Is.EqualTo(2.84m));
+    }
+
+    [Test]
+    public void OutsideScope_Is_Category_O()
+    {
+        // the converter reads the code from the member ToString() names: either name of the alias must carry it
+        var member = typeof(TaxCategoryCode).GetMember(TaxCategoryCode.OutsideScope.ToString()).Single();
+        var code = member.GetCustomAttributes(false).Single(a => a.GetType().Name == "PeppolCodeAttribute");
+        Assert.That(code.GetType().GetProperty("Value")!.GetValue(code), Is.EqualTo("O"));
+#pragma warning disable CS0618 // the misspelt name stays as an alias
+        Assert.That(TaxCategoryCode.OutsideScode, Is.EqualTo(TaxCategoryCode.OutsideScope));
+#pragma warning restore CS0618
+    }
 }

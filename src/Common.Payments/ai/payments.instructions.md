@@ -88,15 +88,23 @@ await svc.WebHook(paymentId, async p =>
 | Property | Type | Description |
 |---|---|---|
 | `SenderId` | `string?` | POM sender ID |
-| `SenderContractNumber` | `string?` | Contract number |
+| `SenderContractNumber` | `string?` | Contract number, sent with every payment |
 | `Username` | `string?` | API username |
 | `Password` | `string?` | API password |
-| `ExpiresIn` | `int` | Payment link expiry (seconds) |
+| `AppName` | `string?` | Sent when authenticating |
+| `Platform` | `string?` | Sent when authenticating |
+| `EnvironmentId` | `string?` | Sent when authenticating |
+| `ExpiresIn` | `int` | Sent with the authentication request. It does not set a link's expiry: `Payment.ExpiresAt` does |
 | `Mode` | `string?` | `"live"` or `"test"` |
 | `AuthApi` | `string?` | Authentication endpoint |
 | `CreatePaylinkApi` | `string` | Create payment link endpoint |
-| `PaylinkStatusApi` | `string` | Payment status endpoint |
-| `WebhookKey` | `string?` | Webhook HMAC key |
+| `PaylinkStatusApi` | `string` | Payment status endpoint, with a `{paymentId}` placeholder |
+| `WebhookKey` | `string?` | Not read by `PaymentService` |
+
+There is no `Add…` extension, configuration section or default endpoint. Take `AuthApi`, `CreatePaylinkApi` and
+`PaylinkStatusApi` from POM, bind a section yourself, and register the service as a singleton:
+`services.AddSingleton(new Regira.Payments.Pom.PaymentService(configuration.GetSection("Payments:Pom").Get<PomSettings>()!, serializer));`.
+Authentication posts the whole `PomSettings` object to `AuthApi`.
 
 ### `PaymentService` (POM)
 
@@ -109,8 +117,9 @@ IPayment? existing = await svc.Details(paymentId);
 
 var payment = new Payment // Regira.Invoicing.Payments.Models
 {
-    Amount   = 49.99m,
-    Currency = "EUR"
+    Amount    = 49.99m,
+    Currency  = "EUR",
+    ExpiresAt = DateTime.Now.AddDays(30)   // the link's expiry; one day after it is created when unset
 };
 await svc.Save(payment); // creates a payment link, sets payment.Id
 ```
@@ -124,7 +133,7 @@ var response = await pom.CreatePaylink(payment); // sets payment.Id
 var paylink = response.Paylink;                  // send the payer here
 ```
 
-`Save` and `CreatePaylink` send `Amount` and `Currency`, the sender contract number coming from `PomSettings`, and set the payment's `Id` to POM's document id; `CreatePaylink` also returns POM's `PomPaymentResponse`, with the link in `Paylink`.
+`Save` and `CreatePaylink` send `Amount`, `Currency` and `ExpiresAt` (the link's expiry, one day after it is created when unset; `ExpiresAt` is settable on `Payment`, and `IPayment` reads `null` for an implementation without it), the sender contract number coming from `PomSettings`, and set the payment's `Id` to POM's document id. They send nothing else: `Description` and `Metadata` stay behind, so a POM payment carries no reference of yours — keep POM's id on your own record; `CreatePaylink` also returns POM's `PomPaymentResponse`, with the link in `Paylink`.
 Every instance sends through a connection pool the package shares. An instance keeps its POM token and, when POM refuses it (`401`), authenticates again and sends the request once more, so it can be registered as a singleton.
 `PomException` is thrown on API errors — check `StatusCode` and `PomResponse` for details.
 
@@ -136,7 +145,7 @@ Every instance sends through a connection pool the package shares. An instance k
 |---|---|---|
 | `IPaymentService` | — (concrete class) | ✓ |
 | Operations | `Details`, `List`, `Save`, `Delete` | `Details`, `Save`, `CreatePaylink` |
-| Webhook handling | `WebHook()` | Via `WebhookKey` HMAC |
+| Webhook handling | `WebHook()` | — (not implemented: poll `Details(id)`) |
 | Payment link | ✓ (`Save` returns checkout URL) | ✓ (`CreatePaylink` returns `Paylink`) |
 | Client library | Official `Mollie.Api` NuGet | `HttpClient` + token auth (`X-Authentication`) |
 

@@ -67,6 +67,7 @@ Both are public fields, read only from the options passed to the `CsvManager` co
 - First row is always treated as the header.
 - Non-generic `CsvManager` reads each row into `Dictionary<string, object>`.
 - For typed `CsvManager<T>`, column names must match property names (or use CsvHelper `[Name]` attributes on the POCO).
+- A typed read throws at the first field it cannot convert (CsvHelper's `TypeConverterException`) and returns no rows. To report bad lines one by one, read with the non-generic `CsvManager`, whose values are all strings, and convert and validate each row yourself.
 - `WriteFile` returns `IMemoryFile` with `ContentType = "text/csv"`.
 
 ---

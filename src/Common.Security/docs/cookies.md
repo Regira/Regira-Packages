@@ -62,6 +62,14 @@ per request.
   key ring plus `SetApplicationName`, or every restart invalidates every cookie. The symptom is random logouts,
   never an error, and it does not reproduce on one machine.
 - **Cookies authenticate ambiently, so state-changing endpoints need antiforgery** — a bearer token does not.
+  Register `services.AddAntiforgery(o => o.HeaderName = "X-XSRF-TOKEN")` and the controllers with
+  `AddControllersWithViews()` (with `AddControllers()` alone, `[AutoValidateAntiforgeryToken]` throws: its filter is a
+  view service), put `[AutoValidateAntiforgeryToken]` on the cookie-authenticated controllers (every POST, PUT, PATCH
+  and DELETE, the sign-in included), and hand the SPA its token from an anonymous `GET`:
+  `antiforgery.GetAndStoreTokens(HttpContext).RequestToken`, sent back in `X-XSRF-TOKEN`. A token is bound to the
+  user it was issued to, so fetch a new one after sign-in and after sign-out. With `SameSite` `Lax` (the default) or
+  `Strict` current browsers send no cookie with a cross-site write; a sibling subdomain is same-site and still sends
+  it, so keep antiforgery wherever other apps share the site.
 - **Set `IsApi` for anything a script calls**, or the handler `302`s to an HTML login page that `fetch` follows,
   returning `200` and HTML where the caller expected JSON.
 - **A cross-site SPA needs `SameSite = None`**, which requires `Secure` (so HTTPS), plus a CORS policy with

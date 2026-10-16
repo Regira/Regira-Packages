@@ -27,6 +27,15 @@
 
 Two layouts, one file set. An entity is always the same files under the same names — model, DTOs, search object, `SortBy`/`Includes` enums, query builder, normalizer, manager/processor, `{Entity}ServiceConfiguration.cs` — and the two layouts differ only in which project and folder each file lives in. Start with the single project; move to the layered solution when one of its triggers applies.
 
+**One type per file, named after it, by default.** The trees below are literal: `Order.cs` holds `Order`, `OrderDto.cs` holds `OrderDto`, and each controller has a file of its own. The guides' examples often put several types in one code block so they read together; that is not a file layout, so split the block when you copy it. Be pragmatic, but weigh what a shared file costs:
+
+- **Review:** a change to one type should read as one file's diff, under that type's name.
+- **Parallel work:** developers or agents who edit different types in the same file get merge conflicts; separate files merge cleanly.
+- **Growth:** the layered solution below moves each file into a layer project (DTOs to `Models`, processors to `Services`), and a file that mixes layers has to be split first.
+- **Finding and editing:** a type is found by its file name, and an agent reads and changes a small file without loading or touching its neighbours.
+
+Types that are small and always change together may share a file: an entity's DTOs and enums in a small app (within the free tier, 5 simple + 2 complex registrations, Checklist 0), or an enum only one class uses. Controllers and services keep a file each, and an app beyond the free tier keeps one type per file throughout, since it is built to grow and be reviewed. Nested types and `file`-scoped types stay in their file, as C# requires. Whatever the app chooses, it chooses once: every folder follows the same layout.
+
 ### Single project (default)
 
 The recommended **per-entity folder structure** — one folder per entity under `Entities/`, keeping its model, DTOs, search object, processor/manager, and service configuration together. Controllers live under `Controllers/` (one per entity), the DbContext under `Data/`, and DI wiring under `Extensions/`:
@@ -209,7 +218,7 @@ layer below the host needs them.
 ## Checklist
 
 0. **Plan the simple/complex split first.** Mark every entity *simple* or *complex* **before** scaffolding — it sets each entity's endpoints and controller generics, and the free-tier budget. Definitions, the decision table, and a worked budget example: [entities.instructions §Step 0](./entities.instructions.md#step-0--classify-every-entity-before-scaffolding).
-0.5. **Pin your EF Core provider to your target framework.** Regira's EF Core packages multi-target, so the provider you add (`Microsoft.EntityFrameworkCore.Sqlite`/`.SqlServer`/`Npgsql.EntityFrameworkCore.PostgreSQL`/…) **must match the EF Core major for your TFM**: **`net8.0`/`net9.0` → 9.x**, **`net10.0` → 10.x**. A mismatch builds cleanly but crashes on the first query — see [Troubleshooting](./entities.instructions.md#troubleshooting).
+0.5. **Pin your EF Core provider to your target framework.** Regira's EF Core packages multi-target, so the provider you add (`Microsoft.EntityFrameworkCore.Sqlite`/`.SqlServer`/`Npgsql.EntityFrameworkCore.PostgreSQL`/…) **must match the EF Core major for your TFM**: **`net8.0`/`net9.0` → 9.x**, **`net10.0` → 10.x**. A mismatch builds cleanly but crashes on the first query — see [Troubleshooting](./entities.instructions.md#troubleshooting). For MySQL on `net10.0`, pick a provider with a 10.x release, such as `MySql.EntityFrameworkCore` 10.x (`options.UseMySQL(connectionString)`). It cannot read `DateOnly` or `TimeOnly` columns: store those through value converters in `ConfigureConventions` (`configurationBuilder.Properties<DateOnly>().HaveConversion<DateOnlyConverter>()`, with a `ValueConverter<DateOnly, DateTime>` of your own). `Regira.DAL.MySQL` (Dapper) and `Regira.DAL.MySQL.MySqlBackup` (dump and restore) are not EF Core providers.
 1. Create an ASP.NET Core Web API project — use the **`BasicApi`** template in the shared project setup guide (`get_package(id: "Regira.Setup", section: "project.setup")`) as the starting point.
 2. Add required packages to `.csproj`.
 3. Create `YourDbContext` deriving from `DbContext`.
@@ -283,6 +292,7 @@ Regira.Entities.Validation.FluentValidation ← optional — AbstractValidator r
 | `Regira.Entities.*` | major **6**; resolve the patch at add time. Keep the `Regira.*` packages you reference **directly** on the same version, or restore reports NU1605 |
 | `Microsoft.OpenApi` | **no direct reference** — it arrives through `Microsoft.AspNetCore.OpenApi`, whose range is the compatible one by definition — from **10.0.11** on it is past the 2.x advisory (10.0.12 → `[2.12.0, 3.0.0)`); 10.0.10 and earlier pull the vulnerable 2.0.0, one more reason that package is added first (below). It must stay on **2.x**: 3.x breaks the .NET 10 OpenAPI source generator, and `dotnet add package Microsoft.OpenApi` resolves 3.x with at most an NU1608 warning. Overriding it anyway? Pin by hand the version restore already resolves (`dotnet list package --include-transitive`) — anything lower fails restore with NU1605 |
 | `SQLitePCLRaw.bundle_e_sqlite3` | **no direct reference** on EF Core Sqlite **10.0.11** or later, which brings 2.1.12, past GHSA-2m69-gcr7-jv3q; on net8 or 10.0.10 and earlier pin **2.1.12** (the advisory note above) |
+| `System.Security.Cryptography.Pkcs` | **10.0.13** for an app on `Microsoft.EntityFrameworkCore.SqlServer` 10.0.x: the provider's `Microsoft.Data.SqlClient` 6.1.7 brings 9.0.11 (GHSA-846f-f764-76mx, NU1903). **No direct reference** beside `Regira.DAL.SqlServer` or `Regira.Office.Mail.MailKit`, which pin it |
 | `Microsoft.EntityFrameworkCore.*` (+ provider) | major must equal the TFM's EF Core major (`net10.0` → **10.x**, see Checklist 0.5); resolve the patch at add time |
 | `Microsoft.AspNetCore.OpenApi` | major must equal your TFM (`net10.0` → **10.x**); resolve the patch at add time. ⚠️ `dotnet new webapi` pins the patch its SDK shipped with, which can sit below the floor **`Regira.Security.Authentication.Web`** sets (SDK 10.0.400 writes `10.0.11`; the floor is `10.0.13`) — adding sign-in then trips NU1605 until you raise the pin |
 | `Scalar.AspNetCore` | major **2**; resolve the patch at add time |
@@ -443,8 +453,8 @@ builder.Services.AddEntityServices(builder.Configuration);
 > re-creates the mismatch).
 >
 > **The second reason to call it: the entity exceptions.** It also registers `EntityExceptionFilter`, which
-> maps `EntityInputException` → **400** (its `Errors` as a `ValidationProblemDetails`) and `EntityConstraintException` →
-> **409** for *every* MVC action. The entity controller bases carry the same mapping (`[EntityConstraintConflict]`),
+> maps `EntityInputException` → **400** (its `Errors` as a `ValidationProblemDetails`), `EntityConstraintException` →
+> **409** and `EntityConcurrencyException` → **409** ("Concurrency conflict") for *every* MVC action. The entity controller bases carry the same mapping (`[EntityConstraintConflict]`),
 > so their actions answer a rule breach with a 400 without it, a hand-written domain action such as
 > `POST {id}/approve` included; on any other controller, a `ControllerExtensions` helper (`this.Save(…)`) answers it
 > with a 500 and a stack trace unless the filter is registered. `MapEntityExceptions()` registers the filter on its
@@ -515,6 +525,12 @@ using (var scope = app.Services.CreateScope())
 >
 > Dropping the database leaves the stored files behind, named by no row (`entities.instructions` → *Attachments*,
 > step 6).
+>
+> **SQL Server, PostgreSQL.** `EnsureCreated()` with this switch suits a disposable development database. For a
+> database you keep, use migrations: `dotnet ef migrations add Initial` (the `dotnet-ef` tool, with
+> `Microsoft.EntityFrameworkCore.Design` in the project), then `await dbContext.Database.MigrateAsync();` in this block
+> in place of `EnsureCreated()`. Never call both: `EnsureCreated()` writes no migrations history, so a later `Migrate()`
+> fails on the tables it finds.
 >
 > **Stop the running app before rebuilding.** The host holds its own DLL, so `dotnet build` fails with
 > `MSB3027`/`MSB3021` — not an `error CS…`, which is what a build log is usually searched for — and the next

@@ -95,7 +95,7 @@ string html = await parser.Parse(razorTemplate, model);
 
 ### RazorLight
 
-Full Razor syntax, with the `@model` directive compiled as written. Encodes every value a template writes with `@`; `@Raw(value)` writes a value unencoded.
+Full Razor syntax, with the `@model` directive compiled as written. Encodes every value a template writes with `@`; `@Raw(value)` writes a value unencoded. The host project needs `<PreserveCompilationContext>true</PreserveCompilationContext>`: without it the first `Parse` throws `RazorLightException` (*Can't load metadata reference from the entry assembly*).
 
 ```csharp
 string razorTemplate = "<p>Hello @Model.Name</p>";
@@ -111,11 +111,13 @@ Both Razor parsers compile a template into an assembly that stays loaded until t
 
 RazorLight's `Options.TemplateKey` is `[Obsolete]` and ignored: a parser renders the template it is given.
 
+**A runtime Razor template is code.** RazorLight and RazorEngineCore compile it as C# and run it in your process, with its file system, network and configuration; there is no sandbox. Let only trusted administrators edit one, keep user text in the model (where `@` encodes it), and for templates end users write use `HtmlTemplateParser` with `HtmlEncode = true`, which replaces tokens and runs nothing. Each edited or previewed version compiles a new assembly that stays loaded until the process exits. A template that does not compile throws the engine's own exception (RazorLight's `TemplateCompilationException`, RazorEngineCore's `RazorEngineCompilationException`), which lists each error with its line.
+
 ---
 
 ## Razor Components
 
-`Regira.Web.HTML.RazorComponents` renders a Razor component — a `.razor` file compiled with the application — to HTML with ASP.NET Core's `HtmlRenderer`. It takes a component type rather than template text, so `RazorComponentRenderer` implements `IHtmlComponentRenderer` rather than `IHtmlParser`. A template is checked at build time, nothing compiles at runtime, and the package has no third-party dependency. Templates that change without a rebuild — stored in a database, edited by users, deployed as files — need RazorLight instead.
+`Regira.Web.HTML.RazorComponents` renders a Razor component — a `.razor` file compiled with the application — to HTML with ASP.NET Core's `HtmlRenderer`. It takes a component type rather than template text, so `RazorComponentRenderer` implements `IHtmlComponentRenderer` rather than `IHtmlParser`. A template is checked at build time, nothing compiles at runtime, and the package has no third-party dependency. Templates that change without a rebuild — stored in a database or deployed as files — need RazorLight instead, edited by trusted administrators only (*Compiled Razor templates*); templates end users edit belong to `HtmlTemplateParser`.
 
 ### IHtmlComponentRenderer
 
@@ -162,7 +164,7 @@ string html = await renderer.Render<InvoiceTemplate, InvoiceDto>(invoice);
 
 A `.cshtml` template ports by replacing `@model InvoiceDto` with the `[Parameter]` property and `@Raw(value)` with `@((MarkupString)value)`.
 
-The `.razor` files compile in the consuming project, which needs the Razor SDK: `Microsoft.NET.Sdk.Web` has it, and a worker, console app or class library uses `Microsoft.NET.Sdk.Razor`. A project on the Razor SDK that also holds `.cshtml` template files for RazorLight or RazorEngineCore sets `<EnableDefaultRazorGenerateItems>false</EnableDefaultRazorGenerateItems>`, so the SDK leaves them as template text rather than taking them for MVC views.
+The `.razor` files compile in the consuming project, which needs the Razor SDK: `Microsoft.NET.Sdk.Web` has it, and a worker, console app or class library uses `Microsoft.NET.Sdk.Razor`. A project on the Razor SDK that also holds `.cshtml` template files for RazorLight or RazorEngineCore sets `<EnableDefaultRazorGenerateItems>false</EnableDefaultRazorGenerateItems>`, so the SDK leaves them as template text rather than taking them for MVC views. `PreserveCompilationContext` is not needed for the components; RazorLight needs it.
 
 ### Rendering behaviour
 
@@ -199,7 +201,7 @@ app.UseRequestLocalization(options => options
 
 ### RoutePrefixConvention
 
-Apply a central route prefix to every controller.
+Apply a central route prefix to every controller. An absolute template (`/x` or `~/x`, on a controller or an action) is not combined and skips the prefix: write the base into it.
 
 ```csharp
 var services = new ServiceCollection();

@@ -67,9 +67,11 @@ Exact usings: `office.namespaces.md`.
 
 **Recommendations:**
 - HTML → PDF: **Playwright** — headless Chromium on any OS, every `HtmlInput` setting, no page limit; the browser is
-  installed on first use (or in advance). **Puppeteer** behaves alike. **Gotenberg** for container setups: an
-  application image that must stay slim or may download nothing at run time, or a deployment that already runs
-  Gotenberg for Word.Gotenberg. **SelectPdf** only where nothing may be downloaded and the host is Windows: it drops
+  installed on first use (network and writable disk needed), or in advance after a build with
+  `pwsh bin/<Configuration>/<tfm>/playwright.ps1 install chromium` (`PLAYWRIGHT_BROWSERS_PATH` moves the browser
+  cache). `PdfManager` keeps no state between calls: register it as a singleton. **Puppeteer** behaves alike.
+  **Gotenberg** for container setups: an application image that must stay slim or may download nothing at run time,
+  or a deployment that already runs Gotenberg for Word.Gotenberg. **SelectPdf** only where nothing may be downloaded and the host is Windows: it drops
   everything past page five
 - Office documents → PDF: **MiniPdf** — `.docx`, `.xlsx` and `.pptx`, in-process, no licence and no server. For a
   Word document that must lay out as Word does, convert it with a Word backend (`IWordConverter`) instead
@@ -310,8 +312,8 @@ entries before converting.
 |---|---|---|---|
 | `PdfFile` | `IMemoryFile` | *(required)* | PDF to print |
 | `PrinterName` | `string?` | default printer | Target printer |
-| `PageSize` | `PageSize` | `A4` | Paper size |
-| `PageOrientation` | `PageOrientation` | `Portrait` | Orientation |
+| `PageSize` | `PageSize` | `A4` | Paper size (Spire only: PDFtoPrinter and PockyBum522 ignore it and print with the printer's defaults) |
+| `PageOrientation` | `PageOrientation` | `Portrait` | Orientation (Spire only, as `PageSize`) |
 
 ---
 

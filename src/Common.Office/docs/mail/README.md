@@ -102,7 +102,7 @@ Task<IMailResponse> Send(IMessageObject message, CancellationToken cancellationT
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `Success` | `bool` | `true` when the provider accepted the message |
+| `Success` | `bool` | `true` whenever a sending backend's `Send` returns: SendGrid, Mailgun and MailKit throw `MailException` on a refusal instead. `DummyMailer` returns `false` |
 | `Status` | `string?` | HTTP status code or provider status text; `OK` for SMTP |
 | `Content` | `string?` | Raw response body; for SMTP the server's reply, with its queue id (`2.0.0 Ok: queued as …`) |
 | `Exception` | `Exception?` | Set when sending fails |
@@ -323,9 +323,15 @@ services.AddSingleton<IMailService, DummyMailer>();
 [HttpPost]
 public async Task<IActionResult> Send([FromBody] MailInput input, IMailService mailer)
 {
-    var message = input.ToMessageObject();
-    var result  = await mailer.Send(message);
-    return result.Success ? Ok() : StatusCode(502);
+    try
+    {
+        await mailer.Send(input.ToMessageObject());
+        return Ok();
+    }
+    catch (MailException)   // Regira.Office.Mail.Exceptions: the provider or SMTP server refused the message
+    {
+        return StatusCode(502);
+    }
 }
 ```
 

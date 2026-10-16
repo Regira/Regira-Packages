@@ -34,7 +34,7 @@ Exact usings: `office.namespaces.md`.
 
 | Package | Engine | Languages | Platform |
 |---|---|---|---|
-| `Regira.Office.OCR.Tesseract` | Tesseract 5 | English, Dutch + configurable | Cross-platform |
+| `Regira.Office.OCR.Tesseract` | Tesseract 5 | English bundled; others from their `.traineddata` | Cross-platform |
 | `Regira.Office.OCR.PaddleOCR` | PaddleOCR (ONNX) | 12 scripts: English, Latin, Chinese, Korean, Arabic, Cyrillic, East Slavic, Devanagari, Greek, Tamil, Telugu, Thai | Windows only |
 
 ---
@@ -68,7 +68,10 @@ Tesseract takes its `Options` through the constructor, so register an instance:
 
 ## Tesseract
 
-Requires language data files (`tessdata` directory with `.traineddata` files).
+The package brings Tesseract's native libraries (Windows x86 and x64) and `eng.traineddata`, which its build copies
+to the output's `tessdata/` folder, the default `DataDirectory`. For another language, add its `.traineddata` from
+`github.com/tesseract-ocr/tessdata` to that folder, named by the ISO 639-2 code `lang` maps to: `nl` → `nld.traineddata`,
+`fr` → `fra`, `de` → `deu`. The input is an image: render a PDF's pages first (`IPdfToImageService`).
 
 <!-- no-compile -->
 ```csharp
@@ -83,8 +86,6 @@ string? text     = result.Text;
 
 OcrResult nl = await ocr.Read(imageFile, lang: "nl");
 ```
-
-Download language packs from `github.com/tesseract-ocr/tessdata`.
 
 ---
 

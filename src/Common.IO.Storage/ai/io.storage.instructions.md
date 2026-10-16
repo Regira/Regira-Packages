@@ -131,6 +131,9 @@ byte[]  encoded = FileUtility.GetBytesFromString(text); // text → bytes (encod
 
 <!-- GitHub -->
 <PackageReference Include="Regira.IO.Storage.GitHub" Version="6.*" />
+
+<!-- Raw TCP port, write-only (a label printer on 9100) -->
+<PackageReference Include="Regira.IO.Storage.SimpleTCP" Version="6.*" />
 ```
 
 ---
@@ -248,6 +251,9 @@ var service = new BinaryFileService(new FileSystemOptions { RootFolder = "/var/a
 |---|---|---|---|
 | `RootFolder` | `string` | `""` | Base directory; all identifiers resolve inside it |
 | `Contained` | `bool` | `true` | Reject identifiers that escape `RootFolder` (path traversal) |
+
+`List` answers identifiers with `/` between folders on every platform, as `Save` does, so they compare and split
+the same everywhere; either separator is accepted back.
 
 **Credential-protected network share (UNC)** — use `NetworkFileService` with a `NetworkShareCommunicator`; it authenticates lazily on the first file operation. Windows only (WNet API) — on other platforms mount the share at OS level and use plain `FileSystemOptions`. Dispose the communicator on shutdown; connections are ref-counted per share + user process-wide, so only disposing the last communicator on a share releases it. Use `Reconnect()` — not `Close()` + `Open()` — to recover a connection cancelled outside the process.
 
@@ -373,6 +379,34 @@ Fully implements `IFileService`: reads via the contents API; `Save`/`Move`/`Dele
 
 ---
 
+### Raw TCP port (a ZPL label printer) — `TCPService`
+
+**Package:** `Regira.IO.Storage.SimpleTCP`
+
+A write-only `ITextFileService` that sends bytes to a host and port as they are, such as a ZPL label to a network
+label printer on port 9100:
+
+<!-- no-compile -->
+```csharp
+using System.Text;
+using Regira.IO.Storage.SimpleTCP;   // TCPService, TCPCommunicator, TCPConfig
+
+string zpl = "^XA^FO50,50^ADN,36,20^FDHello^FS^XZ";
+using var communicator = new TCPCommunicator(new TCPConfig { Host = "printer01", Port = 9100 });
+await new TCPService(communicator).Save("", Encoding.UTF8.GetBytes(zpl));   // the identifier is ignored
+```
+
+- The communicator connects on the first `Save` and keeps that connection until it is disposed: use one per job when
+  the device closes idle connections.
+- The connect has no timeout of its own and runs synchronously: an unreachable host blocks the call until the
+  operating system gives up (about 21 seconds on Windows), then throws `SocketException`. Bound it yourself when that
+  matters.
+- The `string` overload sends the text and waits up to 20 seconds for a reply, which it returns; it throws when none
+  arrives. Every other member throws `NotSupportedException` or `NotImplementedException`.
+- Plain TCP: nothing is encrypted or authenticated, so keep it to a trusted network.
+
+---
+
 ## ZIP / Compression
 
 ### `ZipFileService` — browse an archive via IFileService
@@ -484,7 +518,7 @@ await new ExportHelper(source, target)
     .Export(new FileSearchObject { FolderUri = "backups/", Recursive = true });
 ```
 
-### `FileNameUtility` — path helpers
+### `FileNameUtility` (`Regira.IO.Storage.FileSystem`) — path helpers
 
 <!-- no-compile -->
 ```csharp
@@ -537,4 +571,5 @@ services.AddSingleton<IFileService, BinaryBlobService>();
 | `BinaryBlobService` | `Regira.IO.Storage.Azure` | ✓ | ✓ | Azure Blob |
 | `SftpService` | `Regira.IO.Storage.SSH` | ✓ | ✓ | Remote SSH/SFTP |
 | `GitHubService` | `Regira.IO.Storage.GitHub` | ✓ | ✓ | Writes commit to a branch |
+| `TCPService` | `Regira.IO.Storage.SimpleTCP` | ✓ | — | Sends bytes to a TCP port (a ZPL label printer); write-only |
 | `ZipFileService` | `Regira.IO.Storage` | ✓ | ✓ | In-memory ZIP archive |

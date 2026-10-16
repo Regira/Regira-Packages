@@ -86,6 +86,31 @@ public class PomTests
     }
 
     [Test]
+    public async Task A_Link_Expires_When_The_Payment_Says()
+    {
+        var handler = new PomStub();
+        var service = new PaymentService(Settings, new JsonSerializer()) { Handler = handler };
+
+        await service.Save(new Payment { Amount = 10, ExpiresAt = new DateTime(2026, 11, 15, 12, 0, 0) });
+
+        Assert.That(handler.LastBody, Does.Contain("\"expiryDate\":\"2026-11-15T12:00:00"));
+    }
+
+    [Test]
+    public async Task A_Link_Without_An_Expiry_Expires_After_A_Day()
+    {
+        var handler = new PomStub();
+        var service = new PaymentService(Settings, new JsonSerializer()) { Handler = handler };
+
+        var before = DateTime.Now.AddDays(1);
+        await service.Save(new Payment { Amount = 10 });
+        var after = DateTime.Now.AddDays(1);
+
+        // read on both sides of the call, so a run across midnight still matches
+        Assert.That(handler.LastBody, Does.Contain($"\"expiryDate\":\"{before:yyyy-MM-dd}").Or.Contain($"\"expiryDate\":\"{after:yyyy-MM-dd}"));
+    }
+
+    [Test]
     public async Task A_Token_Refused_Twice_Throws()
     {
         var handler = new PomStub { ExpireEveryToken = true };

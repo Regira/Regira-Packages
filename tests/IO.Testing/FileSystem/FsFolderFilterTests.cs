@@ -34,6 +34,6 @@ public class FsFolderFilterTests
 
         var folders = await service.List(new FileSearchObject { Recursive = true, Extensions = [".txt"], Type = FileEntryTypes.Directories });
 
-        Assert.That(folders, Is.EquivalentTo(new[] { "dir2", Path.Combine("dir2", "dir2.10") }));
+        Assert.That(folders, Is.EquivalentTo(new[] { "dir2", "dir2/dir2.10" }));
     }
 }

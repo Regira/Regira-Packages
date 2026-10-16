@@ -62,10 +62,10 @@ Task<IMailResponse> Send(IMessageObject message, CancellationToken cancellationT
 
 | Property | Type | Description |
 |---|---|---|
-| `Success` | `bool` | `true` when the provider accepted the message |
+| `Success` | `bool` | `true` whenever a sending backend's `Send` returns: SendGrid, Mailgun and MailKit throw `MailException` on a refusal instead (see *Exceptions*). `DummyMailer` returns `false` |
 | `Status` | `string?` | HTTP status code or provider status text; `OK` for SMTP |
 | `Content` | `string?` | Raw response body; for SMTP the server's reply, with its queue id (`2.0.0 Ok: queued as …`) |
-| `Exception` | `Exception?` | Set when sending fails |
+| `Exception` | `Exception?` | Not set by the shipped backends, which throw instead |
 
 ---
 
@@ -208,6 +208,28 @@ services.AddOptions<Regira.Office.Mail.SendGrid.SendGridConfig>()
     .ValidateOnStart();
 ```
 
+**Two channels, or a provider chosen by configuration.** Every `Add…` registers the one `IMailService`, so a second
+call replaces the first. Each mailer has a public constructor that takes its config: build them as keyed services and
+choose by whether a key is set.
+
+```csharp
+using Regira.Office.Mail.Abstractions;   // IMailService
+using Regira.Office.Mail.MailGun;        // MailGunMailer, MailgunConfig
+using Regira.Office.Mail.MailKit;        // MailKitMailer, MailKitConfig
+using Regira.Office.Mail.SendGrid;       // SendGridMailer, SendGridConfig
+
+var smtp = configuration.GetSection("Mail:Smtp").Get<MailKitConfig>()!;
+services.AddKeyedTransient<IMailService>("transactional", (_, _) => configuration["Mail:SendGrid:Key"] is { Length: > 0 } key
+    ? new SendGridMailer(new SendGridConfig { Key = key })
+    : new MailKitMailer(smtp));
+services.AddKeyedTransient<IMailService>("newsletter", (_, _) => configuration["Mail:MailGun:Key"] is { Length: > 0 } key
+    ? new MailGunMailer(new MailgunConfig { Api = configuration["Mail:MailGun:Api"]!, Key = key, Domain = configuration["Mail:MailGun:Domain"]! })
+    : new MailKitMailer(smtp));
+// the unkeyed IMailService, for consumers such as IdentityMailer
+services.AddTransient(sp => sp.GetRequiredKeyedService<IMailService>("transactional"));
+// inject a channel with [FromKeyedServices("newsletter")] IMailService
+```
+
 ---
 
 ## Exceptions
@@ -264,9 +286,15 @@ Accept email requests over HTTP with `Mail.Web`:
 [HttpPost]
 public async Task<IActionResult> Send([FromBody] MailInput input, IMailService mailer)
 {
-    var message = input.ToMessageObject();
-    var result  = await mailer.Send(message);
-    return result.Success ? Ok() : StatusCode(502);
+    try
+    {
+        await mailer.Send(input.ToMessageObject());
+        return Ok();
+    }
+    catch (MailException)   // Regira.Office.Mail.Exceptions: the provider or SMTP server refused the message
+    {
+        return StatusCode(502);
+    }
 }
 ```
 

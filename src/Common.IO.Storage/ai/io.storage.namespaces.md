@@ -20,7 +20,7 @@ most common source of a missing `using`.
 | `Regira.IO.Models` | `BinaryFileItem` (the concrete `IBinaryFile`) — assembly **`Regira.Common`** |
 | `Regira.IO.Extensions` | `MemoryFileExtensions`, `BinaryFileExtensions` — `GetBytes()`, `GetStream()`, `HasPath()`; assembly **`Regira.Common`** |
 | `Regira.IO.Storage.Utilities` | `FileDataSource`, `BinaryFileCollectionExtensions` |
-| `Regira.IO.Storage.Helpers` | `FileProcessor`, `FileNameHelper`, `ExportHelper`, `IExportHelper`, `OnExistsAction`, `Options` |
+| `Regira.IO.Storage.Helpers` | `FileProcessor`, `FileNameHelper` (and its nested `FileNameHelper.Options`), `ExportHelper`, `IExportHelper`, `OnExistsAction` |
 
 ⚠️ `GetBytes()` / `GetStream()` are **extension methods in `Regira.IO.Extensions`**. Without that `using`,
 an `IMemoryFile` appears to expose no way to read its content.
@@ -29,10 +29,10 @@ an `IMemoryFile` appears to expose no way to read its content.
 
 | Namespace | Types |
 |---|---|
-| `Regira.IO.Storage.FileSystem` | `BinaryFileService`, `TextFileService`, `FileSystemOptions`, `FileServiceOptions`, `NetworkFileService`, `NetworkFileSystemOptions`, `NetworkShareCommunicator`, `FileSystemUtility` |
+| `Regira.IO.Storage.FileSystem` | `BinaryFileService`, `TextFileService`, `FileSystemOptions`, `FileServiceOptions`, `NetworkFileService`, `NetworkFileSystemOptions`, `NetworkShareCommunicator`, `FileSystemUtility`, `FileNameUtility` |
 | `Regira.IO.Storage.Azure` | `BinaryBlobService`, `AzureOptions`, `AzureCommunicator` |
 | `Regira.IO.Storage.SSH` | `SftpService`, `SftpConfig`, `SftpCommunicator` |
-| `Regira.IO.Storage.GitHub` | `GitHubService`, `GitHubOptions`, `GitHubCommunicator`, `GitHubItem`, `GitHubItemType`, `GitHubExtensions` |
+| `Regira.IO.Storage.GitHub` | `GitHubService`, `GitHubOptions`, `GitHubCommunicator`, `GitHubItem`, `GitHubItemType`, `GitHubExtensions`, `FileNameUtility` (a second one, for `/` paths: qualify the type when both namespaces are imported) |
 | `Regira.IO.Storage.SimpleTCP` | `TCPService`, `TCPConfig`, `TCPCommunicator` |
 
 ## Compression
@@ -77,5 +77,5 @@ Regira.IO.Storage               → FileSearchObject
 
 ```
 Regira.IO.Storage.Compression      → ZipBuilder, ZipFileService
-Regira.IO.Compression.SharpZipLib  → ZipManager            (registration only)
+Regira.IO.Compression.SharpZipLib  → ZipManager            (no interface: construct or register the class)
 ```

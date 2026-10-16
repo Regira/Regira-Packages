@@ -113,6 +113,9 @@ new ImageEdgeOffset(top: 10, left: 20, bottom: 10, right: 20)
 new ImageEdgeOffset(10, 20)   // top + left only
 ```
 
+In `CropRectangle` each side is the distance cut from that edge: the centred 400 × 400 square of a 1200 × 800 photo is
+`new ImageEdgeOffset(top: 200, left: 400, bottom: 200, right: 400)`.
+
 ### `ImageLayerOptions`
 
 Controls positioning when compositing layers.

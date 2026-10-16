@@ -48,7 +48,7 @@ var options = new SqlServerOptions
     Overwrite       = true
 };
 
-// second parameter is an optional ILogger
+// second parameter: an optional ILogger<SqlServerBackupService> (ILogger<SqlServerRestoreService> for the restore)
 IMemoryFile backup = await new SqlServerBackupService(options).Backup();
 await new SqlServerRestoreService(options).Restore(backup);
 ```
