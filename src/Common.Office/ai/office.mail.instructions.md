@@ -40,7 +40,8 @@ Exact usings: `office.namespaces.md`.
 
 ## `IMailService`
 
-Every sending backend implements this interface.
+Every sending backend implements this interface. HTML you build formats dates and numbers in the thread's culture: the host's in a reactor, a job and a request
+without request localization. Set `CultureInfo.DefaultThreadCurrentCulture` at startup, or pass a culture to `ToString`.
 
 <!-- no-compile -->
 ```csharp

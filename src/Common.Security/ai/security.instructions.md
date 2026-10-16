@@ -421,7 +421,8 @@ returns the same body it always did (the `refreshToken` and `expiresAt` fields a
 
 `auth/refresh` cannot help at the one moment renewal matters: once the access token has expired it answers `401`. A
 SPA could only use it by polling ahead of expiry, and a tab left closed past the lifespan loses the session.
-`auth/refresh-token` is anonymous by necessity — the refresh token *is* the credential — so **rate-limit it**.
+`auth/refresh-token` is anonymous by necessity — the refresh token *is* the credential — so **rate-limit it**
+(*Pre-built Auth Controllers* → *Rate-limiting the anonymous actions*).
 
 ### `RefreshTokenOptions`
 
@@ -1227,6 +1228,63 @@ set (Identity's default confirmation checks the address). A user you seed, or cr
 `recover` answers alike for an unknown user (no user enumeration); for a known one it emails a link — `siteUrl`, the reset **page**, with its query string set to `?token=<Base64 of the reset token and user name>` (a query `siteUrl` carried is dropped) — the Base64 of the UTF-8 JSON of a `UserTokenModel` (`{"Token":"…","Username":"…"}`, `System.Text.Json` defaults, so PascalCase keys; `reset` reads them case-sensitively), percent-encoded so any query parser (`URLSearchParams`, vue-router's `route.query`) reads it back intact. `reset` returns `400` on a malformed token. The body is plain English text, though `IEmailSender` calls it `htmlMessage`: `Follow link below to reset password`, the link, a blank line, `Token: <token>`. `POST users` sends `Welcome <username>,`, `Please follow link below to confirm email`, the link and the token, subject `Welcome`. `IdentityMailer` passes the body on unchanged as an HTML message (`MessageObject.IsHtml` defaults to `true`): it encodes nothing, and the line breaks collapse. The only user value in it is the welcome mail's user name, which Identity's default `UserOptions.AllowedUserNameCharacters` keeps free of `<`, `>`, `&` and `"`. With wider user-name characters, or to keep the line breaks, register an `IEmailSender` that wraps `IdentityMailer` and passes on `WebUtility.HtmlEncode(htmlMessage).ReplaceLineEndings("<br>")`.
 
 `recover` is anonymous and mails the named account on every call, so a caller can flood that inbox and spend the app's mail quota: rate-limit it like `refresh-token`. Limit by client, not by account, so a `429` reveals no more than the `200` does.
+
+#### Rate-limiting the anonymous actions
+
+ASP.NET Core's rate limiter does it: a policy partitioned by client, and the middleware after routing (implicit in
+minimal hosting), before `MapControllers`. Behind a reverse proxy, `UseForwardedHeaders` comes first, or every client
+shares the proxy's address and its limit.
+
+```csharp
+using Microsoft.AspNetCore.Http;               // StatusCodes
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
+
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;   // the default answers 503
+    o.AddPolicy("account", http => RateLimitPartition.GetFixedWindowLimiter(
+        http.Connection.RemoteIpAddress?.ToString() ?? "unknown",   // by client, never by the account named
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
+});
+// after builder.Build()
+app.UseRateLimiter();
+```
+
+A policy attached to nothing limits nothing. On a subclass, `[EnableRateLimiting]` covers every action, the
+inherited ones included; for some actions of a base only, override each one and limit the override, which inherits
+its route and `[AllowAnonymous]`:
+
+```csharp
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Logging;
+using Regira.Security.Authentication.Jwt.Abstraction;   // ITokenHelper
+using Regira.Security.Authentication.Web.Controllers;
+using Regira.Security.Authentication.Web.Models;        // AuthenticateInput, RefreshTokenInput
+
+[EnableRateLimiting("account")]                         // recover, reset and change
+public class PasswordController(UserManager<AppUser> userManager)
+    : PasswordControllerBase<AppUser>(userManager);
+
+public class AccountController(ITokenHelper tokenHelper, UserManager<AppUser> userManager,
+    IUserClaimsPrincipalFactory<AppUser> claimsFactory, ILogger<AccountController> logger)
+    : AccountControllerBase<AppUser>(tokenHelper, userManager, claimsFactory, logger)
+{
+    [EnableRateLimiting("account")]                     // sign-in
+    public override Task<IActionResult> Authenticate([FromBody] AuthenticateInput model, [FromQuery] string clientApp)
+        => base.Authenticate(model, clientApp);
+
+    [EnableRateLimiting("account")]
+    public override Task<IActionResult> RefreshToken([FromBody] RefreshTokenInput model)
+        => base.RefreshToken(model);
+}
+
+public class AppUser : IdentityUser;   // stands for your app's own Identity user — don't declare a second one
+```
+
+**Check it:** the eleventh `POST auth/password/recover` from one client within a minute answers `429`.
 
 ### `UserControllerBase<TUser>` — route `users`
 

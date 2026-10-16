@@ -73,6 +73,10 @@ Exact usings: `office.namespaces.md`.
   **Gotenberg** for container setups: an application image that must stay slim or may download nothing at run time,
   or a deployment that already runs Gotenberg for Word.Gotenberg. **SelectPdf** only where nothing may be downloaded and the host is Windows: it drops
   everything past page five
+- HTML → PDF in the application's own process: no backend renders there, as each needs a browser engine. Playwright
+  and Puppeteer start a headless Chromium for each `Create` and close it after, with nothing to run beside the app;
+  Gotenberg renders in a server of its own. Without a browser, build the document as `.docx` or `.xlsx` and convert it
+  with MiniPdf.
 - Office documents → PDF: **MiniPdf** — `.docx`, `.xlsx` and `.pptx`, in-process, no licence and no server. For a
   Word document that must lay out as Word does, convert it with a Word backend (`IWordConverter`) instead
 - PDF operations: **PdfPig** (merge, split, page removal, images, text extraction) — cross-platform, no licence
@@ -157,6 +161,9 @@ format's page less its margins, measured in units of `DPI`, and the page takes t
 ```csharp
 Task<IMemoryFile> Create(HtmlInput input, CancellationToken cancellationToken = default);
 ```
+
+HTML you build formats dates and numbers in the thread's culture: the host's in a reactor, a job and a request
+without request localization. Set `CultureInfo.DefaultThreadCurrentCulture` at startup, or pass a culture to `ToString`.
 
 ### `IDocumentToPdfService`
 

@@ -209,7 +209,8 @@ Most entities are *simple* and need only the steps below — **skip everything e
    warns that `?q=` is ignored for the entity (§Normalizing).
 2. **DTOs** — `XDto` (read) and `XInputDto` (write) (Step 5).
 3. **Register** — `services.For<X>(e => { });` in a per-entity DI extension method (Steps 12 & 14).
-4. **Controller** — `public class XController : EntityControllerBase<X, XDto, XInputDto>;` (Step 13).
+4. **Controller** — `public class XController : EntityControllerBase<X, XDto, XInputDto>;` (Step 13). The bases carry
+   `[ApiController]`, which a subclass inherits: add only its `[Route]` (repeating the attribute is harmless).
 5. **DbContext** — add `public DbSet<X> Xs => Set<X>();` plus any relationship config (Step 11).
 6. **Wire it up** — call your extension method inside `UseEntities<TContext>(…)` (Step 14).
 7. **Verify at runtime** — run the app and walk the runtime checklist (Step 15); a green build proves almost nothing here.
@@ -816,8 +817,8 @@ options.AddReactor<AuditReactor>();    // global — an EntityReactorBase<IHasTi
   `SaveChanges()` returns before anything reacts; the `Dispose()` that ends a completed `TransactionScope`, which
   runs them synchronously. Hand slow or retryable work to a job system: the reactor only enqueues it
   (`IBackgroundJobClient.Enqueue(...)`).
-- **In registration order, per changed row, in a DI scope of their own** with a fresh `DbContext`: a reactor that
-  writes calls `SaveChanges()` itself, and that save triggers the reactors of what it wrote. Nesting stops at 8
+- **In registration order, per changed row; the reactions of one committed save share one DI scope of their own**
+  (a fresh one after a reactor throws), with a fresh `DbContext`: a reactor that writes calls `SaveChanges()` itself, and that save triggers the reactors of what it wrote. Nesting stops at 8
   levels with a logged error — guard `CanReact` so a chain ends. Within a request, `IHttpContextAccessor.HttpContext`
   and its `User` still reach the reactor's scope, since they run before the call that commits returns; a save from a
   job or seeder has none.
@@ -976,7 +977,7 @@ IEntityService<Order, int, OrderSearchObject, OrderSortBy, OrderIncludes>       
 | `POST` | `/list` | List (body, batch) | **Complex only** ¹ |
 | `POST` | `/search` | Search (body, batch) | **Complex only** ¹ |
 | `POST` | `/save` | Save (upsert) | All |
-| `POST` | `/` | Create | All |
+| `POST` | `/` | Create — the same upsert as `/save`: a body carrying a stored `Id` updates that row | All |
 | `PUT` | `/{id}` | Modify — full update, all fields required | All |
 | `PATCH` | `/{id}` | Patch — partial update (JSON Merge Patch, RFC 7386) | All |
 | `DELETE` | `/{id}` | Delete — ⚠️ **soft-delete on `IArchivable`** ² | All |
@@ -1048,7 +1049,7 @@ Rows scoped to a user/tenant, or endpoints gated by role? One more check applies
 > **Three traps:** name the token — `List(null, token: token)` — or it binds as the *search object* and filters nothing; `SaveChanges()` clears the change tracker (saved entities detach); `e.Related()` owned/join rows have no service of their own.
 
 - **Seed between `builder.Build()` and `app.Run()`.** `app.Run()` blocks until shutdown, so seeding code placed after it never executes — and the app looks empty with no error anywhere.
-- **Reactors fire for seeded rows too** — every committed save runs them, so a reactor that mails on create mails every seeded row. There is no built-in switch: a singleton flag the seeder sets around its waves, checked in the reactor's `CanReact` (`change => !seeding.IsRunning && …`), keeps the side effects out. A reactor and a seeder also run outside a request, in the host's culture, not a request's: set `CultureInfo.DefaultThreadCurrentCulture` at startup when they format dates or numbers.
+- **Reactors fire for seeded rows too** — every committed save runs them, so a reactor that mails on create mails every seeded row. There is no built-in switch: a singleton flag the seeder sets around its waves, checked in the reactor's `CanReact` (`change => !seeding.IsRunning && …`), keeps the side effects out. A reactor, a job and a seeder run outside a request, in the host's culture, not a request's: set `CultureInfo.DefaultThreadCurrentCulture` at startup, or pass a culture to `ToString`, when they format dates or numbers (HTML for a PDF or a mail included).
 - Every `.For<>()` registers `IEntityService<TEntity, TKey>` — resolve that shape (e.g. `IEntityService<Product, int>`) in a scope for seeding/jobs, whatever the builder overload.
 - A job that wants one endpoint's answer — DTO in, re-read DTO out — sends that endpoint's request instead: [`entities.patterns.md`](./entities.patterns.md) → *Entity operations outside a controller*.
 - On that universal interface, `List`/`Count` take `object? so` **first** — a positionally-passed `CancellationToken` binds as the *search object* and silently filters nothing. Name the token: `List(null, token: token)`.
@@ -1840,6 +1841,9 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 ## Error Handling
 
 ### EntityInputException (returns HTTP 400)
+
+To refuse a write with a validation error keyed by field, throw `EntityInputException<TEntity>` from a prepper, a
+custom handler or an action; a validator calls `ctx.AddError` instead, with the same answer.
 
 A validator's errors (§Step 8 → Validators), or an `EntityInputException<TEntity>` thrown from a prepper or an
 action, become a **400** `ValidationProblemDetails` — `"errors": { "Code": ["…", "…"] }`, plus `errorDetails` with

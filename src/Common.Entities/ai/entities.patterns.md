@@ -867,6 +867,7 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
   filter `ConfigureDefaultJsonOptions()` registers maps the exception on **any** action, so this controller
   and the generated one answer alike. Either message can be a translation key; only the exception adds `errorDetails`,
   with the args a translation fills in: `Errors = { new EntityInputError(nameof(item.Status), "…", new Dictionary<string, object?> { … }) }`.
+  `InputErrors` is a view over `Errors`: fill one of them, and never write it while enumerating `Errors`.
   (`BadRequest(ModelState)` is a different body — a bare map, no `errors` wrapper.) That covers the write pipeline too: validators and preppers run inside
   the `service.Modify(item)` above, so a validator's errors — and a prepper that throws — land on the same
   filter rather than escaping as a 500. Catch it explicitly only to add context — and then
@@ -920,7 +921,9 @@ keeping `Status` on `TInputDto` hands every PATCH caller a state pen. Invert the
    That flag is why these fields are not `[ServerOwned]`: its restore has no bypass, so the action's
    `Modify` would be reverted too. A field only a trusted writer may set **on create** (a series id) takes the same
    guard: clear it on a create unless the flag is set, and restore it from `original` on every update.
-   `[ServerOwned]` is no substitute here either: on create it keeps whatever the client sent.
+   `[ServerOwned]` is no substitute here either: on create it keeps whatever the client sent. When the trusted
+   write must still run the guard's derivations, scope the flag to that one field, or stamp the field after the
+   sends with an `ExecuteUpdate` in the same transaction.
 
 <!-- no-compile -->
 ```csharp
@@ -1122,8 +1125,9 @@ public class PriceImporter(IEntitySender sender)
   `IValidatableObject`, nested objects and collection items too, and the implicit `[Required]` on a non-nullable
   reference — and refuses with an `EntityInputException`. `[ValidateNever]` leaves a property out; MVC validator
   providers an app registers, and `SuppressImplicitRequiredAttributeForNonNullableReferenceTypes`, do not apply here.
-  The controllers turn that off (`ValidateInput: false`), since MVC has answered an invalid body by then; the mapped
-  endpoints keep it on, as no MVC ran. A patch's merged input is always checked.
+  The controllers turn that off (`ValidateInput: false`), since MVC has answered an invalid body by then: the bases
+  carry `[ApiController]`, which a subclass inherits, so it needs only its `[Route]` (repeating the attribute is
+  harmless). The mapped endpoints keep it on, as no MVC ran. A patch's merged input is always checked.
 - **`PatchCommand` without `SerializerOptions`** merges with `JsonSerializerDefaults.Web`, cycles ignored, enums by
   name or number. The endpoints pass the app's JSON options; a job whose patch relies on a converter of the app's own
   passes them too — `IOptions<Microsoft.AspNetCore.Mvc.JsonOptions>.Value.JsonSerializerOptions`, or
@@ -1367,10 +1371,13 @@ requests can both pass it. Take the booked rooms' locks first, in a transaction 
 waits at its `ExecuteUpdate`, and its validator then sees the first booking.
 
 ```csharp
-using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
+using System.Transactions;
 using Microsoft.EntityFrameworkCore;
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Handlers;
+using Regira.Entities.Mediator.Requests;
 using Regira.Entities.Models.Abstractions;
-using Regira.Entities.Web.Controllers.Abstractions;
 using Regira.Entities.Web.Models;
 
 public class MeetingRoom : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } public int BookingVersion { get; set; } }
@@ -1396,41 +1403,88 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<MeetingRoom> MeetingRooms => Set<MeetingRoom>();
 }
 
-[Route("api/reservations")]
-public class ReservationController(AppDbContext db) : EntityControllerBase<Reservation, ReservationDto, ReservationInputDto>
+public class RoomLock(AppDbContext db)
 {
-    public override Task<ActionResult<SaveResult<ReservationDto>>> Create([FromBody] ReservationInputDto model)
-        => WithRoomsLocked(model, () => base.Create(model));
-    public override Task<ActionResult<SaveResult<ReservationDto>>> Modify([FromRoute] int id, [FromBody] ReservationInputDto model)
-        => WithRoomsLocked(model, () => base.Modify(id, model));
-    public override Task<ActionResult<SaveResult<ReservationDto>>> Save([FromBody] ReservationInputDto model)
-        => WithRoomsLocked(model, () => base.Save(model));
-
-    private Task<ActionResult<SaveResult<ReservationDto>>> WithRoomsLocked(ReservationInputDto model,
-        Func<Task<ActionResult<SaveResult<ReservationDto>>>> save)
+    public async Task<T> Run<T>(int reservationId, IEnumerable<int> requested, Func<Task<T>> save, CancellationToken token)
     {
-        var roomIds = model.Rooms?.Select(r => r.MeetingRoomId).Distinct().ToList() ?? [];
-        var token = HttpContext.RequestAborted;
-        return db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        var roomIds = requested.Distinct().ToList();
+        if (db.Database.CurrentTransaction != null || Transaction.Current != null)
         {
-            db.ChangeTracker.Clear();
+            // a unit of several sends: lock inside it, and the lock holds until that unit commits
+            await Lock(reservationId, roomIds, token);
+            return await save();
+        }
+        return await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            db.ChangeTracker.Clear();    // a retry starts from a clean context
             await using var tx = await db.Database.BeginTransactionAsync(token);
-            // a write on each booked room: its lock holds until the commit (SQLite locks the whole database)
-            await db.MeetingRooms.Where(r => roomIds.Contains(r.Id))
-                .ExecuteUpdateAsync(s => s.SetProperty(r => r.BookingVersion, r => r.BookingVersion + 1), token);
+            await Lock(reservationId, roomIds, token);
             var result = await save();   // preppers, the overlap validator and SaveChanges, inside the transaction
             await tx.CommitAsync(token); // a refused write throws past this line, and disposing tx rolls back
             return result;
         });
     }
+
+    // a write on each room the booking asks for or already holds (a save without rooms keeps the stored ones), in one
+    // statement: its lock holds until the commit (SQLite locks the whole database)
+    private Task Lock(int reservationId, List<int> roomIds, CancellationToken token)
+    {
+        var stored = db.Set<ReservationRoom>().Where(x => x.ReservationId == reservationId).Select(x => x.MeetingRoomId);
+        return db.MeetingRooms.Where(r => roomIds.Contains(r.Id) || stored.Contains(r.Id))
+            .ExecuteUpdateAsync(s => s.SetProperty(r => r.BookingVersion, r => r.BookingVersion + 1), token);
+    }
+}
+
+// POST, POST save and PUT
+public class ReservationSaveHandler(IServiceProvider services, RoomLock rooms)
+    : SaveHandler<Reservation, int, ReservationDto, ReservationInputDto>(services)
+{
+    public override Task<SaveResult<ReservationDto>?> Handle(SaveCommand<Reservation, int, ReservationDto, ReservationInputDto> request, CancellationToken token = default)
+        => rooms.Run(request.Id != 0 ? request.Id : request.Input.Id, request.Input.Rooms?.Select(r => r.MeetingRoomId) ?? [],
+            () => base.Handle(request, token), token);
+}
+
+// PATCH: the rooms it moves the booking to are in the patch, an array a merge patch replaces whole
+public class ReservationPatchHandler(IServiceProvider services, RoomLock rooms)
+    : PatchHandler<Reservation, int, ReservationDto, ReservationInputDto>(services)
+{
+    public override Task<SaveResult<ReservationDto>?> Handle(PatchCommand<Reservation, int, ReservationDto, ReservationInputDto> request, CancellationToken token = default)
+        => rooms.Run(request.Id, RoomIds(request.Patch), () => base.Handle(request, token), token);
+
+    // the input DTO's JSON names; a malformed patch locks no extra room, and the base handler refuses it
+    private static List<int> RoomIds(JsonElement patch)
+    {
+        var ids = new List<int>();
+        if (patch.ValueKind == JsonValueKind.Object && patch.TryGetProperty("rooms", out var list) && list.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var room in list.EnumerateArray())
+            {
+                if (room.ValueKind == JsonValueKind.Object && room.TryGetProperty("meetingRoomId", out var id)
+                    && id.ValueKind == JsonValueKind.Number && id.TryGetInt32(out var roomId))
+                {
+                    ids.Add(roomId);
+                }
+            }
+        }
+        return ids;
+    }
+}
+
+public static class ReservationOperations
+{
+    public static IServiceCollection AddReservationOperations(this IServiceCollection services)
+        => services
+            .AddScoped<RoomLock>()
+            .AddTransient<IEntityRequestHandler<SaveCommand<Reservation, int, ReservationDto, ReservationInputDto>, SaveResult<ReservationDto>>, ReservationSaveHandler>()
+            .AddTransient<IEntityRequestHandler<PatchCommand<Reservation, int, ReservationDto, ReservationInputDto>, SaveResult<ReservationDto>>, ReservationPatchHandler>();
 }
 ```
 
-`BookingVersion` is an `int` column on the booked resource, there only to be written. The controller's
-`AppDbContext` is the one the entity services write through, so the save joins the transaction (*Several sends in one
-transaction* above). A `PATCH` that can move a booking locks the stored rooms the same way: override `Patch` and read
-the stored row's room ids. On PostgreSQL an exclusion constraint refuses the overlap without code
-(`entities.instructions` → *Step 8*).
+`BookingVersion` is an `int` column on the booked resource, there only to be written. The handlers answer for every
+sender (*Replacing one operation for one entity* above): the endpoints, a mapped endpoint and a job alike, so no
+controller override is needed. `RoomLock` takes the `AppDbContext` the entity services write through, so the save
+joins its transaction, and a send inside an open transaction (*Several sends in one transaction* above) locks inside
+it. On PostgreSQL an exclusion constraint refuses the overlap without code (`entities.instructions` → *Step 8*).
 
 ### Behaviours around every operation
 
@@ -1835,9 +1889,17 @@ its own controller, so it needs its own entry for file upload (`POST {objectId}/
 (`PUT {objectId}/files/{id}`), the link's update (`PUT {objectId}/attachments/{id}`) and its delete
 (`DELETE attachments/{id}`). Without one those writes are refused and logged, not left open.
 
+⚠️ **Create and update are one action.** `POST /{entity}` and `POST /{entity}/save` both call `Save`: a body with
+the `Id` of a stored row updates that row. A tier that lets some roles create but not update (customers place
+orders, only the shop changes them) cannot be read from the action, and this filter runs before binding, so it
+never sees the `Id`. Give the controller the create tier here and refuse the update in a validator, which runs
+whatever the route: `if (ctx.Operation == EntityWriteOperation.Modify && !user.FindRoles().Contains("Administrator"))
+ctx.AddError(string.Empty, "Only the shop changes a placed order.");`, with `user` read from `IHttpContextAccessor`.
+
 **Check it** with a signed-in user outside the roles: a write to a gated controller answers 403, also with a
 malformed body, a `POST …/search` answers 200, and no warning names a controller you meant to list. On a
-controller open for anonymous reads, the same write without a token answers 401.
+controller open for anonymous reads, the same write without a token answers 401. A `POST /{entity}` carrying a
+stored `Id` from a create-only role answers 400 and changes nothing.
 
 ### On mapped endpoints
 
@@ -2064,6 +2126,14 @@ same way: price only the lines new to the order, or whose product changed, and t
 handles it — it is a prepper, so it never runs on that writer's save. Only the primer form above needs the
 warning; see *Primer vs prepper when a second writer exists* below. A writer going through `IEntityService` is
 restored like any client — §Role-gated transitions covers that case.
+
+### Owned rows frozen after create
+
+An order's lines never change once placed: register `e.Prepare(o => { if (o.Id > 0) o.Lines = null; })` **before**
+`e.Related(x => x.Lines)`. A `null` collection leaves the stored rows untouched, whatever a `PUT` or `PATCH` sends
+(`entities.instructions` → *Write-pipeline order*). On create, price the rows in a prepper, so the amounts a client
+sends never count (`[ServerOwned]` keeps them on create). When lines may still be added, price only the new ones
+instead (`entities.examples` → *Order + OrderLine entities*).
 
 ## Optimistic concurrency (stale-write detection)
 
