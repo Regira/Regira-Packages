@@ -16,18 +16,18 @@
 
 ## Installation
 
-```xml
-<!-- Core encryption + PBKDF2 hashing -->
-<PackageReference Include="Regira.Security" Version="6.*" />
+```bash
+# Core encryption + PBKDF2 hashing
+dotnet add package Regira.Security
 
-<!-- BCrypt password hashing (recommended for passwords) -->
-<PackageReference Include="Regira.Security.Hashing.BCryptNet" Version="6.*" />
+# BCrypt password hashing (recommended for passwords)
+dotnet add package Regira.Security.Hashing.BCryptNet
 
-<!-- JWT + API Key authentication -->
-<PackageReference Include="Regira.Security.Authentication" Version="6.*" />
+# JWT + API Key authentication
+dotnet add package Regira.Security.Authentication
 
-<!-- Pre-built auth controller bases (AccountControllerBase, UserControllerBase, PasswordControllerBase) -->
-<PackageReference Include="Regira.Security.Authentication.Web" Version="6.*" />
+# Pre-built auth controller bases (AccountControllerBase, UserControllerBase, PasswordControllerBase)
+dotnet add package Regira.Security.Authentication.Web
 ```
 
 ---
@@ -182,10 +182,10 @@ A `Secret` shorter than its algorithm allows throws `InvalidOperationException` 
 only for a scheme that never issues tokens — when validating tokens signed elsewhere, the required key length
 is whatever the issuer used, which `Algorithm` does not describe.
 
-A missing or empty `Secret` throws `NullReferenceException` from `AddJwtAuthentication` ("Missing Secret in
-Regira.Security.Authentication.Jwt.Models.JwtTokenOptions"). In Development that means the user-secrets were not
-loaded: the project has no `UserSecretsId`, or the assembly was built before `dotnet user-secrets init` (rebuild;
-`dotnet run --no-build` keeps the old assembly).
+A missing or empty `Secret` throws `InvalidOperationException` from `AddJwtAuthentication` ("JwtTokenOptions.Secret
+is not set: configure Authentication:Jwt:Secret (user-secrets in Development)."). In Development that means the
+user-secrets were not loaded: the project has no `UserSecretsId`, or the assembly was built before
+`dotnet user-secrets init` (rebuild; `dotnet run --no-build` keeps the old assembly).
 
 ### `ITokenHelper` — `Regira.Security.Authentication.Jwt.Abstraction`
 
@@ -1134,7 +1134,10 @@ from the payload.
 
 `Create` binds `UserInput` only. A sign-up that also takes profile fields gets an action of its own with its own
 input: it hands the account part to `base.Create` and adds the rest in the same guarded `finally`, while `POST users`
-stays guarded. The SPA posts to `users/sign-up` and lists it in its `credentialUrls`.
+stays open to every signed-in user (⚠️ above). Close it with a role-gated override:
+`[Authorize(Roles = "Administrator")] public override Task<IActionResult> Create(UserInput model, [FromServices] IEmailSender mailer) => base.Create(model, mailer);`
+(the sign-up action calls `base.Create` directly and keeps working). The SPA posts to `users/sign-up` and lists it in
+its `credentialUrls`.
 
 <!-- no-compile -->
 ```csharp
@@ -1146,9 +1149,9 @@ public record SignUpInput
     [Required, MaxLength(100)] public string DisplayName { get; set; } = null!;
 }
 
-// in a UsersController whose Create stays guarded (no anonymous override of it), with _userManager and
+// in a UsersController whose Create is role-gated (above), with _userManager and
 // _db (the app's DbContext) injected; Profile is the app's own row
-[AllowAnonymous]
+[AllowAnonymous]   // the class carries [EnableRateLimiting("account")] (Rate-limiting the anonymous actions)
 [HttpPost("sign-up")]
 public async Task<IActionResult> SignUp(SignUpInput input, [FromServices] IEmailSender mailer)
 {
@@ -1268,6 +1271,10 @@ using Regira.Security.Authentication.Web.Models;        // AuthenticateInput, Re
 public class PasswordController(UserManager<AppUser> userManager)
     : PasswordControllerBase<AppUser>(userManager);
 
+[EnableRateLimiting("account")]                         // sign-up and confirm-email
+public class UsersController(UserManager<AppUser> userManager)
+    : UserControllerBase<AppUser>(userManager);
+
 public class AccountController(ITokenHelper tokenHelper, UserManager<AppUser> userManager,
     IUserClaimsPrincipalFactory<AppUser> claimsFactory, ILogger<AccountController> logger)
     : AccountControllerBase<AppUser>(tokenHelper, userManager, claimsFactory, logger)
@@ -1284,7 +1291,8 @@ public class AccountController(ITokenHelper tokenHelper, UserManager<AppUser> us
 public class AppUser : IdentityUser;   // stands for your app's own Identity user — don't declare a second one
 ```
 
-**Check it:** the eleventh `POST auth/password/recover` from one client within a minute answers `429`.
+**Check it:** the eleventh `POST auth/password/recover` from one client within a minute answers `429`, and a
+signed-in `POST users` from a user without the role answers `403`.
 
 ### `UserControllerBase<TUser>` — route `users`
 

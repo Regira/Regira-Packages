@@ -250,6 +250,8 @@ The template; leave out the lines that do not apply:
 
 - `dotnet build <solution>`, `dotnet list package --vulnerable --include-transitive`, <tests>, and `npm run build`
   (vue-tsc) in `<folder>`.
+- This file still matches the code: the ports, the registration counts, the files that hold more than one type, and
+  every deviation the README declares or default the code changes.
 
 ## Keep this file current
 

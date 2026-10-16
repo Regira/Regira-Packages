@@ -119,21 +119,21 @@ byte[]  encoded = FileUtility.GetBytesFromString(text); // text → bytes (encod
 
 ## Installation
 
-```xml
-<!-- Local file system (also ships the shared abstractions) -->
-<PackageReference Include="Regira.IO.Storage" Version="6.*" />
+```bash
+# Local file system (also ships the shared abstractions)
+dotnet add package Regira.IO.Storage
 
-<!-- Azure Blob Storage -->
-<PackageReference Include="Regira.IO.Storage.Azure" Version="6.*" />
+# Azure Blob Storage
+dotnet add package Regira.IO.Storage.Azure
 
-<!-- SSH / SFTP -->
-<PackageReference Include="Regira.IO.Storage.SSH" Version="6.*" />
+# SSH / SFTP
+dotnet add package Regira.IO.Storage.SSH
 
-<!-- GitHub -->
-<PackageReference Include="Regira.IO.Storage.GitHub" Version="6.*" />
+# GitHub
+dotnet add package Regira.IO.Storage.GitHub
 
-<!-- Raw TCP port, write-only (a label printer on 9100) -->
-<PackageReference Include="Regira.IO.Storage.SimpleTCP" Version="6.*" />
+# Raw TCP port, write-only (a label printer on 9100)
+dotnet add package Regira.IO.Storage.SimpleTCP
 ```
 
 ---

@@ -683,11 +683,11 @@ read as the rule (`ValueTooLarge`, `order.notOpen`). The 400 body is in §Respon
   back in, and a tracked copy of the row being written then makes the write throw *"cannot be tracked because another
   instance with the same key value … is already being tracked"*, a 500.
 
-**What a refusal leaves behind.** A refused `Add` or `Modify` takes back what its preppers marked — the rows a
-`Related()` sync added, changed or deleted — and leaves the item itself untracked, even one the job loaded with tracking
-and edited. A prepper's plain edit to another row the scope already tracked stays, since EF notices it only at
-`SaveChanges()`: keep a prepper to the item and its own children. A refused `Remove` is checked before anything is
-marked.
+**What a refusal leaves behind.** A refused `Add` or `Modify` takes back what its preppers marked, every row the write
+started tracking: the rows a `Related()` sync added, changed or deleted, and a row a prepper added with `dbContext.Add`
+or loaded with tracking. It also leaves the item itself untracked, even one the job loaded with tracking and edited.
+A prepper's plain edit to another row the scope already tracked stays, since EF notices it only at `SaveChanges()`:
+keep a prepper to the item and its own children. A refused `Remove` is checked before anything is marked.
 
 **Where they run.** `EntityWriteService` runs them; a subclass must take `IEnumerable<IEntityValidator>` and pass it
 to the base constructor — the constructor without it runs none. A custom `IEntityRepository` over another store
@@ -762,7 +762,8 @@ Primers — like the normalizer and auto-truncate interceptors — run on `SaveC
 A reactor runs once the save that changed a row is **committed**: the place for a side effect that must not
 happen for a write that fails or rolls back — mail, a call to another system, a background job, a follow-up
 workflow when a status changes. What has to be part of the save itself (a history row written atomically with
-the change) stays a primer.
+the change) stays in the save: a prepper when every writer goes through `IEntityService` (it sees `original`), a primer
+when raw-`DbContext` writes must leave a row too.
 
 <!-- no-compile -->
 ```csharp
@@ -1737,7 +1738,8 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 > only at an attachment the owner already links: one naming another owner's is cleared, and without `NewBytes` of its
 > own the save answers 409.
 > The upload route always creates a link, whatever `Id` its form sends. Repeat a link rule — allowed file types, a file that must not be deleted — in the owner's validator (keys like
-> `Attachments[0].NewFileName`), or keep `Attachments` off the owner's input DTO.
+> `Attachments[0].NewFileName`). Leaving `Attachments` off the owner's input DTO is no way out: start-up warns about it,
+> and a Regira SPA sends renames, order and removals in the owner's save, which are then dropped without an error.
 > `configure` receives the link entity's builder, so a link validator registers there:
 > `e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments, a => a.AddValidator<ProductAttachmentValidator>())`,
 > or anywhere with `options.AddValidator<T>()`. `e.AddValidator<T>()` on the owner's builder takes only the owner's
@@ -2092,6 +2094,7 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 - **What a scoping filter cannot do:** validate **create** (the client supplies the FK — stamp/verify `OwnerId` from the claim in a prepper, never trust the body) or guard **direct `IEntityService` calls** in custom code, which bypass the controller's filtered existence checks. Two variants of the create hole bite hardest:
   - ⚠️ **An owner's row scope does not reach its attachments.** The per-owner link entity (`ProductAttachment`) has no owner column and no navigation back, so a filter that scopes the owner never runs on it. Every attachment route — `GET attachments`, `attachments/{id}`, `{objectId}/attachments`, both downloads (`files/{id}`, `{objectId}/files/{name}`), and the link's `PUT` and `DELETE` — then reads across owners: any signed-in user lists, downloads, edits and deletes every user's files. Give a row-scoped owner with attachments a second global filter, on the **link** entity, that reruns the owner's scope through the owner's `DbSet` (`db.Products.Any(p => p.Id == link.ObjectId && p.OwnerId == userId)`) with the same exemptions, registered app-wide beside the owner's — the shape is in [`entities.examples.md`](./entities.examples.md) → Attachments. With it, those routes answer 404 for another owner's file; check one by id as a second user.
   - ⚠️ **An attachment upload is a create no filter sees, the link filter included.** `POST /{owner}/{id}/files` takes the owner id from the **route**, stamps it on a new link row and saves — no query runs, so no global filter applies, and any authenticated caller can attach a file to a row they cannot read. Add a validator on the **link** entity (registered on its `HasAttachments` builder: §Attachments, the link-rule callout after step 7) that re-runs the owner's scope over the owner's `DbSet` on `Add` and adds an error when it resolves nothing — which answers **400**, not the 404 the read path gives a foreign row, since the write pipeline maps only 400 and 409. Override the controller's `virtual Add` and return `NotFound()` instead where the two must agree.
+  - ⚠️ **A row scope does not reach an `Include`.** A global filter runs on its own entity's queries only: `Include(x => x.Comments)` on the parent loads every child row, the ones the child's filter hides included (internal notes, another tenant's rows). Keep a scoped child off the parent's DTO and includes and read it through its own endpoint, or repeat the predicate in a filtered include.
   - ⚠️ **Read scope is not write scope.** The write endpoints' existence checks run the *same* filter, so a read scope you widened deliberately — a manager who may see their reports' rows — silently grants that manager `PATCH`/`DELETE` on them too. When the two differ, keep the filter at read width and put the ownership check in a validator, which runs on a delete too (no prepper does).
 - **Scope before any early return.** The idiomatic query-builder shape opens with `if (so == null) return query;` — for a security filter that is a hole, because `Details(id)` and the write existence checks can run with a null search object and would skip the scoping entirely. Derive from `GlobalFilteredQueryBuilderBase<TEntity>` (it runs on every query and takes no search object), apply the ownership predicate unconditionally, and return `query.Where(_ => false)` when no identity resolves — an anonymous or stale-token call must see nothing, not everything. A seeder or hosted job has no request either, so its `IEntityService` reads see nothing too — and so does `Modify`, whose re-read of the stored row then finds none and saves nothing: give it an explicit identity through a context it sets (the shape of `WritableTenantContext` in [`entities.blueprints.md`](./entities.blueprints.md) → Multi-tenancy — IHasTenantId + global filter + primer). Its reads may go to the `DbContext` directly, as §Seeding via IEntityService reads keys, but its writes still go through the service, and a `Modify` there needs the identity. Don't equate "no `HttpContext`" with "system": work started from inside a request inherits that request's context.
 - **Multiple global filters accumulate (AND).** Every registered filter whose `TEntity` the entity satisfies runs, and their predicates compose — so an `IHasUserId`-wide filter and a `ShoppingList`-specific one both apply. `TEntity` may be an interface, a base class, **or the concrete entity type**. The one case that does *not* stack is the key variants of a single filter family (`FilterArchivablesQueryBuilder` vs `<Guid>`): one variant runs, preferring the key-matching one. Two filters deriving separately from `GlobalFilteredQueryBuilderBase<>` are always distinct families and never suppress each other. A filter scoped to a type **no registered entity satisfies** never runs at all — startup validation warns about this, which is your signal that a security filter is inert.

@@ -15,18 +15,18 @@
 
 ## Installation
 
-```xml
-<!-- Billit — create and send invoices via Billit -->
-<PackageReference Include="Regira.Invoicing.Billit" Version="6.*" />
+```bash
+# Billit — create and send invoices via Billit
+dotnet add package Regira.Invoicing.Billit
 
-<!-- UblSharp — convert invoices to UBL XML (Peppol BIS) -->
-<PackageReference Include="Regira.Invoicing.UblSharp" Version="6.*" />
+# UblSharp — convert invoices to UBL XML (Peppol BIS)
+dotnet add package Regira.Invoicing.UblSharp
 
-<!-- ViaAdValvas — transmit UBL documents via AdValVas AP gateway -->
-<PackageReference Include="Regira.Invoicing.ViaAdValvas" Version="6.*" />
+# ViaAdValvas — transmit UBL documents via AdValVas AP gateway
+dotnet add package Regira.Invoicing.ViaAdValvas
 
-<!-- the ISerializer Billit's managers and PeppolService take -->
-<PackageReference Include="Regira.Serializing.Newtonsoft" Version="6.*" />
+# the ISerializer Billit's managers and PeppolService take
+dotnet add package Regira.Serializing.Newtonsoft
 ```
 
 ---

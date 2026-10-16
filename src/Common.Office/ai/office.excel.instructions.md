@@ -19,18 +19,18 @@ Exact usings: `office.namespaces.md`.
 
 ## Installation
 
-```xml
-<!-- MiniExcel — recommended (generic, low memory) -->
-<PackageReference Include="Regira.Office.Excel.MiniExcel" Version="6.*" />
+```bash
+# MiniExcel — recommended (generic, low memory)
+dotnet add package Regira.Office.Excel.MiniExcel
 
-<!-- ClosedXML -->
-<PackageReference Include="Regira.Office.Excel.ClosedXML" Version="6.*" />
+# ClosedXML
+dotnet add package Regira.Office.Excel.ClosedXML
 
-<!-- EPPlus v4 — deprecated (legacy EPPlus, Windows) -->
-<PackageReference Include="Regira.Office.Excel.EPPlus" Version="6.*" />
+# EPPlus v4 — deprecated (legacy EPPlus, Windows)
+dotnet add package Regira.Office.Excel.EPPlus
 
-<!-- NpoiMapper (type-mapped, generic; NPOI pinned to 2.7.2) -->
-<PackageReference Include="Regira.Office.Excel.NpoiMapper" Version="6.*" />
+# NpoiMapper (type-mapped, generic; NPOI pinned to 2.7.2)
+dotnet add package Regira.Office.Excel.NpoiMapper
 ```
 
 ---

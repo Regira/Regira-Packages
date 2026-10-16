@@ -19,8 +19,8 @@ Exact usings: `office.namespaces.md`.
 
 ## Installation
 
-```xml
-<PackageReference Include="Regira.Office.Csv.CsvHelper" Version="6.*" />
+```bash
+dotnet add package Regira.Office.Csv.CsvHelper
 ```
 
 ---

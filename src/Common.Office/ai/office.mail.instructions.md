@@ -19,21 +19,21 @@ Exact usings: `office.namespaces.md`.
 
 ## Installation
 
-```xml
-<!-- SendGrid -->
-<PackageReference Include="Regira.Office.Mail.SendGrid" Version="6.*" />
+```bash
+# SendGrid
+dotnet add package Regira.Office.Mail.SendGrid
 
-<!-- Mailgun -->
-<PackageReference Include="Regira.Office.Mail.MailGun" Version="6.*" />
+# Mailgun
+dotnet add package Regira.Office.Mail.MailGun
 
-<!-- MailKit — any SMTP server -->
-<PackageReference Include="Regira.Office.Mail.MailKit" Version="6.*" />
+# MailKit — any SMTP server
+dotnet add package Regira.Office.Mail.MailKit
 
-<!-- Mail.Web — HTTP request DTOs for mail endpoints -->
-<PackageReference Include="Regira.Office.Mail.Web" Version="6.*" />
+# Mail.Web — HTTP request DTOs for mail endpoints
+dotnet add package Regira.Office.Mail.Web
 
-<!-- MSGReader — read existing .msg and .eml files -->
-<PackageReference Include="Regira.Office.Mail.MSGReader" Version="6.*" />
+# MSGReader — read existing .msg and .eml files
+dotnet add package Regira.Office.Mail.MSGReader
 ```
 
 ---

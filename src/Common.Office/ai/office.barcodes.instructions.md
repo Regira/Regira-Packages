@@ -22,18 +22,18 @@ Exact usings: `office.namespaces.md`.
 
 ## Installation
 
-```xml
-<!-- ZXing — recommended (all formats, cross-platform) -->
-<PackageReference Include="Regira.Office.Barcodes.ZXing" Version="6.*" />
+```bash
+# ZXing — recommended (all formats, cross-platform)
+dotnet add package Regira.Office.Barcodes.ZXing
 
-<!-- Spire — all formats, Windows only -->
-<PackageReference Include="Regira.Office.Barcodes.Spire" Version="6.*" />
+# Spire — all formats, Windows only
+dotnet add package Regira.Office.Barcodes.Spire
 
-<!-- QRCoder — write-only QR -->
-<PackageReference Include="Regira.Office.Barcodes.QRCoder" Version="6.*" />
+# QRCoder — write-only QR
+dotnet add package Regira.Office.Barcodes.QRCoder
 
-<!-- UziGranot — embedded QR, no external dependency -->
-<PackageReference Include="Regira.Office.Barcodes.UziGranot" Version="6.*" />
+# UziGranot — embedded QR, no external dependency
+dotnet add package Regira.Office.Barcodes.UziGranot
 ```
 
 ---

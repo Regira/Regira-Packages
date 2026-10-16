@@ -16,8 +16,8 @@ Exact usings: `office.namespaces.md`.
 
 ## Installation
 
-```xml
-<PackageReference Include="Regira.Office.VCards.FolkerKinzel" Version="6.*" />
+```bash
+dotnet add package Regira.Office.VCards.FolkerKinzel
 ```
 
 ---

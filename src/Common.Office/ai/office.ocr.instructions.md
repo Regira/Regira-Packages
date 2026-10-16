@@ -20,12 +20,12 @@ Exact usings: `office.namespaces.md`.
 
 ## Installation
 
-```xml
-<!-- Tesseract — configurable languages, cross-platform -->
-<PackageReference Include="Regira.Office.OCR.Tesseract" Version="6.*" />
+```bash
+# Tesseract — configurable languages, cross-platform
+dotnet add package Regira.Office.OCR.Tesseract
 
-<!-- PaddleOCR — multilingual including Chinese, Windows-only -->
-<PackageReference Include="Regira.Office.OCR.PaddleOCR" Version="6.*" />
+# PaddleOCR — multilingual including Chinese, Windows-only
+dotnet add package Regira.Office.OCR.PaddleOCR
 ```
 
 ---

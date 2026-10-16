@@ -21,21 +21,21 @@ Exact usings: `office.namespaces.md`.
 
 ## Installation
 
-```xml
-<!-- Full-featured: create, convert, merge, extract (recommended) -->
-<PackageReference Include="Regira.Office.Word.Spire" Version="6.*" />
+```bash
+# Full-featured: create, convert, merge, extract (recommended)
+dotnet add package Regira.Office.Word.Spire
 
-<!-- Full-featured, commercial licence -->
-<PackageReference Include="Regira.Office.Word.Syncfusion" Version="6.*" />
+# Full-featured, commercial licence
+dotnet add package Regira.Office.Word.Syncfusion
 
-<!-- Full-featured, loads ODT and writes EPUB, commercial licence -->
-<PackageReference Include="Regira.Office.Word.Aspose" Version="6.*" />
+# Full-featured, loads ODT and writes EPUB, commercial licence
+dotnet add package Regira.Office.Word.Aspose
 
-<!-- Lightweight: create and extract, no vendor licence -->
-<PackageReference Include="Regira.Office.Word.Mini" Version="6.*" />
+# Lightweight: create and extract, no vendor licence
+dotnet add package Regira.Office.Word.Mini
 
-<!-- PDF conversion and page images through a Gotenberg server, no vendor licence -->
-<PackageReference Include="Regira.Office.Word.Gotenberg" Version="6.*" />
+# PDF conversion and page images through a Gotenberg server, no vendor licence
+dotnet add package Regira.Office.Word.Gotenberg
 ```
 
 ---

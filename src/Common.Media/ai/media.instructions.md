@@ -15,15 +15,15 @@
 
 ## Installation
 
-```xml
-<!-- Preferred — cross-platform (SkiaSharp) -->
-<PackageReference Include="Regira.Drawing.SkiaSharp" Version="6.*" />
+```bash
+# Preferred — cross-platform (SkiaSharp)
+dotnet add package Regira.Drawing.SkiaSharp
 
-<!-- Windows-only alternative (GDI+) -->
-<PackageReference Include="Regira.Drawing.GDI" Version="6.*" />
+# Windows-only alternative (GDI+)
+dotnet add package Regira.Drawing.GDI
 
-<!-- Video (FFMpeg) — see Video below -->
-<PackageReference Include="Regira.Media.FFMpeg" Version="6.*" />
+# Video (FFMpeg) — see Video below
+dotnet add package Regira.Media.FFMpeg
 ```
 
 ---
@@ -133,7 +133,8 @@ Controls positioning when compositing layers.
 
 ## IImageService — Image Operations
 
-`IImageService` is a composite of five sub-interfaces.
+`IImageService` is a composite of five sub-interfaces. Every member ends with `CancellationToken cancellationToken = default`
+(left out below); after an optional parameter, pass it by name: `Rotate(image, 90, cancellationToken: token)`.
 
 ### Parsing
 

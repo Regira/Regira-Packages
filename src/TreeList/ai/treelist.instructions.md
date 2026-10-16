@@ -6,8 +6,8 @@
 
 ## Installation
 
-```xml
-<PackageReference Include="Regira.TreeList" Version="6.*" />
+```bash
+dotnet add package Regira.TreeList
 ```
 
 ---

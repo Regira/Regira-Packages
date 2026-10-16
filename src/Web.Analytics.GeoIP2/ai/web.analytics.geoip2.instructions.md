@@ -5,9 +5,9 @@
 
 ## Installation
 
-```xml
-<PackageReference Include="Regira.Web.Analytics" Version="6.*" />
-<PackageReference Include="Regira.Web.Analytics.GeoIP2" Version="6.*" />
+```bash
+dotnet add package Regira.Web.Analytics
+dotnet add package Regira.Web.Analytics.GeoIP2
 ```
 
 ## Registration

@@ -19,23 +19,23 @@
 
 ## Installation
 
-```xml
-<!-- Core web utilities and middleware -->
-<PackageReference Include="Regira.Web" Version="6.*" />
+```bash
+# Core web utilities and middleware
+dotnet add package Regira.Web
 
-<!-- Visitor analytics (+ optional geolocation) -->
-<PackageReference Include="Regira.Web.Analytics" Version="6.*" />
-<PackageReference Include="Regira.Web.Analytics.GeoIP2" Version="6.*" />
+# Visitor analytics (+ optional geolocation)
+dotnet add package Regira.Web.Analytics
+dotnet add package Regira.Web.Analytics.GeoIP2
 
-<!-- Razor templates (pick one) -->
-<PackageReference Include="Regira.Web.HTML.RazorEngineCore" Version="6.*" />
-<PackageReference Include="Regira.Web.HTML.RazorLight" Version="6.*" />
+# Razor templates (pick one)
+dotnet add package Regira.Web.HTML.RazorEngineCore
+dotnet add package Regira.Web.HTML.RazorLight
 
-<!-- Razor components compiled with the app -->
-<PackageReference Include="Regira.Web.HTML.RazorComponents" Version="6.*" />
+# Razor components compiled with the app
+dotnet add package Regira.Web.HTML.RazorComponents
 
-<!-- Swagger JWT + API Key support -->
-<PackageReference Include="Regira.Web.Swagger" Version="6.*" />
+# Swagger JWT + API Key support
+dotnet add package Regira.Web.Swagger
 
 ```
 

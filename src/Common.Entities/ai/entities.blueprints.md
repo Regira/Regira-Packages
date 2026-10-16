@@ -597,7 +597,7 @@ services.UseEntities<AppDbContext>(options =>
 .For<Vehicle, VehicleSearchObject, EntitySortBy, VehicleIncludes>(e =>
 {
     e.AddNormalizer<VehicleNormalizer>();
-    e.Related(item => item.Labels, item => item.Labels?.Prepare()); // owned: no For<>, no controller, no slot
+    e.Related(item => item.Labels, item => item.Labels?.SetSortOrder()); // owned: no For<>, no controller, no slot
     // gate eager-loading behind an includes flag, ordered for display:
     e.Includes((query, includes) => includes?.HasFlag(VehicleIncludes.Labels) == true
         ? query.Include(x => x.Labels!.OrderBy(l => l.SortOrder))
@@ -639,10 +639,10 @@ public class VehicleNormalizer(INormalizer normalizer, IEntityNormalizer<IEntity
 ### Gotchas
 
 - **Labels are searchable, not filterable.** `?q=` matches label text through the owner's `NormalizedContent`; there is no `LabelType`/`Value` filter unless you add one (a `Where(x => x.Labels!.Any(...))` in the owner's query filter).
-- **Re-normalization timing:** the owner's `NormalizedContent` embeds label text at save time — labels edited *through the owner's form* (the normal path with `Related()`) keep it fresh automatically.
+- **Re-normalization timing:** the owner's `NormalizedContent` embeds label text at save time — labels edited *through the owner's form* (the normal path with `Related()`) keep it fresh automatically. A save that leaves `Labels` out (a PATCH, a PUT without them) hands the normalizer `null`, and `NormalizedContent` loses the label text: keep the text in a column of its own that a prepper sets only when `Labels` is not `null`, listed in `[Normalized(SourceProperties = …)]`.
 - **Duplicates are allowed by design** (no unique constraint) — the same `Title` can appear twice with different values.
 - **`LabelType` is a display hint set by the client** (detect email/phone/url/date from the value shape in the SPA); the backend only stores it.
-- Owner deletion removes its labels via cascade (required FK). `SortOrder` is maintained by the `Prepare()` helper (see Stakeholders) + a draggable list in the SPA.
+- Owner deletion removes its labels via cascade (required FK). `SortOrder` is maintained by `SetSortOrder()` (`Regira.Entities.Extensions`) + a draggable list in the SPA.
 
 ---
 
@@ -1177,7 +1177,7 @@ existing entity, or one flat contacts table — are covered by the `addresses` r
 <!-- how_to: key=entity-labels aliases=label,labels,tag,tags,entitylabel,keyvalue,metadata -->
 Copy the **EntityLabels blueprint**: an abstract `EntityLabelBase` (`Title`/`Value`/`LabelType`/
 `SortOrder`) with one empty subclass **per owner** (own table, FK `ObjectId`, cascade). Wire as an owned
-collection — `e.Related(x => x.Labels, x => x.Labels?.Prepare())` — behind an includes flag ordered by
+collection — `e.Related(x => x.Labels, x => x.Labels?.SetSortOrder())` — behind an includes flag ordered by
 `SortOrder`. Search works by folding label text into the owner's `NormalizedContent` via one global
 `options.AddNormalizer<IEntityLabel, EntityLabelNormalizer>()` + the owner's normalizer. Costs no
 budget slots.

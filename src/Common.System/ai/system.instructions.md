@@ -14,12 +14,12 @@
 
 ## Installation
 
-```xml
-<!-- Host config, background queues, Windows Service -->
-<PackageReference Include="Regira.System.Hosting" Version="6.*" />
+```bash
+# Host config, background queues, Windows Service
+dotnet add package Regira.System.Hosting
 
-<!-- Parse and manage .csproj files -->
-<PackageReference Include="Regira.System.Projects" Version="6.*" />
+# Parse and manage .csproj files
+dotnet add package Regira.System.Projects
 ```
 
 ---

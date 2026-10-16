@@ -14,12 +14,12 @@
 
 ## Installation
 
-```xml
-<!-- Mollie payment gateway -->
-<PackageReference Include="Regira.Payments.Mollie" Version="6.*" />
+```bash
+# Mollie payment gateway
+dotnet add package Regira.Payments.Mollie
 
-<!-- POM payment gateway -->
-<PackageReference Include="Regira.Payments.Pom" Version="6.*" />
+# POM payment gateway
+dotnet add package Regira.Payments.Pom
 ```
 
 ---

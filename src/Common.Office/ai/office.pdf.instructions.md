@@ -20,32 +20,32 @@ Exact usings: `office.namespaces.md`.
 
 ## Installation
 
-```xml
-<!-- HTML→PDF (recommended — headless Chromium, any OS) -->
-<PackageReference Include="Regira.Office.PDF.MsPlaywright" Version="6.*" />
-<PackageReference Include="Regira.Office.PDF.Puppeteer" Version="6.*" />
+```bash
+# HTML→PDF (recommended — headless Chromium, any OS)
+dotnet add package Regira.Office.PDF.MsPlaywright
+dotnet add package Regira.Office.PDF.Puppeteer
 
-<!-- HTML→PDF through a Gotenberg server (Chromium in a container of its own, none in the application) -->
-<PackageReference Include="Regira.Office.PDF.Gotenberg" Version="6.*" />
+# HTML→PDF through a Gotenberg server (Chromium in a container of its own, none in the application)
+dotnet add package Regira.Office.PDF.Gotenberg
 
-<!-- HTML→PDF (Windows, up to five pages, nothing to download) -->
-<PackageReference Include="Regira.Office.PDF.SelectPdf" Version="6.*" />
+# HTML→PDF (Windows, up to five pages, nothing to download)
+dotnet add package Regira.Office.PDF.SelectPdf
 
-<!-- Word, Excel and PowerPoint → PDF, in-process, no licence -->
-<PackageReference Include="Regira.Office.PDF.MiniPdf" Version="6.*" />
+# Word, Excel and PowerPoint → PDF, in-process, no licence
+dotnet add package Regira.Office.PDF.MiniPdf
 
-<!-- PDF operations (merge, split, text, images) — recommended -->
-<PackageReference Include="Regira.Office.PDF.PdfPig" Version="6.*" />
+# PDF operations (merge, split, text, images) — recommended
+dotnet add package Regira.Office.PDF.PdfPig
 
-<!-- PDF operations on Docnet.Core — deprecated -->
-<PackageReference Include="Regira.Office.PDF.DocNET" Version="6.*" />
+# PDF operations on Docnet.Core — deprecated
+dotnet add package Regira.Office.PDF.DocNET
 
-<!-- PDF operations + printing -->
-<PackageReference Include="Regira.Office.PDF.Spire" Version="6.*" />
+# PDF operations + printing
+dotnet add package Regira.Office.PDF.Spire
 
-<!-- Print (Windows) -->
-<PackageReference Include="Regira.Office.PDF.PDFtoPrinter" Version="6.*" />
-<PackageReference Include="Regira.Office.PDF.PockyBum522" Version="6.*" />
+# Print (Windows)
+dotnet add package Regira.Office.PDF.PDFtoPrinter
+dotnet add package Regira.Office.PDF.PockyBum522
 ```
 
 ---
