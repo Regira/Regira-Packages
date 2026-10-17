@@ -12,7 +12,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
     <Version>6.6.0</Version>
-    <Description>Barcode generation using FreeSpire.Barcode for Regira Office.</Description>
+    <Description>Barcode generation using FreeSpire.Barcode for Regira Office. Windows only (GDI+): for a cross-platform app use Regira.Office.Barcodes.ZXing.</Description>
     <PackageTags>regira;office;barcodes;spire;windows</PackageTags>
   </PropertyGroup>
   <ItemGroup>

@@ -429,7 +429,7 @@ discounts; party → relationships → relationship contact data) syncs in one r
 <!-- no-compile -->
 ```csharp
 e.Related(
-    item => item.ChildRelationships, item => item.ChildRelationships?.Prepare(),   // level 1: parent-level prepare
+    item => item.ChildRelationships, item => item.ChildRelationships?.Prepare(),   // level 1: Prepare() = the app's sort-order helper (blueprints, Stakeholders § Registration)
     rel => rel.Related(r => r.ContactData, r => r.ContactData?.Prepare())          // level 2: per-row nested sync
 );
 ```

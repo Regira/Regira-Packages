@@ -1001,8 +1001,10 @@ party of the domain to the account instead (*Stakeholders* → *Linking a party 
 `AppIdentityUser` (your `IdentityUser` subclass, with a `UserClaims` navigation), `AccountsDbContext` (its
 `IdentityDbContext`), `UserClaimModel` (a claim DTO: `Id`, `ClaimType`, `ClaimValue`), `AppUserSearchObject` and
 `AppUserIncludes` are app code. Implement every `List`, `Count` and `Details` overload of `IEntityRepository<…>`; the
-untyped ones delegate to the typed. Roles, when the model carries them, reconcile as claims do: `GetRolesAsync`, then
-`AddToRolesAsync` and `RemoveFromRolesAsync` for the difference.
+untyped ones delegate to the typed through `SearchObjectCoercion.Coerce<AppUserSearchObject>(so)`
+(`Regira.Entities.Services`). The framework's own delete, patch and save lookups pass an anonymous
+`new { id, Archived }`: a cast does not bind it, so the lookup would match every user. Roles, when the model carries
+them, reconcile as claims do: `GetRolesAsync`, then `AddToRolesAsync` and `RemoveFromRolesAsync` for the difference.
 
 <!-- no-compile -->
 ```csharp
@@ -1153,7 +1155,8 @@ Task-oriented entries served by the MCP `how_to` tool (same marker convention as
 <!-- how_to: key=addresses aliases=address,contact,contactdata,contact-data,phone,email,website -->
 Copy the **Contact data & addresses blueprint**: an interface + abstract base per child shape
 (`ContactDetailsBase`, `AddressBase`), a thin subclass and table per owner, wired as owned collections —
-`e.Related(x => x.ContactData, x => x.ContactData?.Prepare())` — and folded into the owner's
+`e.Related(x => x.ContactData, x => x.ContactData?.Prepare())` (`Prepare()` is the app helper under
+Stakeholders § Registration) — and folded into the owner's
 `NormalizedContent` so the global `Q` filter finds owners by phone number or city. No party model
 required, one shared DTO pair per shape (Mapster convention mapping), 0 budget slots. For a full
 person/organization model on top, see the `stakeholders` recipe; for a lighter single contacts table,

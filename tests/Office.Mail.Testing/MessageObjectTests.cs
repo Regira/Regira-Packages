@@ -25,6 +25,13 @@ public class MessageObjectTests
         Assert.Throws<EmailFormatException>(() => new MailAddress { Email = email! });
     }
 
+    [Test]
+    public void MailRecipient_ToString_Keeps_The_MailAddress_Format()
+    {
+        var recipient = new MailRecipient { DisplayName = "A", Email = "a@example.com" };
+        Assert.That(recipient.ToString(), Is.EqualTo("A <a@example.com>"));
+    }
+
     [TestCase(MailConstants.SIMPLE_INPUT)]
     public void Create_Simple_MessageObject(string serializedInput)
     {

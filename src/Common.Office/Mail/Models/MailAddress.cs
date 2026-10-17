@@ -32,7 +32,7 @@ public record MailAddress : IMailAddress
         return new() { Email = email };
     }
 
-    public override string ToString()
+    public sealed override string ToString()
     {
         if (!string.IsNullOrEmpty(DisplayName))
         {
