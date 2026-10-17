@@ -14,8 +14,9 @@ namespace Regira.Office.Word.Templating;
 /// </summary>
 internal sealed class TemplateScope
 {
-    // a tag the global pass would fill: {{ key }}, the spaces optional
-    private static readonly Regex Tag = new(@"\{\{ *(?<key>[^{}]*?) *\}\}", RegexOptions.CultureInvariant);
+    // a tag the global pass would fill: {{ key }}, the spaces optional. NonBacktracking, as TemplateBlocks' markers: the
+    // texts come from the document, and the runs of spaces around the key would otherwise take cubic time on a long run
+    private static readonly Regex Tag = new(@"\{\{ *(?<key>[^{}]*?) *\}\}", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
 
     private readonly Func<string, bool> _evaluate;
     private readonly IReadOnlyCollection<KeyValuePair<string, ICollection<IDictionary<string, object>>>>? _collections;

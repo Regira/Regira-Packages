@@ -158,6 +158,8 @@ Save(inputDto) -> SaveResult
 > **PATCH behaviour:**
 > - Accepts a JSON object containing only the fields to change; omitted fields are left untouched.
 > - Setting a field to `null` clears it (RFC 7386 semantics).
+> - The merge is one level deep: a nested object replaces the stored one whole, so a field it leaves out is cleared —
+>   send the whole object.
 > - The merge base is the current entity serialized to JSON and then deserialized as `TInputDto`, so only properties declared on the input model can be modified — audit/computed fields on `TEntity` are automatically excluded.
 > - Related collections not included in the patch body are left intact (the entity is fetched without includes, so `null` collections are treated as absent, not as "remove all").
 > - Assumes `TInputDto` property names match the corresponding `TEntity` property names.

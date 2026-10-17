@@ -61,6 +61,22 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
+    // the body must not tell which user names exist
+    [Fact]
+    public async Task Authenticate_UnknownUser_AnswersAsAWrongPasswordDoes()
+    {
+        const string username = "auth-known@test.local";
+        await SeedUser(username, "pass1");
+        var client = _factory.CreateClient();
+
+        var wrongPassword = await client.PostAsJsonAsync("auth?clientApp=test", new { username, password = "wrong" });
+        var unknownUser = await client.PostAsJsonAsync("auth?clientApp=test", new { username = "auth-unknown@test.local", password = "wrong" });
+
+        wrongPassword.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        unknownUser.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        (await unknownUser.Content.ReadAsStringAsync()).ShouldBe(await wrongPassword.Content.ReadAsStringAsync());
+    }
+
     [Fact]
     public async Task Authenticate_OnSuccess_ResetsAccessFailedCount()
     {

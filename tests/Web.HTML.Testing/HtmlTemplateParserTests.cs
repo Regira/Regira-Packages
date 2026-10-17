@@ -83,6 +83,20 @@ public class HtmlTemplateParserTests
     }
 
     [Test]
+    public async Task HtmlEncode_Block_Value_Cannot_Spell_A_Raw_Token()
+    {
+        // the block writes its value before the top-level pass fills {title:raw}, so the value must not spell that token
+        var parser = new HtmlTemplateParser(new JsonSerializer()) { HtmlEncode = true };
+        var parsedHtml = await parser.Parse(OrderTemplate, CreateOrder("<img src=x onerror=alert(1)>", "{title:raw}"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(parsedHtml, Does.Not.Contain("<img"));
+            Assert.That(parsedHtml, Does.Contain("<li>1. &#123;title:raw&#125;</li>"));
+        });
+    }
+
+    [Test]
     public async Task HtmlEncode_Encodes_ValueConverter_Output()
     {
         var parser = new HtmlTemplateParser(new JsonSerializer(), (_, value) => $"<em>{value}</em>") { HtmlEncode = true };

@@ -54,6 +54,13 @@ internal static class TemplateBlocks
     private const string Containers = "body, table, table cell, text box, content control, header or footer, within one section";
 
     /// <summary>
+    /// How deeply blocks nest among one container's children, the depth <see cref="NestedDocumentGuard"/> allows
+    /// documents. Placing blocks recurses once per level, and a document that nests thousands would overflow the stack,
+    /// which no caller can catch.
+    /// </summary>
+    internal const int MaxDepth = 100;
+
+    /// <summary>
     /// Whether the paragraph text opens a block — <c>{{#if Key}}</c>, <c>{{#if !Key}}</c> or <c>{{#each Key}}</c> and
     /// nothing else — the test that tells whether a document uses blocks. A bare <c>{{else}}</c>, <c>{{/if}}</c> or
     /// <c>{{/each}}</c> does not: other template languages write those on lines of their own.
@@ -96,7 +103,8 @@ internal static class TemplateBlocks
     /// </param>
     /// <exception cref="FormatException">
     /// A marker shares its paragraph with other text, a block is not closed, closed twice or by the other kind's
-    /// closer, a block has two <c>{{else}}</c>s among these children, or a loop holds a footnote, endnote or comment.
+    /// closer, a block has two <c>{{else}}</c>s among these children, blocks nest more than <see cref="MaxDepth"/> levels
+    /// deep, or a loop holds a footnote, endnote or comment.
     /// </exception>
     public static IReadOnlyList<Placement> Resolve(IReadOnlyList<string?> children, TemplateScope scope, Func<int, bool>? holdsNote = null)
     {
@@ -176,6 +184,10 @@ internal static class TemplateBlocks
 
             if (opened != null)
             {
+                if (open.Count >= MaxDepth)
+                {
+                    throw new FormatException($"The template's {Excerpt(text!)} nests blocks more than {MaxDepth} levels deep.");
+                }
                 Current().Add(opened);
                 open.Push(opened);
             }

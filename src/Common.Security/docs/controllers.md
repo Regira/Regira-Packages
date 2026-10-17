@@ -177,7 +177,7 @@ used, and a guarded operation for which no scheme resolves is logged as a warnin
 ### Security notes
 
 - **Apply the global auth requirement** when mapping the controllers (above) — they do not self-guard with per-action `[Authorize]`, so without it the non-anonymous endpoints are exposed.
-- The authenticate failure response distinguishes a locked-out existing user from an unknown one (`isLockedOut` is `null` for unknown users) — a deliberate trade-off to weigh against username enumeration.
+- The authenticate failure response reads the same for an unknown user name as for a wrong password (`isLockedOut: false`). Two things still tell a name exists, trade-offs to weigh against username enumeration: a locked-out account answers `isLockedOut: true`, and an unknown name skips the password hash, so it answers faster. Rate-limit `auth` by client.
 - **List only your own front-end origins** in `AccountEmailOptions.AllowedOrigins`: a mailed link hands its token to the page it opens.
 - **Rate-limit the anonymous endpoints that cost something:** `auth/refresh-token` (its token is the credential) and `auth/password/recover` (it mails the named account on every call). Limit by client, not by account, so a `429` reveals no more than the `200` does.
 - Recover / confirm tokens travel in the email body and in the `siteUrl` / `confirmEmailUrl` query string; query strings can surface in server logs, browser history and referrers, so prefer short token lifetimes.

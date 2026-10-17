@@ -63,12 +63,14 @@ public class RefreshTokenEndpointTests : IClassFixture<TestingWebApplicationFact
     public async Task Test_Sign_In_Returns_A_Refresh_Token_When_Registered()
     {
         await CreateUser(_withRefresh);
+        // taken before signing in: the host's tokens live 2 seconds, and a busy run can take longer than that to sign in
+        var before = DateTimeOffset.UtcNow;
 
         var result = await SignIn();
 
         result.Token.ShouldNotBeNullOrWhiteSpace();
         result.RefreshToken.ShouldNotBeNullOrWhiteSpace();
-        result.ExpiresAt!.Value.ShouldBeGreaterThan(DateTimeOffset.UtcNow);
+        result.ExpiresAt!.Value.ShouldBeGreaterThan(before);
     }
 
     /// <summary>

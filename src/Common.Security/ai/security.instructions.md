@@ -1211,7 +1211,9 @@ a user account* describes.
 
 `clientApp` = token audience — **set the API's `Jwt:Audience` (or `Audiences`) equal to the SPA's `clientApp`**,
 or every authenticated call 401s with `audience invalid`. Success resets the failed-access count; failure
-increments it (Identity lockout).
+increments it (Identity lockout). An unknown user name answers as a wrong password does (`isLockedOut: false`); a
+locked-out account (`isLockedOut: true`) and the response time — an unknown name skips the password hash — still tell
+a name exists, so rate-limit `auth` by client.
 
 An account the sign-in options refuse answers `401 { isNotAllowed: true }` once its password checks: an address not
 confirmed under `SignIn.RequireConfirmedEmail`, a phone number under `RequireConfirmedPhoneNumber`, or an account the

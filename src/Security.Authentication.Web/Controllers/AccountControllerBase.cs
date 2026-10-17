@@ -88,7 +88,8 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
             }
         }
 
-        return StatusCode(StatusCodes.Status401Unauthorized, CreateFailedResponse(isLockedOut, lockedOutEnd));
+        // false for an unknown name too, so the body does not tell it apart from a wrong password
+        return StatusCode(StatusCodes.Status401Unauthorized, CreateFailedResponse(isLockedOut ?? false, lockedOutEnd));
     }
 
     [HttpPost("validate")]

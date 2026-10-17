@@ -89,7 +89,12 @@ public class HtmlTemplateParser : IHtmlParser
         {
             content = content.Replace("{" + key + ":raw}", value?.ToString());
         }
-        var encodedValues = values.ToDictionary(x => x.Key, x => x.Value is IFormattable ? x.Value : (object)HtmlEncoder.Default.Encode(x.Value?.ToString() ?? string.Empty));
+        var encodedValues = values.ToDictionary(x => x.Key, x => x.Value is IFormattable ? x.Value : (object)Encode(x.Value?.ToString() ?? string.Empty));
         return content.Inject(encodedValues)!;
     }
+
+    // braces too, which HtmlEncoder leaves: an encoded block value must not spell a token — {key:raw} above all — that
+    // the top-level pass fills again
+    private static string Encode(string value)
+        => HtmlEncoder.Default.Encode(value).Replace("{", "&#123;").Replace("}", "&#125;");
 }

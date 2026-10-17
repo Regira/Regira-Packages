@@ -267,8 +267,9 @@ IMemoryFile doc = await word.Create(new WordTemplateInput
   converting the stored output later.
 - In a document that uses blocks, these throw `FormatException`: a block that does not open and close in one
   container and section, a closer or `{{else}}` without its opener, a `{{/if}}` closing a loop or a `{{/each}}` a
-  condition, a second `{{else}}`, a marker sharing its paragraph with other text, and a marker this syntax does not
-  know, such as `{{#unless X}}`, `{{else if X}}` or `{{#each !X}}`.
+  condition, a second `{{else}}`, blocks nested more than 100 levels deep in one container, a marker sharing its
+  paragraph with other text, and a marker this syntax does not know, such as `{{#unless X}}`, `{{else if X}}` or
+  `{{#each !X}}`.
 
 ## Loop blocks
 
@@ -336,6 +337,10 @@ IMemoryFile doc = await word.Create(new WordTemplateInput
   page per row (a section break cannot be inside a block). A copy keeps no bookmark, which stays with the first copy,
   and takes drawing, shape and content-control ids of its own. A loop holding a footnote, endnote or comment
   reference throws `FormatException`.
+- Nested loops multiply: k loops of n rows each, one inside the other, write their innermost content n^k times, and
+  an inner loop whose key the row lacks runs over the input's collection again, so `{{#each Orders}}` inside itself
+  writes every order once per order. Nothing caps the output, so the template decides how large the document gets:
+  fill templates you trust.
 - A [collection table](#collection-tables) found by its Alt Text title, or a MiniWord `{{Items.Name}}` row, reads the
   top-level `CollectionParameters` entry even inside a loop, and only the first table with the title is filled:
   inside a loop, use marker rows. One key can feed a titled table and a loop alike.

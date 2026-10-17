@@ -46,7 +46,7 @@ public class PdfManager : IHtmlToPdfService
             Headless = true
         });
         await using var page = await browser.NewPageAsync();
-        await page.SetContentAsync(template.HtmlContent);
+        await page.SetContentAsync(template.HtmlContent ?? string.Empty);
 
         var layout = ChromiumPdfLayout.From(template);
         var pdfStream = await page.PdfStreamAsync(new PdfOptions

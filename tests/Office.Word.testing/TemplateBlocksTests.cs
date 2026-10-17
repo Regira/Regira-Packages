@@ -287,6 +287,25 @@ public class TemplateBlocksTests
             Is.EqualTo(new[] { "Intro", "Outro" }));
     }
 
+    /// <summary>
+    /// Placing blocks recurses once per level: a document nesting thousands would overflow the stack, which no caller
+    /// can catch. A missing key is false, so every negated block is entered.
+    /// </summary>
+    [Test]
+    public void Blocks_Nested_Deeper_Than_The_Limit_Fail()
+    {
+        static string?[] Nested(int depth)
+            => [.. Enumerable.Repeat("{{#if !Missing}}", depth), "Deep", .. Enumerable.Repeat("{{/if}}", depth)];
+
+        var ex = Assert.Throws<FormatException>(() => Removed(Nested(TemplateBlocks.MaxDepth + 1), _ => false));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex!.Message, Does.Contain($"more than {TemplateBlocks.MaxDepth} levels deep"));
+            Assert.That(Removed(Nested(TemplateBlocks.MaxDepth), _ => false), Does.Not.Contain(TemplateBlocks.MaxDepth), "the limit itself places");
+        });
+    }
+
     // ---- loops ----
 
     private static WordTemplateInput Orders(object? lines = null) => new()
@@ -480,6 +499,26 @@ public class TemplateBlocksTests
             Assert.That(row.Fields("<{ Number }>"), Is.Empty, "a nested document");
             Assert.That(row.Fields("{{ Number }} and {{NUMBER}}").Select(field => field.Key), Is.EqualTo(new[] { "Number" }));
             Assert.That(row.Fields("{{ Number }}").Single().Pattern.Replace("No. {{  number }}.", "A-1"), Is.EqualTo("No. A-1."));
+        });
+    }
+
+    /// <summary>
+    /// A loop reads the tags of every paragraph it places, once per row: the runs of spaces around a key must not make
+    /// that cubic, which took seconds at a few thousand spaces.
+    /// </summary>
+    [Test]
+    public void A_Long_Run_Of_Spaces_In_A_Loop_Paragraph_Is_Read_In_Linear_Time()
+    {
+        var row = TemplateScope.Root(Orders()).Rows("Orders")[0];
+        var text = "{{" + new string(' ', 5_000) + "{{ Number }}";
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+
+        var fields = row.Fields(text);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(fields.Select(field => (field.Key, field.Value)), Is.EqualTo(new[] { ("Number", "A-1") }));
+            Assert.That(watch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(2)));
         });
     }
 

@@ -300,8 +300,9 @@ Please pay {{Amount}} before {{DueDate}}.
   converting the stored output later.
 - In a document that uses blocks, these throw `FormatException`: a block that does not open and close in one
   container and section, a closer or `{{else}}` without its opener, a `{{/if}}` closing a loop or a `{{/each}}` a
-  condition, a second `{{else}}`, a marker sharing its paragraph with other text, and a marker this syntax does not
-  know, such as `{{#unless X}}`, `{{else if X}}` or `{{#each !X}}`.
+  condition, a second `{{else}}`, blocks nested more than 100 levels deep in one container, a marker sharing its
+  paragraph with other text, and a marker this syntax does not know, such as `{{#unless X}}`, `{{else if X}}` or
+  `{{#each !X}}`.
 
 ### Loop Blocks (Word.Spire, Word.Syncfusion, Word.Aspose and Word.Mini)
 
@@ -357,6 +358,10 @@ CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, ob
   page per row (a section break cannot be inside a block). A copy keeps no bookmark, which stays with the first copy,
   and takes drawing, shape and content-control ids of its own. A loop holding a footnote, endnote or comment
   reference throws `FormatException`.
+- Nested loops multiply: k loops of n rows each, one inside the other, write their innermost content n^k times, and
+  an inner loop whose key the row lacks runs over the input's collection again, so `{{#each Orders}}` inside itself
+  writes every order once per order. Nothing caps the output, so the template decides how large the document gets:
+  fill templates you trust.
 - **Marker rows.** A table row whose only text is a single marker, in any one of its cells — in a content control
   there or not; a text box's text is its own — opens, divides or closes a block over the table's rows. A row-level content control, a repeating
   section, is a container of rows of its own, as a content control around paragraphs is: a block around it keeps or

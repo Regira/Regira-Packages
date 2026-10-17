@@ -4,6 +4,7 @@ public class GitHubOptions
 {
     /// <summary>
     /// The URI of the GitHub repository where content will be stored, in the format "https://api.github.com/repos/{owner}/{repo}". This is required and must be a valid GitHub API endpoint for repository contents.
+    /// Owner and repo are cased as GitHub spells them: another casing turns the identifiers <c>List</c> returns into full URLs that <c>Contained</c> refuses.
     /// </summary>
     public string Uri { get; set; } = null!;
     /// <summary>

@@ -374,7 +374,7 @@ Every communicator sends through a connection pool the package shares, and every
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `Uri` | `string` | *(required)* | GitHub API repository endpoint (`https://api.github.com/repos/{owner}/{repo}`) |
+| `Uri` | `string` | *(required)* | GitHub API repository endpoint (`https://api.github.com/repos/{owner}/{repo}`), owner and repo cased as GitHub spells them: another casing turns the identifiers `List` returns into full URLs that `Contained` refuses |
 | `Key` | `string?` | `null` | Personal Access Token (sent as `Authorization: Bearer` header); unauthenticated requests hit stricter rate limits |
 | `UserAgent` | `string?` | assembly name | `User-Agent` header — GitHub requires a non-empty value |
 | `Branch` | `string` | `"main"` | Branch used for writes |

@@ -303,7 +303,7 @@ Every communicator sends through a connection pool the package shares, and every
 
 | Option | Type | Description |
 |--------|------|-------------|
-| `Uri` | `string` | GitHub API repository endpoint (`https://api.github.com/repos/{owner}/{repo}`) |
+| `Uri` | `string` | GitHub API repository endpoint (`https://api.github.com/repos/{owner}/{repo}`), owner and repo cased as GitHub spells them: another casing turns the identifiers `List` returns into full URLs that `Contained` refuses |
 | `Key` | `string?` | Personal Access Token (required for writes and private repos) |
 | `UserAgent` | `string?` | `User-Agent` header — GitHub requires a non-empty value |
 | `Branch` | `string` | Branch used for writes (default `"main"`) |
