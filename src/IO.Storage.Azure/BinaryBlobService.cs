@@ -3,24 +3,14 @@ using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using Regira.IO.Storage.Abstractions;
 using Regira.IO.Storage.Azure.Utilities;
+using Regira.IO.Storage.Utilities;
 using Regira.IO.Utilities;
 
 namespace Regira.IO.Storage.Azure;
 
 public class BinaryBlobService(AzureCommunicator communicator) : IFileService
 {
-    protected internal BlobContainerClient Container
-    {
-        get
-        {
-            if (communicator.Container == null)
-            {
-                throw new Exception("ContainerClient is not opened yet!");
-            }
-
-            return communicator.Container!;
-        }
-    }
+    protected internal BlobContainerClient Container => communicator.Container;
     public string Root => Container.Uri.ToString();
 
 
@@ -101,40 +91,9 @@ public class BinaryBlobService(AzureCommunicator communicator) : IFileService
 #if NET10_0_OR_GREATER
     public async IAsyncEnumerable<string> ListAsync(FileSearchObject? so = null)
     {
-        so ??= new FileSearchObject();
-        await communicator.Open();
-
-        var recursive = so.Recursive;
-        var relativeFolderUri = FileNameUtility.GetRelativeUri(so.FolderUri, Root);
-        var excludedFolders = GetFolders(relativeFolderUri).Concat(new[] { relativeFolderUri }).ToHashSet();
-        var yieldedFolders = new HashSet<string>();
-
-        await foreach (var blob in ListBlobs(so))
+        foreach (var identifier in await List(so))
         {
-            var blobIdentifier = FileNameUtility.GetRelativeUri(blob.Name, Root);
-            var blobFolder = FileNameUtility.GetRelativeFolder(blobIdentifier, Root) ?? string.Empty;
-            var matchesExtension = so.Extensions == null || so.Extensions.Any(e => e.TrimStart('*') == Path.GetExtension(blobIdentifier));
-            var inScope = recursive || blobFolder == relativeFolderUri;
-
-            if (so.Type != FileEntryTypes.Directories && inScope && matchesExtension)
-                yield return blobIdentifier;
-
-            // Mirror sync List: derive folders from all blobs when no extension filter,
-            // or from in-scope matching blobs when an extension filter is set.
-            var usedForFolderDerivation = so.Extensions == null || (inScope && matchesExtension);
-            if (so.Type != FileEntryTypes.Files && usedForFolderDerivation)
-            {
-                foreach (var folder in GetFolders(blobIdentifier))
-                {
-                    var folderParent = FileNameUtility.GetRelativeFolder(folder, Root) ?? string.Empty;
-                    if (!excludedFolders.Contains(folder)
-                        && (recursive || folderParent == relativeFolderUri)
-                        && yieldedFolders.Add(folder))
-                    {
-                        yield return folder;
-                    }
-                }
-            }
+            yield return identifier;
         }
     }
 #endif
@@ -178,8 +137,9 @@ public class BinaryBlobService(AzureCommunicator communicator) : IFileService
         await communicator.Open();
         var sourceBlob = GetBlobReference(sourceIdentifier);
         var targetBlob = GetBlobReference(targetIdentifier);
-        // server-side copy is asynchronous on Azure's side; wait for completion before deleting the source
-        var copyOperation = await targetBlob.StartCopyFromUriAsync(GetBlobUri(sourceIdentifier));
+        // server-side copy is asynchronous on Azure's side; wait for completion before deleting the source.
+        // The copy source is the address the SDK built for the blob, escaped: a ?, # or % in its name stays part of it
+        var copyOperation = await targetBlob.StartCopyFromUriAsync(sourceBlob.Uri);
         await copyOperation.WaitForCompletionAsync();
         await sourceBlob.DeleteIfExistsAsync();
     }
@@ -211,19 +171,22 @@ public class BinaryBlobService(AzureCommunicator communicator) : IFileService
 
     public string GetAbsoluteUri(string identifier)
     {
-        communicator.Open().GetAwaiter().GetResult();
-        return FileNameUtility.GetUri(identifier, Root);
+        var uri = FileNameUtility.GetUri(identifier, Root);
+        if (communicator.Contained)
+        {
+            // read as a URL, as GetBlobUri reads it: %2e is a dot there, though the SDK keeps it in a blob's name
+            UrlPath.EnsureContained(new Uri(uri), Container.Uri);
+        }
+        return uri;
     }
 
     public string GetIdentifier(string uri)
     {
-        communicator.Open().GetAwaiter().GetResult();
         return FileNameUtility.GetRelativeUri(uri, Root);
     }
 
     public string? GetRelativeFolder(string identifier)
     {
-        communicator.Open().GetAwaiter().GetResult();
         return FileNameUtility.GetRelativeFolder(identifier, Root);
     }
 
@@ -232,7 +195,13 @@ public class BinaryBlobService(AzureCommunicator communicator) : IFileService
     protected internal BlobClient GetBlobReference(string identifier)
     {
         var prefixedFilename = FileNameUtility.GetRelativeUri(identifier, Root);
-        return Container.GetBlobClient(prefixedFilename);
+        var blob = Container.GetBlobClient(prefixedFilename);
+        if (communicator.Contained)
+        {
+            // the SDK resolves the dot segments of the address it builds, so ../ can name a blob in another container
+            UrlPath.EnsureContained(blob.Uri, Container.Uri);
+        }
+        return blob;
     }
     [Obsolete("A BlobClient carries no content type: Save sets it on upload. Use GetBlobReference(identifier).")]
     protected internal BlobClient GetBlobReference(string identifier, string? contentType = null)

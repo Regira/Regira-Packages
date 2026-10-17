@@ -21,6 +21,10 @@ public class ImagePrintInputModel
     public string? PaperSizeName { get; set; }
     public PaperSourceKind? PaperSourceKind { get; set; }
     public bool? Color { get; set; }
+    /// <summary>
+    /// In hundredths of an inch, as <c>System.Drawing.Printing</c> takes them, not the points <see cref="Regira.Office.Models.Margins"/>
+    /// holds elsewhere; <c>null</c> prints with half an inch on every side.
+    /// </summary>
     public Margins? Margins { get; set; }
 }
 

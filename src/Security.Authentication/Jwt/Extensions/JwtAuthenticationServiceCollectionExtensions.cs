@@ -23,7 +23,7 @@ public static class JwtAuthenticationServiceCollectionExtensions
 
         if (string.IsNullOrEmpty(options.Secret))
         {
-            throw new NullReferenceException($"Missing {nameof(options.Secret)} in {typeof(JwtTokenOptions).FullName}");
+            throw new InvalidOperationException($"{nameof(JwtTokenOptions)}.{nameof(options.Secret)} is not set: configure Authentication:Jwt:Secret (user-secrets in Development).");
         }
 
         if (options.ValidateSecretLength)

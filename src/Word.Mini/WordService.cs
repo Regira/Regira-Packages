@@ -10,6 +10,8 @@ using Regira.Media.Drawing.Dimensions;
 using Regira.Office.MimeTypes;
 using Regira.Office.Word.Abstractions;
 using Regira.Office.Word.Models;
+using Regira.Office.Word.Mini.Internal;
+using Regira.Office.Word.Packaging;
 using Regira.Office.Word.Templating;
 using DrawingML = DocumentFormat.OpenXml.Drawing;
 using W = DocumentFormat.OpenXml.Wordprocessing;
@@ -34,6 +36,12 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
 
     private static readonly Regex TagRegex = new(@"\{\{([^{}]*)\}\}", RegexOptions.Compiled);
 
+    /// <summary>
+    /// The characters no key may hold: what a regular expression reads as syntax, and the dot MiniWord joins a
+    /// collection's key and field with.
+    /// </summary>
+    private static readonly char[] PatternCharacters = @".\^$|?*+()[]{}".ToCharArray();
+
     public async Task<IMemoryFile> Create(WordTemplateInput input, CancellationToken cancellationToken = default)
     {
         EnsureSupported(input);
@@ -41,12 +49,35 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
         var templateBytes = input.Template.GetBytes()
             ?? throw new ArgumentException("Template has no content.", nameof(input));
 
+        var values = GetMiniValue(input);
         var ms = new MemoryStream();
-        await ms.SaveAsByTemplateAsync(TrimTags(ResolveConditions(templateBytes, input)), GetMiniValue(input), cancellationToken);
+        await ms.SaveAsByTemplateAsync(TrimTags(ResolveBlocks(templateBytes, input)), values, cancellationToken);
+        RestoreTagLikeText(ms);
         // SaveAsByTemplateAsync leaves the stream at its end; rewind so consumers reading
         // Stream directly (rather than through GetStream()) see the content.
         ms.Position = 0;
         return ms.ToBinaryFile(ContentTypes.DOCX);
+    }
+
+    /// <summary>
+    /// Takes out the word joiners that kept a tag-like value whole through MiniWord (<see cref="TagLikeText"/>), so the
+    /// document's text equals the values as given.
+    /// </summary>
+    private static void RestoreTagLikeText(MemoryStream document)
+    {
+        // read-only first: an editable package is written again when it closes, changed or not
+        document.Position = 0;
+        using (var doc = WordprocessingDocument.Open(document, false))
+        {
+            if (!TagLikeText.IsHeldIn(ContentRoots(doc.MainDocumentPart).Select(content => content.Root)))
+            {
+                return;
+            }
+        }
+
+        document.Position = 0;
+        using var editable = WordprocessingDocument.Open(document, true);
+        TagLikeText.Restore(ContentRoots(editable.MainDocumentPart).Select(content => content.Root));
     }
 
     /// <summary>
@@ -126,10 +157,19 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
     }
 
 
-    internal object GetMiniValue(WordTemplateInput input)
+    /// <summary>
+    /// The values MiniWord fills the template with. GlobalParameters, Images and CollectionParameters resolve against one
+    /// <c>{{tag}}</c> namespace, so a key may appear in one of them only.
+    /// <para>
+    /// MiniWord builds a regular expression from every key it is given, a collection's <c>Items.Name</c> included: a key
+    /// holding <c>[</c> throws, and one holding <c>.</c> or <c>(</c> matches other tags than its own. So a key — a
+    /// parameter key, an image name, a collection key or a collection's field — holding one of
+    /// <c>. \ ^ $ | ? * + ( ) [ ] { }</c> is refused with an <see cref="ArgumentException"/> naming it.
+    /// </para>
+    /// <para>A text value, a collection row's included, is neutralised so MiniWord writes it whole (<see cref="TagLikeText"/>).</para>
+    /// </summary>
+    internal static Dictionary<string, object> GetMiniValue(WordTemplateInput input)
     {
-        // GlobalParameters, Images and CollectionParameters all resolve against the same
-        // {{tag}} namespace in the template, so a key may only appear in one of them.
         var values = new Dictionary<string, object>();
 
         void Add(string key, object value)
@@ -141,18 +181,40 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
                     nameof(input));
             }
         }
+        ArgumentException Unreadable(string key) => new(
+            $"MiniWord cannot read the key '{key}': it builds a regular expression from every key, so a key may not hold any of " +
+            $"{string.Join(" ", PatternCharacters)}. " +
+            "Rename the key and its tag, or use another Word backend.",
+            nameof(input));
 
         foreach (var parameter in input.GlobalParameters ?? new Dictionary<string, object>())
         {
-            Add(parameter.Key, parameter.Value);
+            if (parameter.Key.Trim().IndexOfAny(PatternCharacters) >= 0)
+            {
+                throw Unreadable(parameter.Key);
+            }
+            Add(parameter.Key, TagLikeText.Neutralise(parameter.Value));
         }
         foreach (var image in input.Images ?? [])
         {
+            if (image.Name.Trim().IndexOfAny(PatternCharacters) >= 0)
+            {
+                throw Unreadable(image.Name);
+            }
             Add(image.Name, ToPicture(image));
         }
         foreach (var collection in input.CollectionParameters ?? new Dictionary<string, ICollection<IDictionary<string, object>>>())
         {
-            Add(collection.Key, collection.Value);
+            if (collection.Key.Trim().IndexOfAny(PatternCharacters) >= 0)
+            {
+                throw Unreadable(collection.Key);
+            }
+            var field = collection.Value?.SelectMany(row => row.Keys).FirstOrDefault(key => key.Trim().IndexOfAny(PatternCharacters) >= 0);
+            if (field != null)
+            {
+                throw Unreadable($"{collection.Key}.{field}");
+            }
+            Add(collection.Key, collection.Value?.Select(TagLikeText.Neutralise).ToList()!);
         }
 
         // the template's tags are trimmed (TrimTags), so a key spelled with spaces is reached by its trimmed form;
@@ -188,11 +250,7 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
             {
                 foreach (var paragraph in root.Descendants<W.Paragraph>())
                 {
-                    // a text box inside the paragraph holds paragraphs of its own, rewritten on their own turn
-                    var texts = paragraph.Descendants<W.Text>()
-                        .Where(text => text.Ancestors<W.Paragraph>().First() == paragraph)
-                        .ToList();
-                    changed |= TrimTags(texts);
+                    changed |= TrimTags(MiniTemplateWalk.OwnTexts(paragraph).ToList());
                 }
             }
         }
@@ -262,10 +320,12 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
     }
 
     /// <summary>
-    /// Resolves the template's conditional blocks, as <see cref="ConditionalBlocks"/> describes them, before MiniWord sees
-    /// it, so they read the same as on the other backends; MiniWord's own <c>@if</c> is left alone.
+    /// Resolves the template's blocks, as <see cref="TemplateBlocks"/> describes them, and fills the fields of its loops'
+    /// rows before MiniWord sees it, so they read the same as on the other backends; MiniWord's own <c>@if</c> and
+    /// <c>@foreach</c> are left alone. Every tag is joined into one <c>w:t</c> first, as <see cref="TrimTags(byte[])"/>
+    /// writes it, so a row fills a field Word split over runs.
     /// </summary>
-    internal static byte[] ResolveConditions(byte[] template, WordTemplateInput input)
+    internal static byte[] ResolveBlocks(byte[] template, WordTemplateInput input)
     {
         // read-only first: an editable package is written again when it closes, changed or not
         if (!UsesBlocks(template))
@@ -277,32 +337,15 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
         stream.Write(template, 0, template.Length);
         using (var doc = WordprocessingDocument.Open(stream, true))
         {
-            var containers = ContentRoots(doc.MainDocumentPart)
-                .SelectMany(content => content.Root.Descendants<W.Paragraph>())
-                .Where(paragraph => ConditionalBlocks.ContainsMarker(GetOwnText(paragraph)))
-                .Select(paragraph => paragraph.Parent)
-                .OfType<OpenXmlElement>()
-                .Distinct()
-                .ToArray();
-
-            foreach (var container in containers)
+            var roots = ContentRoots(doc.MainDocumentPart).Select(content => content.Root).ToArray();
+            foreach (var paragraph in roots.SelectMany(root => root.Descendants<W.Paragraph>()))
             {
-                var lastBlock = LastBlock(container);
-                foreach (var segment in Segments(container))
-                {
-                    var texts = segment.Select(child => child is W.Paragraph paragraph ? GetOwnText(paragraph) : null).ToArray();
-                    foreach (var index in ConditionalBlocks.Resolve(texts, input))
-                    {
-                        Remove(segment[index]);
-                    }
-                }
-                // a container that ends as the template wrote it is left as it is
-                if (LastBlock(container) != lastBlock)
-                {
-                    EndWithParagraph(container);
-                }
+                TrimTags(MiniTemplateWalk.OwnTexts(paragraph).ToList());
             }
+            new MiniTemplateWalk(doc, roots).Run(input);
         }
+        // a copy's VML shapes — a text box's fallback, an embedded object — keep their original's ids
+        VmlShapeIds.MakeUnique(stream);
 
         // disposing an editable document writes it back to the stream
         return stream.ToArray();
@@ -313,93 +356,8 @@ public class WordService : IWordCreator, IWordTextExtractor, IWordImageExtractor
         using var doc = WordprocessingDocument.Open(new MemoryStream(template, false), false);
         return ContentRoots(doc.MainDocumentPart)
             .SelectMany(content => content.Root.Descendants<W.Paragraph>())
-            .Any(paragraph => ConditionalBlocks.OpensBlock(GetOwnText(paragraph)));
+            .Any(paragraph => TemplateBlocks.OpensBlock(MiniTemplateWalk.GetOwnText(paragraph)));
     }
-
-    /// <summary>
-    /// The container's block content — paragraphs, tables, content controls — cut into sections: a paragraph carrying
-    /// section properties ends its section, and so does a content control holding one. A block cannot span a section
-    /// break, as on the other backends, where each section has a body of its own. Everything else among the children
-    /// (cell properties, bookmark ends, the final section properties) is never part of a block and stays.
-    /// </summary>
-    private static IEnumerable<List<OpenXmlElement>> Segments(OpenXmlElement container)
-    {
-        var segment = new List<OpenXmlElement>();
-        foreach (var child in container.ChildElements)
-        {
-            if (child is not (W.Paragraph or W.Table or W.SdtBlock))
-            {
-                continue;
-            }
-            segment.Add(child);
-            if (child is W.Paragraph { ParagraphProperties.SectionProperties: not null }
-                || child is W.SdtBlock control && control.Descendants<W.SectionProperties>().Any())
-            {
-                yield return segment;
-                segment = [];
-            }
-        }
-        yield return segment;
-    }
-
-    private static OpenXmlElement? LastBlock(OpenXmlElement container)
-        => container.ChildElements.LastOrDefault(child => child is W.Paragraph or W.Table or W.SdtBlock);
-
-    /// <summary>
-    /// Removes a block's child. A paragraph carrying section properties keeps them and nothing else, so the section
-    /// break stays and none of the paragraph's own formatting — numbering, a page break before it — is left behind
-    /// on an empty line.
-    /// </summary>
-    private static void Remove(OpenXmlElement child)
-    {
-        if (child is W.Paragraph { ParagraphProperties: { SectionProperties: not null } properties } sectionEnd)
-        {
-            foreach (var content in sectionEnd.ChildElements.Where(c => c != properties).ToArray())
-            {
-                content.Remove();
-            }
-            foreach (var property in properties.ChildElements.Where(c => c is not W.SectionProperties).ToArray())
-            {
-                property.Remove();
-            }
-            return;
-        }
-        child.Remove();
-    }
-
-    /// <summary>
-    /// Whatever holds paragraphs ends with one — a body, cell, header, footer, text box or content control; Word
-    /// refuses a cell or text box without one — so one is added when the resolved blocks leave the container empty or
-    /// ending in a table or a content control.
-    /// </summary>
-    private static void EndWithParagraph(OpenXmlElement container)
-    {
-        var last = LastBlock(container);
-        if (last is W.Paragraph)
-        {
-            return;
-        }
-        if (last != null)
-        {
-            last.InsertAfterSelf(new W.Paragraph());
-        }
-        else if (container.GetFirstChild<W.SectionProperties>() is { } sectionProperties)
-        {
-            sectionProperties.InsertBeforeSelf(new W.Paragraph());
-        }
-        else
-        {
-            container.AppendChild(new W.Paragraph());
-        }
-    }
-
-    /// <summary>
-    /// The paragraph's text, without that of a text box inside it, whose paragraphs are read on their own.
-    /// </summary>
-    private static string GetOwnText(W.Paragraph paragraph)
-        => string.Concat(paragraph.Descendants<W.Text>()
-            .Where(text => text.Ancestors<W.Paragraph>().First() == paragraph)
-            .Select(text => text.Text));
 
     /// <summary>
     /// Rejects the parts of <see cref="WordTemplateInput"/> MiniWord cannot honour, rather than

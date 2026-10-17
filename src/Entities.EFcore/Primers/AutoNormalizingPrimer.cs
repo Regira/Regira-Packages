@@ -6,6 +6,7 @@ using Regira.Normalizing.Abstractions;
 
 namespace Regira.Entities.EFcore.Primers;
 
+[Obsolete("Normalizes beside EntityNormalizerContainerInterceptor, which UseDefaults() wires (twice when both are). Use the interceptor, or WireDbContext(DbContextWiring.NormalizerInterceptors). Will be removed in v7.", DiagnosticId = "REGIRA0001")]
 public class AutoNormalizingPrimer(IObjectNormalizer? normalizer = null) : EntityPrimerBase<IEntity>
 {
     readonly IObjectNormalizer _normalizer = normalizer ?? new ObjectNormalizer();

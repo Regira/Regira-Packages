@@ -234,26 +234,4 @@ public class EntityExceptionFilterTests
 
         Assert.Single(filters.OfType<EntityExceptionFilter>());
     }
-
-    // `Filters.Add<T>()` records a TypeFilterAttribute, not an instance, so an `is EntityExceptionFilter`
-    // test alone would not see a consumer's own registration and would add a second copy.
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void A_Consumer_Registration_By_Type_Is_Not_Duplicated(bool asServiceFilter)
-    {
-        var services = new ServiceCollection();
-        services.AddOptions();
-        services.Configure<MvcOptions>(o =>
-        {
-            if (asServiceFilter) o.Filters.AddService<EntityExceptionFilter>();
-            else o.Filters.Add<EntityExceptionFilter>();
-        });
-        services.MapEntityExceptions();
-
-        using var sp = services.BuildServiceProvider();
-        var filters = sp.GetRequiredService<IOptions<MvcOptions>>().Value.Filters;
-
-        Assert.Single(filters);
-    }
 }

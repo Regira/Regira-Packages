@@ -2,7 +2,7 @@
 
 > **AI Agent Rule**: Follow this guide to scaffold a new Regira Entities API project from scratch.
 > Start from the **`BasicApi`** template in the shared project setup guide — `get_package(id: "Regira.Setup", section: "project.setup")` — and apply the Entities-specific additions below.
-> In consumer repositories, prefer extracted `.regira/instructions/project.setup.md` when it exists locally. If it is not available yet, use the fallback baseline in this guide and keep the API surface aligned with `app.MapOpenApi()` plus `app.MapScalarApiReference()`.
+> In consumer repositories, prefer extracted `.regira/instructions/project.setup.md` when it exists locally. If it is not available yet, use the fallback baseline in this guide and keep the API surface aligned with `app.MapOpenApi()` plus `app.MapScalarApiReference()`, both mapped inside `if (app.Environment.IsDevelopment())`.
 > When available, combine with [`entities.namespaces.md`](./entities.namespaces.md) for exact `using` directives
 > and [`entities.examples.md`](./entities.examples.md) for complete working code.
 >
@@ -26,6 +26,15 @@
 ## Project Structure
 
 Two layouts, one file set. An entity is always the same files under the same names — model, DTOs, search object, `SortBy`/`Includes` enums, query builder, normalizer, manager/processor, `{Entity}ServiceConfiguration.cs` — and the two layouts differ only in which project and folder each file lives in. Start with the single project; move to the layered solution when one of its triggers applies.
+
+**One type per file, named after it, by default.** The trees below are literal: `Order.cs` holds `Order`, `OrderDto.cs` holds `OrderDto`, and each controller has a file of its own. The guides' examples often put several types in one code block so they read together; that is not a file layout, so split the block when you copy it. Be pragmatic, but weigh what a shared file costs:
+
+- **Review:** a change to one type should read as one file's diff, under that type's name.
+- **Parallel work:** developers or agents who edit different types in the same file get merge conflicts; separate files merge cleanly.
+- **Growth:** the layered solution below moves each file into a layer project (DTOs to `Models`, processors to `Services`), and a file that mixes layers has to be split first.
+- **Finding and editing:** a type is found by its file name, and an agent reads and changes a small file without loading or touching its neighbours.
+
+Types that are small and always change together may share a file: an entity's DTOs and enums in a small app (within the free tier, 5 simple + 2 complex registrations, Checklist 0), or an enum only one class uses. Controllers and services keep a file each, and an app beyond the free tier keeps one type per file throughout, since it is built to grow and be reviewed. Nested types and `file`-scoped types stay in their file, as C# requires. Whatever the app chooses, it chooses once: every folder follows the same layout.
 
 ### Single project (default)
 
@@ -115,7 +124,7 @@ The shape of an application that has outgrown the free tier. The free budget (5 
 Split the single project into one project per **technical layer** once the domain has outgrown the free tier **and** one of these applies:
 
 - more than one host shares the domain — a second API, a worker, or a console tool that must stay independent of the web host (a seeding console alone does not qualify: the default setup seeds in the web host between `Build()` and `Run()`, and a console can reference the API project directly);
-- a second `DbContext` (accounts/identity beside the domain);
+- a second `DbContext` (accounts/identity in a context of their own — Identity in the domain's own `DbContext` is not a second context and does not call for a split);
 - several domains, each with many entities;
 - the domain is consumed by more than one application.
 
@@ -209,7 +218,7 @@ layer below the host needs them.
 ## Checklist
 
 0. **Plan the simple/complex split first.** Mark every entity *simple* or *complex* **before** scaffolding — it sets each entity's endpoints and controller generics, and the free-tier budget. Definitions, the decision table, and a worked budget example: [entities.instructions §Step 0](./entities.instructions.md#step-0--classify-every-entity-before-scaffolding).
-0.5. **Pin your EF Core provider to your target framework.** Regira's EF Core packages multi-target, so the provider you add (`Microsoft.EntityFrameworkCore.Sqlite`/`.SqlServer`/`Npgsql.EntityFrameworkCore.PostgreSQL`/…) **must match the EF Core major for your TFM**: **`net8.0`/`net9.0` → 9.x**, **`net10.0` → 10.x**. A mismatch builds cleanly but crashes on the first query — see [Troubleshooting](./entities.instructions.md#troubleshooting).
+0.5. **Pin your EF Core provider to your target framework.** Regira's EF Core packages multi-target, so the provider you add (`Microsoft.EntityFrameworkCore.Sqlite`/`.SqlServer`/`Npgsql.EntityFrameworkCore.PostgreSQL`/…) **must match the EF Core major for your TFM**: **`net8.0`/`net9.0` → 9.x**, **`net10.0` → 10.x**. A mismatch builds cleanly but crashes on the first query — see [Troubleshooting](./entities.instructions.md#troubleshooting). For MySQL on `net10.0`, pick a provider with a 10.x release, such as `MySql.EntityFrameworkCore` 10.x (`options.UseMySQL(connectionString)`). It cannot read `DateOnly` or `TimeOnly` columns: store those through value converters in `ConfigureConventions` (`configurationBuilder.Properties<DateOnly>().HaveConversion<DateOnlyConverter>()`, with a `ValueConverter<DateOnly, DateTime>` of your own). `Regira.DAL.MySQL` (Dapper) and `Regira.DAL.MySQL.MySqlBackup` (dump and restore) are not EF Core providers.
 1. Create an ASP.NET Core Web API project — use the **`BasicApi`** template in the shared project setup guide (`get_package(id: "Regira.Setup", section: "project.setup")`) as the starting point.
 2. Add required packages to `.csproj`.
 3. Create `YourDbContext` deriving from `DbContext`.
@@ -226,6 +235,7 @@ transitively. **A Web API needs only two references: `Regira.Entities.Web` + a m
 
 ```
 Regira.Entities.Web                       ← Web API entry point — EntityControllerBase + HTTP endpoints
+├─ Regira.Entities.Mediator               the requests the endpoints send (IEntitySender) — for jobs too
 └─ Regira.Entities.DependencyInjection    ← non-web entry point — UseEntities() / .For<>()
    └─ Regira.Entities.EFcore              EntityRepository (EF Core)
       └─ Regira.Entities                  abstractions / interfaces
@@ -256,14 +266,15 @@ Regira.Entities.Validation.FluentValidation ← optional — AbstractValidator r
 **Optional — entity attachments:** `Regira.IO.Storage` (local file system / SFTP) or
 `Regira.IO.Storage.Azure` (Azure Blob Storage).
 
-> **NuGet advisory with no patched version (NU1903 / NU1902).** A transitive dependency can raise a security
-> advisory for which no fixed version exists yet (commonly seen via `SQLitePCLRaw.bundle_e_sqlite3` pulled in by
-> the SQLite provider). Options:
-> - **Float the transitive up** by adding an explicit higher version as a direct reference, lifting the resolved
->   version above the advisory. The advisory affects the whole `2.1.x` line — only the `3.x` line clears it, so
->   float to the latest `3.x`:
+> **NuGet advisory on a transitive dependency (NU1902 / NU1903).** A package can pull in a version that carries a
+> security advisory. The SQLite provider is the common case: GHSA-2m69-gcr7-jv3q (CVE-2025-6965, moderate, so
+> **NU1902**) affects `SQLitePCLRaw.lib.e_sqlite3` up to **2.1.11**, which `Microsoft.EntityFrameworkCore.Sqlite`
+> brings on every **8.0.x** and on **10.0.10 and earlier**. From **10.0.11** on it brings 2.1.12, past the
+> advisory, and needs nothing. Options:
+> - **Float the transitive up** by referencing the bundle directly at a version past the advisory — the same
+>   `2.1.x` line the provider was built against:
 >   ```xml
->   <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
+>   <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
 >   ```
 >   Then verify the advisory is gone: `dotnet list package --vulnerable --include-transitive`.
 > - **Or accept/suppress it** when no fixed version is available and the advisory does not affect your usage:
@@ -280,13 +291,14 @@ Regira.Entities.Validation.FluentValidation ← optional — AbstractValidator r
 |---|---|
 | `Regira.Entities.*` | major **6**; resolve the patch at add time. Keep the `Regira.*` packages you reference **directly** on the same version, or restore reports NU1605 |
 | `Microsoft.OpenApi` | **no direct reference** — it arrives through `Microsoft.AspNetCore.OpenApi`, whose range is the compatible one by definition — from **10.0.11** on it is past the 2.x advisory (10.0.12 → `[2.12.0, 3.0.0)`); 10.0.10 and earlier pull the vulnerable 2.0.0, one more reason that package is added first (below). It must stay on **2.x**: 3.x breaks the .NET 10 OpenAPI source generator, and `dotnet add package Microsoft.OpenApi` resolves 3.x with at most an NU1608 warning. Overriding it anyway? Pin by hand the version restore already resolves (`dotnet list package --include-transitive`) — anything lower fails restore with NU1605 |
-| `SQLitePCLRaw.bundle_e_sqlite3` | pin **3.0.3** |
+| `SQLitePCLRaw.bundle_e_sqlite3` | **no direct reference** on EF Core Sqlite **10.0.11** or later, which brings 2.1.12, past GHSA-2m69-gcr7-jv3q; on net8 or 10.0.10 and earlier pin **2.1.12** (the advisory note above) |
+| `System.Security.Cryptography.Pkcs` | **10.0.13** for an app on `Microsoft.EntityFrameworkCore.SqlServer` 10.0.x: the provider's `Microsoft.Data.SqlClient` 6.1.7 brings 9.0.11 (GHSA-846f-f764-76mx, NU1903). **No direct reference** beside `Regira.DAL.SqlServer` or `Regira.Office.Mail.MailKit`, which pin it |
 | `Microsoft.EntityFrameworkCore.*` (+ provider) | major must equal the TFM's EF Core major (`net10.0` → **10.x**, see Checklist 0.5); resolve the patch at add time |
-| `Microsoft.AspNetCore.OpenApi` | major must equal your TFM (`net10.0` → **10.x**); resolve the patch at add time. ⚠️ `dotnet new webapi` pins the patch its SDK shipped with, which can sit below the floor **`Regira.Security.Authentication.Web`** sets (SDK 10.0.400 writes `10.0.11`; the floor is `10.0.12`) — adding sign-in then trips NU1605 until you raise the pin |
+| `Microsoft.AspNetCore.OpenApi` | major must equal your TFM (`net10.0` → **10.x**); resolve the patch at add time. ⚠️ `dotnet new webapi` pins the patch its SDK shipped with, which can sit below the floor **`Regira.Security.Authentication.Web`** sets (SDK 10.0.400 writes `10.0.11`; the floor is `10.0.13`) — adding sign-in then trips NU1605 until you raise the pin |
 | `Scalar.AspNetCore` | major **2**; resolve the patch at add time |
 | `Serilog.AspNetCore`, `Serilog.Settings.Configuration`, `Serilog.Sinks.Console` | latest **stable** major — never a preview; resolve the patch at add time. The console/file sinks arrive transitively with `Serilog.AspNetCore`, so add them explicitly only if you pin them |
 
-**Add them as commands, not as hand-written XML.** Which rows you may type by hand is then structural rather than a rule to remember: only the exact pin below is XML, and every major-constraint row resolves its own patch.
+**Add them as commands, not as hand-written XML.** Which rows you may type by hand is then structural rather than a rule to remember: only the conditional pin below is XML, and every major-constraint row resolves its own patch.
 
 ```bash
 dotnet add package Microsoft.AspNetCore.OpenApi   # first — lifts the template's pin, so adding auth later can't downgrade (see below)
@@ -305,8 +317,8 @@ dotnet add package Serilog.Settings.Configuration
 > is live, and no hand-editing is needed.
 
 ```xml
-<!-- the one row that is pinned rather than resolved -->
-<PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
+<!-- only on net8, or EF Core Sqlite 10.0.10 and earlier: the one row that is pinned rather than resolved -->
+<PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
 ```
 
 ⚠️ A patch number you invent restores with **NU1603** ("*x.y.z was not found; x.y.z+n was resolved instead*") — or **NU1605** when a sibling package pulls a higher version of the same dependency. NU1603 is a warning, so a hand-authored `.csproj` can carry a version that does not exist and still build; **NU1605 is an error by default** and stops the restore dead.
@@ -321,7 +333,7 @@ dotnet add package Serilog.Settings.Configuration
 > separate choices; this combination is ordinary, not a deviation.
 > - **Via MCP:** call `get_package(id: "Regira.Setup", section: "project.setup")` to read the template.
 > - **Via local extraction:** read `.regira/instructions/project.setup.md` if it exists.
-> - **Fallback (if neither is available):** ASP.NET Core Web API project, thin `Program.cs`, DI via extension methods, `app.MapOpenApi()` (requires `Microsoft.AspNetCore.OpenApi`), `app.MapScalarApiReference()` (requires `Scalar.AspNetCore` + `using Scalar.AspNetCore;`), and no `UseSwaggerUI()`.
+> - **Fallback (if neither is available):** ASP.NET Core Web API project, thin `Program.cs`, DI via extension methods, `app.MapOpenApi()` (requires `Microsoft.AspNetCore.OpenApi`), `app.MapScalarApiReference()` (requires `Scalar.AspNetCore` + `using Scalar.AspNetCore;`), both mapped inside `if (app.Environment.IsDevelopment())`, and no `UseSwaggerUI()`.
 
 > **⚠️ Source encoding — keep `.cs` files ASCII-only.** A `.cs` file saved as UTF-8 *without* a BOM that
 > contains non-ASCII characters (`→`, `×`, `é`, an em dash, smart quotes — in comments, seed data or string
@@ -365,7 +377,7 @@ dotnet add package Serilog.Settings.Configuration
 - Call `modelBuilder.SetDecimalPrecisionConvention()` in `OnModelCreating` for global decimal precision (default `(18, 4)`)
 - UTC dates need no configuration here: the UTC date convention is auto-wired by `UseEntities(e => e.UseDefaults())` (see P3), so all `DateTime` values round-trip as UTC and JSON gets the ISO 8601 `Z` suffix. (Standalone EF without the entities stack: `configurationBuilder.SetUtcDateTimeConvention()` in `ConfigureConventions`, or `.AddUtcDateTimeConvention()` in `AddDbContext`.)
 - Soft delete needs no configuration here either: the archived query filter (`e => !e.IsArchived` on every `IArchivable` entity) is auto-wired by `UseEntities<TContext>(e => e.UseDefaults())` (see P3) and applied after everything `OnModelCreating` configured. ⚠️ A `DbContext` you construct yourself — `new AppDbContext(new DbContextOptionsBuilder<AppDbContext>()…Options)` in tests, a design-time factory, a seeding tool — bypasses that wiring: add `.AddArchivedQueryFilter()` to those options, or call `modelBuilder.SetArchivedQueryFilter()` at the end of `OnModelCreating` (after your own `HasQueryFilter(...)` calls, exactly once). Startup validation errors out on a model that ends up without it. Round-trip: [`entities.patterns.md`](./entities.patterns.md) → Soft Delete.
-- **Consequence (`net10.0` only, where a real query filter is installed):** EF then logs one `PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning` per relationship whose required principal is `IArchivable`. ⚠️ **Check what the principal is before suppressing it.** For an aggregate parent (`Order` → its lines) it is the intent, and the golden path's startup-warning checkpoint expects it. For **reference data** — a category/status/type that separately-registered entities point at through a required FK — it is a silent data bug: the filter propagates into `Include(...)` as an inner join, so those rows vanish from `items` while `/search` still counts them. Such an entity should not be `IArchivable` at all (real `DELETE` + `OnDelete(Restrict)` → 409), or its FK should be optional; startup validation warns on the shape. See [`entities.patterns.md`](./entities.patterns.md) → Soft Delete. Once confirmed benign, ignore it on the **`AddDbContext` options builder** (P3 below, not here in `OnModelCreating`) with `using Microsoft.EntityFrameworkCore.Diagnostics;` + `.ConfigureWarnings(w => w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning))`, and add a matching `HasQueryFilter(x => !x.Parent!.IsArchived)` for any dependent you query *directly* rather than through its parent.
+- **Consequence (`net10.0` only, where a real query filter is installed):** EF then logs one `PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning` per relationship whose required principal is `IArchivable`. ⚠️ **Check what the principal is before suppressing it.** For an aggregate parent (`Order` → its lines) it is the intent, and the golden path's startup-warning checkpoint expects it. For **reference data** — a category/status/type that separately-registered entities point at through a required FK — it is a silent data bug: the filter propagates into `Include(...)` as an inner join, so those rows vanish from `items` while `/search` still counts them. Such an entity should not be `IArchivable` at all (real `DELETE` + `OnDelete(Restrict)` → 409), or its FK should be optional; startup validation warns on the shape. See [`entities.patterns.md`](./entities.patterns.md) → Soft Delete. Once confirmed benign, ignore it on the **`AddDbContext` options builder** (P3 below, not here in `OnModelCreating`) with `using Microsoft.EntityFrameworkCore.Diagnostics;` + `.ConfigureWarnings(w => w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning))` — the ignore covers every such pair in the context, while Regira's startup validation still reports each separately registered dependent behind a required foreign key without a query filter of its own — and add a matching `HasQueryFilter(x => !x.Parent!.IsArchived)` for any dependent you query *directly* rather than through its parent.
 
 ```csharp
 using Regira.DAL.EFcore.Extensions;      // SetDecimalPrecisionConvention
@@ -412,6 +424,15 @@ builder.Services.AddEntityServices(builder.Configuration);
 // build app and configure as in BasicApi
 ```
 
+> **Mapped entity endpoints only?** An app that serves its entities through `app.MapEntityEndpoints()` and has no
+> controller drops `AddControllers()` and `app.MapControllers()`: `ConfigureDefaultJsonOptions()` configures the
+> options alone and needs no MVC, and the mapped endpoints carry their own exception filter
+> (`entities.patterns` → *Mapped entity endpoints (no controllers)*). `AddControllers()` also registered the
+> authorization services, so add `builder.Services.AddAuthorization()` in its place: without it
+> `app.UseAuthorization()` throws `InvalidOperationException` at start-up, and a group's `.RequireAuthorization()`
+> needs both. Keep both while any controller remains — a
+> hand-written one, or the account controllers of `Regira.Security.Authentication.Web`.
+
 > **⚠️ SQLite ignores foreign keys unless the connection string enables them.** `Microsoft.Data.Sqlite` leaves
 > `PRAGMA foreign_keys` **off**, so `DeleteBehavior.Restrict` never fires, cascades don't run, and orphan rows
 > are accepted — no error, no 409. Enable it per connection:
@@ -432,11 +453,12 @@ builder.Services.AddEntityServices(builder.Configuration);
 > re-creates the mismatch).
 >
 > **The second reason to call it: the entity exceptions.** It also registers `EntityExceptionFilter`, which
-> maps `EntityInputException` → **400** (its `Errors` as a `ValidationProblemDetails`) and `EntityConstraintException` →
-> **409** for *every* MVC action. Without it that mapping reaches only the generated write actions, so a
-> hand-written domain action on an entity controller — `POST {id}/approve` and its kind — answers a rule
-> breach with a 500 and a stack trace. `MapEntityExceptions()` registers the filter on its own for a host
-> that configures its JSON itself.
+> maps `EntityInputException` → **400** (its `Errors` as a `ValidationProblemDetails`), `EntityConstraintException` →
+> **409** and `EntityConcurrencyException` → **409** ("Concurrency conflict") for *every* MVC action. The entity controller bases carry the same mapping (`[EntityConstraintConflict]`),
+> so their actions answer a rule breach with a 400 without it, a hand-written domain action such as
+> `POST {id}/approve` included; on any other controller, a `ControllerExtensions` helper (`this.Save(…)`) answers it
+> with a 500 and a stack trace unless the filter is registered. `MapEntityExceptions()` registers the filter on its
+> own for a host that configures its JSON itself.
 
 > **DbContext wiring is automatic.** `UseEntities<TContext>(e => e.UseDefaults())` contributes the
 > primer/normalizer/auto-truncate interceptors, the UTC date convention, the archived query filter and the
@@ -465,7 +487,7 @@ builder.Services.AddEntityServices(builder.Configuration);
 >
 > ⚠️ It only sees **constructor-injected** dependencies. `EntityControllerBase<>` resolves its `IEntityService<>` from `HttpContext.RequestServices`, so a controller ↔ `.For<>()` arity mismatch is invisible to it — that one is caught by Regira's own startup validation (§Startup validation in [`entities.instructions.md`](./entities.instructions.md)) and by the error message in `ControllerExtensions.GetRequiredEntityService`.
 
-> **OpenAPI/UI note:** If the shared project guide is not available locally yet, keep the API surface aligned with the Regira baseline here as well: use `app.MapOpenApi()` plus `app.MapScalarApiReference()` and do not add `Swashbuckle.AspNetCore` or `UseSwaggerUI()`.
+> **OpenAPI/UI note:** If the shared project guide is not available locally yet, keep the API surface aligned with the Regira baseline here as well: use `app.MapOpenApi()` plus `app.MapScalarApiReference()`, in Development only, and do not add `Swashbuckle.AspNetCore` or `UseSwaggerUI()`.
 
 > **SQLite starter note:** For the default SQLite starter/test setup, do not scaffold an initial EF migration. After `app = builder.Build()`, create a scope and call `Database.EnsureCreated()` instead:
 
@@ -492,9 +514,23 @@ using (var scope = app.Services.CreateScope())
 > <!-- no-compile -->
 > ```csharp
 > if (app.Environment.IsDevelopment() && app.Configuration.GetValue<bool>("ResetDatabase"))
+> {
 >     dbContext.Database.EnsureDeleted();          // dotnet run -- --ResetDatabase=true
+>     // with file-system storage, also delete the uploads folder the attachments' BinaryFileService writes to
+>     if (Directory.Exists(uploadsFolder))
+>         Directory.Delete(uploadsFolder, recursive: true);
+> }
 > dbContext.Database.EnsureCreated();
 > ```
+>
+> Dropping the database leaves the stored files behind, named by no row (`entities.instructions` → *Attachments*,
+> step 6).
+>
+> **SQL Server, PostgreSQL.** `EnsureCreated()` with this switch suits a disposable development database. For a
+> database you keep, use migrations: `dotnet ef migrations add Initial` (the `dotnet-ef` tool, with
+> `Microsoft.EntityFrameworkCore.Design` in the project), then `await dbContext.Database.MigrateAsync();` in this block
+> in place of `EnsureCreated()`. Never call both: `EnsureCreated()` writes no migrations history, so a later `Migrate()`
+> fails on the tables it finds.
 >
 > **Stop the running app before rebuilding.** The host holds its own DLL, so `dotnet build` fails with
 > `MSB3027`/`MSB3021` — not an `error CS…`, which is what a build log is usually searched for — and the next
@@ -528,6 +564,8 @@ builder.Services.AddControllers(o => o.Conventions.Add(new RoutePrefixConvention
 ```
 
 Spell a multi-word resource in **kebab-case plural**: `InterventionType` → `[Route("intervention-types")]`, `FacetGroup` → `[Route("facet-groups")]`. The SPA's `IConfig.api` must match it character-for-character, so a flattened `interventiontypes` or a camelCase `interventionTypes` costs a 404 on every call to that entity.
+
+**Mapped entity endpoints** (`app.MapEntityEndpoints()`, no controllers) are not reached by an MVC convention, so `UseCentralRoutePrefix` leaves them at the root. Give them the base where they are mapped — `app.MapEntityEndpoints(o => o.Prefix = "api")` — and keep it equal to the controllers' prefix when the app has both; `app.UsePathBase("/api")` covers both alike. Their routes are already the kebab-case plurals above (`entities.patterns` → *Mapped entity endpoints (no controllers)*).
 
 > **Building the paired SPA?** This prefix is one of four settings that must line up — SPA axios base,
 > entity `IConfig.api`, the Vite dev proxy, and this route prefix. The front-end guide resolves them as one
@@ -582,7 +620,7 @@ Create `Extensions/ServiceCollectionExtensions.cs`. The complete wiring pattern 
 - Call `services.UseRegira(configuration)` **before** `UseEntities()` to apply paid license keys — omit for the free tier. See [§License requirement](./entities.instructions.md#license-requirement).
 - Call `options.UseDefaults()` to register primers, global query filters, and normalizer services
 - Call `options.UseMapsterMapping()` (default) or `options.UseAutoMapper()` for DTO mapping
-- *(web apps with attachments)* Call `options.UseAttachmentUris()` (namespace `Regira.Entities.Web.Attachments.DependencyInjection`, package `Regira.Entities.Web`) and register `AddHttpContextAccessor()` so attachment DTOs get a resolved `Uri`. `Regira.Entities.DependencyInjection` does not reference ASP.NET Core, so this resolution is opt-in; without it the `Uri` is `null` (not an error). The `Uri` links to the `GetFile` action on the attachment entity's controller, so keep the generated `EntityAttachmentControllerBase<…>` endpoints mapped — a custom/replacement download route is not auto-discovered (the `Uri` stays `null`; use the download endpoint directly).
+- *(web apps with attachments)* Call `options.UseAttachmentUris()` (namespace `Regira.Entities.Web.Attachments.DependencyInjection`, package `Regira.Entities.Web`) and register `AddHttpContextAccessor()` so attachment DTOs get a resolved `Uri`. `Regira.Entities.DependencyInjection` does not reference ASP.NET Core, so this resolution is opt-in; without it the `Uri` is `null` (not an error). The `Uri` links to the owner's mapped download when `MapEntityEndpoints()` serves it, else to the `GetFile` action on the attachment entity's controller, so keep one of the two in place — a custom/replacement download route is not auto-discovered (the `Uri` stays `null`; use the download endpoint directly).
 - *(optional)* Set `options.DefaultPageSize` / `options.MaxPageSize` to cap what List/Search controller endpoints return by default — see [Paging defaults](./entities.instructions.md#paging-defaults)
 - Create one `Add{EntityNameInPlural}()` extension method per entity — take `this IEntityServiceCollection<TContext>` as the parameter and **return `EntityServiceCollection<TContext>`** (the concrete type every `For<>()` returns). This keeps chains composable and assignable to `IServiceCollection` without extra unwrapping.
 

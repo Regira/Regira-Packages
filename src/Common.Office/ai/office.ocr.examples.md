@@ -16,7 +16,7 @@ byte[]     imageBytes = await _fileService.GetBytes("scans/invoice-2024-001.jpg"
 IMemoryFile imgFile   = imageBytes.ToMemoryFile("image/jpeg");
 
 OcrResult result = await ocr.Read(imgFile);
-if (result.Text != null)
+if (!string.IsNullOrWhiteSpace(result.Text))   // no text detected is an empty string
     await ParseInvoiceText(result.Text);
 ```
 

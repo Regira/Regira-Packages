@@ -1,9 +1,10 @@
-﻿using System.Dynamic;
-using ClosedXML.Excel;
+﻿using ClosedXML.Excel;
 using Regira.IO.Abstractions;
 using Regira.IO.Extensions;
 using Regira.Office.Excel.Abstractions;
+using Regira.Office.Excel.Internal;
 using Regira.Office.Excel.Models;
+using Regira.Office.MimeTypes;
 
 namespace Regira.Office.Excel.ClosedXML;
 
@@ -11,10 +12,14 @@ public class ExcelManager : IExcelService
 {
     public class Options
     {
-        public string DateFormat { get; set; } = "yyyy-MM-dd hh:mm:ss";
+        /// <summary>
+        /// Excel number format for <see cref="DateTime"/> cells.
+        /// <c>null</c> (default) keeps ClosedXML's date format.
+        /// </summary>
+        public string? DateFormat { get; set; }
     }
 
-    private readonly string _dateFormat;
+    private readonly string? _dateFormat;
     public ExcelManager(Options? options = null)
     {
         options ??= new Options();
@@ -22,43 +27,53 @@ public class ExcelManager : IExcelService
     }
 
 
+    /// <summary>
+    /// Reads every sheet, using its first row as the keys of the rows below it. Blank rows are skipped.
+    /// </summary>
+    /// <param name="input">The workbook</param>
+    /// <param name="headers">When supplied, only the columns with these headers are returned (case-insensitive)</param>
+    /// <param name="cancellationToken"></param>
     public Task<IEnumerable<ExcelSheet>> Read(IBinaryFile input, string[]? headers = null, CancellationToken cancellationToken = default)
     {
-        var sheets = ReadCore(input, headers).ToList();
-        return Task.FromResult<IEnumerable<ExcelSheet>>(sheets);
-    }
-    private IEnumerable<ExcelSheet> ReadCore(IBinaryFile input, string[]? headers = null)
-    {
-        using var ms = input.GetStream();
+        using var ms = input.GetStream()
+            ?? throw new ArgumentException("The input file has no content.", nameof(input));
         using var wb = new XLWorkbook(ms);
-        foreach (var sheet in wb.Worksheets)
-        {
-            var data = new List<object>();
-
-            var rows = sheet.RangeUsed().RowsUsed().Skip(1);
-            var sheetHeaders = sheet.Row(1).Cells().Select((c, i) => GetValue(c)?.ToString() ?? $"Column{i + 1}").ToArray();
-
-            foreach (var row in rows)
-            {
-                var item = new Dictionary<string, object?>();
-                row.CellCount();
-                for (var c = 0; c < sheetHeaders.Length; c++)
-                {
-                    var key = sheetHeaders[c];
-                    if (headers?.Any(h => h.Equals(key, StringComparison.InvariantCultureIgnoreCase)) ?? true)
-                    {
-                        item[key] = GetValue(row.Cell(c + 1));
-                    }
-                }
-                data.Add(item);
-            }
-
-            yield return new ExcelSheet
+        var sheets = wb.Worksheets
+            .Select(sheet => new ExcelSheet
             {
                 Name = sheet.Name,
-                Data = data
-            };
+                Data = ReadSheet(sheet, headers, cancellationToken)
+            })
+            .ToList();
+        return Task.FromResult<IEnumerable<ExcelSheet>>(sheets);
+    }
+    private List<object> ReadSheet(IXLWorksheet sheet, string[]? headers, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var data = new List<object>();
+        var lastColumn = sheet.LastColumnUsed()?.ColumnNumber() ?? 0;
+        if (lastColumn == 0)
+        {
+            return data;
         }
+
+        var headerRow = sheet.Row(1);
+        var columns = SheetHeaders.Keys(Enumerable.Range(1, lastColumn).Select(c => GetValue(headerRow.Cell(c))).ToList())
+            .Select((key, i) => (Number: i + 1, Key: key))
+            .Where(c => headers?.Contains(c.Key, StringComparer.InvariantCultureIgnoreCase) ?? true)
+            .ToList();
+
+        foreach (var row in sheet.RowsUsed().Where(r => r.RowNumber() > 1))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var item = new Dictionary<string, object?>(columns.Count);
+            foreach (var (number, key) in columns)
+            {
+                item[key] = GetValue(row.Cell(number));
+            }
+            data.Add(item);
+        }
+        return data;
     }
     private object? GetValue(IXLCell cell)
     {
@@ -77,55 +92,57 @@ public class ExcelManager : IExcelService
         };
     }
 
+    /// <summary>
+    /// Writes each sheet with a header row holding every key its rows use, in the order they first appear.
+    /// </summary>
+    /// <exception cref="ArgumentException">A sheet name breaks Excel's rules or is used more than once</exception>
     public Task<IMemoryFile> Create(IEnumerable<ExcelSheet> sheets, CancellationToken cancellationToken = default)
     {
-        using var wb = new XLWorkbook();
-        var sheetIndex = 0;
-        foreach (var sheet in sheets)
-        {
-            var headers = GetHeaders(sheet.Data.FirstOrDefault());
-            var ws = wb.AddWorksheet(sheet.Name ?? $"Sheet-{++sheetIndex}");
-            for (var i = 0; i < headers.Length; i++)
-            {
-                ws.Row(1).Cell(i + 1).Value = headers[i];
-            }
+        var sheetList = sheets.ToList();
+        var sheetNames = SheetNames.Resolve(sheetList.Select(s => s.Name).ToList());
 
-            var data = sheet.Data;
-            var firstItem = sheet.Data.Skip(1).FirstOrDefault();
-            if (firstItem is IDictionary<string, object?>)
+        using var wb = new XLWorkbook();
+        for (var i = 0; i < sheetList.Count; i++)
+        {
+            var ws = wb.AddWorksheet(sheetNames[i]);
+            var rows = SheetRows.ToDictionaries(sheetList[i].Data);
+            var keys = SheetRows.Keys(rows);
+            for (var c = 0; c < keys.Count; c++)
             {
-                data = sheet.Data.Select(dic => ((IDictionary<string, object?>)dic).Values).ToArray();
+                ws.Cell(1, c + 1).Value = keys[c];
             }
-            ws.Cell("A2").InsertData(data);
+            for (var r = 0; r < rows.Count; r++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                for (var c = 0; c < keys.Count; c++)
+                {
+                    if (rows[r].TryGetValue(keys[c], out var value) && value != null)
+                    {
+                        var cell = ws.Cell(r + 2, c + 1);
+                        cell.Value = ToCellValue(value);
+                        if (value is DateTime && _dateFormat != null)
+                        {
+                            cell.Style.NumberFormat.Format = _dateFormat;
+                        }
+                    }
+                }
+            }
         }
 
         var ms = new MemoryStream();
         wb.SaveAs(ms);
         ms.Position = 0;
-        return Task.FromResult<IMemoryFile>(ms.ToMemoryFile());
+        return Task.FromResult<IMemoryFile>(ms.ToMemoryFile(ContentTypes.XLSX));
     }
 
-    string[] GetHeaders(object item)
-    {
-        if (item == null)
+    private static XLCellValue ToCellValue(object value)
+        => value switch
         {
-            return [];
-        }
-        if (item is IDictionary<string, object?> dic)
-        {
-            return dic.Keys.ToArray();
-        }
-        return item.GetType().GetProperties().Select(p => p.Name).ToArray();
-    }
-    object ToAnonymousObject(IDictionary<string, object?> dictionary)
-    {
-        var expando = new ExpandoObject() as IDictionary<string, object?>;
-
-        foreach (var kvp in dictionary)
-        {
-            expando[kvp.Key] = kvp.Value;
-        }
-
-        return expando;
-    }
+            string text => text,
+            bool boolean => boolean,
+            DateTime date => date,
+            TimeSpan time => time,
+            byte or sbyte or short or ushort or int or uint or long or ulong or float or double or decimal => Convert.ToDouble(value),
+            _ => value.ToString()
+        };
 }

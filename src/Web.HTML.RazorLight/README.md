@@ -1,6 +1,6 @@
 # Regira.Web.HTML.RazorLight
 
-Razor template engine for [Regira Web](https://regira.github.io/Regira-Packages/src/Common.Web/), built on [RazorLight](https://www.nuget.org/packages/RazorLight). `RazorTemplateParser` implements `IHtmlParser` and renders a Razor template string with a model to HTML. Compiled templates are cached in memory: `RazorTemplateParser.Options.TemplateKey` reuses a compiled template across calls on the same parser instance.
+Razor template engine for [Regira Web](https://regira.github.io/Regira-Packages/src/Common.Web/), built on [RazorLight](https://www.nuget.org/packages/RazorLight). `RazorTemplateParser` implements `IHtmlParser` and renders a Razor template string with a model to HTML. Compiled templates are cached by their text, so each distinct template compiles once per process.
 
 ## Installation
 
@@ -8,10 +8,13 @@ Razor template engine for [Regira Web](https://regira.github.io/Regira-Packages/
 <PackageReference Include="Regira.Web.HTML.RazorLight" Version="6.*" />
 ```
 
+- The host project sets `<PreserveCompilationContext>true</PreserveCompilationContext>`; without it the first `Parse` throws `RazorLightException`.
+- A template compiles to C# and runs in your process with no sandbox: let only trusted administrators edit one.
+
 ## Documentation
 
-- [HTML Template Parsing](https://regira.github.io/Regira-Packages/src/Common.Web/#html-template-parsing) — the shared `IHtmlParser` contract, how the three template engines differ, and the `TemplateKey` option
-- [Render a Razor invoice template](https://regira.github.io/Regira-Packages/src/Common.Web/docs/examples.html#example-1-render-a-razor-invoice-template) — a RazorLight parser registered with a template key, feeding HTML-to-PDF
+- [HTML Template Parsing](https://regira.github.io/Regira-Packages/src/Common.Web/#html-template-parsing) — the shared `IHtmlParser` contract, how the three template engines differ, template caching
+- [Render a Razor invoice template](https://regira.github.io/Regira-Packages/src/Common.Web/docs/examples.html#example-1-render-a-razor-invoice-template) — a RazorLight parser registered as a singleton, feeding HTML-to-PDF
 
 ## License
 

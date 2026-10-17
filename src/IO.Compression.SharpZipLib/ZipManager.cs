@@ -102,10 +102,12 @@ public class ZipManager
                     }
                     buffer.Write(chunk, 0, read);
                 }
+                var bytes = buffer.ToArray();
                 files.Add(new BinaryFileItem
                 {
                     FileName = name,
-                    Bytes = buffer.ToArray()
+                    Bytes = bytes,
+                    Length = bytes.Length
                 });
             }
         }

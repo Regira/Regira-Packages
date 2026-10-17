@@ -1,6 +1,6 @@
 # Regira.Office.Excel.ClosedXML
 
-Excel backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/), built on [ClosedXML](https://www.nuget.org/packages/ClosedXML). `ExcelManager` implements `IExcelService`, reading and writing rows as dictionaries; it has no typed sheets. Of the four Excel backends it is the only one whose `headers` argument narrows a read to the named columns.
+Excel backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/), built on [ClosedXML](https://www.nuget.org/packages/ClosedXML). `ExcelManager` implements `IExcelService`, reading and writing rows as dictionaries; it has no typed sheets. Like MiniExcel and NpoiMapper, its `headers` argument narrows a read to the named columns; EPPlus reads them as the keys instead.
 
 ## Installation
 

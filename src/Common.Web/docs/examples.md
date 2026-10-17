@@ -3,14 +3,12 @@
 
 ## Example 1: Render a Razor invoice template
 
-Use `RazorLight` with a template key so the compiled template is cached across requests.
+The parser compiles `Invoice.cshtml` on the first request and renders the cached template on every request after it.
 
 <!-- no-compile -->
 ```csharp
 public class InvoiceService(IHtmlParser html, IHtmlToPdfService pdf)
 {
-    private const string TemplateKey = "invoice-v1";
-
     public async Task<IMemoryFile> GeneratePdf(InvoiceDto invoice)
     {
         string template = await File.ReadAllTextAsync("Templates/Invoice.cshtml");
@@ -21,8 +19,7 @@ public class InvoiceService(IHtmlParser html, IHtmlToPdfService pdf)
 }
 
 // Registration
-services.AddSingleton<IHtmlParser>(
-    new Regira.Web.HTML.RazorLight.RazorTemplateParser(new() { TemplateKey = TemplateKey }));
+services.AddSingleton<IHtmlParser>(new Regira.Web.HTML.RazorLight.RazorTemplateParser());
 ```
 
 `Templates/Invoice.cshtml`:
@@ -45,11 +42,11 @@ services.AddSingleton<IHtmlParser>(
 
 ## Example 2: Simple token-replacement template
 
-For templates without Razor syntax — use `HtmlTemplateParser` and `{{Token}}` placeholders.
+For templates without Razor syntax — use `HtmlTemplateParser` and `{token}` placeholders.
 
 <!-- no-compile -->
 ```csharp
-var parser   = new HtmlTemplateParser(jsonSerializer);
+var parser   = new HtmlTemplateParser(jsonSerializer) { HtmlEncode = true };
 var template = await File.ReadAllTextAsync("Templates/Welcome.html");
 
 string html = await parser.Parse(template, new
@@ -63,44 +60,38 @@ string html = await parser.Parse(template, new
 `Templates/Welcome.html`:
 
 ```html
-<p>Hi {{Name}},</p>
-<p>Your account at <strong>{{CompanyName}}</strong> is ready.</p>
-<!--{{LoginUrl}}-->
-<a href="{{LoginUrl}}">Log in now</a>
-<!--{{/LoginUrl}}-->
+<p>Hi {name},</p>
+<p>Your account at <strong>{companyName}</strong> is ready.</p>
+<a href="{loginUrl}">Log in now</a>
 ```
 
-The `<!--{{LoginUrl}}-->` block is only rendered when `LoginUrl` is truthy.
+The keys are the JSON serializer's camel-cased property names. `HtmlEncode` encodes each value, so a name holding `<` stays text.
 
 ---
 
-## Example 3: Global exception handling middleware
+## Example 3: Exceptions and culture with ASP.NET Core's middleware
 
-Add structured error logging without exposing internals to the API consumer.
+Log unhandled exceptions without exposing internals to the API consumer, and read a `?culture=` parameter on every
+request.
 
 ```csharp
 // Program.cs
-services.AddGlobalExceptionHandling();
-app.UseGlobalExceptionHandling();
+services.AddProblemDetails();
+
+app.UseExceptionHandler();
+app.UseRequestLocalization(options => options
+    .SetDefaultCulture("en")
+    .AddSupportedCultures("en", "fr-BE")
+    .AddSupportedUICultures("en", "fr-BE"));
+
+// GET /api/dates?culture=fr-BE  → CultureInfo is fr-BE for this request
 ```
 
-All uncaught exceptions now return a clean 500 and are logged to `ILogger<GlobalExceptionHandler>`.
+An uncaught exception is logged and answered with a 500 problem response.
 
 ---
 
-## Example 4: Culture from query string
-
-Support multi-language APIs by reading a `?culture=` parameter on every request.
-
-```csharp
-app.UseRequestCulture();
-
-// GET /api/dates?culture=fr-BE  → CultureInfo is set to fr-BE for this request
-```
-
----
-
-## Example 5: Background export queue
+## Example 4: Background export queue
 
 Queue a long report generation task and return an accepted status immediately. The queue itself ships in
 `Regira.System.Hosting` — its API reference is in
@@ -147,9 +138,53 @@ public IActionResult GetStatus(string taskId, IBackgroundTaskManager<ReportTask>
 
 ---
 
+## Example 5: Render an invoice component
+
+The invoice of Example 1 as a Razor component. It compiles with the application, so a misspelt property fails the build, and the first request renders without compiling anything.
+
+<!-- no-compile -->
+```csharp
+public class InvoiceService(IHtmlComponentRenderer html, IHtmlToPdfService pdf)
+{
+    public async Task<IMemoryFile> GeneratePdf(InvoiceDto invoice)
+    {
+        string rendered = await html.Render<InvoiceTemplate, InvoiceDto>(invoice);
+
+        return await pdf.Create(new HtmlInput { HtmlContent = rendered });
+    }
+}
+
+// Registration
+services.AddTransient<IHtmlComponentRenderer, Regira.Web.HTML.RazorComponents.RazorComponentRenderer>();
+```
+
+`Templates/InvoiceTemplate.razor`:
+
+```razor
+<h1>Invoice #@Model.Number</h1>
+<p>Customer: @Model.CustomerName</p>
+<table>
+@foreach (var line in Model.Lines)
+{
+    <tr>
+        <td>@line.Description</td>
+        <td>@line.Total.ToString("C")</td>
+    </tr>
+}
+</table>
+
+@code {
+    [Parameter, EditorRequired] public InvoiceDto Model { get; set; } = null!;
+}
+```
+
+The project that holds the template uses the Razor SDK: `Microsoft.NET.Sdk.Web`, or `Microsoft.NET.Sdk.Razor` for a worker or class library.
+
+---
+
 ## Overview
 
 1. [Index](../README.md) — Overview, template engines, middleware, and Swagger
-1. **[Examples](examples.md)** — HTML templating, exception handling, background tasks
+1. **[Examples](examples.md)** — HTML templating, exception handling, background tasks, Razor components
 
 <!-- {% endraw %} -->

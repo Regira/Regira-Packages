@@ -6,6 +6,7 @@ namespace Regira.IO.Models;
 /// Represents a text file item that extends the functionality of a binary file item 
 /// by including support for text content.
 /// </summary>
+[Obsolete("Nothing in the Regira packages uses it. Will be removed in v7.")]
 public class TextFileItem : BinaryFileItem, ITextFile
 {
     /// <summary>

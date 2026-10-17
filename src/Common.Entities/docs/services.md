@@ -15,10 +15,88 @@ IEntityService<TEntity, TKey, TSearchObject, TSortBy, TIncludes>
 
 ## Service Layer Architecture
 
-- The default implementation is `EntityRepository`, which uses EF Core `DbContext` for data access
-- The `EntityRepository` is enriched by multiple helper services (QueryBuilders, Processors, Preppers, Validators, Primers, Reactors)
-- Replace the default EntityService using `UseEntityService` with a custom implementation (e.g., `CachedEntityService` that adds caching on top of the repository)
+- The default implementation is `EntityRepository`. It hands reads to `EntityReadService` and writes to
+  `EntityWriteService`, both working on the EF Core `DbContext`
+- Helper services plug into each stage: query builders and processors into the reads, preppers and validators into
+  the writes. Primers and normalizers run inside the `DbContext`'s `SaveChanges`, reactors once it is committed
+- Replace the default for one entity with `HasRepository` (derive from `EntityRepository`) or `UseEntityService`
+  (wrap it) — see [Replacing the repository for one entity](#replacing-the-repository-for-one-entity)
 - Replace the default `EntityRepository` for every entity at once with `UseRepository` — see [Replacing the repository app-wide](#replacing-the-repository-app-wide)
+
+```mermaid
+flowchart TB
+    caller["Controller · mapped endpoint · job"] -- request --> sender["IEntitySender"]
+    caller -. direct call .-> service
+    sender --> handler["Request handler"]
+    handler -- "input DTO → entity<br/>entity → DTO" --> mapper["IEntityMapper"]
+    handler --> service["IEntityService"]
+    mapper --> engine["Mapster or AutoMapper"]
+    mapper --> after["AfterMappers<br/>After · AfterInput"]
+    service -- default --> repo["EntityRepository"]
+    repo --> read["EntityReadService"]
+    repo --> write["EntityWriteService"]
+    read --> qb["Query builders<br/>global filters · filters · sorting · includes"]
+    read --> proc["Processors"]
+    write --> prep["Preppers"]
+    write --> val["Validators"]
+    read --> db[("DbContext")]
+    write --> db
+    db --> icpt["SaveChanges interceptors<br/>primers · normalizers · reactors"]
+
+    classDef helper fill:#fff4d6,stroke:#c9a227,color:#000
+    classDef choice stroke-dasharray:5 5
+    class after,qb,proc,prep,val,icpt helper
+    class engine choice
+```
+
+The highlighted boxes are the helper services an application registers, and the dashed one is the mapping engine it
+picks with `UseMapsterMapping()` or `UseAutoMapper()` — the engine's package supplies the `IEntityMapper`, which runs
+the AfterMappers once the engine has mapped. The others are the framework's defaults.
+The endpoints send their requests through `IEntitySender` ([Entity Operations](web-endpoints.md#entity-operations)),
+which adds what an endpoint answers — paging defaults, DTO mapping, the re-read after a save. Code that calls
+`IEntityService` directly gets the same filters, preppers and validators without those.
+
+### Read and save flow
+
+A list or details read builds one query, runs it, and hands the rows to the processors:
+
+```mermaid
+flowchart LR
+    so["Search object<br/>sort · includes · paging"] --> filters["Filters<br/>global + entity"]
+    filters --> sort["Sorting"] --> page["Paging"] --> incl["Includes"] --> query[("Query")]
+    query --> proc["Processors"] -. entity operations .-> map["Mapping<br/>+ AfterMappers"]
+```
+
+A save, as the `SaveCommand` of a `POST` or `PUT` runs it:
+
+```mermaid
+sequenceDiagram
+    participant E as Endpoint or sender
+    participant H as SaveCommand handler
+    participant M as IEntityMapper
+    participant S as IEntityService
+    participant D as DbContext
+    participant R as Reactors
+    E->>H: SaveCommand(input DTO)
+    H->>H: check the input DTO (DataAnnotations)
+    H->>M: map input DTO to entity (+ AfterInput)
+    opt update
+        H->>S: does the row exist? (else 404)
+    end
+    H->>S: Save(entity)
+    S->>S: preppers, then validators (400 on a refusal)
+    S->>D: track the entity
+    H->>S: SaveChanges()
+    S->>D: SaveChanges()
+    D->>D: primers, normalizers, write and commit
+    D-)R: committed changes, in a DI scope of their own
+    H->>S: Details(id) with includes and processors
+    H->>M: map entity to DTO (+ AfterMappers)
+    H-->>E: SaveResult
+```
+
+The controllers leave the input check to MVC, which has answered an invalid request body by then. A delete runs the
+validators too, against the row as stored, and no prepper.
 
 ## Standard EntityRepository Methods
 
@@ -40,7 +118,7 @@ Task<long> Count(TSearchObject? so, CancellationToken token = default)
 Task<long> Count(IList<TSearchObject?> so, CancellationToken token = default)
 ```
 
-> **Paging at the service layer:** `List` only pages when you pass a `PagingInfo` with a positive `PageSize`; otherwise it returns the full set. The configurable default/maximum page size (`DefaultPageSize` / `MaxPageSize`, or per-entity `e.SetPageSize(...)`) is applied at the **HTTP boundary** (the MVC controllers), not here — so direct service calls keep full control. See [Web Endpoints → Paging](web-endpoints.md#paging).
+> **Paging at the service layer:** `List` only pages when you pass a `PagingInfo` with a positive `PageSize`; otherwise it returns the full set. The configurable default/maximum page size (`DefaultPageSize` / `MaxPageSize`, or per-entity `e.SetPageSize(...)`) is applied by the list and search requests the endpoints send ([Entity Operations](web-endpoints.md#entity-operations)), not here — so direct service calls keep full control. See [Web Endpoints → Paging](web-endpoints.md#paging).
 
 ### Write Operations
 
@@ -233,7 +311,7 @@ The signature is `Related(navigationExpression, prepareFunc, configure)`, where 
 - **`prepareFunc`** — a parent-level prepare callback, invoked with the parent entity.
 - **`configure`** — a `RelatedEntityBuilder` callback for shaping the child collection. Use `builder.Related(...)` to synchronize a nested sub-collection (recursively, to any depth) and `builder.Prepare(...)` to run a per-item prepare on each child.
 
-For an `int`-keyed child, the single-type-argument `Related<TRelated>` of every `int`-keyed builder also takes `configure` in second position, so `e.Related(x => x.Lines, r => r.ServerOwned(x => x.UnitPrice))` needs no parameter name. The two-type-argument form below always reads its second argument as `prepareFunc`, so it names `configure:`.
+For an `int`-keyed child, every builder infers the type argument, whatever the parent's key, and takes `configure` in second position too, so `e.Related(x => x.Lines, r => r.ServerOwned(x => x.UnitPrice))` needs no parameter name. A child with another key type takes the two-type-argument form below, which always reads its second argument as `prepareFunc`, so it names `configure:`.
 
 <!-- no-compile -->
 ```csharp
@@ -258,6 +336,13 @@ e.Related<TRelated, TRelatedKey>(x => x.Collection,
 ```
 
 ### Entity Validators
+
+A validator checks what the input alone cannot tell: the entity as the preppers left it (a total they computed), the
+row as stored (`Original`, or `Item` on a delete) and other rows (a reference that must exist, a code that must be
+unique). The shape of the input — required fields, lengths, formats, ranges — belongs on the input DTO: its
+DataAnnotations are checked before the input is mapped, so an invalid request never reaches the preppers
+([Entity Operations → Input validation](web-endpoints.md#entity-operations)). Code that calls `IEntityService` directly
+skips that check; the validators run on every write path.
 
 - Refuse a write: run inside `Add` / `Modify` / `Save` after **every** prepper (the global ones and the `Related()`
   sync included, whatever the registration order), and inside `Remove`, where no prepper runs
@@ -317,7 +402,7 @@ e.Related<TRelated, TRelatedKey>(x => x.Collection,
 |-------|----------|
 | `EntityValidatorBase<Order>` | `Order` only |
 | `EntityValidatorBase<Party>` | `Person` and `Organization`, whichever service saves them |
-| `EntityValidatorBase<IHasCode>` | every entity implementing `IHasCode` |
+| `EntityValidatorBase<IArchivable>` | every entity implementing `IArchivable` |
 
 <!-- no-compile -->
 ```csharp
@@ -339,19 +424,39 @@ public abstract class EntityValidatorBase<TScope> : IEntityValidator<TScope>
 ```csharp
 .For<Order>(e =>
 {
+    // the row as stored: on a delete, Item is the stored row
     e.Validate(ctx =>
     {
         if (ctx.Operation == EntityWriteOperation.Remove && ctx.Item.Status == OrderStatus.Shipped)
             ctx.AddError(nameof(Order.Status), "A shipped order cannot be deleted.");
     });
+    // other rows
     e.Validate(async (ctx, db, token) =>
     {
         // db sees every row: with scoped reads (tenants, owners), check through the filtered read service (above)
         if (ctx.Operation != EntityWriteOperation.Remove && !await db.Customers.AnyAsync(c => c.Id == ctx.Item.CustomerId, token))
             ctx.AddError(nameof(Order.CustomerId), $"Customer {ctx.Item.CustomerId} does not exist.");
     });
-    e.AddValidator<OrderStatusValidator>();
+    // a value a prepper computed
+    e.AddValidator<CreditLimitValidator>();
 })
+
+// a class validator takes its services from DI
+public class CreditLimitValidator(AppDbContext db) : EntityValidatorBase<Order>
+{
+    public override async Task Validate(IEntityValidatorContext<Order> ctx, CancellationToken token = default)
+    {
+        if (ctx.Operation == EntityWriteOperation.Remove)
+            return;
+        var limit = await db.Customers
+            .Where(c => c.Id == ctx.Item.CustomerId)
+            .Select(c => c.CreditLimit)
+            .FirstOrDefaultAsync(token);
+        // Total is summed from the lines by a prepper, so it is known at this stage and not before
+        if (ctx.Item.Total > limit)
+            ctx.AddError(nameof(Order.Total), "ValueTooLarge", new { max = limit });
+    }
+}
 ```
 
 <!-- no-compile -->
@@ -361,27 +466,21 @@ using Regira.Entities.DependencyInjection.Validators;   // AddValidator on the o
 // global: one validator for every entity implementing the interface
 services.UseEntities<AppDbContext>(o =>
 {
-    o.AddValidator<CodeValidator>();
-    // or a delegate: ctx => …, async ctx => …, or async (ctx, db, token) => … with AddValidator<AppDbContext, IHasCode>
-    o.AddValidator<IHasCode>(ctx =>
-    {
-        if (ctx.Operation != EntityWriteOperation.Remove && ctx.Item.Code?.Contains(' ') == true)
-            ctx.AddError(nameof(IHasCode.Code), "A code has no spaces.");
-    });
+    o.AddValidator<ArchivedIsReadOnlyValidator>();
+    // or a delegate: o.AddValidator<IArchivable>(ctx => …) or async ctx => …,
+    // and async (ctx, db, token) => … with AddValidator<AppDbContext, IArchivable>
 });
 // the same overloads extend IServiceCollection, for a registration outside UseEntities()
-services.AddValidator<CodeValidator>();
+services.AddValidator<ArchivedIsReadOnlyValidator>();
 
-public class CodeValidator : EntityValidatorBase<IHasCode>
+// the row as stored decides: an archived row takes no edits until it is restored
+public class ArchivedIsReadOnlyValidator : EntityValidatorBase<IArchivable>
 {
-    public override Task Validate(IEntityValidatorContext<IHasCode> ctx, CancellationToken token = default)
+    public override Task Validate(IEntityValidatorContext<IArchivable> ctx, CancellationToken token = default)
     {
-        if (ctx.Operation == EntityWriteOperation.Remove)
-            return Task.CompletedTask;
-        if (string.IsNullOrWhiteSpace(ctx.Item.Code))
-            ctx.AddError(nameof(IHasCode.Code), "A code is required.");
-        else if (ctx.Item.Code.Length > 20)
-            ctx.AddError(nameof(IHasCode.Code), "TooLong", new { max = 20 });
+        // a restore sets IsArchived back to false, and passes
+        if (ctx.Operation == EntityWriteOperation.Modify && ctx.Original?.IsArchived == true && ctx.Item.IsArchived)
+            ctx.AddError("", "An archived record is read-only. Restore it first.");
         return Task.CompletedTask;
     }
 }
@@ -431,19 +530,26 @@ public abstract class EntityPrimerBase<T> : IEntityPrimer<T>
   `BeginTransaction()` — also for contexts sharing that transaction through `UseTransaction`, whichever of them
   commits it — and when an ambient `TransactionScope` completes. A failed save, a rollback, or a transaction
   disposed without committing reacts to nothing
-- Not seen: a rollback to a savepoint — the reactions of the saves made after it still run — and a transaction
-  committed outside EF, on the `DbTransaction` itself — its reactions never run. A transaction begun outside EF and
-  handed to `UseTransaction` is known to have ended only when it commits or rolls back through EF: on Npgsql, which
-  reuses the transaction object of a pooled connection, one disposed without either leaves its reactions to the
-  next such transaction on that connection
+- One save is one transaction. Every write the library makes — a generated endpoint, `IEntityService.SaveChanges()`,
+  the related rows a prepper changes, an attachment upload — flushes in a single `SaveChanges`, which EF wraps in a
+  transaction of its own. A unit of work that spans several saves or several services is the application's:
+  `BeginTransaction()` inside `CreateExecutionStrategy().Execute(...)`, or a `TransactionScope` with
+  `TransactionScopeAsyncFlowOption.Enabled`. The library joins either, and its reactors wait for that commit
+- A rollback to a savepoint does not say which saves it undid, so the reactions of every save made before it in that
+  transaction still run when it commits: a reactor that must not act on a change that never happened reads the
+  stored row first, as `AttachmentFileReactor` does
+- Not seen: a transaction committed outside EF, on the `DbTransaction` itself — its reactions never run. A
+  transaction begun outside EF and handed to `UseTransaction` is known to have ended only when it commits or rolls
+  back through EF: on Npgsql, which reuses the transaction object of a pooled connection, one disposed without either
+  leaves its reactions to the next such transaction on that connection
 - Receive an `IEntityChange<TEntity>`: `Kind` (`Added`/`Modified`/`Deleted` — a soft delete is `Modified`),
   `Entity` (the committed row, generated keys filled in), `Original` (the row as stored before the save) and
   `ChangedProperties`, with the `HasChanged(x => x.Status)` and `ChangedTo(x => x.Status, value)` helpers. Values
   are detached snapshots without navigations
-- The stored values come from the entity as it was loaded — by a tracking query, `Modify` or the `Related()` sync.
-  Every other write (`Update()` of a detached entity, a stub `Attach` or `Remove`, a delete through the service)
-  has its rows read during the save, one query per entity type — only for entity types a reactor is registered for.
-  `ExecuteUpdate` / `ExecuteDelete` bypass the change tracker, so no reactor sees them
+- The stored values are read during the save: the stored rows of its updates and deletes, whatever the entries
+  hold, one query per entity type (a row at a time for a composite, converted or owned key) — only for entity types a
+  reactor is registered for. `ExecuteUpdate` /
+  `ExecuteDelete` bypass the change tracker, so no reactor sees them
 - Run in process, inside the call that commits, which returns once they have run: `SaveChanges()` for a save that
   commits on its own; `Commit()` / `CommitAsync()` for the saves inside `BeginTransaction()`, whose own
   `SaveChanges()` returns before anything reacts; the `Dispose()` that ends a completed `TransactionScope`, which
@@ -452,6 +558,10 @@ public abstract class EntityPrimerBase<T> : IEntityPrimer<T>
   own unit of work, and that save runs the reactors of what it wrote (up to 8 levels deep). Hand slow work to a job
   system
 - A reactor that throws is logged and skipped: the save still succeeds and the other reactors still run
+- A reaction happens at most once: a crash between the commit and the reaction loses it, the enqueue to a job
+  system included, and nothing retries a reactor that threw. Work that must happen writes a row of its own in the
+  same save (an outbox), and a hosted service delivers each row at least once, the row's id serving the receiver as
+  its deduplication key
 - Wired into the DbContext options by `UseEntities(e => e.UseDefaults())`; without `UseDefaults()`, add
   `DbContextWiring.Reactors` to `e.WireDbContext(...)`
 - Can be registered **globally** (`options.AddReactor<T>()` — a reactor on an interface or base type reaches every entity it covers) or **per entity** (`e.AddReactor<T>()` — that entity only, whatever type the reactor is written against)
@@ -480,7 +590,22 @@ public class OrderInvoicingReactor(IOrderInvoicer invoicer) : EntityReactorBase<
 
 ### Configuration Example
 
-This example demonstrates how to configure entities with all helper services:
+Every helper service registers per entity, on the `For<>()` builder; most also register globally, on the
+`UseEntities()` options, where one written against an interface or base type reaches every entity it covers:
+
+| Helper | Global (`options.…`) | Per entity (`e.…`) |
+|--------|----------------------|--------------------|
+| Filter query builder | `AddGlobalFilterQueryBuilder<T>()` | `Filter(...)`, `AddFilter<T>()` |
+| Sort / include query builder | — | `SortBy(...)`, `Includes(...)`, `AddSortBy<T>()`, `AddIncludes<T>()` |
+| Processor | — | `Process(...)`, `AddProcessor<T>()` |
+| Prepper | `AddPrepper<T>()`, `AddPrepper<TScope>(item => …)` | `Prepare(...)`, `AddPrepper<T>()`, `Related(...)`, `ServerOwned(...)` |
+| Validator | `AddValidator<T>()`, `AddValidator<TScope>(ctx => …)` | `Validate(...)`, `AddValidator<T>()` |
+| Primer | `AddPrimer<T>()` | `AddPrimer<T>()` |
+| Normalizer | `AddNormalizer<T>()` | `AddNormalizer<T>()` |
+| Reactor | `AddReactor<T>()` | `React(...)`, `AddReactor<T>()` |
+| AfterMapper | `AddAfterMapper<T>()`, `AfterMap<TSource, TTarget>(...)` | `UseMapping<TDto, TInputDto>().After(...)`, `.AfterInput(...)` |
+
+This example uses each of them:
 
 <!-- no-compile -->
 ```csharp
@@ -494,12 +619,17 @@ services.AddDbContext<MyDbContext>(db =>
 services
     .UseEntities<MyDbContext>(options =>
     {
-        // Global helper services (apply to all entities implementing an interface)
-        options.AddGlobalFilterQueryBuilder<FilterIdsQueryBuilder<int>>();
-        options.AddGlobalFilterQueryBuilder<FilterArchivablesQueryBuilder>();
+        // the interceptors, and the built-in filters, preppers, primers and normalizers
+        options.UseDefaults();
+        options.UseMapsterMapping();
+
+        // Global helper services (apply to every entity implementing an interface or base type)
+        options.AddGlobalFilterQueryBuilder<TenantQueryFilter>();   // row scoping for every ITenantOwned entity
         // using Prepper shortcut (inline implementation)
         options.AddPrepper<IHasAggregateKey>(x => x.AggregateKey ??= Guid.NewGuid());
-        options.AddPrimer<AutoTruncatePrimer>();
+        options.AddValidator<ArchivedIsReadOnlyValidator>();        // see Entity Validators
+        options.AddPrimer<HasCreatedByPrimer>();                    // stamps the user on every IHasCreatedBy
+        options.AddReactor<AuditTrailReactor>();                    // an EntityReactorBase<IEntity>: every committed change
     })
     
     // Category
@@ -606,6 +736,9 @@ services
             item.TotalAmount = item.OrderItems?.Sum(x => x.Quantity * x.UnitPrice) ?? 0;
             await Task.CompletedTask;
         });
+
+        // Server-owned field — restored from the stored row on update, minted on create
+        e.ServerOwned(x => x.OrderNumber, _ => $"ORD-{Guid.NewGuid():N}"[..16]);
         
         // Simple related with parent-level prepare
         e.Related(x => x.OrderItems, item => item.OrderItems?.SetSortOrder());
@@ -615,6 +748,26 @@ services
         //     builder.Related(oi => oi.Options);
         //     builder.Prepare(oi => oi.RecalculateTotals());
         // });
+
+        // Validators — run after every prepper, so they see the recalculated total
+        e.Validate(ctx =>
+        {
+            if (ctx.Operation == EntityWriteOperation.Remove && ctx.Item.Status == OrderStatus.Shipped)
+                ctx.AddError(nameof(Order.Status), "A shipped order cannot be deleted.");
+        });
+        e.AddValidator<CreditLimitValidator>();
+
+        // Normalizer — runs inside SaveChanges, after the primers
+        e.AddNormalizer<OrderNormalizer>();
+
+        // Reactors — run once the save is committed
+        e.React(x => x.Status, OrderStatus.Shipped, (change, services, token) =>
+            services.GetRequiredService<IOrderMailer>().SendShipped(change.Entity.Id, token));
+        e.AddReactor<OrderInvoicingReactor>();
+
+        // Mapping + AfterMapper — UseMapping returns the mapping builder, so it goes last
+        e.UseMapping<OrderDto, OrderInputDto>()
+            .After((order, dto) => dto.LineCount = order.OrderItems?.Count ?? 0);
     });
 ```
 
@@ -622,6 +775,94 @@ services
 
 1. **Global services** execute first (registered on `EntityServiceCollectionOptions`)
 2. **Entity-specific services** execute next (registered on entity builder)
+
+### Replacing the repository for one entity
+
+A rule that belongs to one stage — a filter, a prepper, a validator — is a helper service. The service itself is
+replaced for what has no stage: methods of its own, a concern around every call, another data source.
+
+| Registration | The class | Registered as |
+|--------------|-----------|---------------|
+| `e.HasRepository<T>()` | derives from `EntityRepository` — overrides members, adds methods | the entity's `IEntityRepository<…>` and `IEntityService<…>` |
+| `e.UseEntityService<T>()` | derives from `EntityWrappingServiceBase` and wraps the repository, or implements `IEntityService<…>` over another store | the entity's `IEntityService<…>` |
+
+```mermaid
+flowchart LR
+    caller["Endpoints · jobs"] --> svc["IEntityService"]
+    svc -- UseEntityService --> wrapper["ProductService<br/>wraps"]
+    svc -. no wrapper .-> repo["IEntityRepository"]
+    wrapper --> repo
+    repo -- HasRepository --> custom["ProductRepository<br/>derives from EntityRepository"]
+    repo -. default .-> def["EntityRepository"]
+    custom --> rw["Read and write services"]
+    def --> rw
+```
+
+```csharp
+using Microsoft.Extensions.Logging;
+using Regira.Entities.EFcore.Services;
+
+public class Product : IEntityWithSerial
+{
+    public int Id { get; set; }
+    public string? Title { get; set; }
+    public bool IsFeatured { get; set; }
+}
+public record ProductSearchObject : SearchObject
+{
+    public bool? IsFeatured { get; set; }
+}
+
+// HasRepository: a method of its own beside the standard ones
+public interface IProductRepository : IEntityRepository<Product, int, ProductSearchObject>
+{
+    Task<IList<Product>> ListFeatured(CancellationToken token = default);
+}
+public class ProductRepository(
+    IEntityReadService<Product, int, ProductSearchObject> readService,
+    IEntityWriteService<Product, int> writeService)
+    : EntityRepository<Product, int, ProductSearchObject>(readService, writeService), IProductRepository
+{
+    // through the read pipeline, so the global filters (row security) and the entity's filters apply
+    public Task<IList<Product>> ListFeatured(CancellationToken token = default)
+        => List(new ProductSearchObject { IsFeatured = true }, null, token);
+}
+
+// UseEntityService: behaviour around a call, the repository left as it is
+public class ProductService(IEntityRepository<Product, int, ProductSearchObject> repository, ILogger<ProductService> logger)
+    : EntityWrappingServiceBase<Product, int, ProductSearchObject>(repository)
+{
+    public override async Task Remove(Product item, CancellationToken token = default)
+    {
+        logger.LogInformation("Removing product {Id}", item.Id);
+        await base.Remove(item, token);
+    }
+}
+```
+
+<!-- no-compile -->
+```csharp
+services.UseEntities<ShopDbContext>(o => o.UseDefaults())
+    .For<Product, int, ProductSearchObject>(e =>
+    {
+        e.Filter((query, so) => so?.IsFeatured is { } featured ? query.Where(x => x.IsFeatured == featured) : query);
+        e.HasRepository<ProductRepository>();
+        e.AddTransient<IProductRepository, ProductRepository>();   // inject it by its own interface
+        e.UseEntityService<ProductService>();                      // after HasRepository: the last IEntityService registration wins
+    });
+```
+
+- The wrapper takes the **repository**, `IEntityRepository<…>`, never `IEntityService<…>`: that resolves to the
+  wrapper itself, and the container meets a circular dependency
+- Both registrations add an `IEntityService<…>`, and the last one wins — so `HasRepository` goes before
+  `UseEntityService`, or the repository replaces the wrapper
+- `Save` routes to the wrapper's own `Add` or `Modify`, so logic around a create or an update goes there; the
+  members a wrapper can override are listed under [Built-in Features → Wrapping service](built-in-features.md#wrapping-service)
+- An override of `Details(id)` on an `IArchivable` entity overrides `Details(id, archived)` too: a read with
+  `?archived=` and the re-read after a save go through the second
+- Implemented over another store — reference data in memory, a remote API — the class is an `IEntityService<…>` of its
+  own, registered with `UseEntityService`; it runs no preppers or validators unless it calls them (see
+  [Entity Validators](#entity-validators))
 
 ### Replacing the repository app-wide
 

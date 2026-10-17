@@ -58,6 +58,30 @@ fields, so an object keyed by owner name throws `InvalidOperationException` at s
 ]
 ```
 
+The keys themselves belong in user-secrets or the environment (`Authentication:ApiKeys:0:Key`), not in
+`appsettings.json`; configuration merges the entries by index. A key never set throws at startup, naming the path to
+set.
+
+### API keys from your own store
+
+`AddApiKeyAuthentication()` registers no `IApiKeyOwnerService`; the handler resolves whichever is registered, and
+`AddInMemoryApiKeyAuthentication` is one. For keys in your database, implement it over your `DbContext` and register
+it instead:
+
+<!-- no-compile -->
+```csharp
+using Regira.Security.Authentication.ApiKey.Abstraction; // IApiKeyOwnerService
+
+services.AddScoped<IApiKeyOwnerService, DbApiKeyOwnerService>();
+services.AddApiKeyAuthentication();
+```
+
+- The handler calls only `FindByKey`, and `null` gives 401.
+- Generate the key on the server from 32 or more random bytes, show it once, and store and look it up by its
+  unsalted SHA-256: a key that random needs no salt, and a salted hash cannot be looked up.
+- Revoke with a `RevokedAt` that `FindByKey` filters on.
+- Do not also call `AddInMemoryApiKeyAuthentication`, since the last registration wins.
+
 ---
 
 ## Overview

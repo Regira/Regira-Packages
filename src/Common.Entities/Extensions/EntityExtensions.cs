@@ -7,6 +7,7 @@ public static class EntityExtensions
     public static bool IsNew<TKey>(this IEntity<TKey> item)
         => item.Id?.Equals(default(TKey)) ?? true;
 
+    [Obsolete("The Related() and attachment syncs clear a negative key at every depth before the row is inserted, so this call is no longer needed. Will be removed in v7.")]
     public static void AdjustIdForEfCore(this IEnumerable<IEntity<int>> items)
     {
         foreach (var item in items)

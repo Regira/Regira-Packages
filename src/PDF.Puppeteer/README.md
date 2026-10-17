@@ -1,6 +1,6 @@
 # Regira.Office.PDF.Puppeteer
 
-HTML→PDF backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/) that renders through headless Chromium with [PuppeteerSharp](https://www.nuget.org/packages/PuppeteerSharp), for pages whose CSS needs a browser engine. `PdfManager` implements `IHtmlToPdfService`. Only `HtmlInput.HtmlContent` is used, on PuppeteerSharp's default paper size, Letter: the page size, orientation, margins, header and footer are not applied — PDF.SelectPdf applies them.
+HTML→PDF backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/) that renders through headless Chromium with [PuppeteerSharp](https://www.nuget.org/packages/PuppeteerSharp), for pages whose CSS needs a browser engine. `PdfManager` implements `IHtmlToPdfService` and applies every `HtmlInput` setting — page size, orientation, margins, header and footer — on Windows, Linux and macOS, with no page limit, as PDF.MsPlaywright does.
 
 ## Installation
 
@@ -12,7 +12,7 @@ Chromium is downloaded on first use, so the first conversion needs network acces
 
 ## Documentation
 
-- [PDF](https://regira.github.io/Regira-Packages/src/Common.Office/docs/pdf/) — `IHtmlToPdfService`, the `HtmlInput` model, and how the headless-Chromium backends differ from SelectPdf
+- [PDF](https://regira.github.io/Regira-Packages/src/Common.Office/docs/pdf/) — `IHtmlToPdfService`, the `HtmlInput` model, and how the headless-Chromium backends place a header and footer
 
 ## License
 

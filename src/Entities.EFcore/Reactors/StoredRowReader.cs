@@ -8,9 +8,8 @@ using System.Runtime.CompilerServices;
 namespace Regira.Entities.EFcore.Reactors;
 
 /// <summary>
-/// Reads the stored rows of entries whose original values are not known to be them: what EF's
-/// <c>GetDatabaseValues</c> reads for one entry, in one keyed query per entity type, so an <c>Update(detached)</c> of
-/// twenty rows is one read rather than twenty. Like <c>GetDatabaseValues</c>, it reads past query filters and tracks
+/// Reads the stored rows of the entries a save updates or deletes: what EF's <c>GetDatabaseValues</c> reads for one
+/// entry, in one keyed query per entity type, so a save of twenty rows is one read rather than twenty. Like <c>GetDatabaseValues</c>, it reads past query filters and tracks
 /// nothing. A lone row, a row the query did not return, and an entity type a keyed <c>IN</c> query does not cover — an
 /// owned or shared-type entity, a composite or converted key, a complex collection or an optional complex property —
 /// are read by <c>GetDatabaseValues</c> itself.

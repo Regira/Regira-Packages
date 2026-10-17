@@ -24,7 +24,7 @@ public class BackgroundQueueManager<TTask>(
         return Execute<object?>((sp, bgTask) =>
         {
             action(sp, bgTask);
-            return null!;
+            return Task.FromResult<object?>(null);
         });
     }
     public TTask Execute<TResult>(Func<IServiceProvider, TTask, Task<TResult>> func)

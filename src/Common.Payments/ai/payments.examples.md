@@ -12,7 +12,6 @@ using Regira.Payments.Mollie.Config;   // MollieConfig
 services.AddSingleton(_ => new Regira.Payments.Mollie.Services.PaymentService(
     new MollieConfig
     {
-        Api             = "https://api.mollie.com/v2",
         Key             = configuration["Mollie:Key"]!,
         RedirectFactory = p => $"https://myshop.com/checkout/return/{p.Id}",
         WebhookFactory  = p => $"https://myshop.com/checkout/webhook/{p.Id}"

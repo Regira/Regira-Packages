@@ -402,7 +402,7 @@ public class ProjectNormalizer(ProjectsContext dbContext, INormalizer? normalize
             contentEntries.AddRange([owner.Code, owner.Title]);
         }
 
-        item.NormalizedContent = string.Join(' ', contentEntries.Where(x => !string.IsNullOrWhiteSpace(x)));
+        item.NormalizedContent = DefaultPropertyNormalizer.Normalize(string.Join(' ', contentEntries.Where(x => !string.IsNullOrWhiteSpace(x))));
 
         return Task.CompletedTask;
     }

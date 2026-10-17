@@ -74,8 +74,7 @@ public class DocumentBuilder(WordService manager)
             }
             foreach (Section section in doc.Sections)
             {
-                section.PageSetup.PageSize = manager.GetPageSize(_settings.PageSize);
-                section.PageSetup.Orientation = manager.GetPageOrientation(_settings.PageOrientation);
+                manager.SetPageSetup(section.PageSetup, _settings.PageSize, _settings.PageOrientation);
             }
         }
 

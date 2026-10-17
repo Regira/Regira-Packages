@@ -177,6 +177,17 @@ public static class DimensionsUtility
         var factor = (float)srcDpi / targetDpi;
         return points / factor;
     }
+    /// <summary>
+    /// Adjusts a measurement to match a target DPI (dots per inch).
+    /// </summary>
+    /// <param name="points">The original measurement.</param>
+    /// <param name="srcDpi">The source DPI of the measurement.</param>
+    /// <param name="targetDpi">The target DPI to which the measurement should be adjusted.</param>
+    /// <returns>The measurement at the target DPI.</returns>
+    public static float ModifyDpi(float points, int srcDpi, int targetDpi)
+    {
+        return points * targetDpi / srcDpi;
+    }
     
     /// <summary>
     /// Converts a given dimension to pixels based on the specified unit and target parameters.

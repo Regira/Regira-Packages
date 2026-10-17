@@ -22,7 +22,8 @@ services.AddBillit(sp => new BillitConfig
 public async Task SendPeppolInvoice(Order order)
 {
     // 1. Build UBL XML from the invoice domain model
-    IInvoice invoice = MapInvoice(order);   // your mapping: code, dates, supplier, customer, invoice lines
+    IInvoice invoice = MapInvoice(order);   // your mapping: code, dates, invoice lines, and both parties with
+                                            // a Peppol identifier and an address (see How the model maps to UBL)
     var converter = new UblConverter();
     XDocument ubl = converter.Convert(new UblDocumentInput
     {

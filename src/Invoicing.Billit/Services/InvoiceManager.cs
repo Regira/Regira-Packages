@@ -10,11 +10,13 @@ using System.Text;
 
 namespace Regira.Invoicing.Billit.Services;
 
-public interface IInvoiceManager
+/// <summary>
+/// Billit's <see cref="IInvoiceService"/> (<c>Create</c>, and <c>Send</c> of an invoice), plus sending invoices already
+/// created by their ids.
+/// </summary>
+public interface IInvoiceManager : IInvoiceService
 {
-    Task<ICreateInvoiceResult> Create(IInvoice item);
     Task<ISendInvoiceResult> Send(params string[] ids);
-    Task<ISendInvoiceResult> Send(IInvoice input);
 }
 
 public class InvoiceManager(IHttpClientFactory clientFactory, ISerializer serializer) : IInvoiceManager

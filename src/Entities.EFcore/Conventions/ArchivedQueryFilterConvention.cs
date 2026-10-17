@@ -1,10 +1,6 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions;
-using Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Regira.Entities.EFcore.Extensions;
 using Regira.Entities.Models.Abstractions;
 using System.Linq.Expressions;
@@ -35,7 +31,13 @@ namespace Regira.Entities.EFcore.Conventions;
 /// <see cref="ModelBuilderExtensions.SetArchivedQueryFilter"/> is a no-op there — EF Core 9 has no named query
 /// filters, so the archived opt-ins could only be honoured with the untargeted <c>IgnoreQueryFilters()</c>,
 /// which would also suspend the app's own row security on a path that writes. Archived rows are excluded by
-/// <c>FilterArchivablesQueryBuilder</c> at the root of the query there instead.
+/// <c>FilterArchivablesQueryBuilder</c> at the root of the query there instead, and
+/// <c>AddArchivedQueryFilter()</c> adds no options extension, so a net8 context's options stay as they were.
+/// </para>
+/// <para>
+/// Wired through <see cref="ConventionOptionsExtension{TConvention}"/>, appended after the provider's own
+/// model-finalizing conventions (EF's <c>QueryFilterRewritingConvention</c> among them), which have had the app's
+/// filters by then.
 /// </para>
 /// </summary>
 internal sealed class ArchivedQueryFilterConvention : IModelFinalizingConvention
@@ -66,54 +68,5 @@ internal sealed class ArchivedQueryFilterConvention : IModelFinalizingConvention
                 ModelBuilderExtensions.BuildArchivedFilter(entityType.ClrType));
         }
 #endif
-    }
-}
-
-/// <summary>
-/// Registers <see cref="ArchivedQueryFilterConvention"/> in the convention set. Appended, so it runs after the
-/// provider's own model-finalizing conventions (EF's <c>QueryFilterRewritingConvention</c> among them) have had
-/// the app's filters.
-/// </summary>
-internal sealed class ArchivedQueryFilterConventionSetPlugin : IConventionSetPlugin
-{
-    public ConventionSet ModifyConventions(ConventionSet conventionSet)
-    {
-        conventionSet.ModelFinalizingConventions.Add(new ArchivedQueryFilterConvention());
-        return conventionSet;
-    }
-}
-
-/// <summary>
-/// <see cref="DbContextOptionsBuilder"/> extension carrying <see cref="ArchivedQueryFilterConventionSetPlugin"/>,
-/// so the archived query filter can be wired from <c>AddDbContext</c> (like the interceptors and the UTC
-/// convention) instead of from the <c>DbContext</c>. <c>UseEntities&lt;TContext&gt;(o =&gt; o.UseDefaults())</c>
-/// adds it automatically; see <c>DbContextOptionsBuilderExtensions.AddArchivedQueryFilter</c> for the
-/// standalone call.
-/// <para>
-/// Internal plumbing: <c>AddArchivedQueryFilter()</c> is the whole public surface. Never constructed on
-/// <c>net8.0</c> — the extension method returns without adding it there, so a net8 context's options are
-/// exactly what they were before this existed.
-/// </para>
-/// </summary>
-internal sealed class ArchivedQueryFilterOptionsExtension : IDbContextOptionsExtension
-{
-    private DbContextOptionsExtensionInfo? _info;
-    public DbContextOptionsExtensionInfo Info => _info ??= new ExtensionInfo(this);
-
-    public void ApplyServices(IServiceCollection services)
-        => services.TryAddEnumerable(ServiceDescriptor.Singleton<IConventionSetPlugin, ArchivedQueryFilterConventionSetPlugin>());
-
-    public void Validate(IDbContextOptions options)
-    {
-    }
-
-    private sealed class ExtensionInfo(IDbContextOptionsExtension extension) : DbContextOptionsExtensionInfo(extension)
-    {
-        public override bool IsDatabaseProvider => false;
-        public override string LogFragment => "using archived query filter ";
-        public override int GetServiceProviderHashCode() => 0; // stateless — all instances are equivalent
-        public override bool ShouldUseSameServiceProvider(DbContextOptionsExtensionInfo other) => other is ExtensionInfo;
-        public override void PopulateDebugInfo(IDictionary<string, string> debugInfo)
-            => debugInfo["Regira.Entities.EFcore:ArchivedQueryFilter"] = "1";
     }
 }

@@ -10,6 +10,8 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 |---|---|
 | `Regira.Office.Barcodes` | Barcode and QR code generation and scanning |
 
+Exact usings: `office.namespaces.md`.
+
 > **A QR code *is* a barcode** — specifically the 2D `BarcodeFormat.QRCode`. This module treats QR as a subset of barcodes: `QRCodeInput : BarcodeInput`, and `IQRCodeService` is just a QR-restricted convenience over `IBarcodeService`. Anything QR can also be done through the general barcode services. See [Barcode vs QR — which to use](#barcode-vs-qr--which-to-use).
 
 **Related:**
@@ -20,18 +22,18 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 
 ## Installation
 
-```xml
-<!-- ZXing — recommended (all formats, cross-platform) -->
-<PackageReference Include="Regira.Office.Barcodes.ZXing" Version="6.*" />
+```bash
+# ZXing — recommended (all formats, cross-platform)
+dotnet add package Regira.Office.Barcodes.ZXing
 
-<!-- Spire — all formats, Windows only -->
-<PackageReference Include="Regira.Office.Barcodes.Spire" Version="6.*" />
+# Spire — all formats, Windows only
+dotnet add package Regira.Office.Barcodes.Spire
 
-<!-- QRCoder — write-only QR -->
-<PackageReference Include="Regira.Office.Barcodes.QRCoder" Version="6.*" />
+# QRCoder — write-only QR
+dotnet add package Regira.Office.Barcodes.QRCoder
 
-<!-- UziGranot — embedded QR, no external dependency -->
-<PackageReference Include="Regira.Office.Barcodes.UziGranot" Version="6.*" />
+# UziGranot — embedded QR, no external dependency
+dotnet add package Regira.Office.Barcodes.UziGranot
 ```
 
 ---
@@ -60,6 +62,15 @@ Each backend lives in its own namespace. Note that **QRCoder is write-only QR** 
 | `…Spire` | `Regira.Office.Barcodes.Spire.BarcodeService` | `Regira.Office.Barcodes.Spire.QRCodeService` |
 | `…UziGranot` | — | `Regira.Office.Barcodes.UziGranot.QRCodeService` |
 | `…QRCoder` | — | `Regira.Office.Barcodes.QRCoder.QRCodeWriter` *(write-only — `IQRCodeWriter`, no `Read`)* |
+
+There is no `Add…` extension: register the classes yourself. None keeps state between calls, so a singleton is safe:
+
+```csharp
+using Regira.Office.Barcodes.Abstractions;
+
+services.AddSingleton<IBarcodeService, Regira.Office.Barcodes.ZXing.BarcodeService>();
+services.AddSingleton<IQRCodeService, Regira.Office.Barcodes.ZXing.QRCodeService>();
+```
 
 ---
 
@@ -122,14 +133,14 @@ Task<BarcodeReadResult?>  Read(IImageFile img, BarcodeFormat? format = null, Can
 | `Content` | `string` | *(required)* | Data to encode |
 | `Format` | `BarcodeFormat` | `Code128` | Barcode format (e.g. `BarcodeFormat.Code128`) |
 | `Size` | `ImageSize` | `400 × 100` | Output image dimensions |
-| `Color` | `Color` | `Black` | Foreground color |
-| `BackgroundColor` | `Color` | `White` | Background color |
+| `Color` | `Color` | `Black` | Foreground color (ignored by QRCoder and UziGranot, which always draw black) |
+| `BackgroundColor` | `Color` | `White` | Background color (ignored by Spire, QRCoder and UziGranot, which always draw white) |
 
 A `string` converts implicitly to a `BarcodeInput` (`Content`-only), so `await bc.Create("ABC-1234")` works.
 
 ### `QRCodeInput`
 
-A subclass of `BarcodeInput` used by the QR services. Its constructor sets `Format = BarcodeFormat.QRCode` and a square `Size`. A `string` converts implicitly, so `await qr.Create("https://…")` works.
+A subclass of `BarcodeInput` used by the QR services. Its constructor sets `Format = BarcodeFormat.QRCode` and a square `Size` of 400 × 400 (`BarcodeDefaults.Size.Width`). A `string` converts implicitly, so `await qr.Create("https://…")` works.
 
 ### `BarcodeReadResult`
 
@@ -156,7 +167,14 @@ BarcodeReadResult? result = await bc.Read(barcode);
 Console.WriteLine(result?.Contents?[0]);  // "ABC-1234"
 ```
 
-> **Output format:** all backends encode the result as **JPEG** regardless of the requested format. Save with a `.jpg` extension, or re-encode via `IImageService.ChangeFormat`.
+> **Output format:** all backends return a **JPEG**; `BarcodeInput` has no output-format option. Save with a `.jpg` extension, or re-encode via `IImageService.ChangeFormat`.
+
+**Quiet zone.** ZXing draws each format's quiet zone, the blank border a reader needs, inside the requested `Size`.
+Keep it when you place the image: an EAN or UPC cropped to its bars does not decode.
+
+**GS1-128** (an SSCC, application identifier 00): `BarcodeFormat` has no GS1 value. On ZXing, prefix `Content` with
+FNC1, `(char)0x00F1`, and use `Code128`: `new BarcodeInput { Content = "ñ" + "00" + sscc, Format = BarcodeFormat.Code128 }`.
+Reading it back returns the digits without the FNC1.
 
 ---
 

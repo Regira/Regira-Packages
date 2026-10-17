@@ -5,8 +5,8 @@
 > API keys, cookies, external bearer (Entra ID / OIDC), interactive sign-in, scheme selection, and the
 > pre-built controllers (`Regira.Security.Authentication[.Web]` redirect here for their recipes).
 
-- **In this package:** `Encrypter` (symmetric encryption) and `PasswordHasher` (PBKDF2); BCrypt lives in
-  `Regira.Security.Hashing.BCryptNet`. Everything token/scheme-shaped lives in
+- **In this package:** `AesEncrypter` (AES with a random salt; `IEncrypter` is in `Regira.Security.Abstractions`)
+  and `Hasher` (PBKDF2); BCrypt lives in `Regira.Security.Hashing.BCryptNet`. Everything token/scheme-shaped lives in
   `Regira.Security.Authentication` — but is documented here.
 - **JWT wiring one-liner:** `AddJwtAuthentication(o => configuration.GetSection(AuthenticationSections.Jwt).Bind(o))` —
   `Secret` **≥ 64 bytes** (HS512 default, counted as ASCII) or startup throws; `Algorithm` is a JWA id
@@ -31,4 +31,5 @@
   in-memory store is dev-only.
 - **Top gotchas:** Entra app roles arrive as `roles` and key on `oid` not `sub`; cookie `SecurePolicy`
   defaults to `Always` (plain HTTP → sign-in "works", every request 401s); pre-built controllers are guarded
-  only via `MapControllers().RequireAuthorization()`.
+  only via `MapControllers().RequireAuthorization()`; their recover / confirm mails link only to
+  `AccountEmailOptions.AllowedOrigins` — list the SPA's origin, or `auth/password/recover` throws.

@@ -45,6 +45,4 @@ public class AzureFileProcessorTests
 
     [Test]
     public Task Recursive_Directories() => StorageTestContext.Test_Recursive_Directories(TEST_FOLDER);
-    [Test]
-    public Task Recursive_Directories_Async() => StorageTestContext.Test_Recursive_DirectoriesAsync(TEST_FOLDER);
 }

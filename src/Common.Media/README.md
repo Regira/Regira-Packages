@@ -160,7 +160,7 @@ Task<IImageFile> FlipHorizontal(IImageFile input)
 Task<IImageFile> FlipVertical(IImageFile input)
 ```
 
-> **SkiaSharp default quality:** 80. **GDI default quality:** 100.
+> **Default quality** follows the type you call through: 100 on `IImageService`, 80 on the concrete SkiaSharp `ImageService`. On SkiaSharp, a quality below 100 re-encodes as JPEG, which drops transparency even when the output stays PNG: pass 100 for a PNG with alpha. GDI ignores `quality`: a resize re-encodes in the source's own format at 80, so a JPEG loses detail and a PNG keeps its alpha.
 
 ### Color
 
@@ -282,12 +282,13 @@ using var img = await imageService.CreateTextImage("Hello World");   // implicit
 |---------|---------------------|---------------|
 | **Recommended** | ✓ | – |
 | **Cross-platform** | ✓ (Win / Linux / macOS) | Windows only |
-| **Default resize quality** | 80 | 100 |
-| **EXIF auto-rotate** | – | ✓ |
-| **Printing support** | – | ✓ (`PrintUtility`) |
+| **Default resize quality** | 80 on the class, 100 through `IImageService` | ignored: a resize re-encodes at 80 |
+| **EXIF auto-rotate** | – | – |
 | **Engine** | Google Skia | GDI+ (`System.Drawing.Common`) |
 
 Both implement `IImageService` and are interchangeable in consuming code.
+
+Neither backend applies a photo's EXIF orientation: read it with SkiaSharp's `SKCodec.Create(stream).EncodedOrigin` and turn the image before resizing. `Rotate` turns clockwise for positive degrees.
 
 ## DTOs & API Integration
 

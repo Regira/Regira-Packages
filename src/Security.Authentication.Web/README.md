@@ -8,7 +8,7 @@ Ready-made account, password and user endpoints for [Regira Security](https://re
 <PackageReference Include="Regira.Security.Authentication.Web" Version="6.*" />
 ```
 
-The host application registers ASP.NET Core Identity — a `UserManager<TUser>` with a user store and the default token providers — and the JWT scheme from Regira.Security.Authentication, which this package depends on.
+The host application registers ASP.NET Core Identity — a `UserManager<TUser>` with a user store and the default token providers — and the JWT scheme from Regira.Security.Authentication, which this package depends on. The recover and confirm emails link only to pages on the origins the host lists in `AccountEmailOptions` — see [Mailed links](https://regira.github.io/Regira-Packages/src/Common.Security/docs/controllers.html#mailed-links-allowed-origins).
 
 ## Documentation
 

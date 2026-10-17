@@ -6,7 +6,14 @@ public class AzureCommunicator(AzureOptions config)
 {
     public bool IsOpened { get; set; }
 
-    internal BlobContainerClient? Container { get; set; }
+    // built on first use; its constructor makes no request, so the members that only read the container's address need no Open
+    internal BlobContainerClient Container
+    {
+        get => _container ??= new BlobContainerClient(_connectionString, _containerName);
+        set => _container = value;
+    }
+    private BlobContainerClient? _container;
+    internal bool Contained => config.Contained;
 
     private readonly string _containerName = config.ContainerName ?? throw new ArgumentNullException(nameof(config.ContainerName));
     private readonly string _connectionString = config.ConnectionString ?? throw new ArgumentNullException(nameof(config.ConnectionString));
@@ -28,7 +35,6 @@ public class AzureCommunicator(AzureOptions config)
                 return;
             }
 
-            Container = new BlobContainerClient(_connectionString, _containerName);
             if (!await Container.ExistsAsync())
             {
                 if (!config.CreateContainerIfNotExists)

@@ -1,6 +1,6 @@
 # Regira.Payments.Pom
 
-POM backend for [Regira Payments](https://regira.github.io/Regira-Packages/src/Common.Payments/). `PaymentService`, constructed with `PomSettings` and an `ISerializer`, implements the shared `IPaymentService` from `Regira.Invoicing`: `Save` creates a payment link for an `IPayment` and `Details` reads its status. It calls the POM REST API directly over `HttpClient`, with a token from the configured auth endpoint. Of the two payment backends it is the one that implements `IPaymentService`.
+POM backend for [Regira Payments](https://regira.github.io/Regira-Packages/src/Common.Payments/). `PaymentService`, constructed with `PomSettings` and an `ISerializer`, implements the shared `IPaymentService` from `Regira.Invoicing`: `Save` creates a payment link for an `IPayment`, `CreatePaylink` does the same and returns the link, and `Details` reads its status. It calls the POM REST API directly over a connection pool the package shares, with a token from the configured auth endpoint. Of the two payment backends it is the one that implements `IPaymentService`.
 
 ## Installation
 

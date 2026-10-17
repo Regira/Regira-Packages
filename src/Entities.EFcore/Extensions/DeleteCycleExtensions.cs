@@ -4,7 +4,6 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Update;
-using System.Collections;
 using System.Runtime.CompilerServices;
 using System.Transactions;
 
@@ -438,7 +437,7 @@ public static class DeleteCycleExtensions
     /// <summary>The pending deletes by key, so that each foreign key finds its principal in one lookup.</summary>
     private sealed class DeletedIndex
     {
-        private readonly Dictionary<IKey, Dictionary<KeyValues, EntityEntry>> _byKey = [];
+        private readonly Dictionary<IKey, Dictionary<object?[], EntityEntry>> _byKey = [];
 
         public DeletedIndex(EntityEntry[] deleted)
         {
@@ -448,50 +447,15 @@ public static class DeleteCycleExtensions
                 {
                     if (!_byKey.TryGetValue(key, out var entries))
                     {
-                        _byKey[key] = entries = [];
+                        _byKey[key] = entries = new Dictionary<object?[], EntityEntry>(new EntityValues.KeyComparer(key.Properties));
                     }
-                    entries.TryAdd(new KeyValues(key.Properties.Select(p => entry.Property(p.Name).OriginalValue).ToArray()), entry);
+                    entries.TryAdd(key.Properties.Select(p => entry.Property(p.Name).OriginalValue).ToArray(), entry);
                 }
             }
         }
 
         public EntityEntry? Find(IKey key, object?[] values)
-            => _byKey.TryGetValue(key, out var entries) && entries.TryGetValue(new KeyValues(values), out var entry) ? entry : null;
-    }
-
-    /// <summary>Key values compared element-wise, structurally (a <c>byte[]</c> key compares by content).</summary>
-    private readonly struct KeyValues(object?[] values) : IEquatable<KeyValues>
-    {
-        private static readonly IEqualityComparer Comparer = StructuralComparisons.StructuralEqualityComparer;
-        private readonly object?[] _values = values;
-
-        public bool Equals(KeyValues other)
-        {
-            if (_values.Length != other._values.Length)
-            {
-                return false;
-            }
-            for (var i = 0; i < _values.Length; i++)
-            {
-                if (!Comparer.Equals(_values[i], other._values[i]))
-                {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        public override bool Equals(object? obj) => obj is KeyValues other && Equals(other);
-
-        public override int GetHashCode()
-        {
-            var hash = new HashCode();
-            foreach (var value in _values)
-            {
-                hash.Add(value is null ? 0 : Comparer.GetHashCode(value));
-            }
-            return hash.ToHashCode();
-        }
+            => _byKey.TryGetValue(key, out var entries) && entries.TryGetValue(values, out var entry) ? entry : null;
     }
 
     /// <summary>Two tracked entities, compared by reference.</summary>

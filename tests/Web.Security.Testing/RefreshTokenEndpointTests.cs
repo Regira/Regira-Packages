@@ -79,13 +79,17 @@ public class RefreshTokenEndpointTests : IClassFixture<TestingWebApplicationFact
     [Fact]
     public async Task Test_Refresh_Works_After_The_Access_Token_Expired()
     {
-        await CreateUser(_withRefresh);
-        var signedIn = await SignIn();
+        var expiring = _withRefresh.WithTokenLifeSpan(2);
+        await CreateUser(expiring);
+        var signedIn = await SignIn(expiring);
 
-        // The access token's lifespan is 2 seconds in this host.
+        // past the 2-second lifespan: the access token no longer authenticates
         await Task.Delay(2500);
+        var bearer = expiring.CreateClient();
+        bearer.DefaultRequestHeaders.Authorization = new("Bearer", signedIn.Token);
+        (await bearer.PostAsync("auth/validate", null)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
 
-        var httpClient = _withRefresh.CreateClient();
+        var httpClient = expiring.CreateClient();
         var response = await httpClient.PostAsJsonAsync("auth/refresh-token", new { refreshToken = signedIn.RefreshToken });
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -189,9 +193,9 @@ public class RefreshTokenEndpointTests : IClassFixture<TestingWebApplicationFact
         claims.TryGetProperty("sub", out _).ShouldBeTrue();
     }
 
-    private async Task<AuthenticateResponseDto> SignIn()
+    private async Task<AuthenticateResponseDto> SignIn(WebApplicationFactory<RefreshTokenStartup>? factory = null)
     {
-        var response = await _withRefresh.CreateClient()
+        var response = await (factory ?? _withRefresh).CreateClient()
             .PostAsJsonAsync("auth?clientApp=test", new { username = Username, password = Password });
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         return (await response.Content.ReadFromJsonAsync<AuthenticateResponseDto>())!;

@@ -4,6 +4,7 @@ using Regira.Web.ExceptionHandling.Abstractions;
 
 namespace Regira.Web.ExceptionHandling;
 
+[Obsolete("Use AddProblemDetails() with UseExceptionHandler(). Will be removed in v7.")]
 public class GlobalExceptionHandler(ILoggerFactory loggerFactory) : IExceptionHandler
 {
     public Task HandleException(HttpContext context, Exception ex)

@@ -23,6 +23,14 @@ internal static class EntityInputExceptionExtensions
     /// <c>traceId</c> and customization as every other problem the app returns.
     /// </summary>
     public static BadRequestObjectResult ToBadRequest(this EntityInputException exception, HttpContext httpContext)
+        => new(exception.ToValidationProblem(httpContext));
+
+    /// <summary>
+    /// The body of <see cref="ToBadRequest"/>, for a surface that answers with an <c>IResult</c>. Without MVC in the
+    /// container there is no <see cref="ProblemDetailsFactory"/>, and the body is a plain
+    /// <see cref="ValidationProblemDetails"/> that the app's <c>IProblemDetailsService</c> completes as it writes it.
+    /// </summary>
+    public static ValidationProblemDetails ToValidationProblem(this EntityInputException exception, HttpContext httpContext)
     {
         IReadOnlyList<EntityInputError> errors = exception.Errors is { Count: > 0 }
             ? [.. exception.Errors]
@@ -38,7 +46,7 @@ internal static class EntityInputExceptionExtensions
                           .CreateValidationProblemDetails(httpContext, modelState, StatusCodes.Status400BadRequest)
                       ?? new ValidationProblemDetails(modelState) { Status = StatusCodes.Status400BadRequest };
         problem.Extensions[ErrorDetailsMember] = errors.Select(ToDetail).ToArray();
-        return new BadRequestObjectResult(problem);
+        return problem;
     }
 
     // a dictionary rather than a type: its keys go out as written whatever naming policy the host serializes with

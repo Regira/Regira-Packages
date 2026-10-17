@@ -291,6 +291,36 @@ public class ConcurrencyTokenMarkerTests
         Assert.That((await Stored(order.Id)).Status, Is.EqualTo("Picked"));
     }
 
+    [Test]
+    public async Task A_Row_Still_Holding_An_Empty_Token_Is_Checked_Against_It()
+    {
+        // every row right after a migration adds the column: the update is compared with the empty token it read, so a
+        // writer that commits between the read and the save is not overwritten
+        await using var sp = await Defaults();
+        int id;
+        await using (var db = Raw())
+        {
+            var order = new Order { Status = "New" };
+            db.Orders.Add(order);
+            await db.SaveChangesAsync();
+            id = order.Id;
+        }
+
+        using var scope = sp.CreateScope();
+        var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order, int>>();
+        await service.Modify(new Order { Id = id, Status = "Cancelled" });
+        await using (var db = Raw())
+        {
+            var order = (await db.Orders.FindAsync(id))!;
+            order.Status = "Paid";
+            order.ConcurrencyToken = Guid.NewGuid();
+            await db.SaveChangesAsync();
+        }
+
+        await Assert.ThrowsAsync<EntityConcurrencyException>(() => service.SaveChanges());
+        Assert.That((await Stored(id)).Status, Is.EqualTo("Paid"));
+    }
+
     // ── a stamp the client must send ───────────────────────────────────────────
 
     [Test]

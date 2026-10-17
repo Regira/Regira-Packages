@@ -131,11 +131,12 @@ public class SchemeSelectorTests : IClassFixture<TestingWebApplicationFactory<Sc
         (await response.Content.ReadAsStringAsync()).ShouldBe(JwtUsers.Admin.UserId);
     }
 
+#if NET10_0_OR_GREATER
     /// <summary>
-    /// ⚠️ The regression test for the selector's effect on the generated document. The default scheme is now the
-    /// policy scheme, which authenticates nothing and is declared by no document transformer — so a requirement
-    /// naming it directly would reference a <c>securitySchemes</c> entry that does not exist, and the auth prompt
-    /// would vanish while every operation still claimed to need a credential.
+    /// ⚠️ The regression test for the selector's effect on the generated document (.NET 10 only, like the document
+    /// itself). The default scheme is now the policy scheme, which authenticates nothing and is declared by no
+    /// document transformer — so a requirement naming it directly would reference a <c>securitySchemes</c> entry that
+    /// does not exist, and the auth prompt would vanish while every operation still claimed to need a credential.
     /// </summary>
     [Fact]
     public async Task Test_Operations_Name_The_Real_Schemes_Not_The_Policy_Scheme()
@@ -161,6 +162,7 @@ public class SchemeSelectorTests : IClassFixture<TestingWebApplicationFactory<Sc
         // Every requirement must resolve to something the document declares.
         required.ShouldAllBe(scheme => declared.Contains(scheme));
     }
+#endif
 
     private async Task<string> CreateToken()
     {

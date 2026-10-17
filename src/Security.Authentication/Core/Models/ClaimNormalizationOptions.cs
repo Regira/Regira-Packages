@@ -45,6 +45,29 @@ public class ClaimNormalizationOptions
         Merge(RoleClaimTypes, target.RoleClaimTypes);
     }
 
+    /// <summary>
+    /// Lays this instance over the defaults, as <see cref="MergeInto"/> lays it over a fresh instance: every entry the
+    /// caller added ahead of the defaults, and every default kept.
+    /// </summary>
+    internal void LayOverDefaults()
+    {
+        var merged = new ClaimNormalizationOptions();
+        MergeInto(merged);
+        Replace(SubjectClaimTypes, merged.SubjectClaimTypes);
+        Replace(NameClaimTypes, merged.NameClaimTypes);
+        Replace(EmailClaimTypes, merged.EmailClaimTypes);
+        Replace(RoleClaimTypes, merged.RoleClaimTypes);
+
+        static void Replace(IList<string> list, IList<string> items)
+        {
+            list.Clear();
+            foreach (var item in items)
+            {
+                list.Add(item);
+            }
+        }
+    }
+
     private static void Merge(IList<string> source, IList<string> target)
     {
         var index = 0;

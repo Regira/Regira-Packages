@@ -48,8 +48,7 @@ public static class ConversionUtility
     // — a native GDI+ enumeration — on every call. Under parallel use that enumeration
     // intermittently returns a set without the requested encoder, so FindEncoder() yields
     // null and Save throws ArgumentNullException ('encoder'). GdiUtility.GetEncoderInfo reads
-    // from a lock-guarded cache that only enumerates once, matching the codec-based Save used
-    // elsewhere in GdiUtility.
+    // the encoders it enumerated once, matching the codec-based Save used elsewhere in GdiUtility.
     private static void Save(Image img, Stream stream, GdiImageFormat format)
     {
         var codec = GdiUtility.GetEncoderInfo(format);

@@ -11,7 +11,7 @@ namespace Regira.Security.Authentication.Web.Controllers;
 [ApiController]
 [Route("auth/password")]
 public abstract class PasswordControllerBase<TUser>(UserManager<TUser> userManager) : ControllerBase
-    where TUser : IdentityUser
+    where TUser : IdentityUser<string>
 {
     [HttpPost]
     public virtual async Task<IActionResult> UpdatePassword([FromBody] ChangePasswordInput model)
@@ -33,23 +33,38 @@ public abstract class PasswordControllerBase<TUser>(UserManager<TUser> userManag
         return BadRequest(ModelState);
     }
 
+    /// <summary>
+    /// Mails a reset link to the user: <see cref="RecoverPasswordInput.SiteUrl"/> with its query string set to
+    /// <c>?token=…</c>, the percent-encoded Base64 of the reset token and user name, under a subject named after
+    /// <see cref="AccountEmailOptions.SiteName"/>.
+    /// <para>
+    /// The page must be on one of <see cref="AccountEmailOptions.AllowedOrigins"/>, or the answer is <c>400</c> and no
+    /// mail is sent — whoever controls the page receives the token. Otherwise the answer is <c>200</c> whether or not the
+    /// user exists. Throws <see cref="InvalidOperationException"/> when no origin is configured.
+    /// </para>
+    /// </summary>
     [AllowAnonymous]
     [HttpPost("recover")]
     public virtual async Task<IActionResult> RecoverPassword([FromBody] RecoverPasswordInput model, [FromServices] IEmailSender mailer)
     {
+        // checked before the user is looked up, so the answer does not tell whether the account exists
+        var options = HttpContext.GetAccountEmailOptions();
+        var resetPage = options.FindAllowedPage(model.SiteUrl);
+        if (resetPage == null)
+        {
+            ModelState.AddModelError(nameof(model.SiteUrl), AccountLinks.NotAllowed);
+            return BadRequest(ModelState);
+        }
+
         var user = await userManager.FindByNameAsync(model.Username);
 
         if (user != null)
         {
             var resetToken = await userManager.GeneratePasswordResetTokenAsync(user);
             var token = System.Text.Json.JsonSerializer.Serialize(new UserTokenModel { Token = resetToken, Username = user.UserName! }).Base64Encode();
-            var resetUri = new UriBuilder(model.SiteUrl)
-            {
-                Query = $"?token={token}"
-            };
-            var subject = $"{model.SiteName} password reset".Trim().Capitalize()!;
+            var subject = $"{options.SiteName} Password Reset".Trim();
             var body = $@"Follow link below to reset password
-{resetUri.Uri}
+{resetPage.WithToken(token)}
 
 Token: {token}
 ";

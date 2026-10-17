@@ -13,6 +13,8 @@ using Regira.Entities.Models.Abstractions;
 using Testing.Library.Contoso;
 using Testing.Library.Data;
 
+#pragma warning disable REGIRA0001 // the explicit normalizer container stays covered until it is removed at 7.0
+
 namespace Entities.Testing;
 
 [TestFixture]

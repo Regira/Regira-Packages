@@ -11,6 +11,9 @@ using Microsoft.EntityFrameworkCore;
 using Regira.Entities.Attachments.Models;
 using Regira.Entities.DependencyInjection.Validators;
 using Regira.Entities.Mapping.Models;
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Handlers;
+using Regira.Entities.Mediator.Requests;
 using Regira.Entities.Models;
 using Regira.Entities.Services.Abstractions;
 using Regira.Entities.Web.Models;
@@ -23,14 +26,41 @@ using Testing.Library.Data;
 
 namespace Entities.Web.Testing;
 
-public class CourseAttachmentsControllerTests : IClassFixture<ContosoApiFactory>, IDisposable
+/// <summary>The course attachment routes, served by the attachment controller.</summary>
+public class CourseAttachmentsControllerTests(ContosoApiFactory factory) : CourseAttachmentsTests<ContosoApiFactory>(factory);
+
+/// <summary>The same routes and cases, served by <c>MapEntityEndpoints()</c>.</summary>
+public class CourseAttachmentsEndpointTests(ContosoEndpointsApiFactory factory) : CourseAttachmentsTests<ContosoEndpointsApiFactory>(factory)
+{
+    private readonly ContosoEndpointsApiFactory _factory = factory;
+
+    // the test API maps courses a second time, on v2/courses: endpoint names are global, so a repeated download name
+    // would fail every request; the second mapping serves the files unnamed, and the Uri links to the first
+    [Fact]
+    public async Task A_Second_Mapping_Serves_The_Files_And_The_Uri_Links_To_The_First()
+    {
+        using var client = _factory.CreateClient();
+        var content = new MultipartFormDataContent { { new StringContent("mapped twice"), "file", "v2.txt" } };
+        using var upload = await client.PostAsync("/v2/courses/3/files", content);
+        Assert.Equal(HttpStatusCode.OK, upload.StatusCode);
+        var saved = (await upload.Content.ReadFromJsonAsync<SaveResult<EntityAttachmentDto>>())!.Item;
+
+        Assert.Equal("http://localhost/courses/3/files/v2.txt?inline=True", saved.Uri);
+        Assert.Equal("mapped twice", await client.GetStringAsync(saved.Uri));
+        Assert.Equal("mapped twice", await client.GetStringAsync($"/v2/courses/files/{saved.Id}"));
+        Assert.Equal("mapped twice", await client.GetStringAsync("/v2/courses/3/files/v2.txt"));
+    }
+}
+
+public abstract class CourseAttachmentsTests<TFactory> : IClassFixture<TFactory>, IDisposable
+    where TFactory : ContosoApiFactory
 {
     Department[] Departments { get; }
     Course[] Courses { get; }
 
     private readonly ContosoContext _dbContext;
-    private readonly ContosoApiFactory _factory;
-    public CourseAttachmentsControllerTests(ContosoApiFactory factory)
+    private readonly TFactory _factory;
+    protected CourseAttachmentsTests(TFactory factory)
     {
         _factory = factory;
         Directory.CreateDirectory(_factory.AttachmentsDirectory);
@@ -109,6 +139,40 @@ public class CourseAttachmentsControllerTests : IClassFixture<ContosoApiFactory>
         Assert.NotNull(downloadStream);
         Assert.Equal(fileStream.Length, downloadStream.Length);
         Assert.Equal(FileUtility.GetString(downloadStream), fileTextContent);
+    }
+    /// <summary>Counts the downloads it answers, and answers them as the default handler does.</summary>
+    public sealed class CountingFileHandler(IServiceProvider services, DownloadCounter counter) : AttachmentFileHandler<CourseAttachment>(services)
+    {
+        public override Task<Attachment?> Handle(AttachmentFileQuery<CourseAttachment> request, CancellationToken token = default)
+        {
+            counter.Count++;
+            return base.Handle(request, token);
+        }
+    }
+    public sealed class DownloadCounter
+    {
+        public int Count { get; set; }
+    }
+
+    // both downloads send AttachmentFileQuery, so one handler override covers the download by id and by name
+    [Fact]
+    public async Task One_File_Handler_Answers_Both_Downloads()
+    {
+        using var app = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<DownloadCounter>();
+            services.AddTransient<IEntityRequestHandler<AttachmentFileQuery<CourseAttachment>, Attachment>, CountingFileHandler>();
+        }));
+        using var client = app.CreateClient();
+        var content = new MultipartFormDataContent { { new StringContent("counted"), "file", "counted.txt" } };
+        using var upload = await client.PostAsync("/courses/3/files", content);
+        upload.EnsureSuccessStatusCode();
+        var saved = (await upload.Content.ReadFromJsonAsync<SaveResult<EntityAttachmentDto>>())!.Item;
+
+        Assert.Equal("counted", await client.GetStringAsync($"/courses/files/{saved.Id}"));
+        Assert.Equal("counted", await client.GetStringAsync("/courses/3/files/counted.txt"));
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/courses/3/files/missing.txt")).StatusCode);
+        Assert.Equal(2, app.Services.GetRequiredService<DownloadCounter>().Count);
     }
     [Fact]
     public async Task Insert_And_Get_List()
@@ -613,7 +677,8 @@ public class CourseAttachmentsControllerTests : IClassFixture<ContosoApiFactory>
     }
 
     // A save the database refuses leaves the stored file as it was, as it leaves the row: the new bytes went under a key
-    // of their own, and the stored file is removed only once a save is committed.
+    // of their own, and the stored file is removed only once a save is committed. The file written for the new bytes
+    // stays, which no row names.
     [Fact]
     public async Task A_Refused_Save_Leaves_The_Stored_File()
     {
@@ -650,8 +715,7 @@ public class CourseAttachmentsControllerTests : IClassFixture<ContosoApiFactory>
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal("first version", await client.GetStringAsync($"/courses/{courseId}/files/{name}"));
         Assert.Equal(storedPath, StoredPath(uploaded.AttachmentId));
-        // nor the file it wrote for the new bytes
-        Assert.Single(Directory.GetFiles(_factory.AttachmentsDirectory, $"*{stem}*", SearchOption.AllDirectories));
+        Assert.Equal(2, Directory.GetFiles(_factory.AttachmentsDirectory, $"*{stem}*", SearchOption.AllDirectories).Length);
     }
 
     // A save the database refuses keeps the file of a link it would have deleted: the file goes once a save is committed.
@@ -935,6 +999,29 @@ public class CourseAttachmentsControllerTests : IClassFixture<ContosoApiFactory>
         var download = await client.GetAsync($"/courses/{courseId}/files/{name}");
         Assert.Equal(HttpStatusCode.OK, download.StatusCode);
         Assert.Equal("image/png", download.Content.Headers.ContentType?.MediaType);
+    }
+
+    // MVC checks an [ApiController]'s bodies; the mapped endpoints have the upload and update commands check them
+    [Fact]
+    public async Task The_Upload_And_The_Update_Check_Their_Input_Against_Its_DataAnnotations()
+    {
+        using var client = _factory.CreateClient();
+        var tooLong = new string('x', 101);
+
+        var form = new MultipartFormDataContent
+        {
+            { new StringContent("annotated"), "file", "annotated.txt" },
+            { new StringContent(tooLong), "description" }
+        };
+        using var upload = await client.PostAsync("/courses/3/files", form);
+        Assert.Equal(HttpStatusCode.BadRequest, upload.StatusCode);
+
+        var link = await Upload(client, 3, "annotated.txt", "annotated");
+        using var update = await client.PutAsJsonAsync($"/courses/3/attachments/{link.Id}", new CourseAttachmentInputDto { Description = tooLong });
+        Assert.Equal(HttpStatusCode.BadRequest, update.StatusCode);
+        var problem = await update.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+        // the controller host serializes through Newtonsoft's camelCase resolver, which camelCases the key
+        Assert.Contains(problem!.Errors.Keys, key => key.Equals(nameof(CourseAttachmentInputDto.Description), StringComparison.OrdinalIgnoreCase));
     }
 
     private static async Task<CourseAttachmentDto> Upload(HttpClient client, int courseId, string fileName, string text)

@@ -171,84 +171,27 @@ public static class StorageTestHelper
     }
 
 #if NET10_0_OR_GREATER
-    public static async Task Test_ListAsync(this IStorageTestContext ctx)
+    /// <summary><c>ListAsync</c> yields what <c>List</c> returns, in its order, for every kind of filter.</summary>
+    public static async Task Test_ListAsync_Yields_What_List_Returns(this IStorageTestContext ctx)
     {
-        var files = new List<string>();
-        await foreach (var f in ctx.FileService.ListAsync())
-            files.Add(f);
-        Assert.That(files, Is.Not.Empty);
-    }
-    public static async Task Test_Filter_By_Folder_Async(this IStorageTestContext ctx)
-    {
-        var folder = "dir2";
-        var so = new FileSearchObject
+        FileSearchObject?[] searches =
+        [
+            null,
+            new() { FolderUri = "dir2", Type = FileEntryTypes.Files, Recursive = true },
+            new() { Recursive = true, Extensions = [".png", ".txt", ".sql"], Type = FileEntryTypes.Files },
+            new() { FolderUri = "dir2", Recursive = true, Type = FileEntryTypes.Directories },
+            new() { FolderUri = "dir2", Recursive = true, Extensions = [".txt"], Type = FileEntryTypes.All }
+        ];
+        foreach (var so in searches)
         {
-            FolderUri = folder,
-            Type = FileEntryTypes.Files,
-            Recursive = true
-        };
-        var files = new List<string>();
-        await foreach (var f in ctx.FileService.ListAsync(so))
-            files.Add(f);
-        Assert.That(files, Is.Not.Empty);
-        var filteredSourceFiles = ctx.SourceFiles.Where(x => x.Identifier!.Contains($"{folder}\\"));
-        Assert.That(files.Count, Is.EqualTo(filteredSourceFiles.Count()));
-    }
-    public static async Task Test_Filter_By_Extension_Async(this IStorageTestContext ctx)
-    {
-        var so = new FileSearchObject
-        {
-            Recursive = true,
-            Extensions = [".png", ".txt", ".sql"],
-            Type = FileEntryTypes.Files
-        };
-        var files = new List<string>();
-        await foreach (var f in ctx.FileService.ListAsync(so))
-            files.Add(f);
-        Assert.That(files, Is.Not.Empty);
-        foreach (var file in files)
-        {
-            var pathWithoutQuery = file.Split('?').First();
-            Assert.That(so.Extensions.Any(e => pathWithoutQuery.EndsWith(e, StringComparison.CurrentCultureIgnoreCase)), Is.True);
+            var listed = (await ctx.FileService.List(so)).ToList();
+            var yielded = new List<string>();
+            await foreach (var identifier in ctx.FileService.ListAsync(so))
+            {
+                yielded.Add(identifier);
+            }
+            Assert.That(yielded, Is.EqualTo(listed), $"{so?.FolderUri} {so?.Type} {string.Join(",", so?.Extensions ?? [])}");
         }
-    }
-    public static async Task Test_Filter_Recursive_Async(this IStorageTestContext ctx)
-    {
-        var folder = "dir2";
-        var so = new FileSearchObject
-        {
-            FolderUri = folder,
-            Recursive = true,
-            Type = FileEntryTypes.Files
-        };
-        var files = new List<string>();
-        await foreach (var f in ctx.FileService.ListAsync(so))
-            files.Add(f);
-        Assert.That(files, Is.Not.Empty);
-        var filteredSourceFiles = ctx.SourceFiles.Where(x => x.Identifier!.Contains($"{folder}\\"));
-        Assert.That(files.Count, Is.EqualTo(filteredSourceFiles.Count()));
-    }
-    public static async Task Test_Filter_By_EntryType_Async(this IStorageTestContext ctx)
-    {
-        var folder = "dir2";
-        var so = new FileSearchObject { FolderUri = folder, Recursive = true, Type = FileEntryTypes.Files };
-        var files = new List<string>();
-        await foreach (var f in ctx.FileService.ListAsync(so))
-            files.Add(f);
-        Assert.That(files, Is.Not.Empty);
-
-        so = new FileSearchObject { FolderUri = folder, Recursive = true, Type = FileEntryTypes.Directories };
-        var folders = new List<string>();
-        await foreach (var f in ctx.FileService.ListAsync(so))
-            folders.Add(f);
-        Assert.That(folders, Is.Not.Empty);
-
-        so = new FileSearchObject { FolderUri = folder, Recursive = true, Type = FileEntryTypes.All };
-        var both = new List<string>();
-        await foreach (var f in ctx.FileService.ListAsync(so))
-            both.Add(f);
-        Assert.That(both, Is.Not.Empty);
-        Assert.That(both, Is.EquivalentTo(folders.Concat(files)));
     }
 #endif
 
@@ -311,31 +254,6 @@ public static class StorageTestHelper
             {
                 FolderUri = folder
             }, (f, _) => { filesFromRecursiveDirectories.Add(f); return Task.CompletedTask; },
-            true
-        );
-        Assert.That(filesFromRecursiveDirectories, Is.EquivalentTo(filesWithRecursiveSearchObject));
-    }
-    public static async Task Test_Recursive_DirectoriesAsync(this IStorageTestContext ctx, string? folder = null)
-    {
-        var fileProcessor = new FileProcessor(ctx.FileService);
-        var filesWithRecursiveSearchObject = new List<string>();
-        await fileProcessor.ProcessFiles(
-            new FileSearchObject
-            {
-                FolderUri = folder,
-                Recursive = true
-            },
-            (f, _) => { filesWithRecursiveSearchObject.Add(f); return Task.CompletedTask; },
-            false
-        );
-
-        var filesFromRecursiveDirectories = new List<string>();
-        await fileProcessor.ProcessFiles(
-            new FileSearchObject
-            {
-                FolderUri = folder
-            },
-            (f, _) => { filesFromRecursiveDirectories.Add(f); return Task.CompletedTask; },
             true
         );
         Assert.That(filesFromRecursiveDirectories, Is.EquivalentTo(filesWithRecursiveSearchObject));

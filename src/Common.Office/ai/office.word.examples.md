@@ -62,6 +62,64 @@ IMemoryFile contract = await word.Create(new WordTemplateInput
 });
 ```
 
+## A schedule per site
+
+A contract covering several sites gets a schedule per site, each listing that site's services. The template loops
+over the sites, and over each site's services in marker rows — each marker alone in its row (see *Loop Blocks* in
+`office.word.instructions.md`):
+
+```text
+{{#each Sites}}
+Schedule {{ row_number }}: {{SiteName}}, {{SiteAddress}}
+| Service         | Hours a week |
+| {{#each Services}} |           |
+| {{Service}}     | {{Hours}}    |
+| {{/each}}       |              |
+{{/each}}
+```
+
+<!-- no-compile -->
+```csharp
+IMemoryFile contract = await word.Create(new WordTemplateInput
+{
+    Template             = templateBytes!.ToMemoryFile(),
+    GlobalParameters     = new Dictionary<string, object> { ["ClientName"] = client.Name },
+    CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
+    {
+        ["Sites"] = contractData.Sites.Select(site => new Dictionary<string, object>
+        {
+            ["SiteName"]    = site.Name,
+            ["SiteAddress"] = site.Address,
+            ["Services"]    = site.Services.Select(service => new { service.Service, Hours = service.Hours.ToString("N1") }).ToList()
+        } as IDictionary<string, object>).ToList()
+    }
+});
+```
+
+## No Word at hand
+
+Where no one can open Word to write the template, build it in code with the Open XML SDK (`DocumentFormat.OpenXml`,
+which arrives with Word.Mini), each marker in a paragraph of its own. The result fills like a template written in
+Word:
+
+```csharp
+using DocumentFormat.OpenXml.Packaging;
+using W = DocumentFormat.OpenXml.Wordprocessing;
+
+static W.Paragraph Line(string text) => new(new W.Run(new W.Text(text)));
+
+using var stream = new MemoryStream();
+using (var document = WordprocessingDocument.Create(stream, DocumentFormat.OpenXml.WordprocessingDocumentType.Document))
+{
+    document.AddMainDocumentPart().Document = new W.Document(new W.Body(
+        Line("Contract for {{ClientName}}"),
+        Line("{{#each Sites}}"),
+        Line("Schedule {{ row_number }}: {{SiteName}}, {{SiteAddress}}"),
+        Line("{{/each}}")));
+}
+IMemoryFile template = stream.ToArray().ToMemoryFile();
+```
+
 ## Convert to PDF for signing
 
 <!-- no-compile -->
@@ -74,13 +132,15 @@ await _fileService.Save($"contracts/{client.Id}/contract-{DateTime.Today:yyyyMMd
 ```
 
 > ⚠️ `word` is Word.Spire here, and the FreeSpire.Doc free edition writes only the first three pages of a PDF, with a
-> notice page in place of the rest, and no error. For a contract that can run longer, convert with Word.Syncfusion,
-> Word.Aspose or Word.Gotenberg (*Without a vendor licence*, below).
+> notice page in place of the rest, and no error. For a contract that can run longer, run Word.Spire on the commercial
+> Spire.Doc (see *Commercial Spire.Doc* in `office.word.instructions`), or convert with Word.Syncfusion, Word.Aspose or
+> Word.Gotenberg (*Without a vendor licence*, below).
 
 ### Without a vendor licence
 
 Word.Mini fills the template and a Gotenberg server produces the PDF. The example keeps to scalar
-parameters, which every creator fills the same way.
+parameters, which every creator fills the same way. Loops and their marker rows work on Word.Mini too, so the
+template of *A schedule per site* fills there unchanged.
 
 <!-- no-compile -->
 ```csharp

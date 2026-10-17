@@ -5,32 +5,53 @@ namespace Regira.IO.Storage.GitHub;
 
 public class GitHubCommunicator : IDisposable
 {
+    // every instance shares one connection pool, recycled so a change to the API's DNS reaches a long-running process;
+    // no cookies, so nothing one instance receives rides on another's requests
+    private static readonly SocketsHttpHandler SharedHandler = new() { PooledConnectionLifetime = TimeSpan.FromMinutes(2), UseCookies = false };
+
     public string Root { get; }
-    internal HttpClient Client { get; }
+    internal Uri RootUri { get; }
     internal string Branch { get; }
     internal string? CommitMessage { get; }
+    internal bool Contained { get; }
+
+    private readonly string _userAgent;
+    private readonly string? _key;
 
     public GitHubCommunicator(GitHubOptions options)
     {
         Root = string.IsNullOrEmpty(options.ContentPath)
             ? options.Uri.TrimEnd('/') + "/contents/"
             : options.Uri.TrimEnd('/') + "/contents/" + options.ContentPath!.Trim('/') + "/";
+        RootUri = new Uri(Root);
 
         Branch = options.Branch;
         CommitMessage = options.CommitMessage;
+        Contained = options.Contained;
 
-        Client = new HttpClient { BaseAddress = new Uri(Root) };
-        Client.DefaultRequestHeaders.UserAgent.ParseAdd(options.UserAgent ?? Assembly.GetExecutingAssembly().GetName().Name);
-        Client.DefaultRequestHeaders.CacheControl = new CacheControlHeaderValue { NoCache = true };
-        if (!string.IsNullOrEmpty(options.Key))
+        _userAgent = options.UserAgent ?? Assembly.GetExecutingAssembly().GetName().Name!;
+        // an invalid user agent fails here rather than on the first request
+        new HttpRequestMessage().Headers.UserAgent.ParseAdd(_userAgent);
+        _key = options.Key;
+    }
+    internal Task<HttpResponseMessage> GetAsync(string uri)
+        => SendAsync(new HttpRequestMessage(HttpMethod.Get, uri));
+    internal Task<HttpResponseMessage> PutAsync(string uri, HttpContent content)
+        => SendAsync(new HttpRequestMessage(HttpMethod.Put, uri) { Content = content });
+    internal Task<HttpResponseMessage> SendAsync(HttpRequestMessage request)
+    {
+        request.Headers.UserAgent.ParseAdd(_userAgent);
+        request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true };
+        if (!string.IsNullOrEmpty(_key))
         {
-            Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", options.Key);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _key);
         }
+        return new HttpClient(SharedHandler, disposeHandler: false).SendAsync(request);
     }
 
     public void Dispose()
     {
-        Client.Dispose();
+        // every request takes its client from the shared pool, so there is nothing of its own to release
         GC.SuppressFinalize(this);
     }
 }

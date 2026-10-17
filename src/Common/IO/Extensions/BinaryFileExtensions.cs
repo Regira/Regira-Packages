@@ -27,11 +27,15 @@ public static class BinaryFileExtensions
     public static IBinaryFile ToBinaryFile(this Stream? stream, string? contentType = null)
         => new BinaryFileItem { Stream = stream, Length = stream?.Length ?? 0, ContentType = contentType };
     /// <summary>
-    /// Retains the source file's properties (no stream copy is created)
+    /// Wraps an <see cref="IMemoryFile"/> as an <see cref="IBinaryFile"/>, keeping its bytes, stream, length and content type (no stream copy is created).
     /// </summary>
-    /// <param name="file"></param>
-    /// <param name="filename"></param>
-    /// <returns></returns>
+    /// <param name="file">The source file.</param>
+    /// <param name="filename">
+    /// The file name; <c>null</c> keeps the source's name. On the <c>byte[]</c> and <see cref="Stream"/> overloads the second argument is the content type instead.
+    /// </param>
+    /// <returns>
+    /// The source itself, renamed, when it already is an <see cref="IBinaryFile"/>; otherwise a new <see cref="BinaryFileItem"/>.
+    /// </returns>
     public static IBinaryFile ToBinaryFile(this IMemoryFile file, string? filename = null)
     {
         if (file is IBinaryFile binaryFile)

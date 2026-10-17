@@ -54,7 +54,7 @@ public class DocumentBuilder(WordService service)
     {
         var doc = _inputs != null
             ? await service.MergeDocuments(_inputs)
-            : new Document();
+            : service.NewDocument();
 
         // PageSettings
         if (_settings != null)

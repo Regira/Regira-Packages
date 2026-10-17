@@ -32,8 +32,8 @@ public static class OidcAuthenticationExtensions
         var options = new OidcAuthOptions();
         configure(options);
 
-        Require(options.Authority, nameof(options.Authority));
-        Require(options.ClientId, nameof(options.ClientId));
+        RequiredOptions.Require(options.Authority, $"{nameof(OidcAuthOptions)}.{nameof(options.Authority)}");
+        RequiredOptions.Require(options.ClientId, $"{nameof(OidcAuthOptions)}.{nameof(options.ClientId)}");
 
         var signInScheme = options.SignInScheme ?? options.Cookie.AuthenticationScheme;
 
@@ -49,7 +49,10 @@ public static class OidcAuthenticationExtensions
         });
 
         options.Cookie.AuthenticationScheme = signInScheme;
-        builder.AddCookieAuthentication(cookie => Copy(options.Cookie, cookie));
+        // the cookie scheme is also signed into directly (SignInWithClaimsAsync), and its claim types put the app's own
+        // ahead of the defaults, as every preset's do, so they win the first-match search
+        options.Cookie.Claims.LayOverDefaults();
+        builder.AddCookieScheme(options.Cookie);
 
         services.AddSingleton<ISecuritySchemeDescriptor>(
             SecuritySchemeDescriptor.OpenIdConnect(options.AuthenticationScheme, options.Authority));
@@ -130,33 +133,4 @@ public static class OidcAuthenticationExtensions
         context.Principal = new ClaimsPrincipal(identity);
     }
 
-    /// <summary>Carries the nested cookie options across, since <c>AddCookieAuthentication</c> builds its own instance.</summary>
-    private static void Copy(CookieAuthOptions source, CookieAuthOptions target)
-    {
-        target.AuthenticationScheme = source.AuthenticationScheme;
-        target.CookieName = source.CookieName;
-        target.IsApi = source.IsApi;
-        target.ExpireTimeSpan = source.ExpireTimeSpan;
-        target.SlidingExpiration = source.SlidingExpiration;
-        target.LoginPath = source.LoginPath;
-        target.LogoutPath = source.LogoutPath;
-        target.AccessDeniedPath = source.AccessDeniedPath;
-        target.ReturnUrlParameter = source.ReturnUrlParameter;
-        target.SameSite = source.SameSite;
-        target.SecurePolicy = source.SecurePolicy;
-        target.Domain = source.Domain;
-        target.Configure = source.Configure;
-        // No effect on the OIDC path itself, which normalizes with the outer options at OnTokenValidated — but the
-        // cookie scheme this registers is also signed into directly (SignInWithClaimsAsync), and that reads *these*
-        // options. Omitting it is how a customised list silently stops applying to half the flows.
-        source.Claims.MergeInto(target.Claims);
-    }
-
-    private static void Require(string value, string name)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            throw new InvalidOperationException($"{nameof(OidcAuthOptions)}.{name} is required.");
-        }
-    }
 }

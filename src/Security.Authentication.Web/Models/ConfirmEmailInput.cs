@@ -6,7 +6,7 @@ public record ConfirmEmailInput
 {
     [Required]
     public string Token { get; set; } = null!;
-    [Required]
-    public string UserName { get; set; } = null!;
+    /// <summary>Not read: the user comes from the token.</summary>
+    public string? UserName { get; set; }
     public string? Password { get; set; }
 }

@@ -3,6 +3,7 @@ using System.Reflection;
 
 namespace Regira.Drawing.GDI.Utilities;
 
+[Obsolete("Use GdiUtility.GetMimeType. Will be removed in v7.")]
 public class KnownImageFormats
 {
     //https://stackoverflow.com/questions/8489705/c-sharp-imageformat-to-string#8489751

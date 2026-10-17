@@ -9,7 +9,7 @@ Word backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Co
 ```
 
 - A running Gotenberg server (a Docker image bundling LibreOffice and Chromium), reachable at `GotenbergWordConfig.BaseUrl`.
-- Two optional collaborators, passed to the constructor or taken from the container: an `IWordCreator` (Regira.Office.Word.Mini, for example) to fill template input before conversion, and an `IPdfToImageService` (Regira.Office.PDF.DocNET, for example) for page images.
+- Two optional collaborators, passed to the constructor or taken from the container: an `IWordCreator` (Regira.Office.Word.Mini, for example) to fill template input before conversion, and an `IPdfToImageService` (Regira.Office.PDF.PdfPig, for example) for page images.
 
 ## Documentation
 

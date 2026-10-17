@@ -1,6 +1,5 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Regira.Entities.DependencyInjection.ServiceCollections.Models;
-using Regira.Entities.DependencyInjection.Validation;
 using Regira.Entities.QueryBuilders.Abstractions;
 using Regira.Entities.EFcore.QueryBuilders.GlobalFilterBuilders;
 using Regira.Entities.Models;
@@ -90,33 +89,22 @@ public static class ServiceCollectionQueryFilterExtensions
     /// <returns></returns>
     public static EntityServiceCollectionOptions AddDefaultGlobalQueryFilters<TKey>(this EntityServiceCollectionOptions options)
     {
-        options.AddDefaultGlobalFilter<FilterIdsQueryBuilder<TKey>>();
-        options.AddDefaultGlobalFilter<FilterArchivablesQueryBuilder>();
-        options.AddDefaultGlobalFilter<FilterHasCreatedQueryBuilder>();
-        options.AddDefaultGlobalFilter<FilterHasLastModifiedQueryBuilder>();
+        options.AddGlobalFilterQueryBuilder<FilterIdsQueryBuilder<TKey>>();
+        options.AddGlobalFilterQueryBuilder<FilterArchivablesQueryBuilder>();
+        options.AddGlobalFilterQueryBuilder<FilterHasCreatedQueryBuilder>();
+        options.AddGlobalFilterQueryBuilder<FilterHasLastModifiedQueryBuilder>();
         if (typeof(TKey) != typeof(int))
         {
             // the parameterless defaults above are int-keyed and ignore search objects with another key
             // type — add the TKey variants so capability filtering works for this key type too
-            options.AddDefaultGlobalFilter<FilterArchivablesQueryBuilder<TKey>>();
-            options.AddDefaultGlobalFilter<FilterHasCreatedQueryBuilder<TKey>>();
-            options.AddDefaultGlobalFilter<FilterHasLastModifiedQueryBuilder<TKey>>();
+            options.AddGlobalFilterQueryBuilder<FilterArchivablesQueryBuilder<TKey>>();
+            options.AddGlobalFilterQueryBuilder<FilterHasCreatedQueryBuilder<TKey>>();
+            options.AddGlobalFilterQueryBuilder<FilterHasLastModifiedQueryBuilder<TKey>>();
         }
 
         return options;
     }
 
-    /// <summary>
-    /// Registers a global filter and records it as defaults-contributed, so the startup scope check can tell
-    /// "registered because UseDefaults() registers everything" from "the app asked for this one".
-    /// </summary>
-    internal static EntityServiceCollectionOptions AddDefaultGlobalFilter<TImplementation>(this EntityServiceCollectionOptions options)
-        where TImplementation : class, IGlobalFilteredQueryBuilder
-    {
-        options.AddGlobalFilterQueryBuilder<TImplementation>();
-        EntityRegistrationLog.TrackDefaultGlobalFilter(options.Services, typeof(TImplementation));
-        return options;
-    }
     public static EntityServiceCollectionOptions AddGlobalFilterQueryBuilder<TImplementation>(this EntityServiceCollectionOptions options)
         where TImplementation : class, IGlobalFilteredQueryBuilder
     {

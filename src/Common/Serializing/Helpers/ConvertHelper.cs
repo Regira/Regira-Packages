@@ -3,6 +3,7 @@ using Regira.Utilities;
 
 namespace Regira.Serializing.Helpers;
 
+[Obsolete("Nothing in the Regira packages uses it. Will be removed in v7.")]
 public class ConvertHelper(ISerializer serializer)
 {
     /// <summary>

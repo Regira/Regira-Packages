@@ -83,6 +83,9 @@ public async Task BackupToAzure(IFileService local, IFileService azure)
 
 ## ZIP download of all images for an order
 
+For an entity's attachments, read them through the entity's link service instead, so row security applies:
+`Regira.Entities` → `entities.patterns` → *Download an owner's attachments as one ZIP*.
+
 <!-- no-compile -->
 ```csharp
 public async Task<IMemoryFile> ZipOrderImages(IEnumerable<string> identifiers)

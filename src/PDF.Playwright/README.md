@@ -1,6 +1,6 @@
 # Regira.Office.PDF.MsPlaywright
 
-HTML→PDF backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/) that renders through headless Chromium with [Microsoft.Playwright](https://www.nuget.org/packages/Microsoft.Playwright), for pages whose CSS needs a browser engine. `PdfManager` (namespace `Regira.Office.PDF.MsPlaywright`) implements `IHtmlToPdfService`. Only `HtmlInput.HtmlContent` is used, always on A4 paper: the page size, orientation, margins, header and footer are not applied — PDF.SelectPdf applies them.
+HTML→PDF backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/) that renders through headless Chromium with [Microsoft.Playwright](https://www.nuget.org/packages/Microsoft.Playwright), for pages whose CSS needs a browser engine. `PdfManager` (namespace `Regira.Office.PDF.MsPlaywright`) implements `IHtmlToPdfService` and applies every `HtmlInput` setting — page size, orientation, margins, header and footer — on Windows, Linux and macOS, with no page limit. It is the recommended HTML→PDF backend.
 
 ## Installation
 
@@ -12,7 +12,7 @@ Chromium is installed on first use, so the first conversion needs network access
 
 ## Documentation
 
-- [PDF](https://regira.github.io/Regira-Packages/src/Common.Office/docs/pdf/) — `IHtmlToPdfService`, the `HtmlInput` model, and how the headless-Chromium backends differ from SelectPdf
+- [PDF](https://regira.github.io/Regira-Packages/src/Common.Office/docs/pdf/) — `IHtmlToPdfService`, the `HtmlInput` model, and how the headless-Chromium backends place a header and footer
 
 ## License
 

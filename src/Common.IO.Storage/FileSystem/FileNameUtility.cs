@@ -6,7 +6,7 @@ public static class FileNameUtility
 {
     public static string GetAbsoluteUri(string filename, string? root)
     {
-        var path = string.IsNullOrWhiteSpace(root) || filename.StartsWith(root, StringComparison.InvariantCultureIgnoreCase)
+        var path = string.IsNullOrWhiteSpace(root) || GetRootLength(ConvertForwardSlashes(filename), root) >= 0
             ? filename
             : Combine(root, filename);
         return ConvertForwardSlashes(path);
@@ -28,13 +28,32 @@ public static class FileNameUtility
     public static string? GetRelativeFolder(string input, string? root)
     {
         var processedInput = ConvertForwardSlashes(input);
-        var startIndex = !string.IsNullOrWhiteSpace(root) && processedInput.StartsWith(root)
-            ? root!.Length
-            : 0;
+        var startIndex = Math.Max(GetRootLength(processedInput, root), 0);
         var endIndex = processedInput.LastIndexOf(Path.DirectorySeparatorChar) - startIndex;
         return endIndex <= 0
             ? null
             : processedInput.Substring(startIndex, endIndex).Trim(Path.DirectorySeparatorChar);
+    }
+    /// <summary>
+    /// The length of <paramref name="root"/> at the start of <paramref name="path"/> (separators already converted),
+    /// or -1 when the path does not lie at or below it. The root is read with either separator and without a trailing
+    /// one, and matches whole folder names, compared as the file system compares them.
+    /// </summary>
+    private static int GetRootLength(string path, string? root)
+    {
+        if (string.IsNullOrWhiteSpace(root))
+        {
+            return -1;
+        }
+        var normalizedRoot = ConvertForwardSlashes(root).TrimEnd(Path.DirectorySeparatorChar);
+        if (normalizedRoot.Length == 0 && path.Length == 0)
+        {
+            // a root of "/" trims to nothing: an empty path is the root once combined with it, not a path below it
+            return -1;
+        }
+        var isBelowRoot = path.StartsWith(normalizedRoot, PathComparison)
+            && (path.Length == normalizedRoot.Length || path[normalizedRoot.Length] == Path.DirectorySeparatorChar);
+        return isBelowRoot ? normalizedRoot.Length : -1;
     }
     // Normalize both slash styles to the platform separator: on Windows this yields '\' (unchanged
     // behaviour), on Linux/macOS it yields '/'. The old hard-coded '\' produced paths where '\' is a

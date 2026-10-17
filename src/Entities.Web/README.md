@@ -1,6 +1,6 @@
 # Regira.Entities.Web
 
-The ASP.NET Core Web API layer of [Regira Entities](https://regira.github.io/Regira-Packages/src/Common.Entities/). A controller derived from `EntityControllerBase` exposes an entity's REST endpoints — details, list, search with paging, create, modify, patch, save and delete — over its `IEntityService`, mapping to and from the DTO types it names through `IEntityMapper`. It is the top-level entry point for a web API and brings Regira.Entities.DependencyInjection and Regira.Entities.EFcore transitively.
+The ASP.NET Core Web API layer of [Regira Entities](https://regira.github.io/Regira-Packages/src/Common.Entities/). A controller derived from `EntityControllerBase` exposes an entity's REST endpoints — details, list, search with paging, create, modify, patch, save and delete — over its `IEntityService`, mapping to and from the DTO types it names through `IEntityMapper`. An application that wants no controller classes maps the same endpoints from its registrations with `app.MapEntityEndpoints()`. It is the top-level entry point for a web API and brings Regira.Entities.DependencyInjection, Regira.Entities.EFcore and Regira.Entities.Mediator transitively.
 
 ## Installation
 
@@ -14,6 +14,7 @@ The package brings EF Core but no database provider: add one (for example `Micro
 
 - [Quickstart](https://regira.github.io/Regira-Packages/docs/quickstart.html) — from an empty folder to a working entity CRUD API
 - [Web Endpoints](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/web-endpoints.html) — choosing a controller base, the standard endpoints, paging, response types and error codes; the generated endpoints ship without authorization
+- [Mapped Endpoints](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/web-endpoints.html#mapped-endpoints) — the same endpoints mapped from the registrations, without controllers
 - [Regira Entities](https://regira.github.io/Regira-Packages/src/Common.Entities/) — the entity framework, its pipeline and the full documentation index
 
 ## License

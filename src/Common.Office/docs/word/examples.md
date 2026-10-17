@@ -94,8 +94,8 @@ IMemoryFile pdf = await word.Convert(
 ```
 
 > ⚠️ `word` is Word.Spire here, and the FreeSpire.Doc free edition writes only the first three pages of a PDF, with a
-> notice page in place of the rest, and no error. For a document that can run longer, convert with Word.Syncfusion,
-> Word.Aspose or Word.Gotenberg.
+> notice page in place of the rest, and no error. For a document that can run longer, run Word.Spire on the
+> [commercial Spire.Doc](README.md#commercial-spiredoc), or convert with Word.Syncfusion, Word.Aspose or Word.Gotenberg.
 
 ---
 
@@ -146,7 +146,7 @@ using Regira.Office.PDF.Abstractions;
 using Regira.Office.Word.Gotenberg.DependencyInjection;
 
 services.AddSingleton<IImageService, Regira.Drawing.SkiaSharp.Services.ImageService>();
-services.AddSingleton<IPdfToImageService, Regira.Office.PDF.DocNET.PdfManager>();
+services.AddSingleton<IPdfToImageService, Regira.Office.PDF.PdfPig.PdfService>();
 services.AddSingleton<IWordCreator, Regira.Office.Word.Mini.WordService>();
 services.AddGotenbergWord(o => o.BaseUrl = configuration["Gotenberg:BaseUrl"]!);
 ```
@@ -195,6 +195,40 @@ IMemoryFile doc = await word.Create(new WordTemplateInput
         {
             ["Description"] = d.Description,
             ["Amount"]      = d.Amount.ToString("C")
+        }).ToList()
+    }
+});
+```
+
+## Example 10: Write a section per order, with its lines
+
+The template [loops](README.md#loop-blocks) over the orders, and over each order's lines in
+[marker rows](README.md#marker-rows), each marker alone in its own paragraph or row:
+
+```text
+{{#each Orders}}
+Order {{Number}} of {{Date}}
+| Description     | Price     |
+| {{#each Lines}} |           |
+| {{Description}} | {{Price}} |
+| {{/each}}       |           |
+{{else}}
+There are no orders this month.
+{{/each}}
+```
+
+<!-- no-compile -->
+```csharp
+IMemoryFile doc = await word.Create(new WordTemplateInput
+{
+    Template             = templateBytes.ToMemoryFile(),
+    CollectionParameters = new Dictionary<string, ICollection<IDictionary<string, object>>>
+    {
+        ["Orders"] = orders.Select(o => (IDictionary<string, object>)new Dictionary<string, object>
+        {
+            ["Number"] = o.Number,
+            ["Date"]   = o.Date.ToString("d"),
+            ["Lines"]  = o.Lines.Select(l => new { l.Description, Price = l.Price.ToString("C") }).ToList()
         }).ToList()
     }
 });

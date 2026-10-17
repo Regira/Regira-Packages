@@ -39,7 +39,7 @@ on it.
 
 ## Step 3 — Select the minimum Regira package set
 
-Inspect any existing `*.csproj` files first. Then choose the smallest package set that covers the user's stated needs. Use the package routing tables in `.regira/instructions/project.setup.md` if available, or the table in `.github/copilot-instructions.md`.
+Inspect any existing `*.csproj` files first. Then choose the smallest package set that covers the user's stated needs. Use the package routing table in the consumer bootstrap: `get_bootstrap_guide(heading: "Regira package routing")`, or its copy in `.regira/bootstrap.md` without the MCP.
 
 ## Step 4 — Add packages and restore
 

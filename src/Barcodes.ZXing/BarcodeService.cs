@@ -70,18 +70,23 @@ public class BarcodeService : IBarcodeService
     }
     public Task<IImageFile> Create(BarcodeInput input, CancellationToken cancellationToken = default)
     {
+        var options = new EncodingOptions
+        {
+            Width = input.Size.Width,
+            Height = input.Size.Height,
+            PureBarcode = true,
+            GS1Format = input.Format == BarcodeFormat.DataMatrix
+        };
+        // The quiet zone, the blank border a reader needs (an EAN or UPC without one does not decode): ZXing's
+        // default margin suits every format but DataMatrix, whose default is none; its spec asks for one module
+        if (input.Format == BarcodeFormat.DataMatrix)
+        {
+            options.Margin = 1;
+        }
         var writer = new BarcodeWriter<SKBitmap>
         {
             Format = Convert(input.Format),
-            Options = new EncodingOptions
-            {
-                Width = input.Size.Width,
-                Height = input.Size.Height,
-                Margin = 0,
-                PureBarcode = true,
-                GS1Format = input.Format == BarcodeFormat.DataMatrix,
-                NoPadding = true
-            },
+            Options = options,
             Renderer = new SKBitmapRenderer
             {
                 Foreground = SKColor.Parse(input.Color.Hex),

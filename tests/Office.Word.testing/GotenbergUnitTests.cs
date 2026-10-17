@@ -171,78 +171,30 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     }
 
     /// <summary>
-    /// A condition on a key the input does not give is false, so a template holding a block needs rendering even
-    /// without a single parameter.
+    /// A condition on a key the input does not give is false, and a loop over one has no rows, so a template holding a
+    /// block needs rendering even without a single parameter.
     /// </summary>
-    [Test]
-    public async Task A_Template_With_Conditional_Blocks_Needs_A_Creator()
+    [TestCase("Intro", "{{#if IsDraft}}", "DRAFT", "{{/if}}")]
+    [TestCase("Intro", "{{#each Lines}}", "{{Description}}", "{{/each}}")]
+    public async Task A_Template_With_Blocks_Needs_A_Creator(params string[] paragraphs)
     {
         var handler = new StubHandler();
         var service = new WordService(handler.CreateClient());
-        var input = new WordTemplateInput { Template = Docx.Document("Intro", "{{#if IsDraft}}", "DRAFT", "{{/if}}") };
+        var input = new WordTemplateInput { Template = Docx.Document(paragraphs) };
 
         var ex = await Assert.ThrowsAsync<NotSupportedException>(() => service.Convert(input, FileFormat.Pdf));
 
         Assert.Multiple(() =>
         {
-            Assert.That(ex!.Message, Does.Contain("conditional blocks"));
+            Assert.That(ex!.Message, Does.Contain("template blocks"));
             Assert.That(handler.Requests, Is.Empty);
         });
     }
 
     /// <summary>
-    /// Every OOXML conversion is scanned in-process for blocks, so a part beyond the scan's limit — a zip bomb among them —
-    /// is not read, and the document goes to Gotenberg as it is.
-    /// </summary>
-    [Test]
-    public void A_Part_Beyond_The_Scan_Limit_Is_Not_Read()
-    {
-        var template = Docx.Document(new string('x', 2_000), "{{#if IsDraft}}", "DRAFT", "{{/if}}").GetBytes()!;
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(ConditionalMarkers.Any(template), Is.True, "within the limit");
-            Assert.That(ConditionalMarkers.Any(template, maxBytes: 1_000), Is.False, "beyond it");
-        });
-    }
-
-    /// <summary>
-    /// A document that opens a block is created in-process, which loads every header and footer whole, so the limit counts
-    /// them, past the block found first: a header too large for it sends the document to Gotenberg.
-    /// </summary>
-    [Test]
-    public void The_Limit_Counts_The_Headers()
-    {
-        var template = Docx.Document(Docx.Paragraphs("{{#if IsDraft}}", "DRAFT", "{{/if}}"), header: Docx.Paragraphs(new string('x', 20_000))).GetBytes()!;
-        var bodyOnly = Docx.Document("{{#if IsDraft}}", "DRAFT", "{{/if}}").GetBytes()!;
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(ConditionalMarkers.Any(bodyOnly, maxBytes: 10_000), Is.True, "the body fits the limit");
-            Assert.That(ConditionalMarkers.Any(template, maxBytes: 10_000), Is.False, "the body and its header do not");
-        });
-    }
-
-    /// <summary>
-    /// A creator other than Word.Mini loads every part, so the limit counts the footnotes too, though no marker there counts.
-    /// </summary>
-    [Test]
-    public void The_Limit_Counts_Every_Part()
-    {
-        var body = Docx.Paragraphs("{{#if IsDraft}}", "DRAFT", "{{/if}}").ToArray();
-        var smallFootnote = Docx.Document(body.Select(x => (W.Paragraph)x.CloneNode(true)), footnote: Docx.Paragraphs("Note")).GetBytes()!;
-        var largeFootnote = Docx.Document(body.Select(x => (W.Paragraph)x.CloneNode(true)), footnote: Docx.Paragraphs(new string('x', 20_000))).GetBytes()!;
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(ConditionalMarkers.Any(smallFootnote, maxBytes: 10_000), Is.True, "the document fits the limit");
-            Assert.That(ConditionalMarkers.Any(largeFootnote, maxBytes: 10_000), Is.False, "its footnotes do not");
-        });
-    }
-
-    /// <summary>
-    /// Opening a package parses its relationships and content types whole, before any part is scanned, so the limit is
-    /// judged first, on the sizes the zip declares: a relationship target inflating far beyond it is never read.
+    /// Every OOXML conversion is scanned in-process for blocks, and opening a package parses its relationships and
+    /// content types whole, so the limit is judged first, on the sizes the zip declares together: a package past it —
+    /// here a relationship target inflating far beyond it — is not opened, and goes to Gotenberg as it is.
     /// </summary>
     [Test]
     public void A_Package_Declaring_More_Than_The_Limit_Is_Not_Opened()
@@ -253,15 +205,11 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
             "<Relationship Id=\"rIdBomb\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink\""
             + $" Target=\"https://example.com/{new string('a', 16 * 1024 * 1024)}\" TargetMode=\"External\"/></Relationships>"));
 
-        var allocated = GC.GetAllocatedBytesForCurrentThread();
-        var opensBlock = ConditionalMarkers.Any(bomb, maxBytes: 1024 * 1024);
-        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
-
         Assert.Multiple(() =>
         {
             Assert.That(bomb, Has.Length.LessThan(100_000), "the bomb is small");
-            Assert.That(opensBlock, Is.False);
-            Assert.That(allocated, Is.LessThan(1024 * 1024), "its relationships were not read");
+            Assert.That(TemplateMarkers.Any(template, maxBytes: 1024 * 1024), Is.True, "the document");
+            Assert.That(TemplateMarkers.Any(bomb, maxBytes: 1024 * 1024), Is.False, "the document with the bomb");
         });
     }
 
@@ -276,16 +224,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         var template = Docx.Document(new string('x', 4 * 1024 * 1024), "{{#if IsDraft}}", "DRAFT", "{{/if}}").GetBytes()!;
         var forged = DeclareSize(template, "word/document.xml", 10_000);
 
-        var allocated = GC.GetAllocatedBytesForCurrentThread();
-        var opensBlock = ConditionalMarkers.Any(forged, maxBytes: 1024 * 1024);
-        allocated = GC.GetAllocatedBytesForCurrentThread() - allocated;
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(ConditionalMarkers.Any(template, maxBytes: 1024 * 1024), Is.False, "declared as it is, it exceeds the limit");
-            Assert.That(opensBlock, Is.False);
-            Assert.That(allocated, Is.LessThan(1024 * 1024), "no more than the declared size was read");
-        });
+        Assert.That(TemplateMarkers.Any(forged, maxBytes: 1024 * 1024), Is.False);
     }
 
     /// <summary>
@@ -303,7 +242,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
             using (var zip = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Update, true))
             {
                 // empty, unreferenced XML parts: the package would open with them, and its block be found
-                for (var i = 0; i < ConditionalMarkers.MaxParts; i++)
+                for (var i = 0; i < TemplateMarkers.MaxParts; i++)
                 {
                     zip.CreateEntry($"extra/part{i}.xml");
                 }
@@ -313,8 +252,8 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
 
         Assert.Multiple(() =>
         {
-            Assert.That(ConditionalMarkers.Any(template), Is.True, "the document");
-            Assert.That(ConditionalMarkers.Any(crowded), Is.False, "the document among a thousand empty parts");
+            Assert.That(TemplateMarkers.Any(template), Is.True, "the document");
+            Assert.That(TemplateMarkers.Any(crowded), Is.False, "the document among a thousand empty parts");
         });
     }
 
@@ -406,7 +345,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
             writer.Write(xml);
         }
 
-        Assert.That(ConditionalMarkers.Any(stream.ToArray()), Is.False);
+        Assert.That(TemplateMarkers.Any(stream.ToArray()), Is.False);
     }
 
     /// <summary>
@@ -422,9 +361,9 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
 
         Assert.Multiple(() =>
         {
-            Assert.That(ConditionalMarkers.Any(inHeader.GetBytes()!), Is.True, "in a header");
-            Assert.That(ConditionalMarkers.Any(inTextBox.GetBytes()!), Is.True, "in a text box");
-            Assert.That(ConditionalMarkers.Any(afterEmpty.GetBytes()!), Is.True, "after an empty paragraph");
+            Assert.That(TemplateMarkers.Any(inHeader.GetBytes()!), Is.True, "in a header");
+            Assert.That(TemplateMarkers.Any(inTextBox.GetBytes()!), Is.True, "in a text box");
+            Assert.That(TemplateMarkers.Any(afterEmpty.GetBytes()!), Is.True, "after an empty paragraph");
         });
     }
 
@@ -472,7 +411,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     /// tags on lines of their own, a stray <c>{{/if}}</c>.
     /// </summary>
     [TestCase("Intro", "Wrap optional text in {{#if Key}} and {{/if}}.")]
-    [TestCase("A Handlebars sample:", "{{#each items}}", "{{name}}", "{{else}}", "No items.", "{{/each}}")]
+    [TestCase("A Go template sample:", "{{range .Items}}", "{{.Name}}", "{{else}}", "No items.", "{{end}}")]
     [TestCase("A block closes with", "{{/if}}")]
     public async Task A_Document_That_Opens_No_Block_Needs_No_Creator(params string[] paragraphs)
     {
@@ -615,7 +554,7 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     [TestCase(PageSize.A6, 5953u, 8391u)]
     public void PageSizes_Match_Word(PageSize size, uint width, uint height)
     {
-        Assert.That(Regira.Office.Word.Gotenberg.Internal.PageSizes.Twips(size), Is.EqualTo((width, height)));
+        Assert.That(Regira.Office.Word.Layout.WordPageSizes.Twips(size), Is.EqualTo((width, height)));
     }
 
     [Test]
@@ -667,6 +606,29 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
     }
 
     [Test]
+    public void PageSetup_Stops_A_Picture_At_The_Largest_Shape_Word_Holds()
+    {
+        const long maxShapeSize = 1584 * 12700; // 22 inches in EMUs
+        var input = ReadAsset("template_image.docx").GetBytes()!;
+        var before = PictureExtents(input);
+
+        var output = Apply("template_image.docx", new DocumentSettings { PageSize = PageSize.A0 });
+
+        // A4 → A0 with 1417 twip side margins
+        var scale = (Regira.Office.Word.Layout.WordPageSizes.Twips(PageSize.A0).Width - 2834d) / (11906d - 2834);
+        var after = PictureExtents(output);
+        Assert.That(before.Max(extent => Math.Max(extent.Cx, extent.Cy)) * scale, Is.GreaterThan(maxShapeSize), "scaled with the text width alone, the picture would pass the limit");
+        Assert.Multiple(() =>
+        {
+            for (var i = 0; i < before.Count; i++)
+            {
+                Assert.That(Math.Max(after[i].Cx, after[i].Cy), Is.EqualTo(maxShapeSize).Within(1), "at the limit");
+                Assert.That((double)after[i].Cy / after[i].Cx, Is.EqualTo((double)before[i].Cy / before[i].Cx).Within(1).Percent, "height over width");
+            }
+        });
+    }
+
+    [Test]
     public void PageSetup_Scales_Pictures_With_The_Text_Width()
     {
         var input = ReadAsset("template_image.docx").GetBytes()!;
@@ -686,6 +648,61 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
                 Assert.That(after[i].Cx, Is.EqualTo(before[i].Cx * scale).Within(1));
                 Assert.That(after[i].Cy, Is.EqualTo(before[i].Cy * scale).Within(1));
             }
+        });
+    }
+
+    /// <summary>A text box scales with the text width; the picture in it keeps its size, as on the other backends.</summary>
+    [Test]
+    public void PageSetup_Scales_A_Text_Box_And_Leaves_The_Picture_In_It()
+    {
+        var input = Docx.Document([new W.Paragraph(new W.Run(new W.Drawing(TextBoxHoldingAPicture)))]).GetBytes()!;
+        var before = PictureExtents(input);
+
+        var output = OpenXmlPageSetup.Apply(input, new ConversionOptions { OutputFormat = FileFormat.Pdf, Settings = new DocumentSettings { PageSize = PageSize.A3 } });
+
+        // A4 → A3, the page without margins
+        var scale = 16838d / 11906;
+        var after = PictureExtents(output);
+        // the text box's wp:extent, then the picture's; then their a:ext
+        Assert.That(before, Has.Count.EqualTo(4));
+        Assert.Multiple(() =>
+        {
+            foreach (var box in new[] { 0, 2 })
+            {
+                Assert.That(after[box].Cx, Is.EqualTo(before[box].Cx * scale).Within(1), "the text box");
+                Assert.That(after[box].Cy, Is.EqualTo(before[box].Cy * scale).Within(1), "the text box");
+            }
+            foreach (var picture in new[] { 1, 3 })
+            {
+                Assert.That(after[picture], Is.EqualTo(before[picture]), "the picture");
+            }
+        });
+    }
+
+    /// <summary>
+    /// A group scales as a whole, through its own size: its shapes sit in the child space that its a:chOff and a:chExt map
+    /// onto its a:ext, so they follow it and keep their own a:off and a:ext.
+    /// </summary>
+    [Test]
+    public void PageSetup_Scales_A_Group_Of_Shapes_As_A_Whole()
+    {
+        var input = Docx.Document([Docx.GroupedTextBoxes(["A"], ["B"])]).GetBytes()!;
+        var before = Group(input);
+
+        var output = OpenXmlPageSetup.Apply(input, new ConversionOptions { OutputFormat = FileFormat.Pdf, Settings = new DocumentSettings { PageSize = PageSize.A3 } });
+
+        // A4 → A3, the page without margins
+        var scale = 16838d / 11906;
+        var after = Group(output);
+        Assert.That(before.Shapes, Has.Count.EqualTo(2));
+        Assert.Multiple(() =>
+        {
+            Assert.That(after.Extent.Cx, Is.EqualTo(before.Extent.Cx * scale).Within(1), "wp:extent");
+            Assert.That(after.Extent.Cy, Is.EqualTo(before.Extent.Cy * scale).Within(1), "wp:extent");
+            Assert.That(after.Extents.Cx, Is.EqualTo(before.Extents.Cx * scale).Within(1), "the group's a:ext");
+            Assert.That(after.Extents.Cy, Is.EqualTo(before.Extents.Cy * scale).Within(1), "the group's a:ext");
+            Assert.That(after.ChildSpace, Is.EqualTo(before.ChildSpace), "the group's a:chOff and a:chExt");
+            Assert.That(after.Shapes, Is.EqualTo(before.Shapes), "the shapes' a:off and a:ext");
         });
     }
 
@@ -903,6 +920,79 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
             .ToList();
     }
 
+    /// <summary>The document's one group of shapes: its wp:extent, its own a:xfrm, and the a:xfrm of each shape in it.</summary>
+    private static GroupLayout Group(byte[] docx)
+    {
+        using var doc = Open(docx);
+        var body = doc.MainDocumentPart!.Document!.Body!;
+        var extent = body.Descendants<Wp.Extent>().Single();
+        var group = body.Descendants<A.TransformGroup>().Single();
+        return new GroupLayout(
+            (extent.Cx!.Value, extent.Cy!.Value),
+            (group.Extents!.Cx!.Value, group.Extents.Cy!.Value),
+            (group.ChildOffset!.X!.Value, group.ChildOffset.Y!.Value, group.ChildExtents!.Cx!.Value, group.ChildExtents.Cy!.Value),
+            body.Descendants<A.Transform2D>()
+                .Select(shape => (shape.Offset!.X!.Value, shape.Offset.Y!.Value, shape.Extents!.Cx!.Value, shape.Extents.Cy!.Value))
+                .ToList());
+    }
+
+    /// <summary>An inline text box of 200 × 60 pt holding an inline picture of 100 × 50 pt: a drawing in a drawing.</summary>
+    private static readonly string TextBoxHoldingAPicture = TextBoxHolding(200, 60, 100, 50);
+
+    /// <summary>An inline text box holding an inline picture, each of the given size in points.</summary>
+    private static string TextBoxHolding(double boxWidth, double boxHeight, double pictureWidth, double pictureHeight) => $"""
+        <w:drawing xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                   xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+                   xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                   xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"
+                   xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+          <wp:inline distT="0" distB="0" distL="0" distR="0">
+            <wp:extent cx="{Emus(boxWidth)}" cy="{Emus(boxHeight)}"/>
+            <wp:docPr id="1" name="Text Box 1"/>
+            <a:graphic>
+              <a:graphicData uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">
+                <wps:wsp>
+                  <wps:cNvSpPr txBox="1"/>
+                  <wps:spPr>
+                    <a:xfrm><a:off x="0" y="0"/><a:ext cx="{Emus(boxWidth)}" cy="{Emus(boxHeight)}"/></a:xfrm>
+                    <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+                  </wps:spPr>
+                  <wps:txbx>
+                    <w:txbxContent>
+                      <w:p>
+                        <w:r>
+                          <w:drawing>
+                            <wp:inline distT="0" distB="0" distL="0" distR="0">
+                              <wp:extent cx="{Emus(pictureWidth)}" cy="{Emus(pictureHeight)}"/>
+                              <wp:docPr id="2" name="Picture 2"/>
+                              <a:graphic>
+                                <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                                  <pic:pic>
+                                    <pic:nvPicPr><pic:cNvPr id="2" name="Picture 2"/><pic:cNvPicPr/></pic:nvPicPr>
+                                    <pic:blipFill><a:blip/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>
+                                    <pic:spPr>
+                                      <a:xfrm><a:off x="0" y="0"/><a:ext cx="{Emus(pictureWidth)}" cy="{Emus(pictureHeight)}"/></a:xfrm>
+                                      <a:prstGeom prst="rect"><a:avLst/></a:prstGeom>
+                                    </pic:spPr>
+                                  </pic:pic>
+                                </a:graphicData>
+                              </a:graphic>
+                            </wp:inline>
+                          </w:drawing>
+                        </w:r>
+                      </w:p>
+                    </w:txbxContent>
+                  </wps:txbx>
+                  <wps:bodyPr/>
+                </wps:wsp>
+              </a:graphicData>
+            </a:graphic>
+          </wp:inline>
+        </w:drawing>
+        """;
+
+    private static long Emus(double points) => (long)Math.Round(points * 12700);
+
     private static List<double> GridColumns(byte[] docx)
     {
         using var doc = Open(docx);
@@ -918,6 +1008,9 @@ public class GotenbergUnitTests() : WordAssetsTestsBase("Gotenberg")
         => services.ConfigureAll<HttpClientFactoryOptions>(options =>
             options.HttpMessageHandlerBuilderActions.Add(builder => builder.PrimaryHandler = handler));
 
+
+    private sealed record GroupLayout((long Cx, long Cy) Extent, (long Cx, long Cy) Extents, (long X, long Y, long Cx, long Cy) ChildSpace,
+        List<(long X, long Y, long Cx, long Cy)> Shapes);
 
     private sealed record Upload(string? Name, string? FileName, byte[] Bytes);
 

@@ -16,6 +16,10 @@ public class DefaultFileIdentifierGenerator<TAttachmentKey, TAttachment>(IAttach
     /// slug. Any virtual folder the client supplied lives in <c>Attachment.FileName</c> and deliberately does
     /// <b>not</b> appear here, so re-filing an attachment is a metadata edit that never moves bytes.
     /// </para>
+    /// <para>
+    /// The key is built while priming, before the save assigns new keys: a file sent inline with an owner that is
+    /// still being created is stored under the owner's default id (<c>0</c>), and the guid keeps it apart.
+    /// </para>
     /// </summary>
     public virtual Task<string> Generate(IEntityAttachment entity, CancellationToken token = default)
     {

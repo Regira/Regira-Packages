@@ -11,9 +11,8 @@ namespace Regira.Entities.Models;
 /// again, that one that the input itself was rejected.<br />
 /// In an ASP.NET host the mapping is application-wide: <c>ConfigureDefaultJsonOptions()</c> registers
 /// <c>EntityExceptionFilter</c>, so every MVC action answers 409 — generated, hand-written, or on a
-/// controller of the consumer's own. The controller helpers (<c>ControllerExtensions.Save</c>/<c>Delete</c>)
-/// and the <c>[EntityConstraintConflict]</c> attribute on the attachment controller bases catch it first and
-/// emit the same body.<br />
+/// controller of the consumer's own. The entity and attachment controller bases carry the
+/// <c>[EntityConstraintConflict]</c> attribute, which answers the same in a host without the filter.<br />
 /// A write surface <b>outside</b> MVC — a minimal endpoint, a background job, a message handler — is not
 /// covered by that filter and leaks this as a 500 unless it maps the exception itself.
 /// </summary>

@@ -117,13 +117,14 @@ public class ProcessHelperTests
     }
 
     /// <summary>
-    /// Bounded, so a helper that stops draining concurrently fails the test instead of hanging the run
+    /// Bounded, so a helper that stops draining concurrently fails the test instead of hanging the run. Loose on purpose:
+    /// that helper never returns at all, while a full parallel test run can stretch the flood past half a minute
     /// </summary>
     private static IProcessOutput Run(string command)
     {
         var run = Task.Run(() => new ProcessHelper().ExecuteCommand(command, waitForOutput: true));
 
-        Assert.That(run.Wait(TimeSpan.FromSeconds(30)), Is.True, "ExecuteCommand never returned — the two pipes are not being drained at the same time.");
+        Assert.That(run.Wait(TimeSpan.FromMinutes(2)), Is.True, "ExecuteCommand never returned — the two pipes are not being drained at the same time.");
 
         return run.Result;
     }

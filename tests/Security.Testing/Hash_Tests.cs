@@ -1,3 +1,4 @@
+#pragma warning disable CS0618 // SymmetricEncrypter and SimpleHasher are obsolete
 using Regira.Security.Core;
 using Regira.Security.Hashing;
 

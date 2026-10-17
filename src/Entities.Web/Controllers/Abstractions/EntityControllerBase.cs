@@ -48,6 +48,7 @@ public abstract class EntityControllerBase<TEntity, TSearchObject, TDto, TInputD
 /// <typeparam name="TSearchObject"></typeparam>
 
 [ApiController]
+[EntityConstraintConflict]
 public abstract class EntityControllerBase<TEntity, TKey, TSearchObject, TDto, TInputDto> : ControllerBase
     where TEntity : class, IEntity<TKey>
     where TSearchObject : class, ISearchObject<TKey>
@@ -117,6 +118,7 @@ public abstract class EntityControllerBase<TEntity, TSo, TSortBy, TIncludes, TDt
 /// <typeparam name="TInputDto"></typeparam>
 
 [ApiController]
+[EntityConstraintConflict]
 public abstract class EntityControllerBase<TEntity, TKey, TSo, TSortBy, TIncludes, TDto, TInputDto> : ControllerBase
     where TEntity : class, IEntity<TKey>
     where TSo : class, ISearchObject<TKey>, new()

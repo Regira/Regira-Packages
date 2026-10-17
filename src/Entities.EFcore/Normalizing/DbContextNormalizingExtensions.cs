@@ -7,6 +7,7 @@ using Regira.Utilities;
 
 namespace Regira.Entities.EFcore.Normalizing;
 
+[Obsolete("Normalizes outside the save, beside EntityNormalizerContainerInterceptor, which normalizes on every SaveChanges(). Wire the interceptor with UseDefaults(), or WireDbContext(DbContextWiring.NormalizerInterceptors). Will be removed in v7.", DiagnosticId = "REGIRA0001")]
 public static class DbContextNormalizingExtensions
 {
     /// <summary>

@@ -34,14 +34,7 @@ public static class DbContextExtensions
     public static void UpdateRelatedCollection<TEntity, TRelated>(this DbContext dbContext, TEntity modified, TEntity original, Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression)
         where TEntity : class, IEntity<int>
         where TRelated : class, IEntity<int>
-    {
-        foreach (var item in navigationExpression.Compile()(modified) ?? Array.Empty<TRelated>())
-        {
-            // No negative ids for EF!
-            item.Id = Math.Max(0, item.Id);
-        }
-        dbContext.UpdateRelatedCollection<TEntity, TRelated, int, int>(modified, original, navigationExpression);
-    }
+        => dbContext.UpdateRelatedCollection<TEntity, TRelated, int, int>(modified, original, navigationExpression);
 
     public static void UpdateRelatedCollection<TEntity, TRelated, TEntityKey, TRelatedKey>(this DbContext dbContext, TEntity modified, TEntity original, Expression<Func<TEntity, ICollection<TRelated>?>> navigationExpression)
         where TEntity : class, IEntity<TEntityKey>
@@ -72,17 +65,13 @@ public static class DbContextExtensions
             // so they have a stable :key before the server has seen them; such a row matches no original, so
             // it correctly lands here — but attaching it as Added with the temp key still on it makes the
             // provider insert that key verbatim (SQLite accepts a negative rowid without complaint), and the
-            // row is only visibly wrong to someone who inspects primary keys. Same normalization the int
-            // convenience overload above already applies, generalized to any signed numeric key.
+            // row is only visibly wrong to someone who inspects primary keys.
             ResetTempKey<TRelated, TRelatedKey>(entity);
             dbContext.Entry(entity).State = EntityState.Added;
         }
         foreach (var entity in relatedItemsToDelete)
         {
-            var entry = dbContext.Entry(entity);
-            entry.State = EntityState.Deleted;
-            // the row comes from the stored collection, so its values are the stored ones
-            entry.MarkStoredOriginals();
+            dbContext.Entry(entity).State = EntityState.Deleted;
         }
         foreach (var entity in relatedItemsToModify)
         {
@@ -102,7 +91,7 @@ public static class DbContextExtensions
     /// keys can carry a temp value, so string and Guid keys are deliberately left alone: there, a
     /// client-supplied key is a legitimate choice rather than a placeholder.
     /// </summary>
-    private static void ResetTempKey<TRelated, TRelatedKey>(TRelated entity)
+    internal static void ResetTempKey<TRelated, TRelatedKey>(TRelated entity)
         where TRelated : class, IEntity<TRelatedKey>
     {
         if (IsTempKey(entity.Id))
@@ -145,7 +134,7 @@ public static class DbContextExtensions
     }
 
     /// <summary>A negative signed numeric key: the placeholder a client gives a row the store has not seen.</summary>
-    private static bool IsTempKey(object? id)
+    internal static bool IsTempKey(object? id)
         // Compare the unwrapped value, not the key against its type's default: for a nullable key the default is null,
         // and Comparer<int?> sorts null FIRST — so Compare(-1, null) is positive and the guard would never fire on the
         // one key shape that most needs it. Boxing a Nullable<int> that has a value yields a boxed int, so the patterns

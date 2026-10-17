@@ -28,22 +28,9 @@ internal sealed class AttachmentForeignKeyValidator : IEntityRegistrationValidat
 
     public IEnumerable<EntityValidationIssue> Validate(EntityValidationContext context)
     {
-        using var scope = context.Provider.CreateScope();
-        foreach (var inspectType in ValidationContextTypes.Inspectable(context))
+        foreach (var (inspectType, dbContext) in context.DbContexts)
         {
-            IModel model;
-            try
-            {
-                model = ((DbContext)scope.ServiceProvider.GetRequiredService(inspectType)).Model;
-            }
-            catch
-            {
-                // The archived-filter validator already reports an uninspectable context; saying it twice
-                // adds noise without adding information.
-                continue;
-            }
-
-            foreach (var navigation in MisMappedNavigations(model))
+            foreach (var navigation in MisMappedNavigations(dbContext.Model))
             {
                 var owner = navigation.DeclaringEntityType.ClrType.Name;
                 var link = navigation.TargetEntityType.ClrType.Name;

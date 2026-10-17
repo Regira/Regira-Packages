@@ -10,6 +10,7 @@ namespace Regira.Security.Hashing;
 /// Use it only for non-sensitive data or when you need a simple hash without the overhead of more secure algorithms like bcrypt or PBKDF2.
 /// </summary>
 /// <param name="options"></param>
+[Obsolete("A double SHA with a fixed salt. Hash with Hasher (PBKDF2), or the BCrypt Hasher for passwords. Will be removed in v7.")]
 public class SimpleHasher(CryptoOptions? options = null) : IHasher
 {
     private readonly string _salt = options?.Secret ?? DefaultSecuritySettings.SaltKey;

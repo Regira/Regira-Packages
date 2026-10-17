@@ -43,15 +43,7 @@ public class ZipStorageTests
 
 #if NET10_0_OR_GREATER
     [Test]
-    public async Task ListAsync() => await StorageTestContext.Test_ListAsync();
-    [Test]
-    public async Task Filter_By_Folder_Async() => await StorageTestContext.Test_Filter_By_Folder_Async();
-    [Test]
-    public async Task Filter_By_Extension_Async() => await StorageTestContext.Test_Filter_By_Extension_Async();
-    [Test]
-    public async Task Filter_Recursive_Async() => await StorageTestContext.Test_Filter_Recursive_Async();
-    //[Test]
-    //public async Task Filter_By_EntryType_Async() => await StorageTestContext.Test_Filter_By_EntryType_Async();
+    public async Task ListAsync_Yields_What_List_Returns() => await StorageTestContext.Test_ListAsync_Yields_What_List_Returns();
 #endif
 
     [Test]

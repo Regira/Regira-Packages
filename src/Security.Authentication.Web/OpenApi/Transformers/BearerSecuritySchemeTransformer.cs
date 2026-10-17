@@ -10,6 +10,7 @@ using Microsoft.OpenApi.Models;
 namespace Regira.Security.Authentication.Web.OpenApi.Transformers;
 
 // https://www.answeroverflow.com/m/1306435010865401907
+[Obsolete("Use AuthenticationSchemeDocumentTransformer, which declares every registered scheme. Will be removed in v7.")]
 public class BearerSecuritySchemeTransformer(IAuthenticationSchemeProvider authenticationSchemeProvider) : IOpenApiDocumentTransformer
 {
     public async Task TransformAsync(OpenApiDocument document, OpenApiDocumentTransformerContext context, CancellationToken cancellationToken)

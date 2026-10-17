@@ -14,10 +14,10 @@ using System.ComponentModel.DataAnnotations;
 namespace Entities.Testing;
 
 /// <summary>
-/// Optimistic concurrency through the write path: every version stamp — a concurrency token the server moves on the
-/// write — is compared with the value the client sent, not with the row the update just reloaded, which would make
-/// the check compare the database with itself. A token nothing moves is a data column the client edits, and is
-/// compared with the stored row. The other writer is a context of its own (or raw SQL where the store moves the
+/// Optimistic concurrency through the write path: every version stamp — a concurrency token declared one, which the
+/// server moves on the write — is compared with the value the client sent, not with the row the update just reloaded,
+/// which would make the check compare the database with itself. Any other token is a data column the client edits,
+/// and is compared with the stored row. The other writer is a context of its own (or raw SQL where the store moves the
 /// token), and each refusal is paired with the same write carrying the current token, which must go through: a check
 /// that never runs passes every "current token" case too, so only the pair proves it.
 /// </summary>
@@ -47,9 +47,8 @@ public class ConcurrencyTokenTests
     {
         public int Id { get; set; }
         public string? Status { get; set; }
-        /// An application-owned token, minted by <see cref="VersionPrimer"/> — left undeclared, so it is a stamp because
-        /// the primer moves it; <see cref="Page"/> covers the declared form.
-        [ConcurrencyCheck] public Guid Version { get; set; }
+        /// An application-owned token, minted by <see cref="VersionPrimer"/>; <see cref="Invoice"/> leaves it undeclared.
+        [ConcurrencyCheck, VersionStamp] public Guid Version { get; set; }
         public ICollection<OrderLine>? Lines { get; set; }
     }
 
@@ -59,7 +58,7 @@ public class ConcurrencyTokenTests
         public int OrderId { get; set; }
         public string? Product { get; set; }
         public int Quantity { get; set; }
-        [ConcurrencyCheck] public Guid Version { get; set; }
+        [ConcurrencyCheck, VersionStamp] public Guid Version { get; set; }
     }
 
     /// A stamp the primer derives from the content: a client sending back what it read gets the same value.
@@ -97,7 +96,31 @@ public class ConcurrencyTokenTests
     {
         public int Id { get; set; }
         public string? Subject { get; set; }
-        [ConcurrencyCheck, ServerOwned] public Guid Version { get; set; }
+        [ConcurrencyCheck, VersionStamp, ServerOwned] public Guid Version { get; set; }
+    }
+
+    /// A data column a primer rewrites in place, as an app trimming its input would: the value moves, and is still data.
+    public class Contact : IEntity<int>
+    {
+        public int Id { get; set; }
+        [ConcurrencyCheck] public string? Email { get; set; }
+    }
+
+    public class TrimPrimer : EntityPrimerBase<Contact>
+    {
+        public override Task PrepareAsync(Contact entity, EntityEntry entry, CancellationToken token = default)
+        {
+            entity.Email = entity.Email?.Trim();
+            return Task.CompletedTask;
+        }
+    }
+
+    /// An application-owned token <see cref="VersionPrimer"/> mints but nobody declared a version stamp.
+    public class Invoice : IEntity<int>, IVersioned
+    {
+        public int Id { get; set; }
+        public string? Status { get; set; }
+        [ConcurrencyCheck] public Guid Version { get; set; }
     }
 
     /// A store-generated token: a trigger moves it on every UPDATE, as a SQL Server rowversion would.
@@ -116,6 +139,8 @@ public class ConcurrencyTokenTests
         public DbSet<Article> Articles => Set<Article>();
         public DbSet<Customer> Customers => Set<Customer>();
         public DbSet<Page> Pages => Set<Page>();
+        public DbSet<Contact> Contacts => Set<Contact>();
+        public DbSet<Invoice> Invoices => Set<Invoice>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -168,10 +193,23 @@ public class ConcurrencyTokenTests
     /// A context outside the Regira pipeline: the other writer, and a reader that sees only what was committed.
     private ShopContext Raw() => new(new DbContextOptionsBuilder<ShopContext>().UseSqlite(_connection).Options);
 
-    /// One write through the entity service, in a scope of its own — the way a request gets one.
-    private async Task Write<TEntity>(TEntity item) where TEntity : class, IEntity<int>
+    /// The entities of the data-column tests, on a provider of their own: the licence counts five per application.
+    private ServiceProvider DataColumns()
     {
-        using var scope = _sp.CreateScope();
+        var services = new ServiceCollection();
+        services.AddDbContext<ShopContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<ShopContext>(o => o.UseDefaults().AddPrimer<VersionPrimer>().AddPrimer<TrimPrimer>())
+            .For<Contact>()
+            .For<Invoice>();
+        return services.BuildServiceProvider();
+    }
+
+    /// One write through the entity service, in a scope of its own — the way a request gets one.
+    private Task Write<TEntity>(TEntity item) where TEntity : class, IEntity<int> => Write(_sp, item);
+
+    private static async Task Write<TEntity>(IServiceProvider sp, TEntity item) where TEntity : class, IEntity<int>
+    {
+        using var scope = sp.CreateScope();
         var service = scope.ServiceProvider.GetRequiredService<IEntityService<TEntity, int>>();
         await service.Save(item);
         await service.SaveChanges();
@@ -415,6 +453,39 @@ public class ConcurrencyTokenTests
     }
 
     [Test]
+    public async Task A_Data_Column_Token_A_Primer_Rewrites_Takes_The_Clients_Edit()
+    {
+        await using var sp = DataColumns();
+        var contact = new Contact { Email = "an@example.com" };
+        await Write(sp, contact);
+
+        // the primer trims the edit: the value moves, and it is still the client's data, not what it read
+        await Write(sp, new Contact { Id = contact.Id, Email = " other@example.com " });
+
+        Assert.That((await Find<Contact>(contact.Id)).Email, Is.EqualTo("other@example.com"));
+    }
+
+    [Test]
+    public async Task An_Undeclared_Token_A_Primer_Moves_Is_A_Data_Column()
+    {
+        await using var sp = DataColumns();
+        var read = Guid.NewGuid();
+        var invoice = new Invoice { Status = "New", Version = read };
+        await Write(sp, invoice);
+        await OtherWriter<Invoice>(invoice.Id, x => { x.Status = "Paid"; x.Version = Guid.NewGuid(); });
+
+        // without [VersionStamp] the client's value is compared with nothing it read: the stale write goes through
+        await Write(sp, new Invoice { Id = invoice.Id, Status = "Cancelled", Version = read });
+
+        var stored = await Find<Invoice>(invoice.Id);
+        Assert.Multiple(() =>
+        {
+            Assert.That(stored.Status, Is.EqualTo("Cancelled"));
+            Assert.That(stored.Version, Is.Not.EqualTo(read), "the primer still mints the token");
+        });
+    }
+
+    [Test]
     public async Task A_Data_Column_Token_Is_Compared_With_The_Stored_Row()
     {
         var customer = new Customer { LastName = "Peeters", City = "Gent" };
@@ -427,51 +498,6 @@ public class ConcurrencyTokenTests
 
         await Assert.ThrowsAsync<EntityConcurrencyException>(() => service.SaveChanges());
         Assert.That((await Find<Customer>(customer.Id)).LastName, Is.EqualTo("Maes"), "the other writer's change must survive");
-    }
-
-    // ── the tokens decided at save time live and die with the context ──────────
-
-    [Test]
-    public async Task An_Update_Abandoned_On_A_Pooled_Context_Does_Not_Reach_The_Next_Request()
-    {
-        // a pooled context is reused by the next request with its change tracker reset; an update whose token is
-        // decided only at save time, left unsaved by a request that died, must neither be written then nor break it
-        var services = new ServiceCollection();
-        services.AddDbContextPool<ShopContext>(db => db.UseSqlite(_connection));
-        services.UseEntities<ShopContext>(o => o.UseDefaults().AddPrimer<VersionPrimer>())
-            .For<Order>();
-        await using var sp = services.BuildServiceProvider();
-
-        var abandoned = new Order { Status = "New", Version = Guid.NewGuid() };
-        var other = new Order { Status = "New", Version = Guid.NewGuid() };
-        using (var scope = sp.CreateScope())
-        {
-            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order, int>>();
-            await service.Save(abandoned);
-            await service.Save(other);
-            await service.SaveChanges();
-        }
-
-        using (var scope = sp.CreateScope())
-        {
-            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order, int>>();
-            await service.Modify(new Order { Id = abandoned.Id, Status = "Abandoned", Version = abandoned.Version });
-        }
-
-        using (var scope = sp.CreateScope())
-        {
-            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order, int>>();
-            await service.Save(new Order { Id = other.Id, Status = "Shipped", Version = other.Version });
-            await service.SaveChanges();
-        }
-
-        var abandonedStored = await Find<Order>(abandoned.Id);
-        var otherStored = await Find<Order>(other.Id);
-        Assert.Multiple(() =>
-        {
-            Assert.That(abandonedStored.Status, Is.EqualTo("New"));
-            Assert.That(otherStored.Status, Is.EqualTo("Shipped"));
-        });
     }
 
     // ── what EF reports as a concurrency failure, token or not ─────────────────

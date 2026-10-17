@@ -16,9 +16,20 @@ public sealed record EntityValidationIssue(EntityValidationSeverity Severity, st
 
 public sealed class EntityValidationContext(IServiceProvider provider, IServiceCollection services, EntityRegistrationLog registrations)
 {
+    private (IReadOnlyList<ValidatedDbContext> Resolved, IReadOnlyList<string> Unresolved)? _dbContexts;
+
     public IServiceProvider Provider => provider;
     public IServiceCollection Services => services;
     public EntityRegistrationLog Registrations => registrations;
+
+    /// <summary>
+    /// The registered contexts the model checks inspect, resolved once per run from <see cref="Provider"/>. A context
+    /// that cannot be resolved is left out, and the run reports it once (<see cref="UnresolvedDbContexts"/>).
+    /// </summary>
+    internal IReadOnlyList<ValidatedDbContext> DbContexts => (_dbContexts ??= ValidationContextTypes.Resolve(this)).Resolved;
+
+    /// <summary>Why a context <see cref="DbContexts"/> left out could not be resolved; empty until a check asks for them.</summary>
+    internal IReadOnlyList<string> UnresolvedDbContexts => _dbContexts?.Unresolved ?? [];
 }
 
 /// <summary>

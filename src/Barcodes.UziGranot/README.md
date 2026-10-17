@@ -1,5 +1,8 @@
 # Uzi Granot's QR Code
 
+The library's source is compiled into this package rather than referenced: its decoder's NuGet package
+(`QRCodeDecoderLibrary`) targets .NET Framework only.
+
 ## GitHub
 
 https://github.com/Uzi-Granot/QRCode

@@ -61,7 +61,7 @@ var result = await mgr.CorrectQuerySequence(sqlDumpContent);
 
 ## MySqlBackupService / MySqlRestoreService
 
-Stream-based — no temp files.
+Stream-based — no temp files. `ConnectionString` wins when both it and `DbSettings` are set. A backup is MySqlBackup.NET's default export as SQL text: per table `DROP TABLE IF EXISTS`, `CREATE TABLE` and its `INSERT`s, so a restore replaces every table the dump holds and leaves other tables alone. The returned file has no `ContentType`: store it as `application/sql`.
 
 ```csharp
 var settings = new MySqlSettings("localhost", "mydb", username: "root", password: "pass");

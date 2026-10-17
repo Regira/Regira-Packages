@@ -376,7 +376,7 @@ public class FluentEntityValidatorTests
     [Test]
     public async Task Startup_Reports_A_Write_Service_Without_Validators_Only_For_An_Entity_With_Rules()
     {
-        var capture = new StartupValidationTests.CaptureLoggerProvider();
+        var capture = new StartupValidationHarness();
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddProvider(capture));
         services.AddDbContext<ShopContext>(db => db.UseSqlite(_connection));
@@ -389,7 +389,7 @@ public class FluentEntityValidatorTests
             .For<Customer>(e => e.UseWriteService<LegacyCustomerWriteService>());
 
         await using var sp = services.BuildServiceProvider();
-        await StartupValidationTests.RunHostedServices(sp);
+        await StartupValidationHarness.RunHostedServices(sp);
 
         Assert.Multiple(() =>
         {

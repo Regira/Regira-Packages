@@ -10,7 +10,7 @@ public abstract class PdfInputBase(int dpi = DimensionsUtility.DPI.DEFAULT)
     public PageSize Format { get; set; } = PageSize.A4;
 
     /// <summary>
-    /// Width of margins in points
+    /// Margins in units of the input's <see cref="DPI"/> (PDF points at 72; at the default 96, 37.8 is 10 mm).
     /// </summary>
     public Margins Margins { get; set; } = DimensionsUtility.MmToPt(10f, dpi);
 }

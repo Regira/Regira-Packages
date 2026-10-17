@@ -26,7 +26,7 @@ public class PgBackupService(PgOptions options, IProcessHelper processHelper, IL
             }
             catch (Exception ex)
             {
-                logger?.LogWarning(ex, $"Could not delete temporary file {targetPath}");
+                logger?.LogWarning(ex, "Could not delete temporary file {Path}", targetPath);
             }
         }
     }
@@ -34,22 +34,31 @@ public class PgBackupService(PgOptions options, IProcessHelper processHelper, IL
     private async Task<IMemoryFile> CreateDump(string targetPath)
     {
         var settings = options.DbSettings ?? PgSettings.FromConnectionString(options.ConnectionString ?? throw new ArgumentException("Connection data missing"));
-        var args = PgTools.BackupArguments(settings, settings.DatabaseName, targetPath, options.BackupSchemas);
-
-        // holds no password
-        logger?.LogDebug("Creating backup with {ProcessPath} {Arguments}", _backupProcessPath, args);
-
-        // execute backup process, capturing what pg_dump has to say: without it a failure reports an exit code and nothing else
-        var output = processHelper.ExecuteFile(_backupProcessPath, PgTools.Environment(settings), waitForOutput: true, arguments: args);
-
-        if (output.ExitCode != 0)
-        {
-            // failed
-            throw new Exception($"Backup failed (ExitCode {output.ExitCode}): {PgTools.Tail(output.Error)}");
-        }
+        DumpTo(processHelper, _backupProcessPath, settings, settings.DatabaseName, targetPath, options.BackupSchemas, logger);
 
         // read the dump into memory so the temporary file can be removed
         var bytes = await File.ReadAllBytesAsync(targetPath);
         return bytes.ToMemoryFile();
+    }
+
+    /// <summary>
+    /// Runs <c>pg_dump</c> for <paramref name="database"/> into <paramref name="targetPath"/>, with the password in its
+    /// environment. <see cref="BackupRestoreManager"/> backs up through it too.
+    /// </summary>
+    internal static void DumpTo(IProcessHelper processHelper, string dumpPath, PgSettings settings, string? database, string targetPath,
+        ICollection<string>? schemas, ILogger? logger)
+    {
+        var args = PgTools.BackupArguments(settings, database, targetPath, schemas);
+
+        // holds no password
+        logger?.LogDebug("Creating backup with {ProcessPath} {Arguments}", dumpPath, args);
+
+        // capturing what pg_dump has to say: without it a failure reports an exit code and nothing else
+        var output = processHelper.ExecuteFile(dumpPath, PgTools.Environment(settings), waitForOutput: true, arguments: args);
+
+        if (output.ExitCode != 0)
+        {
+            throw new Exception($"Backup failed (ExitCode {output.ExitCode}): {PgTools.Tail(output.Error)}");
+        }
     }
 }

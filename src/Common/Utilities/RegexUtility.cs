@@ -240,7 +240,7 @@ public static class RegexUtility
     {
         if (!string.IsNullOrWhiteSpace(input))
         {
-            var pattern = allowShortNumbers ? $@"(\d{{4,6}})|{PhoneNumberPattern})" : PhoneNumberPattern;
+            var pattern = allowShortNumbers ? $@"{PhoneNumberPattern}|\d{{4,6}}" : PhoneNumberPattern;
             return Regex.Matches(input, pattern, RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(250))
                 .Select(m => m.Value)
                 .Distinct()

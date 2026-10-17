@@ -46,6 +46,7 @@ public class ZipManagerTests
         using var unzipped = await zm.Unzip(archive);
 
         AssertSameFiles(unzipped.Cast<BinaryFileItem>(), files);
+        Assert.That(unzipped.Select(f => f.Length), Is.EqualTo(files.Select(f => (long)f.Bytes!.Length)));
     }
 
     [Test]

@@ -50,7 +50,7 @@ public interface IImageTransformService
     /// Rotates the input image by the specified angle, with an optional background color.
     /// </summary>
     /// <param name="input">The source image file.</param>
-    /// <param name="degrees"></param>
+    /// <param name="degrees">Clockwise degrees; negative turns counter-clockwise.</param>
     /// <param name="background">The background color to use for empty areas (optional).</param>
     /// <param name="cancellationToken">A token that can be used to cancel the operation.</param>
     /// <returns>The rotated image file.</returns>

@@ -10,6 +10,9 @@ namespace Regira.Office.PDF.SelectPdf;
 
 public class PdfManager : IHtmlToPdfService
 {
+    // a PDF point is 1/72 inch
+    private const int PdfPointsPerInch = 72;
+
     public Task<IMemoryFile> Create(HtmlInput template, CancellationToken cancellationToken = default)
     {
         var doc = GetPdfDocument(template);
@@ -26,7 +29,8 @@ public class PdfManager : IHtmlToPdfService
     {
         var pageSize = (PdfPageSize)Enum.Parse(typeof(PdfPageSize), template.Format.ToString(), true);
         var pdfOrientation = (PdfPageOrientation)Enum.Parse(typeof(PdfPageOrientation), template.Orientation.ToString(), true);
-        var margins = template.Margins;
+        // HtmlInput measures its margins in units of its DPI; SelectPdf in PDF points
+        var margins = template.Margins.ModifyDpi(template.DPI, PdfPointsPerInch);
         var htmlString = template.HtmlContent;
 
         var converter = new HtmlToPdf
@@ -35,10 +39,10 @@ public class PdfManager : IHtmlToPdfService
             {
                 PdfPageSize = pageSize,
                 PdfPageOrientation = pdfOrientation,
-                MarginTop = (int)margins.Top,
-                MarginRight = (int)margins.Right,
-                MarginBottom = (int)margins.Bottom,
-                MarginLeft = (int)margins.Left
+                MarginTop = (int)Math.Round(margins.Top),
+                MarginRight = (int)Math.Round(margins.Right),
+                MarginBottom = (int)Math.Round(margins.Bottom),
+                MarginLeft = (int)Math.Round(margins.Left)
             }
         };
 
@@ -71,6 +75,6 @@ public class PdfManager : IHtmlToPdfService
 
     static int MillimetersToPoints(float mm)
     {
-        return (int)DimensionsUtility.MmToPt(mm);
+        return (int)Math.Round(DimensionsUtility.MmToPt(mm, PdfPointsPerInch));
     }
 }

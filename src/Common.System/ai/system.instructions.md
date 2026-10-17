@@ -14,12 +14,12 @@
 
 ## Installation
 
-```xml
-<!-- Host config, background queues, Windows Service -->
-<PackageReference Include="Regira.System.Hosting" Version="6.*" />
+```bash
+# Host config, background queues, Windows Service
+dotnet add package Regira.System.Hosting
 
-<!-- Parse and manage .csproj files -->
-<PackageReference Include="Regira.System.Projects" Version="6.*" />
+# Parse and manage .csproj files
+dotnet add package Regira.System.Projects
 ```
 
 ---
@@ -92,11 +92,18 @@ var task = queueManager.Execute<string>(async (sp, t) =>
 });
 ```
 
+Work items run one at a time. One that throws is logged and the next one runs; a typed task records the exception and ends with status `Error`. The queue is unbounded and the task manager keeps every typed task until it is removed, so an app that queues per request removes finished tasks (`Remove(id)` after the result is read, or `Clear()`).
+
 ---
 
 ### Windows Service Installer
 
 ```csharp
+using Microsoft.Extensions.Hosting.WindowsServices;   // WindowsServiceHelpers
+
+if (WindowsServiceHelpers.IsWindowsService()) builder.Host.UseWindowsService();
+
+var app = builder.Build();
 app.AddWindowsServiceInstaller(new WindowsServiceOptions
 {
     ServiceName       = "MyApi",
@@ -105,7 +112,9 @@ app.AddWindowsServiceInstaller(new WindowsServiceOptions
 });
 ```
 
-Generates `install.bat` / `uninstall.bat` scripts using `sc.exe`.
+Generates `install.bat` / `uninstall.bat` scripts using `sc.exe`. The installer only writes the scripts: the host must
+also call `UseWindowsService()` to run as a service. `Microsoft.Extensions.Hosting.WindowsServices` comes with
+`Regira.System.Hosting`.
 
 ---
 
@@ -127,8 +136,8 @@ Generates `install.bat` / `uninstall.bat` scripts using `sc.exe`.
   as written. Quote a value that can hold spaces or quotes, escaping a `"` as `\"`.
 - `waitForOutput: true` fills `IProcessOutput.Output` and `Error`; both pipes are drained at the same time, so a
   tool that logs to stderr cannot stall the call. Without it neither is kept.
-- A custom `IProcessHelper` that does not override the `environment` overloads: `ExecuteCommand` sets the
-  variables in its script (batch syntax), and `ExecuteFile` throws `NotSupportedException` rather than drop them.
+- A custom `IProcessHelper` that does not override the `environment` overloads: both throw
+  `NotSupportedException` when given variables, rather than drop them or write them into a command.
 - There is no timeout: the call returns when the process exits.
 
 <!-- no-compile -->

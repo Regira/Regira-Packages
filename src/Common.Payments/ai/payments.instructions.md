@@ -14,12 +14,12 @@
 
 ## Installation
 
-```xml
-<!-- Mollie payment gateway -->
-<PackageReference Include="Regira.Payments.Mollie" Version="6.*" />
+```bash
+# Mollie payment gateway
+dotnet add package Regira.Payments.Mollie
 
-<!-- POM payment gateway -->
-<PackageReference Include="Regira.Payments.Pom" Version="6.*" />
+# POM payment gateway
+dotnet add package Regira.Payments.Pom
 ```
 
 ---
@@ -28,7 +28,7 @@
 
 The shared contracts ship in the `Regira.Invoicing` package: `IPayment` and `IPaymentService` in `Regira.Invoicing.Payments.Abstractions`, the `Payment` model in `Regira.Invoicing.Payments.Models`, `PaymentStatus` in `Regira.Invoicing.Payments.Enums`.
 
-- **POM**: `PaymentService` implements `IPaymentService` (`Details`, `Save`) — register and consume it via the interface.
+- **POM**: `PaymentService` implements `IPaymentService` (`Details`, `Save`) — register and consume it via the interface. Only its own `CreatePaylink` returns the payment link, so inject the concrete class where the payer needs the link.
 - **Mollie**: `PaymentService` implements no interface — register and consume the concrete class. It offers `Details`, `List`, `Save` (returns `CreatePaymentResponse` with the checkout URL), `Delete` (cancels) and `WebHook`.
 
 Both accept and return the shared `IPayment` model and can be registered as singletons.
@@ -41,8 +41,8 @@ Both accept and return the shared `IPayment` model and can be registered as sing
 
 | Property | Type | Description |
 |---|---|---|
-| `Api` | `string` | Mollie API base URL |
-| `Key` | `string` | Mollie API key (`test_...` or `live_...`) |
+| `Api` | `string` | Not read: the Mollie client calls Mollie's API itself |
+| `Key` | `string` | Mollie API key. A `test_…` key is test mode — there is no separate switch; a `live_…` key takes real payments |
 | `MaxPageSize` | `int` | Default `250` |
 | `RedirectFactory` | `Func<IPayment, string>?` | Builds redirect URL per payment |
 | `WebhookFactory` | `Func<IPayment, string>?` | Builds webhook URL per payment |
@@ -53,7 +53,6 @@ Both accept and return the shared `IPayment` model and can be registered as sing
 ```csharp
 var svc = new Regira.Payments.Mollie.Services.PaymentService(new MollieConfig
 {
-    Api             = "https://api.mollie.com/v2",
     Key             = configuration["Mollie:Key"]!,
     RedirectFactory = p => $"https://myapp.com/payment/return/{p.Id}",
     WebhookFactory  = p => $"https://myapp.com/payment/webhook/{p.Id}"
@@ -63,8 +62,11 @@ IPayment?              payment = await svc.Details(paymentId);
 IEnumerable<IPayment>  list    = await svc.List();
 var response = await svc.Save(newPayment); // creates payment, sets newPayment.Id
 var checkoutUrl = response.CheckoutUrl;    // redirect the customer here
+// or Save(newPayment, orderId): a repeat with the same idempotency key returns the first payment
 await svc.Delete(payment!);                // cancels the payment
 ```
+
+Every instance sends through a connection pool the package shares, so it can be registered with any lifetime. Never repeat a `Save` without an idempotency key: the second creates a second payment.
 
 ### Webhook Handling
 
@@ -86,15 +88,23 @@ await svc.WebHook(paymentId, async p =>
 | Property | Type | Description |
 |---|---|---|
 | `SenderId` | `string?` | POM sender ID |
-| `SenderContractNumber` | `string?` | Contract number |
+| `SenderContractNumber` | `string?` | Contract number, sent with every payment |
 | `Username` | `string?` | API username |
 | `Password` | `string?` | API password |
-| `ExpiresIn` | `int` | Payment link expiry (seconds) |
+| `AppName` | `string?` | Sent when authenticating |
+| `Platform` | `string?` | Sent when authenticating |
+| `EnvironmentId` | `string?` | Sent when authenticating |
+| `ExpiresIn` | `int` | Sent with the authentication request. It does not set a link's expiry: `Payment.ExpiresAt` does |
 | `Mode` | `string?` | `"live"` or `"test"` |
 | `AuthApi` | `string?` | Authentication endpoint |
 | `CreatePaylinkApi` | `string` | Create payment link endpoint |
-| `PaylinkStatusApi` | `string` | Payment status endpoint |
-| `WebhookKey` | `string?` | Webhook HMAC key |
+| `PaylinkStatusApi` | `string` | Payment status endpoint, with a `{paymentId}` placeholder |
+| `WebhookKey` | `string?` | Not read by `PaymentService` |
+
+There is no `Add…` extension, configuration section or default endpoint. Take `AuthApi`, `CreatePaylinkApi` and
+`PaylinkStatusApi` from POM, bind a section yourself, and register the service as a singleton:
+`services.AddSingleton(new Regira.Payments.Pom.PaymentService(configuration.GetSection("Payments:Pom").Get<PomSettings>()!, serializer));`.
+Authentication posts the whole `PomSettings` object to `AuthApi`.
 
 ### `PaymentService` (POM)
 
@@ -107,13 +117,24 @@ IPayment? existing = await svc.Details(paymentId);
 
 var payment = new Payment // Regira.Invoicing.Payments.Models
 {
-    Amount   = 49.99m,
-    Currency = "EUR"
+    Amount    = 49.99m,
+    Currency  = "EUR",
+    ExpiresAt = DateTime.Now.AddDays(30)   // the link's expiry; one day after it is created when unset
 };
-await svc.Save(payment);
+await svc.Save(payment); // creates a payment link, sets payment.Id
 ```
 
-`Save` sends `Amount` and `Currency`; the sender contract number comes from `PomSettings`.
+To send the payer to the link, call `CreatePaylink` on the concrete class instead of `Save`:
+
+<!-- no-compile -->
+```csharp
+var pom = new Regira.Payments.Pom.PaymentService(pomSettings, jsonSerializer);
+var response = await pom.CreatePaylink(payment); // sets payment.Id
+var paylink = response.Paylink;                  // send the payer here
+```
+
+`Save` and `CreatePaylink` send `Amount`, `Currency` and `ExpiresAt` (the link's expiry, one day after it is created when unset; `ExpiresAt` is settable on `Payment`, and `IPayment` reads `null` for an implementation without it), the sender contract number coming from `PomSettings`, and set the payment's `Id` to POM's document id. They send nothing else: `Description` and `Metadata` stay behind, so a POM payment carries no reference of yours — keep POM's id on your own record; `CreatePaylink` also returns POM's `PomPaymentResponse`, with the link in `Paylink`.
+Every instance sends through a connection pool the package shares. An instance keeps its POM token and, when POM refuses it (`401`), authenticates again and sends the request once more, so it can be registered as a singleton.
 `PomException` is thrown on API errors — check `StatusCode` and `PomResponse` for details.
 
 ---
@@ -123,9 +144,9 @@ await svc.Save(payment);
 | Feature | Mollie | POM |
 |---|---|---|
 | `IPaymentService` | — (concrete class) | ✓ |
-| Operations | `Details`, `List`, `Save`, `Delete` | `Details`, `Save` |
-| Webhook handling | `WebHook()` | Via `WebhookKey` HMAC |
-| Payment link | ✓ (`Save` returns checkout URL) | ✓ (`CreatePaylinkApi`) |
+| Operations | `Details`, `List`, `Save`, `Delete` | `Details`, `Save`, `CreatePaylink` |
+| Webhook handling | `WebHook()` | — (not implemented: poll `Details(id)`) |
+| Payment link | ✓ (`Save` returns checkout URL) | ✓ (`CreatePaylink` returns `Paylink`) |
 | Client library | Official `Mollie.Api` NuGet | `HttpClient` + token auth (`X-Authentication`) |
 
 ---

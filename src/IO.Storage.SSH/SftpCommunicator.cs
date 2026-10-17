@@ -6,6 +6,7 @@ public class SftpCommunicator : IDisposable
 {
     private readonly SftpConfig _config;
     private readonly SftpClient _client;
+    private readonly SemaphoreSlim _connectLock = new(1, 1);
     internal string ContainerName => $"/{_config.ContainerName?.TrimStart('/')}";
     internal bool Contained => _config.Contained;
     public SftpCommunicator(SftpConfig config)
@@ -33,13 +34,25 @@ public class SftpCommunicator : IDisposable
         return string.Equals(fingerprint.TrimEnd('='), presented.TrimEnd('='), StringComparison.Ordinal);
     }
 
-    protected internal Task<SftpClient> Open()
+    protected internal async Task<SftpClient> Open()
     {
         if (!_client.IsConnected)
         {
-            _client.Connect();
+            // concurrent first calls connect once
+            await _connectLock.WaitAsync();
+            try
+            {
+                if (!_client.IsConnected)
+                {
+                    await _client.ConnectAsync(CancellationToken.None);
+                }
+            }
+            finally
+            {
+                _connectLock.Release();
+            }
         }
-        return Task.FromResult(_client);
+        return _client;
     }
     protected internal Task Close()
     {

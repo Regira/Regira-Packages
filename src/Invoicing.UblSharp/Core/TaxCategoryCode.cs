@@ -22,7 +22,11 @@ public enum TaxCategoryCode
     [PeppolCode("G"), PeppolDescription("Code specifying that the item is free export and taxes are not charged.")]
     Export,
     [PeppolCode("O"), PeppolDescription("Code specifying that taxes are not applicable to the services.")]
+    [Obsolete("Misspelt: use OutsideScope, the same value.")]
     OutsideScode,
+    // the same value as OutsideScode, so stored values and comparisons keep working; either name carries the code
+    [PeppolCode("O"), PeppolDescription("Code specifying that taxes are not applicable to the services.")]
+    OutsideScope = 7,
     [PeppolCode("K"), PeppolDescription("A tax category code indicating the item is VAT exempt due to an intra-community supply in the European Economic Area.")]
     IntraCommunity,
     [PeppolCode("L"), PeppolDescription("Impuesto General Indirecto Canario (IGIC) is an indirect tax levied on goods and services supplied in the Canary Islands (Spain) by traders and professionals, as well as on import of goods.")]

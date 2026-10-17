@@ -7,10 +7,10 @@ namespace Regira.Entities.Attributes;
 /// <c>[ConcurrencyCheck]</c> on an application-owned token a primer sets; a token the database generates on update
 /// (<c>[Timestamp]</c>) and <c>IHasConcurrencyToken.ConcurrencyToken</c> are stamps without it.
 /// <para>
-/// A <c>[ConcurrencyCheck]</c> token without it is treated as a stamp only on a write where something on the server
-/// changes it, and as a data column the client edits otherwise — compared with the stored row, so only a write
-/// racing the save is caught. Declare it whenever the primer can produce the value the client already holds, such as
-/// a hash of the content: a stale client sending back what it read would otherwise overwrite the newer row.
+/// A <c>[ConcurrencyCheck]</c> token without it is a data column the client edits, whatever moves it: compared with
+/// the stored row, so only a write racing the save is caught, and a stale client is not refused. Startup validation
+/// warns about an undeclared token of a type a stamp takes: a <c>Guid</c>, an integer, <c>byte[]</c>,
+/// <c>DateTime</c> or <c>DateTimeOffset</c>.
 /// </para>
 /// <para>
 /// A stamp the client leaves out (<c>null</c>, empty, the CLR default) is not compared: the write goes through, and

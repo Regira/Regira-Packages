@@ -248,33 +248,28 @@ public class BackupRestoreTests
     }
 
     [Test]
-    public async Task A_Backup_This_Process_Cannot_Read_Is_Removed_From_The_Server()
+    public async Task A_Backup_This_Process_Cannot_Read_Is_Left_On_The_Server_And_Named()
     {
         var options = Options(_sourceDb);
         // the misconfiguration the error message is written for
         options.LocalBackupDirectory = Path.Combine(_backupDirectory, "not-where-sql-server-writes");
-        var logger = new WarningLogger<SqlServerBackupService>();
 
-        await Assert.ThrowsAsync<IOException>(() => new SqlServerBackupService(options, logger).Backup());
+        var ex = await Assert.ThrowsAsync<IOException>(() => new SqlServerBackupService(options).Backup());
 
-        Assert.Multiple(() =>
+        var left = Directory.GetFiles(_backupDirectory, $"{_sourceDb}*");
+        try
         {
-            Assert.That(Directory.GetFiles(_backupDirectory, $"{_sourceDb}*"), Is.Empty);
-            // the service read the deletion back and found the file gone
-            Assert.That(logger.Warnings, Is.Empty);
-        });
-    }
-
-    private sealed class WarningLogger<T> : Microsoft.Extensions.Logging.ILogger<T>
-    {
-        public List<string> Warnings { get; } = [];
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
-        public void Log<TState>(Microsoft.Extensions.Logging.LogLevel logLevel, Microsoft.Extensions.Logging.EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-        {
-            if (logLevel >= Microsoft.Extensions.Logging.LogLevel.Warning)
+            Assert.Multiple(() =>
             {
-                Warnings.Add(formatter(state, exception));
+                Assert.That(left, Has.Length.EqualTo(1));
+                Assert.That(ex!.Message, Does.Contain(Path.GetFileName(left.Single())), "the message names the file left");
+            });
+        }
+        finally
+        {
+            foreach (var file in left)
+            {
+                File.Delete(file);
             }
         }
     }

@@ -757,4 +757,56 @@ public class TestFor1Services
         Assert.That(manager2, Is.TypeOf<CourseManager1>());
         Assert.That(manager3, Is.TypeOf<CourseManager1>());
     }
+
+    [Test]
+    public void A_Repository_Chained_After_A_Base_Builder_Method_Is_Kept()
+    {
+        // Filter() is declared on the base builder, so the HasRepository after it binds there; For<>() then found no
+        // IEntityRepository<Course> and registered the default EntityRepository under every interface, last
+        using var sp = new ServiceCollection()
+            .AddDbContext<ContosoContext>()
+            .UseEntities<ContosoContext>()
+            .For<Course>(e => e.Filter((query, _) => query).HasRepository<CourseRepository1>())
+            .BuildServiceProvider();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(sp.GetService<IEntityService<Course>>(), Is.TypeOf<CourseRepository1>());
+            Assert.That(sp.GetService<IEntityService<Course, int>>(), Is.TypeOf<CourseRepository1>());
+            Assert.That(sp.GetService<IEntityRepository<Course>>(), Is.TypeOf<CourseRepository1>());
+        });
+    }
+
+    [Test]
+    public void A_Repository_Short_Of_The_Shapes_Interface_Is_Refused()
+    {
+        // CourseRepository2 is an EntityRepository<Course, int>: it serves IEntityRepository<Course, int> but not the
+        // IEntityRepository<Course> For<Course>() resolves through, so the default would replace it under every interface
+        var services = new ServiceCollection()
+            .AddDbContext<ContosoContext>()
+            .UseEntities<ContosoContext>();
+
+        var ex = Assert.Throws<InvalidOperationException>(() => services.For<Course>(e => e.Filter((query, _) => query).HasRepository<CourseRepository2>()));
+
+        Assert.That(ex!.Message, Does.Contain(nameof(CourseRepository2)).And.Contain("IEntityRepository<Course>"));
+    }
+
+    [Test]
+    public void A_Factory_Repository_Serves_Every_Repository_Interface()
+    {
+        // the int shape's factory overload registered no IEntityRepository<Course>, so For<>() put the default over it
+        using var sp = new ServiceCollection()
+            .AddDbContext<ContosoContext>()
+            .UseEntities<ContosoContext>()
+            .For<Course>(e => e.HasRepository(p => new CourseRepository1(
+                p.GetRequiredService<IEntityReadService<Course, int, SearchObject<int>>>(), p.GetRequiredService<IEntityWriteService<Course, int>>())))
+            .BuildServiceProvider();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(sp.GetService<IEntityRepository<Course>>(), Is.TypeOf<CourseRepository1>());
+            Assert.That(sp.GetService<IEntityRepository<Course, int>>(), Is.TypeOf<CourseRepository1>());
+            Assert.That(sp.GetService<IEntityService<Course>>(), Is.TypeOf<CourseRepository1>());
+        });
+    }
 }

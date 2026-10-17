@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Regira.Entities.DependencyInjection.Extensions;
 using Regira.Entities.EFcore.Preppers;
+using Regira.Entities.Models.Abstractions;
 using Regira.Entities.Preppers.Abstractions;
 using Regira.Entities.Services.Abstractions;
 
@@ -559,6 +560,45 @@ public class PrepperTests
             "a null collection must be ignored: both rows survive, neither is deleted nor re-inserted");
         Assert.That(savedProducts.Single(p => p.Id == 1).Title, Is.EqualTo("Product (1)"),
             "untouched rows keep their values");
+    }
+
+    /// <summary>Counts its calls, so a test can tell how often one prepper class ran.</summary>
+    public sealed class PrepperLog
+    {
+        public int Calls { get; set; }
+    }
+
+    /// <summary>Scoped to an interface, so it is accepted by every <c>For&lt;&gt;()</c> whose entity implements it.</summary>
+    public class DescriptionPrepper(PrepperLog log) : EntityPrepperBase<IHasDescription>
+    {
+        public override Task Prepare(IHasDescription modified, IHasDescription? original, CancellationToken token = default)
+        {
+            log.Calls++;
+            modified.Description = modified.Description?.Trim();
+            return Task.CompletedTask;
+        }
+    }
+
+    [Test]
+    public async Task A_Prepper_Class_Registered_In_Two_For_Blocks_Runs_Once_Per_Save()
+    {
+        var log = new PrepperLog();
+        var services = new ServiceCollection()
+            .AddSingleton(log)
+            .AddDbContext<ProductContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<ProductContext>()
+            .For<Category>(e => e.AddPrepper<DescriptionPrepper>())
+            .For<Product>(e => e.AddPrepper<DescriptionPrepper>());
+
+        await using var sp = services.BuildServiceProvider();
+        using var scope = sp.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<ProductContext>().Database.EnsureCreatedAsync();
+        var categories = scope.ServiceProvider.GetRequiredService<IEntityService<Category>>();
+
+        await categories.Add(new Category { Title = "Category", Description = "  Books  " });
+        await categories.SaveChanges();
+
+        Assert.That(log.Calls, Is.EqualTo(1));
     }
 
     /// <summary>

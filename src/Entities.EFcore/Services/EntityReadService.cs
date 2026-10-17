@@ -53,7 +53,7 @@ public class EntityReadService<TContext, TEntity, TKey, TSearchObject, TSortBy, 
         // Details always loads the full graph: the OR of every registered include flag
         var effectiveIncludes = EnumUtility.GetMaxFlagValue<TIncludes>();
 
-        Logger?.LogDebug($"Fetching details for {typeof(TEntity).FullName} #{id} includes {effectiveIncludes}");
+        Logger?.LogDebug("Fetching details for {EntityType} #{Id} includes {Includes}", typeof(TEntity).FullName, id, effectiveIncludes);
 
         // the synthesized search object still travels through the single global-filter loop — only the
         // archived filter reads Archived, so all other global filters keep applying
@@ -67,11 +67,11 @@ public class EntityReadService<TContext, TEntity, TKey, TSearchObject, TSortBy, 
             return null;
         }
 
-        Logger?.LogDebug($"Fetched details for {typeof(TEntity).FullName} #{id}");
+        Logger?.LogDebug("Fetched details for {EntityType} #{Id}", typeof(TEntity).FullName, id);
 
         foreach (var entityProcessor in entityProcessors)
         {
-            Logger?.LogDebug($"Processing {typeof(TEntity).FullName} #{item.Id} using {entityProcessor.GetType().FullName}");
+            Logger?.LogDebug("Processing {EntityType} #{Id} using {Processor}", typeof(TEntity).FullName, item.Id, entityProcessor.GetType().FullName);
             await entityProcessor.Process([item], effectiveIncludes, token);
         }
 
@@ -81,7 +81,7 @@ public class EntityReadService<TContext, TEntity, TKey, TSearchObject, TSortBy, 
     // List
     public virtual async Task<IList<TEntity>> List(IList<TSearchObject?> searchObjects, IList<TSortBy> sortBy, TIncludes? includes = null, PagingInfo? pagingInfo = null, CancellationToken token = default)
     {
-        Logger?.LogDebug($"Fetching list for {typeof(TEntity).FullName} sorting by {string.Join(",", sortBy)} includes {includes}");
+        Logger?.LogDebug("Fetching list for {EntityType} sorting by {SortBy} includes {Includes}", typeof(TEntity).FullName, string.Join(",", sortBy), includes);
 
         var items = await queryBuilder.Query(DbSet, searchObjects, sortBy, includes, pagingInfo)
             .AsNoTrackingWithIdentityResolution()
@@ -89,7 +89,10 @@ public class EntityReadService<TContext, TEntity, TKey, TSearchObject, TSortBy, 
 
         foreach (var entityProcessor in entityProcessors)
         {
-            Logger?.LogDebug($"Processing {typeof(TEntity).FullName} #({string.Join(",", items.Select(x => x.Id))}) using {entityProcessor.GetType().FullName}");
+            if (Logger?.IsEnabled(LogLevel.Debug) == true)
+            {
+                Logger.LogDebug("Processing {EntityType} #({Ids}) using {Processor}", typeof(TEntity).FullName, string.Join(",", items.Select(x => x.Id)), entityProcessor.GetType().FullName);
+            }
             await entityProcessor.Process(items, includes, token);
         }
 

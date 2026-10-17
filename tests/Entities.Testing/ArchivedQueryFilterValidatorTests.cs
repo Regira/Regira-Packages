@@ -139,23 +139,6 @@ public class ArchivedQueryFilterValidatorTests
         public DbSet<Plain> Items => Set<Plain>();
     }
 
-    private sealed class CaptureLoggerProvider : ILoggerProvider
-    {
-        public List<string> Errors { get; } = [];
-        public ILogger CreateLogger(string categoryName) => new CaptureLogger(this);
-        public void Dispose() { }
-
-        private sealed class CaptureLogger(CaptureLoggerProvider provider) : ILogger
-        {
-            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-            public bool IsEnabled(LogLevel logLevel) => true;
-            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-            {
-                if (logLevel == LogLevel.Error) provider.Errors.Add(formatter(state, exception));
-            }
-        }
-    }
-
     private SqliteConnection _connection = null!;
 
     [SetUp]
@@ -167,24 +150,16 @@ public class ArchivedQueryFilterValidatorTests
     [TearDown]
     public void TearDown() => _connection.Close();
 
-    private static async Task RunHostedServices(ServiceProvider serviceProvider)
-    {
-        foreach (var hostedService in serviceProvider.GetServices<IHostedService>())
-        {
-            await hostedService.StartAsync(CancellationToken.None);
-        }
-    }
-
     /// <summary>Runs startup validation with errors logged instead of thrown, and returns the error lines.</summary>
     private async Task<List<string>> Errors(Action<IServiceCollection> configure)
     {
-        var capture = new CaptureLoggerProvider();
+        var capture = new StartupValidationHarness();
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddProvider(capture));
         configure(services);
 
         await using var sp = services.BuildServiceProvider();
-        await RunHostedServices(sp);
+        await StartupValidationHarness.RunHostedServices(sp);
         return capture.Errors;
     }
 
@@ -241,7 +216,7 @@ public class ArchivedQueryFilterValidatorTests
             .For<Doc>();
 
         using var sp = services.BuildServiceProvider();
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => RunHostedServices(sp));
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => StartupValidationHarness.RunHostedServices(sp));
         Assert.That(ex!.Message, Does.Contain(MissingFilterError));
     }
 #endif

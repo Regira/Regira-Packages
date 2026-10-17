@@ -232,6 +232,15 @@ services.AddSingleton<IEmailSender>(provider =>
     ));
 ```
 
+and list the origin of the confirmation page, the only origin a mailed link may point at (see
+[Mailed links](controllers.md#mailed-links-allowed-origins)):
+
+```csharp
+using Regira.Security.Authentication.Web.Models;
+
+services.Configure<AccountEmailOptions>(o => o.AllowedOrigins.Add("https://app.example.com"));
+```
+
 ---
 
 ## Overview

@@ -28,6 +28,7 @@ public static class CryptoUtility
         return salt;
     }
 
+    [Obsolete("Use DeriveBytes. Will be removed in v7.")]
     public static Rfc2898DeriveBytes GetRfc2898DeriveBytes(byte[] key, byte[]? salt = null, int iterations = DefaultIterations)
     {
         salt ??= GenerateSalt();

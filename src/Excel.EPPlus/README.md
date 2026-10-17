@@ -2,13 +2,15 @@
 
 Excel backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/), built on [EPPlus](https://www.nuget.org/packages/EPPlus) 4. `ExcelManager` implements `IExcelService`, reading and writing rows as dictionaries. Of the four Excel backends it is the only one that writes a `DataSet` and takes a per-cell `TransformData` callback.
 
+This package is deprecated: EPPlus 4 is the last release under a free licence and receives no fixes upstream, and this package takes fixes for crashes, data loss and security holes only. Use [Regira.Office.Excel.MiniExcel](https://regira.github.io/Regira-Packages/src/Excel.MiniExcel/) or [Regira.Office.Excel.ClosedXML](https://regira.github.io/Regira-Packages/src/Excel.ClosedXML/) for anything else.
+
 ## Installation
 
 ```xml
 <PackageReference Include="Regira.Office.Excel.EPPlus" Version="6.*" />
 ```
 
-The package stays on EPPlus 4 (4.5.3.3), which is under a free licence; EPPlus 5 and later require a commercial licence.
+This package is deprecated: new applications use [Regira.Office.Excel.MiniExcel](https://regira.github.io/Regira-Packages/src/Excel.MiniExcel/) or [Regira.Office.Excel.ClosedXML](https://regira.github.io/Regira-Packages/src/Excel.ClosedXML/). It stays on EPPlus 4 (4.5.3.3), the last release under a free licence — EPPlus 5 and later require a commercial licence — and nuget.org marks that release as legacy, with no further fixes. EPPlus 4 depends on `System.Drawing.Common`, which throws on non-Windows from .NET 6 on, so the package is for Windows hosts.
 
 ## Documentation
 

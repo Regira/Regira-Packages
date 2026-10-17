@@ -7,8 +7,8 @@
 
 ## Installation
 
-```xml
-<PackageReference Include="Regira.Web.Analytics" Version="6.*" />
+```bash
+dotnet add package Regira.Web.Analytics
 ```
 
 ## Registration

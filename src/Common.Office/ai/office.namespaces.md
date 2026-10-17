@@ -16,11 +16,15 @@ the provider only at registration.
 | Namespace | Types |
 |---|---|
 | `Regira.IO.Abstractions` | `IMemoryFile`, `IBinaryFile`, `IMemoryBytesFile`, `IMemoryStreamFile` — **every Office service returns `IMemoryFile`**; assembly `Regira.Common`, not an Office package |
-| `Regira.IO.Extensions` | `MemoryFileExtensions`, `BinaryFileExtensions` — `GetBytes()`, `GetStream()`, `HasPath()`. Assembly `Regira.Common` |
+| `Regira.IO.Extensions` | `MemoryFileExtensions`, `BinaryFileExtensions` — `GetBytes()`, `GetStream()`, `HasPath()`, and the factories `bytes.ToMemoryFile(contentType)` and `bytes.ToBinaryFile(contentType)`. An `IBinaryFile` is an `IMemoryFile`, not the reverse: Excel's `Read` takes an `IBinaryFile`, so convert with `ToBinaryFile()`. Assembly `Regira.Common` |
 | `Regira.Office.Models` | `FileFormat`, `PageSize`, `PageSizes`, `PageOrientation`, `Margins` |
 | `Regira.Office.MimeTypes` | `ContentTypes` |
 | `Regira.Office.Utilities` | `PageSizeUtility` |
+| `Regira.Utilities` | `DimensionsUtility` — `MmToPt(float mm, int dpi)`, `MmToIn`, `InToMm`, `ModifyDpi`: millimetres to the DPI units `Margins` and page sizes are held in; assembly `Regira.Common` |
 | `Regira.Media.Drawing.Models.Abstractions` | `IImageFile` (extends `IMemoryFile`) — what the barcode/QR and image services return; assembly `Regira.Media` |
+| `Regira.Media.Drawing.Dimensions` | `ImageSize` — `PdfToImagesOptions.Size`; assembly `Regira.Media` |
+| `Regira.Media.Drawing.Enums` | `ImageFormat` — `PdfToImagesOptions.Format`; assembly `Regira.Media` |
+| `Regira.Media.Drawing.Models` | `ImageFile` — the `IImageFile` you build from bytes for a barcode reader or OCR (`new ImageFile { Bytes = … }`); `Color` — `BarcodeInput.Color` and `BackgroundColor`; assembly `Regira.Media` |
 
 ⚠️ `GetBytes()` is an extension in **`Regira.IO.Extensions`** — a file object with no `using` for it looks
 like it has no content accessor at all.
@@ -31,12 +35,13 @@ like it has no content accessor at all.
 
 | Namespace | Types |
 |---|---|
-| `Regira.Office.PDF.Abstractions` | `IPdfService`, `IHtmlToPdfService`, `IPdfEditor`, `IPdfMerger`, `IPdfSplitter`, `IPdfTextExtractor`, `IPdfTextService`, `IPdfImageService`, `IImagesToPdfService`, `IPdfToImageService`, `IPdfToImageAsyncService`, `IPdfPrinter`, `PdfInputBase` |
-| `Regira.Office.PDF.Models` | `HtmlInput`, `ImagesInput`, `PdfSplitRange`, `PdfToImagesOptions` |
+| `Regira.Office.PDF.Abstractions` | `IPdfService`, `IHtmlToPdfService`, `IDocumentToPdfService`, `IPdfEditor`, `IPdfMerger`, `IPdfSplitter`, `IPdfTextExtractor`, `IPdfTextService`, `IPdfImageService`, `IImagesToPdfService`, `IPdfToImageService`, `IPdfToImageAsyncService`, `IPdfPrinter`, `PdfInputBase` |
+| `Regira.Office.PDF.Models` | `HtmlInput`, `DocumentInput`, `ImagesInput`, `PdfSplitRange`, `PdfToImagesOptions` (its `Size` and `Format` types: see *Shared across every module*) |
 | `Regira.Office.PDF.Defaults` | `PdfDefaults` |
 | `Regira.Office.PDF.Drawing` | `PdfImageCreator`, `PdfToImageLayerOptions` |
 | `Regira.Office.PDF.Printer` | `PdfPrinterInput` |
-| **Providers** | `Regira.Office.PDF.SelectPdf` · `…DocNET` · `…Spire` · `…Puppeteer` · `…MsPlaywright` → `PdfManager`; `Regira.Office.PDF.PDFtoPrinter` · `…PockyBum522` → `PdfPrinter` |
+| `Regira.Media.Drawing.Services.Abstractions` | `IImageService` — the constructor argument of PdfPig's `PdfService` and DocNET's `PdfManager`; assembly `Regira.Media` |
+| **Providers** | `Regira.Office.PDF.SelectPdf` · `…DocNET` · `…Spire` · `…Puppeteer` · `…MsPlaywright` → `PdfManager`; `Regira.Office.PDF.MiniPdf` · `…PdfPig` · `…Gotenberg` → `PdfService`, and `Regira.Office.PDF.Gotenberg.DependencyInjection` → `ServiceCollectionExtensions` (`AddGotenbergPdf`); `Regira.Office.PDF.PDFtoPrinter` · `…PockyBum522` · `…Spire` → `PdfPrinter` (`IPdfPrinter`) |
 
 ## Barcodes & QR
 
@@ -54,7 +59,7 @@ like it has no content accessor at all.
 
 `QRCodeInput` has an implicit conversion from `string`, so `qr.Create("https://…")` and
 `qr.Create(new QRCodeInput { Content = "…" })` are both valid — the object form is only needed when you set
-size or error correction.
+the size or the colours (there is no error-correction option).
 
 ## Excel
 
@@ -73,6 +78,12 @@ size or error correction.
 | `Regira.Office.Word.Drawing` | `WordImageCreator`, `WordToImageLayerOptions` |
 | **Providers** | `Regira.Office.Word.Spire` → `WordService`, `DocumentBuilder`, `WordDocumentSettings`; `Regira.Office.Word.Syncfusion` → `WordService`, `DocumentBuilder`, `WordDocumentSettings`, `SyncfusionWordConfig`; `Regira.Office.Word.Aspose` → `WordService`, `DocumentBuilder`, `WordDocumentSettings`, `AsposeWordConfig`; `Regira.Office.Word.Mini` → `WordService`; `Regira.Office.Word.Gotenberg` → `WordService`, `GotenbergWordConfig`; `Regira.Office.Word.Gotenberg.DependencyInjection` → `ServiceCollectionExtensions` |
 
+⚠️ **`Paragraph` is ambiguous.** `Regira.Office.Word.Models.Paragraph` and
+`DocumentFormat.OpenXml.Wordprocessing.Paragraph` collide (CS0104) in a file that builds a template in code and
+fills it. Alias the Open XML namespace, `using W = DocumentFormat.OpenXml.Wordprocessing;`, as *No Word at hand*
+does (`office.word.examples`). `HorizontalAlignment` collides the same way with
+`DocumentFormat.OpenXml.Drawing.Wordprocessing`.
+
 ## Mail
 
 | Namespace | Types |
@@ -83,8 +94,8 @@ size or error correction.
 | `Regira.Office.Mail.Exceptions` | `MailException`, `EmailFormatException` |
 | `Regira.Office.Mail.Web` | `MailInput`, `Address`, `Recipient`, `Attachment` — DTOs for an HTTP endpoint |
 | `Regira.Office.Mail.Services` | `DummyMailer` |
-| **Providers** | `Regira.Office.Mail.SendGrid` → `SendGridMailer`, `SendGridConfig`; `Regira.Office.Mail.MailGun` → `MailGunMailer`, `MailgunConfig`; `Regira.Office.Mail.MSGReader` → `MsgParser`, `EmlParser` |
-| **DI** | `Regira.Office.Mail.SendGrid.DependencyInjection` · `Regira.Office.Mail.MailGun.DependencyInjection` → `ServiceCollectionExtensions` |
+| **Providers** | `Regira.Office.Mail.SendGrid` → `SendGridMailer`, `SendGridConfig`; `Regira.Office.Mail.MailGun` → `MailGunMailer`, `MailgunConfig`; `Regira.Office.Mail.MailKit` → `MailKitMailer`, `MailKitConfig` (its `Security` takes `MailKit.Security.SecureSocketOptions`); `Regira.Office.Mail.MSGReader` → `MsgParser`, `EmlParser` |
+| **DI** | `Regira.Office.Mail.SendGrid.DependencyInjection` · `Regira.Office.Mail.MailGun.DependencyInjection` · `Regira.Office.Mail.MailKit.DependencyInjection` → `ServiceCollectionExtensions` |
 
 ## CSV · OCR · vCards · Printing
 
@@ -95,12 +106,14 @@ size or error correction.
 | `Regira.Office.Csv.CsvHelper` | `CsvManager`, `CsvHelperOptions` |
 | `Regira.Office.OCR.Abstractions` | `IOcrService` |
 | `Regira.Office.OCR.Models.DTO` | `OcrResult` |
-| `Regira.Office.OCR.Tesseract` · `…PaddleOCR` | `OcrManager`, `Options` |
+| `Regira.Office.OCR.Tesseract` | `OcrManager`, `OcrManager.Options` (`Language`, `DataDirectory`) |
+| `Regira.Office.OCR.PaddleOCR` | `OcrManager` — parameterless, no options |
 | `Regira.Office.VCards.Abstractions` | `IVCardService`, `VCardVersion`, `VCardPropertyType`, `VCardTelType`, `VCardGenderSex` |
 | `Regira.Office.VCards.Models` | `VCard`, `VCardName`, `VCardAddress`, `VCardEmail`, `VCardTel`, `VCardOrganization`, `VCardBirthdate`, `VCardGender`, `VPhoto` |
 | `Regira.Office.VCards.FolkerKinzel` | `VCardManager` |
 | `Regira.Office.Printing.Abstractions` | `IPrintService` |
 | `Regira.Office.Printing.Models` | `ImagePrintInputModel`, `Duplex`, `PaperSourceKind` |
+| `Regira.Printing.GDI` | `PrintService` — the Windows `IPrintService` (prints an image through GDI); package `Regira.Printing.GDI` |
 
 ## Remote clients (`Regira.Office.Clients`)
 
@@ -124,7 +137,8 @@ Regira.Office.PDF.Models         → HtmlInput
 Regira.Office.Models             → PageSize, PageOrientation, Margins
 Regira.IO.Abstractions           → IMemoryFile          (the return type)
 Regira.IO.Extensions             → GetBytes(), GetStream()
-Regira.Office.PDF.SelectPdf      → PdfManager           (registration only)
+Regira.Office.PDF.MsPlaywright   → PdfManager           (registration only)
+Regira.Office.PDF.Gotenberg.DependencyInjection → ServiceCollectionExtensions  (AddGotenbergPdf, through a Gotenberg server)
 ```
 
 ### QR code / barcode image
@@ -133,7 +147,7 @@ Regira.Office.PDF.SelectPdf      → PdfManager           (registration only)
 Regira.Office.Barcodes.Abstractions            → IQRCodeService, IBarcodeService
 Regira.Office.Barcodes.Models                  → QRCodeInput, BarcodeInput, BarcodeFormat
 Regira.Media.Drawing.Models.Abstractions       → IImageFile          (the return type)
-Regira.Office.Barcodes.ZXing                   → QRCodeService       (registration only)
+Regira.Office.Barcodes.ZXing                   → QRCodeService, BarcodeService  (registration only)
 ```
 
 ### Merge / split / read an existing PDF
@@ -142,7 +156,7 @@ Regira.Office.Barcodes.ZXing                   → QRCodeService       (registra
 Regira.Office.PDF.Abstractions   → IPdfMerger, IPdfSplitter, IPdfTextExtractor, IPdfEditor
 Regira.Office.PDF.Models         → PdfSplitRange
 Regira.IO.Abstractions           → IMemoryFile
-Regira.Office.PDF.DocNET         → PdfManager           (registration only)
+Regira.Office.PDF.PdfPig         → PdfService           (registration only)
 ```
 
 ### Generate a Word document from a template
@@ -163,7 +177,11 @@ Regira.Office.Word.Gotenberg.DependencyInjection → ServiceCollectionExtensions
 Regira.Office.Mail.Abstractions  → IMailService
 Regira.Office.Mail.Models        → MessageObject, MailAddress, MailRecipient, RecipientTypes
 Regira.Office.Mail.SendGrid      → SendGridMailer, SendGridConfig
-Regira.Office.Mail.SendGrid.DependencyInjection → ServiceCollectionExtensions
+Regira.Office.Mail.SendGrid.DependencyInjection → ServiceCollectionExtensions  (AddSendGrid)
+Regira.Office.Mail.MailKit       → MailKitMailer, MailKitConfig       (any SMTP server)
+Regira.Office.Mail.MailKit.DependencyInjection  → ServiceCollectionExtensions  (AddMailKit)
+Regira.Office.Mail.MailGun       → MailGunMailer, MailgunConfig
+Regira.Office.Mail.MailGun.DependencyInjection  → ServiceCollectionExtensions  (AddMailGun)
 ```
 
 ### Read or write a spreadsheet

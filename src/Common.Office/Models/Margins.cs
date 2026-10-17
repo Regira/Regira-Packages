@@ -1,7 +1,12 @@
-﻿namespace Regira.Office.Models;
+﻿using Regira.Utilities;
+
+namespace Regira.Office.Models;
 
 /// <summary>
-/// Margin in points
+/// Margins in the unit of the input that holds them: on a <see cref="Regira.Office.PDF.Abstractions.PdfInputBase"/>,
+/// units of its <c>DPI</c> (PDF points at 72; at the default 96, 37.8 is 10 mm); points on a document or Word input;
+/// hundredths of an inch on <c>ImagePrintInputModel</c>. A new instance starts every side at
+/// <see cref="DEFAULT_MARGIN"/>, 25 mm in points.
 /// </summary>
 public class Margins : IEquatable<Margins>
 {
@@ -12,10 +17,29 @@ public class Margins : IEquatable<Margins>
     public float Bottom { get; set; } = DEFAULT_MARGIN;
     public float Left { get; set; } = DEFAULT_MARGIN;
 
+    /// <summary>
+    /// The same margins measured at another DPI (dots per inch): 37.8 at 96 is 28.35 at 72, PDF points.
+    /// </summary>
+    /// <param name="srcDpi">The DPI these margins are measured at.</param>
+    /// <param name="targetDpi">The DPI to measure the returned margins at.</param>
+    public Margins ModifyDpi(int srcDpi, int targetDpi)
+    {
+        return new Margins
+        {
+            Top = DimensionsUtility.ModifyDpi(Top, srcDpi, targetDpi),
+            Right = DimensionsUtility.ModifyDpi(Right, srcDpi, targetDpi),
+            Bottom = DimensionsUtility.ModifyDpi(Bottom, srcDpi, targetDpi),
+            Left = DimensionsUtility.ModifyDpi(Left, srcDpi, targetDpi)
+        };
+    }
+
     public static implicit operator Margins(float margin)
     {
         return new[] { margin };
     }
+    /// <summary>
+    /// The margins an array gives: one value for every side, two for left and right then top and bottom, three for top, left and right, bottom, four for top, right, bottom, left. Two values are not CSS's order, which puts top and bottom first.
+    /// </summary>
     public static implicit operator Margins(float[] margins)
     {
         if ((margins.Length) <= 0)

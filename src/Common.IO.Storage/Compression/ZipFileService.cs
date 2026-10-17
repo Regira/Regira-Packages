@@ -59,24 +59,10 @@ public class ZipFileService(ZipFileCommunicator communicator) : IFileService, ID
 #if NET10_0_OR_GREATER
     public async IAsyncEnumerable<string> ListAsync(FileSearchObject? so = null)
     {
-        IEnumerable<string> identifiers = ZipArchive.Entries.Select(e => ZipUtility.NormalizePath(e.FullName));
-
-        if (so != null)
+        foreach (var identifier in await List(so))
         {
-            // the folder itself, whole: dir2/dir2.1 does not reach into dir2/dir2.10
-            var folder = string.IsNullOrWhiteSpace(so.FolderUri) ? "" : ZipUtility.NormalizePath(so.FolderUri)!.TrimEnd('/');
-            if (folder.Length > 0)
-            {
-                identifiers = identifiers.Where(x => x.StartsWith(folder + '/', StringComparison.InvariantCultureIgnoreCase));
-            }
-            if (so.Extensions?.Any() == true)
-            {
-                identifiers = identifiers.Where(x => so.Extensions.Any(x.EndsWith));
-            }
-        }
-
-        foreach (var identifier in identifiers)
             yield return identifier;
+        }
     }
 #endif
 

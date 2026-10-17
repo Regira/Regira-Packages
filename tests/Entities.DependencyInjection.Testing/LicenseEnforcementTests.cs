@@ -263,6 +263,32 @@ public class LicenseEnforcementTests
     }
 
     [Test]
+    public void Without_A_Key_The_ExceptionMessage_Says_None_Was_Registered()
+    {
+        var services = new ServiceCollection();
+        var ex = Assert.Throws<LicenseException>(() =>
+            services.UseEntities<ContosoContext>()
+                .For<Course, CourseSearchObject, CourseSortBy, CourseIncludes>()
+                .For<Department, CourseSearchObject, CourseSortBy, CourseIncludes>()
+                .For<Enrollment, CourseSearchObject, CourseSortBy, CourseIncludes>());
+        Assert.That(ex!.Message, Does.StartWith("No Regira license key covering regira.entities was registered"));
+        Assert.That(ex.Message, Does.Contain("Regira:LicenseKeys"));
+    }
+
+    [Test]
+    public void With_A_Free_Key_The_ExceptionMessage_Does_Not_Say_None_Was_Registered()
+    {
+        var services = new ServiceCollection();
+        services.UseRegira(MakeFreeLicenseKey());
+        var ex = Assert.Throws<LicenseException>(() =>
+            services.UseEntities<ContosoContext>()
+                .For<Course, CourseSearchObject, CourseSortBy, CourseIncludes>()
+                .For<Department, CourseSearchObject, CourseSortBy, CourseIncludes>()
+                .For<Enrollment, CourseSearchObject, CourseSortBy, CourseIncludes>());
+        Assert.That(ex!.Message, Does.StartWith("Your Regira license allows"));
+    }
+
+    [Test]
     public void For3rdComplexEntity_ExceptionMessage_ListsComplexEntitiesAndDefinesComplex()
     {
         var services = new ServiceCollection();

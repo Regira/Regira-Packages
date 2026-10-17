@@ -74,9 +74,9 @@
 
 | Namespace | Types |
 |---|---|
-| `Regira.Entities.EFcore.Primers` | `ArchivablePrimer`, `HasCreatedDbPrimer`, `HasLastModifiedDbPrimer`, `HasConcurrencyTokenDbPrimer`, `AutoTruncatePrimer`, `AutoNormalizingPrimer`, `EntityPrimerContainerInterceptor` |
+| `Regira.Entities.EFcore.Primers` | `ArchivablePrimer`, `HasCreatedDbPrimer`, `HasLastModifiedDbPrimer`, `HasConcurrencyTokenDbPrimer`, `EntityPrimerContainerInterceptor`; obsolete: `AutoTruncatePrimer`, `AutoNormalizingPrimer` |
 | `Regira.Entities.EFcore.Primers.Abstractions` | `IEntityPrimer<>`, `EntityPrimerBase<>` |
-| `Regira.Entities.DependencyInjection.Primers` | `ServiceCollectionPrimerExtensions` *(`AddPrimer<>()`, `AddDefaultPrimers()`, `AddAutoTruncatePrimer()`, `AddDefaultEntityNormalizerPrimer()` — on `IServiceCollection` and `EntityServiceCollectionOptions`)* |
+| `Regira.Entities.DependencyInjection.Primers` | `ServiceCollectionPrimerExtensions` *(`AddPrimer<>()`, `AddDefaultPrimers()` — on `IServiceCollection` and `EntityServiceCollectionOptions`; obsolete: `AddAutoTruncatePrimer()`, `AddDefaultEntityNormalizerPrimer()`)* |
 
 ---
 
@@ -114,6 +114,7 @@
 | `Regira.Licensing.DependencyInjection` | `ServiceCollectionExtensions` *(`UseRegira(configuration)` / `UseRegira(params string?[] licenseKeys)` — on `IServiceCollection`; comes transitively via `Regira.Entities.DependencyInjection`)* |
 | `Regira.Entities.DependencyInjection.ServiceCollections` | `EntityServiceCollection<>`, `EntityRepositoryRegistry` *(the types `UseRepository()` sets)* |
 | `Regira.Entities.DependencyInjection.ServiceBuilders` | `EntityServiceBuilder<>`, `EntityIntServiceBuilder<>`, `EntitySearchObjectServiceBuilder<>`, `ComplexEntityServiceBuilder<>`, `ComplexEntityIntServiceBuilder<>` |
+| `Regira.Entities.DependencyInjection.ServiceBuilders.Abstractions` | `IEntityServiceBuilder` *(every `For<>()` builder: `Services`, `EntityType`)*, `IEntityServiceBuilder<,,>` |
 | `Regira.Entities.DependencyInjection.ServiceCollections.Models` | `EntityServiceCollectionOptions` |
 | `Regira.Entities.DependencyInjection.ServiceCollections.Abstractions` | `IEntityServiceCollection<>` |
 | `Regira.Entities.DependencyInjection.QueryBuilders` | `ServiceCollectionQueryFilterExtensions` *(`AddFilter<>()` and `RemoveGlobalQueryFilters()` — on `IServiceCollection`, the `UseEntities<TContext>()` builder included; `AddGlobalFilterQueryBuilder<>()` — on `IServiceCollection` and `EntityServiceCollectionOptions`; `AddDefaultGlobalQueryFilters()` — on `EntityServiceCollectionOptions`)* |
@@ -131,8 +132,8 @@
 | `Regira.Entities.Mapping.Mapster` | `UseMapsterMapping()` | **Default** mapping provider |
 | `Regira.Entities.Mapping.AutoMapper` | `UseAutoMapper()` | Alternative mapping provider |
 | `Regira.Entities.Mapping.Abstractions` | `IEntityMapper`, `IEntityAfterMapper<>`, `IEntityMapConfigurator`, `EntityAfterMapperBase<>`, `EntityAfterMapper<>` |  |
-| `Regira.Entities.Mapping.Models` | `AttachmentDto<>`, `AttachmentInputDto<>`, `EntityAttachmentDto<>`, `EntityAttachmentInputDto<>` | DTO classes for mapping |
-| `Regira.Entities.Attachments.Mapping.Abstractions` | `IEntityAttachmentInput<>` | Attachment input contracts |
+| `Regira.Entities.Mapping.Models` | `EntityAttachmentDto`, `EntityAttachmentInputDto`, `AttachmentDto`, `AttachmentInputDto` — the `int`-keyed records the guides use — and their generic bases `EntityAttachmentDto<,,>`, `EntityAttachmentInputDto<,,>`, `AttachmentDto<>`, `AttachmentInputDto<>` | DTO records for mapping |
+| `Regira.Entities.Attachments.Mapping.Abstractions` | `IEntityAttachmentInput` (`int`-keyed), `IEntityAttachmentInput<,>`, `IEntityAttachmentInput<,,>` | Attachment input contracts |
 
 ---
 
@@ -180,8 +181,22 @@
 | Namespace | Types |
 |---|---|
 | `Regira.Entities.Web.Controllers.Abstractions` | `EntityControllerBase<>` |
+| `Regira.Entities.Web.Controllers` | `ControllerExtensions` *(`this.Details/List/Search/Save/Patch/Delete<…>(…)` on any `ControllerBase`: a custom action that answers like the generated ones)* |
 | `Regira.Entities.Web.Models` | `SaveResult<>`, `DeleteResult<>`, `DetailsResult<>`, `ListResult<>`, `SearchResult<>` *(the generated actions' return types — needed to override one)* |
 | `Microsoft.AspNetCore.Mvc` | `[ApiController]`, `[Route]`, `ControllerBase` |
+| `Regira.Entities.Web.Endpoints` | `MapEntityEndpoints()` *(on `IEndpointRouteBuilder`)*, `Endpoints()` *(on the `For<>()` builders)*, `EntityEndpointOptions`, `EntityEndpointsOptions`, `EntityEndpoint`, `EntityEndpointMetadata`, `EntityExceptionEndpointFilter` — the mapped endpoints, instead of controllers (`entities.patterns` → *Mapped entity endpoints*) |
+
+---
+
+## Entity Operations (requests the endpoints send)
+
+| Namespace | Types |
+|---|---|
+| `Regira.Entities.Mediator.Abstractions` | `IEntitySender`, `IEntityRequest`, `IEntityRequest<>`, `IEntityRequestHandler<,>`, `IEntityPipelineBehavior<,>`, `EntityRequestDelegate<>` — package `Regira.Entities.Mediator`, brought by `Regira.Entities.Web` |
+| `Regira.Entities.Mediator.Requests` | `DetailsQuery<,,>`, `ListQuery<,,,>`, `ListQuery<,,,,,>`, `SearchQuery<,,,>`, `SearchQuery<,,,,,>`, `SaveCommand<,,,>`, `PatchCommand<,,,>`, `DeleteCommand<,,>`; an owner's attachment routes: `UploadAttachmentCommand<,,>`, `UpdateAttachmentCommand<,,>`, `ReplaceAttachmentFileCommand<,>`, `AttachmentFileQuery<>` |
+| `Regira.Entities.Mediator.Handlers` | `DetailsHandler<,,>`, `ListHandler<,,,>`, `ListHandler<,,,,,>`, `SearchHandler<,,,>`, `SearchHandler<,,,,,>`, `SaveHandler<,,,>`, `PatchHandler<,,,>`, `DeleteHandler<,,>`, `UploadAttachmentHandler<,,>`, `UpdateAttachmentHandler<,,>`, `ReplaceAttachmentFileHandler<,>`, `AttachmentFileHandler<>` *(the defaults — derive from one to change an operation)* |
+| `Regira.Entities.Mediator` | `EntityOperation`, `EntitySender`, `DataAnnotationsEntityInputValidator`, `EntityServiceProviderExtensions` *(`GetEntitySender()`)* |
+| `Regira.Entities.Mediator.DependencyInjection` | `EntityMediatorServiceCollectionExtensions` *(`AddEntityMediator()` — `UseEntities()` calls it)* |
 
 ---
 
@@ -311,6 +326,11 @@ Regira.DAL.Paging                       → PagingInfo
 ```
 Regira.Entities.Web.Controllers.Abstractions   → EntityControllerBase<...>
 Microsoft.AspNetCore.Mvc                       → [ApiController], [Route]
+```
+
+### Mapping endpoints instead of controllers
+```
+Regira.Entities.Web.Endpoints                  → MapEntityEndpoints(), e.Endpoints(o => ...)
 ```
 
 ### Registering an entity in DI

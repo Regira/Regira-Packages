@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Regira.Entities.Attachments.Abstractions;
 using Regira.Entities.Attachments.Models;
 using Regira.Entities.Models.Abstractions;
+using Regira.Entities.Web.Endpoints;
 
 namespace Regira.Entities.Web.Attachments.Services;
 
@@ -38,9 +39,18 @@ public class AttachmentUriResolver<TEntityAttachment, TEntityAttachmentKey, TObj
         var host = httpContext.Request.Host;
         var path = httpContext.Request.PathBase;
 
-        object values = !string.IsNullOrWhiteSpace(source.Attachment?.FileName)
+        var byName = !string.IsNullOrWhiteSpace(source.Attachment?.FileName);
+        object values = byName
             ? new { objectId = source.ObjectId, filename = source.Attachment!.FileName, inline = true }
             : new { id = source.Id, inline = true };
+
+        // a mapped download endpoint (MapEntityEndpoints) is found by its name, an attachment controller's by the controller
+        var endpointName = byName ? EntityEndpointNames.GetFileByName(typeof(TEntityAttachment)) : EntityEndpointNames.GetFile(typeof(TEntityAttachment));
+        var mapped = linkGenerator.GetUriByName(endpointName, values, scheme, host, path);
+        if (mapped != null)
+        {
+            return mapped;
+        }
 
         foreach (var controller in ControllerNames)
         {
@@ -73,7 +83,7 @@ public class AttachmentUriResolver<TEntityAttachment, TEntityAttachmentKey, TObj
         }
 
         logger.LogWarning(
-            "Attachment Uri stays null for {AttachmentType}: no mapped controller named \"{Controller}Controller\" or \"{ControllerPlural}Controller\" exposes a \"GetFile\" action. Name the attachment controller after the entity type and map it, or omit UseAttachmentUris() and compose download links from the attachment route.",
+            "Attachment Uri stays null for {AttachmentType}: neither MapEntityEndpoints() mapped its downloads nor does a mapped controller named \"{Controller}Controller\" or \"{ControllerPlural}Controller\" expose a \"GetFile\" action. Map its owner's endpoints, or name the attachment controller after the entity type and map it, or omit UseAttachmentUris() and compose download links from the attachment route.",
             typeof(TEntityAttachment).Name, ControllerNames[0], ControllerNames[1]);
     }
 }

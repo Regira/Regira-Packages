@@ -6,4 +6,5 @@ public class InvoicePartyInput
     public string Title { get; set; } = null!;
     public ICollection<ContactDataInput>? ContactData { get; set; } = [];
     public ICollection<PartyIdentifierInput>? Identifiers { get; set; } = [];
+    public PartyAddressInput? Address { get; set; }
 }

@@ -39,6 +39,7 @@ internal static class InvoiceExtensions
                 ID = item.Code
             } }.ToList(),
             PartyName = new[] { new PartyNameType { Name = item.Title } }.ToList(),
+            PostalAddress = item.Address?.ToAddressType(),
             Contact = new ContactType
             {
                 Name = item.Title,
@@ -47,6 +48,15 @@ internal static class InvoiceExtensions
             }
         };
     }
+
+    public static AddressType ToAddressType(this PartyAddress address) => new()
+    {
+        StreetName = NullIfBlank(address.Street),
+        PostalZone = NullIfBlank(address.PostalCode),
+        CityName = NullIfBlank(address.City),
+        Country = new CountryType { IdentificationCode = address.CountryCode }
+    };
+    static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
     //public static FinancialAccountType ToFinancialAccountType(this BankAccount account) => new() { ID = account.AccountNumber };
     public static List<InvoiceLineType> ToInvoiceLineTypeList(this IEnumerable<InvoiceLine> lines) => lines.Select(ToInvoiceLineType).ToList();
@@ -66,7 +76,7 @@ internal static class InvoiceExtensions
             //TaxTotal = new List<TaxTotalType> { taxTotalType },
             Item = new ItemType
             {
-                Name = new NameType { Value = $"{index + 1}".PadLeft(4, '0') },
+                Name = new NameType { Value = NullIfBlank(line.Title) ?? $"{index + 1}".PadLeft(4, '0') },
                 ClassifiedTaxCategory =
                 [
                     new TaxCategoryType
@@ -80,59 +90,37 @@ internal static class InvoiceExtensions
             Price = new PriceType
             {
                 BaseQuantity = 1,
-                PriceAmount = PeppolUtility.BuildAmountType(Math.Abs(line.UnitPriceExcl))
+                PriceAmount = PeppolUtility.BuildPriceAmountType(Math.Abs(line.UnitPriceExcl))
             }
-        };
-    }
-    public static TaxTotalType ToTaxTotalType(this IInvoiceLine line)
-    {
-        var taxCategoryCode = GetTaxCategoryCode(line);
-        return new TaxTotalType
-        {
-            TaxAmount = PeppolUtility.BuildAmountType(line.Quantity * line.UnitPriceExcl * line.VatPercentage),
-            TaxSubtotal = new[] {
-                new TaxSubtotalType {
-                    TaxableAmount = PeppolUtility.BuildAmountType(line.GetTaxExclusiveAmount()),
-                    TaxAmount = PeppolUtility.BuildAmountType(line.GetTaxAmount()),
-                    TaxCategory = new TaxCategoryType
-                    {
-                        ID = PeppolUtility.BuildCodeTypeIdentifierType(taxCategoryCode),
-                        Percent = line.VatPercentage,
-                        TaxScheme = new TaxSchemeType { ID = "VAT" },
-                        //TaxExemptionReason = new List<TextType> { line.TaxCategory.Statement}
-                    }
-                }
-            }.ToList()
         };
     }
     public static List<TaxTotalType> ToTaxTotalTypeList(this IEnumerable<InvoiceLine> lines)
     {
-        var linesList = lines as InvoiceLine[] ?? lines.ToArray();
-        var taxTotal = new List<TaxTotalType>
-        {
+        var subtotals = lines
+            .GroupBy(line => line.VatPercentage)
+            .Select(linesPerRate => ToTaxSubtotalType(linesPerRate.ToArray(), GetTaxCategoryCode(linesPerRate.First())))
+            .ToList();
+        return
+        [
             new TaxTotalType
             {
-                TaxAmount = PeppolUtility.BuildAmountType(linesList.Sum(line => decimal.Round(line.GetTaxAmount(), 2))),
-                TaxSubtotal = linesList
-                    .GroupBy(line => line.VatPercentage)
-                    .Select(linePerBtw => ToTaxTotalType(linePerBtw, GetTaxCategoryCode(linePerBtw.First())))
-                    .ToList()
+                // BR-CO-14: the sum of the subtotals
+                TaxAmount = PeppolUtility.BuildAmountType(subtotals.Sum(subtotal => subtotal.TaxAmount.Value)),
+                TaxSubtotal = subtotals
             }
-        };
-
-        return taxTotal;
+        ];
     }
-    public static TaxSubtotalType ToTaxTotalType(this IEnumerable<IInvoiceLine> lines, TaxCategoryCode taxCategoryCode)
+    public static TaxSubtotalType ToTaxSubtotalType(this IInvoiceLine[] lines, TaxCategoryCode taxCategoryCode)
     {
-        var linesList = lines as InvoiceLine[] ?? lines.ToArray();
-        var firstLine = linesList.First();
-        var taxableAmount = PeppolUtility.BuildAmountType(linesList.Sum(line => decimal.Round(line.GetTaxExclusiveAmount(), 2)));
-        //var taxAmount = PeppolUtility.BuildAmountType(linesList.Sum(line => decimal.Round(line.TaxTariff ?? -1, 2)));
+        var firstLine = lines.First();
+        // the same rounded line amounts as LineExtensionAmount
+        var taxableAmount = lines.Sum(line => PeppolUtility.RoundAmount(line.GetTaxExclusiveAmount()));
         var taxCategoryId = PeppolUtility.BuildCodeTypeIdentifierType(taxCategoryCode);
         return new TaxSubtotalType
         {
-            TaxableAmount = taxableAmount,
-            //TaxAmount = taxAmount,
+            TaxableAmount = PeppolUtility.BuildAmountType(taxableAmount),
+            // BR-CO-17: VAT is rounded once per rate, not per line
+            TaxAmount = PeppolUtility.BuildAmountType(taxableAmount * firstLine.VatPercentage / 100),
             TaxCategory = new TaxCategoryType
             {
                 ID = taxCategoryId,

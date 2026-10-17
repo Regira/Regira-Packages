@@ -33,7 +33,11 @@ internal sealed class EntityValidationStartupService(
         // provider refuses to resolve. Validating from the root left exactly those filters unchecked.
         using var scope = provider.CreateScope();
         var context = new EntityValidationContext(scope.ServiceProvider, services, registrations ?? new EntityRegistrationLog());
-        var issues = validators.SelectMany(v => Run(v, context, logger)).ToArray();
+        var checks = validators.SelectMany(v => Run(v, context, logger)).ToArray();
+        // a context the model checks could not resolve, said once rather than once per check
+        var issues = checks
+            .Concat(context.UnresolvedDbContexts.Select(message => new EntityValidationIssue(EntityValidationSeverity.Warning, message)))
+            .ToArray();
 
         foreach (var issue in issues)
         {
@@ -69,20 +73,25 @@ internal sealed class EntityValidationStartupService(
     /// <summary>
     /// Runs one validator, downgrading a throw to a warning. A diagnostic that inspects the container has to
     /// tolerate whatever it finds there — a custom implementation, a factory that throws — and no such
-    /// surprise is worth taking the host down for. Deliberate failures still travel as
-    /// <see cref="EntityValidationSeverity.Error"/> issues and throw below.
+    /// surprise is worth taking the host down for. The issues it reported before it threw are kept, so a check
+    /// broken off by one registration still reports what it found for the others. Deliberate failures still travel
+    /// as <see cref="EntityValidationSeverity.Error"/> issues and throw below.
     /// </summary>
     private static IEnumerable<EntityValidationIssue> Run(IEntityRegistrationValidator validator, EntityValidationContext context, ILogger logger)
     {
+        var issues = new List<EntityValidationIssue>();
         try
         {
-            return validator.Validate(context).ToArray();
+            foreach (var issue in validator.Validate(context))
+            {
+                issues.Add(issue);
+            }
         }
         catch (Exception ex)
         {
             logger.LogWarning(ex, "{Validator} could not complete and was skipped.", validator.GetType().Name);
-            return [];
         }
+        return issues;
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

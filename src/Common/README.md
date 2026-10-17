@@ -203,6 +203,7 @@ string abs     = UriUtility.ToAbsoluteUri("../images/logo.png");
 ```csharp
 float inches = DimensionsUtility.MmToIn(25.4f);   // 1.0f
 float mm     = DimensionsUtility.InToMm(1.0f);    // 25.4f
+float pt72   = DimensionsUtility.ModifyDpi(96f, 96, 72);   // 72f — the same length at another DPI; a Size2D overload converts both sides
 ```
 
 ---
@@ -304,6 +305,10 @@ public interface ICacheProvider
 }
 ```
 
+`Set`'s `duration` is in seconds; `null` takes the provider's default, and a provider without expiry, such as `DictionaryCacheProvider`, ignores it.
+
+A provider's `Keys`, and enumerating it, return the entries under its key prefix, with the prefix left off; `RemoveAll` removes those entries. A provider without a prefix covers every entry in its store. End a prefix with a separator, such as `"users:"`: a prefix matches by its start, so `user` would also cover the entries of a `users` provider.
+
 ### DictionaryCacheProvider
 
 Thread-safe in-memory cache backed by a **static** `ConcurrentDictionary` — entries are shared process-wide across all instances; the optional key prefix is the only isolation between them.
@@ -311,7 +316,7 @@ Thread-safe in-memory cache backed by a **static** `ConcurrentDictionary` — en
 ```csharp
 var products = new List<string> { "chair", "table" };
 
-var cache = new DictionaryCacheProvider("products");
+var cache = new DictionaryCacheProvider("products:");
 cache.Set("list", products);
 var list = cache.Get<List<string>>("list");
 ```

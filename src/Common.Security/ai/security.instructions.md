@@ -16,25 +16,25 @@
 
 ## Installation
 
-```xml
-<!-- Core encryption + PBKDF2 hashing -->
-<PackageReference Include="Regira.Security" Version="6.*" />
+```bash
+# Core encryption + PBKDF2 hashing
+dotnet add package Regira.Security
 
-<!-- BCrypt password hashing (recommended for passwords) -->
-<PackageReference Include="Regira.Security.Hashing.BCryptNet" Version="6.*" />
+# BCrypt password hashing (recommended for passwords)
+dotnet add package Regira.Security.Hashing.BCryptNet
 
-<!-- JWT + API Key authentication -->
-<PackageReference Include="Regira.Security.Authentication" Version="6.*" />
+# JWT + API Key authentication
+dotnet add package Regira.Security.Authentication
 
-<!-- Pre-built auth controller bases (AccountControllerBase, UserControllerBase, PasswordControllerBase) -->
-<PackageReference Include="Regira.Security.Authentication.Web" Version="6.*" />
+# Pre-built auth controller bases (AccountControllerBase, UserControllerBase, PasswordControllerBase)
+dotnet add package Regira.Security.Authentication.Web
 ```
 
 ---
 
 ## Encryption
 
-### `IEncrypter`
+### `IEncrypter` — `Regira.Security.Abstractions`
 
 <!-- no-compile -->
 ```csharp
@@ -42,22 +42,26 @@ string Encrypt(string plainText, string? key = null);
 string Decrypt(string encryptedText, string? key = null);
 ```
 
-### `SymmetricEncrypter` — AES-256, static key
+### `SymmetricEncrypter` — obsolete, decrypting only
 
-Fast. Same key always produces the same ciphertext. Use for non-sensitive reversible encoding.
-
-```csharp
-using Regira.Security.Encryption; // SymmetricEncrypter
-using Regira.Security.Core;       // CryptoOptions
-
-var enc = new SymmetricEncrypter(new CryptoOptions { Secret = "my-app-key" });
-string cipher = enc.Encrypt("sensitive value");
-string plain  = enc.Decrypt(cipher);
-```
+AES-256 with a key and vector derived from the secret alone, so a value always encrypts to the same ciphertext. Keep it
+only to decrypt what it encrypted; encrypt new values with `AesEncrypter`. Without a secret it uses the built-in key,
+which is published with the source.
 
 ### `AesEncrypter` — AES with random salt
 
-Slower but produces different ciphertext on each call. **Recommended for stored secrets.**
+Produces different ciphertext on each call. **Recommended for stored secrets.** The costly step, 500,000 PBKDF2-SHA512
+iterations over the secret (`CryptoUtility.DefaultIterations`, about 0.2 s), runs once per secret in a process and is
+cached; each value then gets a key of its own from its random salt in microseconds, so an EF value converter or a list
+projection decrypts 50 rows in milliseconds. The text is `aes1:` and the Base64 of 32 bytes of salt, the cipher (the
+value's bytes padded to the next 16) and a 32-byte HMAC-SHA256 tag: size a column for it, a 34-character IBAN taking 157
+characters. A value that was changed, or encrypted with another secret, throws `CryptographicException`. A value written
+without the `aes1:` prefix, by `Regira.Security` before 6.6.0, still decrypts; it pays the derivation the first time a
+process reads it, then comes from the cache. Decrypt and encrypt it again to move it to the `aes1:` format, which a
+version before 6.6.0 cannot read: mind a rollback, or a second application reading the same data. Encrypting needs a
+secret — `CryptoOptions.Secret`, read from configuration, or a key passed to `Encrypt` — and throws
+`InvalidOperationException` without one. `Decrypt` without one uses the built-in key, so what an earlier version
+encrypted with it stays readable; to move such values to a secret, decrypt them without it and encrypt them with it.
 
 ```csharp
 using Regira.Security.Encryption; // AesEncrypter
@@ -68,11 +72,19 @@ string cipher = enc.Encrypt("sensitive value");
 string plain  = enc.Decrypt(cipher);
 ```
 
+**An encrypted column: decrypt one value on demand.** A value converter decrypts the column whenever the entity loads
+— through an `Include` on a list that never shows it, into a DTO that drops it — and a read DTO that carries it sends
+the plain value to every client that lists the entity. For a value few screens show (a bank account, a national
+number), keep the ciphertext in a plain `string` property instead: a prepper encrypts it from a write-only input field
+(`NewBankAccount`) and can store a masked copy beside it for the lists (`BE71 •••• 6769`); the read DTOs leave the
+ciphertext out; and an endpoint of its own returns the one decrypted value, behind an authorization of its own
+(`GET parties/{id}/bank-account`). A value converter stays the shortcut for a column every read needs in plain text.
+
 ### `CryptoOptions`
 
 | Property | Type | Default | Description |
 |---|---|---|---|
-| `Secret` | `string?` | built-in salt key | Signing / derivation secret |
+| `Secret` | `string?` | `null` | The key `AesEncrypter` derives from; it refuses to encrypt without one. Without it, decrypting and the obsolete `SymmetricEncrypter` and `SimpleHasher` use a built-in key, published with the source |
 | `AlgorithmType` | `string?` | `"SHA512"` | Hash algorithm for key derivation |
 | `Encoding` | `Encoding?` | UTF-8 | Text encoding |
 
@@ -110,9 +122,9 @@ string stored = hasher.Hash("myPassword123");
 bool ok       = hasher.Verify("myPassword123", stored);
 ```
 
-### `SimpleHasher` — double-SHA
+### `SimpleHasher` — obsolete
 
-Fast but weaker. Use for non-password data only (e.g. cache keys, checksums).
+A double SHA with a fixed salt, compared in variable time. Use `Hasher` (PBKDF2), or BCrypt for passwords.
 
 ---
 
@@ -122,7 +134,7 @@ Fast but weaker. Use for non-password data only (e.g. cache keys, checksums).
 |---|---|
 | User passwords | `BCryptNet.Hasher` |
 | General data hashing with security | `Hasher` (PBKDF2) |
-| Cache keys / non-security checksums | `SimpleHasher` |
+| Cache keys / non-security checksums | `SHA256.HashData` (.NET) |
 
 ---
 
@@ -134,7 +146,7 @@ on top of it, so every scheme fits the same scaffold. Pick by what the caller pr
 | The caller is | Register | Read |
 |---|---|---|
 | A machine or service holding a shared secret | `AddApiKeyAuthentication` | *API Key Authentication* |
-| A SPA or mobile client against your own user table | `AddJwtAuthentication` (+ `AddRefreshTokens`) | *JWT Authentication*, *Refresh Tokens (self-issued JWT)* |
+| A SPA or mobile client against your own user table | `AddJwtAuthentication` (+ `AddRefreshTokens` for a client that renews with a refresh token; `@regira/modules` does not) | *JWT Authentication*, *Refresh Tokens (self-issued JWT)* |
 | A browser session — server-rendered, Blazor Server, same-site SPA | `AddCookieAuthentication` | *Cookie Authentication* |
 | Presenting tokens an external authority issued (Entra ID, Auth0, Keycloak, Okta) | `AddBearerAuthentication` / `AddEntraIdBearer` | *External Bearer Authentication (OIDC / Entra ID)* |
 | Signing in interactively through a provider | `AddOidcAuthentication` / `AddEntraIdSignIn` | *Interactive Sign-in (OpenID Connect)* |
@@ -161,11 +173,19 @@ registered scheme authenticates a given request. Claims differ per scheme — re
 | `LifeSpan` | `int` | `7200` | Token lifetime in seconds |
 | `NameClaimType` | `string` | `"name"` | Claim used as user name |
 | `RoleClaimType` | `string` | `"role"` | Claim used as role |
+| `AuthenticationScheme` | `string` | `"Bearer"` | Scheme name (`JwtBearerDefaults.AuthenticationScheme`) |
+| `IncludeIssuedDate` | `bool` | `true` | Writes the issued-at time into each token |
+| `UseJwtClaimTypes` | `bool` | `true` | Writes `sub`/`name`/`email` and reads `sub` back as `ClaimTypes.NameIdentifier` (process-wide claim maps) |
 
 A `Secret` shorter than its algorithm allows throws `InvalidOperationException` from
 `AddJwtAuthentication`, naming the byte count it got and the one it needs. Set `ValidateSecretLength = false`
 only for a scheme that never issues tokens — when validating tokens signed elsewhere, the required key length
 is whatever the issuer used, which `Algorithm` does not describe.
+
+A missing or empty `Secret` throws `InvalidOperationException` from `AddJwtAuthentication` ("JwtTokenOptions.Secret
+is not set: configure Authentication:Jwt:Secret (user-secrets in Development)."). In Development that means the
+user-secrets were not loaded: the project has no `UserSecretsId`, or the assembly was built before
+`dotnet user-secrets init` (rebuild; `dotnet run --no-build` keeps the old assembly).
 
 ### `ITokenHelper` — `Regira.Security.Authentication.Jwt.Abstraction`
 
@@ -286,6 +306,30 @@ throws `InvalidOperationException: OwnerId is missing` at startup:
 ]
 ```
 
+The keys themselves belong in user-secrets or the environment (`Authentication:ApiKeys:0:Key`), not in
+`appsettings.json`; configuration merges the entries by index. A key never set throws at startup, naming the path to
+set.
+
+### API keys from your own store
+
+`AddApiKeyAuthentication()` registers no `IApiKeyOwnerService`; the handler resolves whichever is registered, and
+`AddInMemoryApiKeyAuthentication` is one. For keys in your database, implement it over your `DbContext` and register
+it instead:
+
+<!-- no-compile -->
+```csharp
+using Regira.Security.Authentication.ApiKey.Abstraction; // IApiKeyOwnerService
+
+services.AddScoped<IApiKeyOwnerService, DbApiKeyOwnerService>();
+services.AddApiKeyAuthentication();
+```
+
+- The handler calls only `FindByKey`, and `null` gives 401.
+- Generate the key on the server from 32 or more random bytes, show it once, and store and look it up by its
+  unsalted SHA-256: a key that random needs no salt, and a salted hash cannot be looked up.
+- Revoke with a `RevokedAt` that `FindByKey` filters on.
+- Do not also call `AddInMemoryApiKeyAuthentication`, since the last registration wins.
+
 ### ⚠️ Claims emitted per scheme — the two spellings
 
 The schemes do **not** agree on the role claim type, which decides whether a `RequireClaim` policy holds for
@@ -355,8 +399,9 @@ services.AddJwtAuthentication(o => configuration.GetSection(AuthenticationSectio
 
 ## Refresh Tokens (self-issued JWT)
 
-`Regira.Security.Authentication.Jwt.*`. Opt-in, chained off `AddJwtAuthentication`. Closes the gap every SPA on the
-JWT scheme hits: a 2-hour access token with no way to renew it.
+`Regira.Security.Authentication.Jwt.*`. Opt-in, chained off `AddJwtAuthentication`. Closes the gap an SPA on the JWT
+scheme hits: a 2-hour access token with no way to renew it. `@regira/modules` keeps one token and does not call
+`auth/refresh-token`; an SPA on it renews through `auth/refresh` while the token is valid.
 
 ```csharp
 services.AddJwtAuthentication(o => configuration.GetSection(AuthenticationSections.Jwt).Bind(o))
@@ -376,7 +421,8 @@ returns the same body it always did (the `refreshToken` and `expiresAt` fields a
 
 `auth/refresh` cannot help at the one moment renewal matters: once the access token has expired it answers `401`. A
 SPA could only use it by polling ahead of expiry, and a tab left closed past the lifespan loses the session.
-`auth/refresh-token` is anonymous by necessity — the refresh token *is* the credential — so **rate-limit it**.
+`auth/refresh-token` is anonymous by necessity — the refresh token *is* the credential — so **rate-limit it**
+(*Pre-built Auth Controllers* → *Rate-limiting the anonymous actions*).
 
 ### `RefreshTokenOptions`
 
@@ -629,7 +675,16 @@ policy scheme, which forwards by credential and so cannot sign anyone in.
    symptom is "users get logged out at random" — never an error, and not reproducible on one machine.
 3. **A cookie authenticates ambiently, so state-changing endpoints need antiforgery.** A bearer token does not,
    because the caller has to attach it. Moving from JWT to cookies inherits a vulnerability class the JWT scheme
-   did not have.
+   did not have. In ASP.NET Core: `services.AddAntiforgery(o => o.HeaderName = "X-XSRF-TOKEN")`, controllers
+   registered with `AddControllersWithViews()` (the antiforgery filters are view services: with `AddControllers()`
+   alone, `[AutoValidateAntiforgeryToken]` throws *No service for type AutoValidateAntiforgeryTokenAuthorizationFilter*),
+   and `[AutoValidateAntiforgeryToken]` on the cookie-authenticated controllers, which checks every POST, PUT, PATCH
+   and DELETE, the sign-in included. An anonymous `GET` hands the SPA its token,
+   `antiforgery.GetAndStoreTokens(HttpContext).RequestToken`, which it sends back in `X-XSRF-TOKEN`. A token is bound
+   to the user it was issued to: fetch a new one after sign-in and after sign-out. With `SameSite` `Lax` (the
+   default) or `Strict`, current browsers send no cookie with a cross-site write, which stops classic CSRF; a sibling
+   subdomain is same-site and still sends it, so keep antiforgery wherever other apps share the site, and always with
+   `SameSite = None`. The complete controller: `security.examples` → *The same portal on cookie sessions*.
 4. **Set `IsApi` for anything a script calls.** The framework default `302`s to an HTML login page, which `fetch`
    follows transparently — the caller gets `200` and a page of HTML where it expected JSON, and cross-origin it
    surfaces as an opaque CORS error.
@@ -810,7 +865,7 @@ A host serving **both** browsers and API clients should set `ChallengeScheme` de
 other kind of caller gets the wrong answer to a missing credential. Where the two must differ, name the scheme per
 endpoint with `[Authorize(AuthenticationSchemes = …)]`.
 
-Add a rule with `SchemeForwardRules.Bearer(scheme)` / `.Basic(scheme)` / `.ApiKey(scheme)` /
+Add a rule with `SchemeForwardRules.Bearer(scheme)` / `.ApiKey(scheme)` /
 `.Cookie(scheme, cookieName)`, or construct `new SchemeForwardRule(order, scheme, context => …)`. A rule's
 predicate decides *which handler gets the chance* — it must not authenticate anything, and a false positive
 costs the request its other options.
@@ -836,9 +891,6 @@ breaking the document: the selector's scheme authenticates nothing and is declar
 resolves it to the schemes behind it through `IAuthenticationSchemeExpander` (registered by `AddSchemeSelector`)
 and emits one requirement per real scheme — OR semantics, the caller needs any one of them.
 
-`BearerSecuritySchemeTransformer` and `ApiKeySecurityDocumentTransformer` still work and may be registered
-alongside; all three insert with `TryAdd`, so the result is the same.
-
 Cookie has no dedicated OpenAPI security type — it is emitted as an API key with `in: cookie`, which is the
 accepted convention.
 
@@ -850,13 +902,14 @@ Users in the same DB, no roles — the happy path (details in the sections below
 
 1. `AppUser : IdentityUser`; make the app `DbContext : IdentityDbContext<AppUser>` (users in the same DB).
 2. `services.AddIdentityCore<AppUser>().AddEntityFrameworkStores<AppDbContext>().AddSignInManager().AddDefaultTokenProviders();`
-3. `services.AddJwtAuthentication(o => configuration.GetSection(AuthenticationSections.Jwt).Bind(o));` — set `Authentication:Jwt:Secret` (**≥ 64 bytes for the HS512 default**, or startup throws — counted as ASCII, so a non-ASCII character is one byte, not the two or three UTF-8 would give it) and **`Authentication:Jwt:Audience` = the SPA's `clientApp`**. `Authentication:Jwt:Authority` is optional for these self-issued tokens: it is written into each token as its issuer and checked on the way in, and left unset, tokens carry no issuer and none is checked. Leave `Algorithm` unset (or `"HS512"`). Add `.AddRefreshTokens()` if the SPA needs to survive access-token expiry, and `.AddSchemeSelector()` last if more than one scheme is registered.
-4. Register an `IEmailSender` — the interface is **`Microsoft.AspNetCore.Identity.UI.Services.IEmailSender`** (ASP.NET Core shared framework, no package to add; not a Regira type). Use Regira's `IdentityMailer`, which needs a registered Regira `IMailService` and an `IdentityMailerOptions` (`Regira.Office` → `office.mail.instructions` → *ASP.NET Identity Integration*), or a dev logger that prints the link. No `ISerializer` needed.
-5. Subclass the three base controllers with forwarding ctors (below).
-6. `app.UseAuthentication()` **before** `app.UseAuthorization()`; `MapControllers().RequireAuthorization()` — the bases carry no `[Authorize]`.
-7. Seed the first user via `UserManager<AppUser>`.
-8. **Front-end:** install `authPlugin` after router + axios and pass `clientApp: "<your audience>"` — the SPA's `login()` appends it as `?clientApp=`, so it must equal the API's `Jwt:Audience`. Leave `loginUrl` unset unless the login endpoint isn't `auth`.
-9. **Dev cross-origin:** either proxy the SPA's `/api` through Vite (no CORS needed) or point the SPA straight at the API origin and add a CORS policy allowing that origin. The full recipe (proxy config, URL alignment, HTTPS-redirect trap) is in the front-end guide: `regira_modules.vue.entities` → `entities.setup` → *Calling the API in dev* / *The URL contract*.
+3. `services.AddJwtAuthentication(o => configuration.GetSection(AuthenticationSections.Jwt).Bind(o));` — set `Authentication:Jwt:Secret` (**≥ 64 bytes for the HS512 default**, or startup throws — counted as ASCII, so a non-ASCII character is one byte, not the two or three UTF-8 would give it) and **`Authentication:Jwt:Audience` = the SPA's `clientApp`**. `Authentication:Jwt:Authority` is optional for these self-issued tokens: it is written into each token as its issuer and checked on the way in, and left unset, tokens carry no issuer and none is checked. Leave `Algorithm` unset (or `"HS512"`). Add `.AddRefreshTokens()` only for a client that calls `auth/refresh-token` (`@regira/modules` does not: it renews through `auth/refresh`), and `.AddSchemeSelector()` last if more than one scheme is registered.
+4. Register an `IEmailSender` — the interface is **`Microsoft.AspNetCore.Identity.UI.Services.IEmailSender`** (ASP.NET Core shared framework, no package to add; not a Regira type). Use Regira's `IdentityMailer`, which needs a registered Regira `IMailService` and an `IdentityMailerOptions` (`Regira.Office` → `office.mail.instructions` → *ASP.NET Identity Integration*), or, **in Development only**, a logger that prints the link: the body carries a live reset or confirmation token, so register it under `builder.Environment.IsDevelopment()` and give every other environment `IdentityMailer`. No `ISerializer` needed.
+5. List the SPA's origin for the mailed links: bind `AccountEmailOptions` from `Authentication:AccountEmails`, validated on start, with `AllowedOrigins: [ "https://app.example.com" ]` and the app's `SiteName` — the snippet is in *Mailed links: allowed origins* below. ⚠️ Without an origin, password recovery throws.
+6. Subclass the three base controllers with forwarding ctors (below).
+7. `app.UseAuthentication()` **before** `app.UseAuthorization()`; `MapControllers().RequireAuthorization()` — the bases carry no `[Authorize]`.
+8. Seed the first user via `UserManager<AppUser>`, with its password from user-secrets (`Seeding:AdminPassword`), never from an `appsettings*.json` file, and never seed a known password outside Development.
+9. **Front-end:** install `authPlugin` after router + axios and pass `clientApp: "<your audience>"` — the SPA's `login()` appends it as `?clientApp=`, so it must equal the API's `Jwt:Audience`. Leave `loginUrl` unset unless the login endpoint isn't `auth`.
+10. **Dev cross-origin:** either proxy the SPA's `/api` through Vite (no CORS needed) or point the SPA straight at the API origin and add a CORS policy allowing that origin. The full recipe (proxy config, URL alignment, HTTPS-redirect trap) is in the front-end guide: `regira_modules.vue.entities` → `entities.setup` → *Calling the API in dev* / *The URL contract*.
 
 ## Roles end-to-end: Identity → JWT → SPA
 
@@ -882,25 +935,66 @@ factory. To carry an Identity role into the token and through every gate:
        .AddSignInManager().AddDefaultTokenProviders();
    ```
 
-   Seed roles with `RoleManager<IdentityRole>.CreateAsync(new IdentityRole("Manager"))` and assign with
-   `userManager.AddToRoleAsync(user, "Manager")`.
+   Seed roles with `RoleManager<IdentityRole>.CreateAsync(new IdentityRole("Administrator"))` and assign with
+   `userManager.AddToRoleAsync(user, "Administrator")`. `"Administrator"` is the role the scaffolded SPA's
+   `$isAdmin` checks, exact and case-sensitive.
 2. **Token.** Nothing else to do: `AccountControllerBase` mints from the factory's claims, and the outbound
    map renames only `sub`/`name`/`email` — the roles land in the payload under `"role"` (one string, or an
    array for a multi-role user). It leaves out Identity's security stamp (`AspNet.Identity.SecurityStamp`): a
    JWT is readable by whoever holds it, and the stamp is the secret the email and phone token providers derive
    their one-time codes from. A subclass that mints its own claims goes through `CreateSuccessResponse` or
    `TokenClaims(claims)`, which drop it too.
-3. **Server-side gates.** `[Authorize(Roles = "Manager")]` and `User.IsInRole(...)` now work on the local JWT
+3. **Server-side gates.** `[Authorize(Roles = "Administrator")]` and `User.IsInRole(...)` now work on the local JWT
    scheme. A handler that must also admit API-key callers (`ClaimTypes.Role`) or external bearer tokens
    (`roles`) reads roles with `principal.FindRoles()`, which probes all three spellings.
 4. **SPA.** The front-end decodes the **raw** token, so it sees the payload spelling. Use
-   `authStore.hasRole("Manager")` (`regira_modules.vue.auth`) — it probes `role`, `roles` and the
+   `authStore.hasRole("Administrator")` (`regira_modules.vue.auth`) — it probes `role`, `roles` and the
    `ClaimTypes.Role` URI, mirroring `FindRoles()`. ⚠️ `hasPermission(...)` reads a `permissions` claim this
    recipe never mints — it is not a role check.
    Gate the UI on the same roles, or the SPA offers writes the API answers 403 for:
    `regira_modules.vue.entities` → `entities.patterns` → *Permission-gated UI*.
 5. **Mid-session role changes** reach the SPA on the next `POST auth/refresh` (still-valid bearer): the token
    is re-minted from a fresh claims-factory run.
+
+### A claim of your own in the token
+
+The token carries what the claims factory emits, so a claim of your own comes from a factory subclass. With roles on,
+derive from `UserClaimsPrincipalFactory<TUser, IdentityRole>`: the one-argument `UserClaimsPrincipalFactory<TUser>`
+adds no roles, so the token loses them. Without roles, derive from that one-argument base.
+
+```csharp
+using System.Security.Claims;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Options;
+
+public class AppUser : IdentityUser
+{
+    public int DepartmentId { get; set; }
+}
+
+public class AppClaimsPrincipalFactory(UserManager<AppUser> userManager, RoleManager<IdentityRole> roleManager,
+    IOptions<IdentityOptions> options)
+    : UserClaimsPrincipalFactory<AppUser, IdentityRole>(userManager, roleManager, options)
+{
+    protected override async Task<ClaimsIdentity> GenerateClaimsAsync(AppUser user)
+    {
+        var identity = await base.GenerateClaimsAsync(user);
+        identity.AddClaim(new Claim("department_id", user.DepartmentId.ToString()));
+        return identity;
+    }
+}
+```
+
+Register it with `.AddClaimsPrincipalFactory<AppClaimsPrincipalFactory>()` **after** `.AddRoles<IdentityRole>()` in
+the step 1 chain: `AddRoles` replaces any claims factory registered before it with the plain role-aware one. The
+claim keeps its name in the token, and the SPA reads it with `useAuthStore().getClaimValue("department_id")`
+(`string | string[] | undefined`). Like a role, a changed value reaches the SPA on the next refresh.
+
+A value of the account's own, like `DepartmentId`, can live on `AppUser`. The domain record the account belongs to
+(its party) is linked from the domain instead: `Regira.Entities` → `entities.blueprints` → *Linking a party to a user
+account*. The factory looks that link up. It is registered scoped, so it can take the app's `DbContext`
+(`db.Set<PartyUser>().Where(x => x.UserId == user.Id).Select(x => (int?)x.PartyId).FirstOrDefaultAsync()`), and it adds
+the claim only when a link exists.
 
 ## Pre-built Auth Controllers (`Security.Authentication.Web`)
 
@@ -928,7 +1022,35 @@ public class UsersController(UserManager<AppUser> userManager)
     : UserControllerBase<AppUser>(userManager);
 ```
 
-**Required services:** `AddIdentityCore<TUser>().AddEntityFrameworkStores<…>().AddDefaultTokenProviders()` (`AddDefaultTokenProviders` is mandatory — recover/confirm generate Identity tokens); `AddJwtAuthentication(…)` for `ITokenHelper`; an `IEmailSender` (Regira's `IdentityMailer`). Token payloads use `System.Text.Json` internally — no serializer registration needed.
+**Required services:** `AddIdentityCore<TUser>().AddEntityFrameworkStores<…>().AddDefaultTokenProviders()` (`AddDefaultTokenProviders` is mandatory — recover/confirm generate Identity tokens); `AddJwtAuthentication(…)` for `ITokenHelper`; an `IEmailSender` (Regira's `IdentityMailer`); `AccountEmailOptions` listing the origins the mailed links may point at (*Mailed links: allowed origins* below). Token payloads use `System.Text.Json` internally — no serializer registration needed.
+
+**A second credential** (a PIN, a one-time code) goes in your `AccountControllerBase<TUser>` subclass, so it shares
+the `auth` route and the response the SPA reads. Check `userManager.IsLockedOutAsync(user)` first, verify the
+credential, and count a failure with `userManager.AccessFailedAsync(user)`, the lockout the password uses; check the
+`IdentityResult` it returns, since an uncounted failure lets parallel guesses through. On success,
+`return Ok(await CreateSuccessResponse((await claimsFactory.CreateAsync(user)).Claims, clientApp, user.Id));` (the
+three-argument overload, which also issues a refresh token when they are on); on failure,
+`Unauthorized(CreateFailedResponse(isLockedOut))`. Allow it only for the roles that need it, and rate-limit the action.
+
+**An endpoint of your own that mails a token link** — a minimal-API host (there is no endpoint mapper: the
+account endpoints are these controllers), a resend-confirmation action, or an override that does not call the base —
+reuses the request and token models in `Regira.Security.Authentication.Web.Models` (`AuthenticateInput`,
+`RecoverPasswordInput`, `ResetPasswordInput`, `UserTokenModel`, …) and checks the page with `AccountLinks`, the check
+the base actions run:
+
+<!-- no-compile -->
+```csharp
+// using Regira.Security.Authentication.Web.Controllers;   ← AccountLinks
+// using Regira.Security.Authentication.Web.Models;        ← AccountEmailOptions, UserTokenModel
+var page = accountEmailOptions.Value.FindAllowedPage(input.SiteUrl);   // IOptions<AccountEmailOptions>; throws when no origin is listed
+if (page == null) return Results.BadRequest(AccountLinks.NotAllowed);  // another origin: send nothing
+var resetToken = await userManager.GeneratePasswordResetTokenAsync(user);
+var token = Convert.ToBase64String(Encoding.UTF8.GetBytes(
+    JsonSerializer.Serialize(new UserTokenModel { Token = resetToken, Username = user.UserName! })));
+await emailSender.SendEmailAsync(user.Email!, subject, $"<a href=\"{page.WithToken(token)}\">Reset your password</a>");
+```
+
+Check the page before looking the user up, so the answer reveals no account.
 
 ### Authorization: guarded by default
 
@@ -972,32 +1094,116 @@ public class UsersController : UserControllerBase<AppUser>
     [AllowAnonymous]
     public override async Task<IActionResult> Create(UserInput model, [FromServices] IEmailSender mailer)
     {
-        // the base answers 200 for an existing user too: assign roles only to an account this call created
-        var existed = await _userManager.FindByNameAsync(model.Username) != null;
-        var result = await base.Create(model, mailer);
-        if (!existed && result is OkResult)
+        // The base creates the account before it mails the link, so a failed mail throws past any check on the
+        // result. Assign in finally, and only to an account this call created: a taken name answers 400.
+        var isNew = await _userManager.FindByNameAsync(model.Username) == null;
+        IActionResult? result = null;
+        try
         {
-            var user = await _userManager.FindByNameAsync(model.Username);
-            await _userManager.AddToRoleAsync(user!, "Customer");
+            result = await base.Create(model, mailer);
+            return result;
         }
-        return result;
+        finally
+        {
+            if (isNew && (result is null || result is OkResult))
+            {
+                await EnsureRole(model.Username);
+            }
+        }
+    }
+
+    // adds only what is missing
+    private async Task EnsureRole(string username)
+    {
+        var user = await _userManager.FindByNameAsync(username);   // null: the base refused the input
+        if (user != null && !await _userManager.IsInRoleAsync(user, "Customer"))
+        {
+            await _userManager.AddToRoleAsync(user, "Customer");
+        }
     }
 }
 
 public class AppUser : IdentityUser;   // stands for your app's own Identity user — don't declare a second one
 ```
 
-⚠️ **The base answers 200 for an existing user too, so check the account is new before you assign anything to it.**
-"On 200, add the role" adds it to whatever account the caller names — an administrator's included. The 200 itself
-stays: it does not tell a caller whether an account exists.
+Open sign-up means anyone can create an account, and its `400` for a taken name tells a caller that the account
+exists, as any sign-up form does: rate-limit it, and keep any role/tenant assignment server-side rather than reading it
+from the payload.
 
-Open sign-up means anyone can create an account: rate-limit it, and keep any role/tenant assignment server-side rather than reading it from the payload.
+### Sign-up with profile fields
+
+`Create` binds `UserInput` only. A sign-up that also takes profile fields gets an action of its own with its own
+input: it hands the account part to `base.Create` and adds the rest in the same guarded `finally`, while `POST users`
+stays open to every signed-in user (⚠️ above). Close it with a role-gated override:
+`[Authorize(Roles = "Administrator")] public override Task<IActionResult> Create(UserInput model, [FromServices] IEmailSender mailer) => base.Create(model, mailer);`
+(the sign-up action calls `base.Create` directly and keeps working). The SPA posts to `users/sign-up` and lists it in
+its `credentialUrls`.
+
+<!-- no-compile -->
+```csharp
+public record SignUpInput
+{
+    [Required] public string Username { get; set; } = null!;
+    [Required] public string Password { get; set; } = null!;
+    public string? ConfirmEmailUrl { get; set; }
+    [Required, MaxLength(100)] public string DisplayName { get; set; } = null!;
+}
+
+// in a UsersController whose Create is role-gated (above), with _userManager and
+// _db (the app's DbContext) injected; Profile is the app's own row
+[AllowAnonymous]   // the class carries [EnableRateLimiting("account")] (Rate-limiting the anonymous actions)
+[HttpPost("sign-up")]
+public async Task<IActionResult> SignUp(SignUpInput input, [FromServices] IEmailSender mailer)
+{
+    var isNew = await _userManager.FindByNameAsync(input.Username) == null;
+    IActionResult? result = null;
+    try
+    {
+        result = await base.Create(new UserInput
+        {
+            Username = input.Username,
+            Password = input.Password,
+            ConfirmEmailUrl = input.ConfirmEmailUrl
+        }, mailer);
+        return result;
+    }
+    finally
+    {
+        if (isNew && (result is null || result is OkResult))
+        {
+            await EnsureProfile(input);
+        }
+    }
+}
+
+// adds only what is missing
+private async Task EnsureProfile(SignUpInput input)
+{
+    var user = await _userManager.FindByNameAsync(input.Username);
+    if (user == null)
+    {
+        return;
+    }
+    if (!await _userManager.IsInRoleAsync(user, "Customer"))
+    {
+        await _userManager.AddToRoleAsync(user, "Customer");
+    }
+    if (!await _db.Profiles.AnyAsync(p => p.UserId == user.Id))
+    {
+        _db.Profiles.Add(new Profile { UserId = user.Id, DisplayName = input.DisplayName });
+        await _db.SaveChangesAsync();
+    }
+}
+```
+
+A domain row that is the account's party is linked as `Regira.Entities` → `entities.blueprints` → *Linking a party to
+a user account* describes.
 
 ### `AccountControllerBase<TUser>` — route `auth`
 
 | Endpoint | Anon | Request | Success | Failure |
 |---|:---:|---|---|---|
-| `POST auth?clientApp=…` | ✅ | `{ username, password }` | `200 { isAuthenticated, token }` — plus `refreshToken`, `expiresAt` when refresh tokens are registered | `401 { isLockedOut, lockedOutEnd }` |
+| `POST auth?clientApp=…` | ✅ | `{ username, password }` | `200 { isAuthenticated, token }` — plus `refreshToken`, `expiresAt` when refresh tokens are registered | `401 { isLockedOut, lockedOutEnd }`; `401 { isNotAllowed: true }` for an unconfirmed address or account (below) |
 | `POST auth/validate` |  | *(bearer)* | `204` | `401` / `403` (user gone) |
 | `POST auth/refresh` |  | *(bearer, **still valid**)* | `200 { isAuthenticated, token }` | `401` |
 | `POST auth/refresh-token` | ✅ | `{ refreshToken }` | `200 { isAuthenticated, token, refreshToken, expiresAt }` | `401`; `404` when refresh tokens are not registered |
@@ -1005,26 +1211,140 @@ Open sign-up means anyone can create an account: rate-limit it, and keep any rol
 
 `clientApp` = token audience — **set the API's `Jwt:Audience` (or `Audiences`) equal to the SPA's `clientApp`**,
 or every authenticated call 401s with `audience invalid`. Success resets the failed-access count; failure
-increments it (Identity lockout).
+increments it (Identity lockout). An unknown user name answers as a wrong password does (`isLockedOut: false`); a
+locked-out account (`isLockedOut: true`) and the response time — an unknown name skips the password hash — still tell
+a name exists, so rate-limit `auth` by client.
+
+An account the sign-in options refuse answers `401 { isNotAllowed: true }` once its password checks: an address not
+confirmed under `SignIn.RequireConfirmedEmail`, a phone number under `RequireConfirmedPhoneNumber`, or an account the
+registered `IUserConfirmation<TUser>` does not confirm under `RequireConfirmedAccount`, which the Identity templates
+set (Identity's default confirmation checks the address). A user you seed, or create through `POST users` without
+`confirmEmailUrl`, then needs `EmailConfirmed = true`, and `PhoneNumberConfirmed = true` under
+`RequireConfirmedPhoneNumber`, or it can never sign in.
 
 ### `PasswordControllerBase<TUser>` — route `auth/password`
 
 | Endpoint | Anon | Request | Success | Failure |
 |---|:---:|---|---|---|
 | `POST auth/password` |  | `{ currentPassword, newPassword }` | `200` | `400` / `404` |
-| `POST auth/password/recover` | ✅ | `{ username, siteUrl, siteName }` | `200` (always) | — |
+| `POST auth/password/recover` | ✅ | `{ username, siteUrl }` | `200`, whether or not the user exists | `400` `siteUrl` not on an allowed origin |
 | `POST auth/password/reset` | ✅ | `{ token, password }` | `200` | `400` malformed token / identity errors |
 
-`recover` always returns `200` (no user enumeration) and emails a Base64 `token` (reset token + username). `reset` returns `400` on a malformed token.
+`recover` answers alike for an unknown user (no user enumeration); for a known one it emails a link — `siteUrl`, the reset **page**, with its query string set to `?token=<Base64 of the reset token and user name>` (a query `siteUrl` carried is dropped) — the Base64 of the UTF-8 JSON of a `UserTokenModel` (`{"Token":"…","Username":"…"}`, `System.Text.Json` defaults, so PascalCase keys; `reset` reads them case-sensitively), percent-encoded so any query parser (`URLSearchParams`, vue-router's `route.query`) reads it back intact. `reset` returns `400` on a malformed token. The body is plain English text, though `IEmailSender` calls it `htmlMessage`: `Follow link below to reset password`, the link, a blank line, `Token: <token>`. `POST users` sends `Welcome <username>,`, `Please follow link below to confirm email`, the link and the token, subject `Welcome`. `IdentityMailer` passes the body on unchanged as an HTML message (`MessageObject.IsHtml` defaults to `true`): it encodes nothing, and the line breaks collapse. The only user value in it is the welcome mail's user name, which Identity's default `UserOptions.AllowedUserNameCharacters` keeps free of `<`, `>`, `&` and `"`. With wider user-name characters, or to keep the line breaks, register an `IEmailSender` that wraps `IdentityMailer` and passes on `WebUtility.HtmlEncode(htmlMessage).ReplaceLineEndings("<br>")`.
+
+`recover` is anonymous and mails the named account on every call, so a caller can flood that inbox and spend the app's mail quota: rate-limit it like `refresh-token`. Limit by client, not by account, so a `429` reveals no more than the `200` does.
+
+#### Rate-limiting the anonymous actions
+
+ASP.NET Core's rate limiter does it: a policy partitioned by client, and the middleware after routing (implicit in
+minimal hosting), before `MapControllers`. Behind a reverse proxy, `UseForwardedHeaders` comes first, or every client
+shares the proxy's address and its limit.
+
+```csharp
+using Microsoft.AspNetCore.Http;               // StatusCodes
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
+
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;   // the default answers 503
+    o.AddPolicy("account", http => RateLimitPartition.GetFixedWindowLimiter(
+        http.Connection.RemoteIpAddress?.ToString() ?? "unknown",   // by client, never by the account named
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
+});
+// after builder.Build()
+app.UseRateLimiter();
+```
+
+A policy attached to nothing limits nothing. On a subclass, `[EnableRateLimiting]` covers every action, the
+inherited ones included; for some actions of a base only, override each one and limit the override, which inherits
+its route and `[AllowAnonymous]`:
+
+```csharp
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Logging;
+using Regira.Security.Authentication.Jwt.Abstraction;   // ITokenHelper
+using Regira.Security.Authentication.Web.Controllers;
+using Regira.Security.Authentication.Web.Models;        // AuthenticateInput, RefreshTokenInput
+
+[EnableRateLimiting("account")]                         // recover, reset and change
+public class PasswordController(UserManager<AppUser> userManager)
+    : PasswordControllerBase<AppUser>(userManager);
+
+[EnableRateLimiting("account")]                         // sign-up and confirm-email
+public class UsersController(UserManager<AppUser> userManager)
+    : UserControllerBase<AppUser>(userManager);
+
+public class AccountController(ITokenHelper tokenHelper, UserManager<AppUser> userManager,
+    IUserClaimsPrincipalFactory<AppUser> claimsFactory, ILogger<AccountController> logger)
+    : AccountControllerBase<AppUser>(tokenHelper, userManager, claimsFactory, logger)
+{
+    [EnableRateLimiting("account")]                     // sign-in
+    public override Task<IActionResult> Authenticate([FromBody] AuthenticateInput model, [FromQuery] string clientApp)
+        => base.Authenticate(model, clientApp);
+
+    [EnableRateLimiting("account")]
+    public override Task<IActionResult> RefreshToken([FromBody] RefreshTokenInput model)
+        => base.RefreshToken(model);
+}
+
+public class AppUser : IdentityUser;   // stands for your app's own Identity user — don't declare a second one
+```
+
+**Check it:** the eleventh `POST auth/password/recover` from one client within a minute answers `429`, and a
+signed-in `POST users` from a user without the role answers `403`.
 
 ### `UserControllerBase<TUser>` — route `users`
 
 | Endpoint | Anon | Request | Success | Failure |
 |---|:---:|---|---|---|
-| `POST users` |  | `{ username, password, confirmEmailUrl? }` | `200` | `400` |
-| `POST users/confirm-email` | ✅ | `{ token, userName }` | `200` | `400` malformed token / identity errors |
+| `POST users` |  | `{ username, password, confirmEmailUrl? }` | `200` | `400` identity errors (a taken name: `DuplicateUserName`) / `confirmEmailUrl` not on an allowed origin |
+| `POST users/confirm-email` | ✅ | `{ token }` | `200` | `400` malformed token / identity errors |
 
-`username` is used as both user name and email. With `confirmEmailUrl`, a confirmation email with a Base64 `token` is sent. Creating an existing user is a no-op `200`.
+`username` is used as both user name and email. With `confirmEmailUrl`, the new user is emailed that page with its query string set to `?token=<Base64 of the confirmation token and user name>`, percent-encoded like the reset link's. The confirm page posts `{ token }` to `users/confirm-email`: the link's `token` query value as the parser decoded it. The server reads the user from the token; `userName` is accepted and not read. A name that is taken answers `400` with Identity's `DuplicateUserName` error and leaves the existing account alone.
+
+If the confirmation mail fails, `POST users` answers `500` with the user already created, and a repeat answers `400` (`DuplicateUserName`) without mailing. To resend, the app adds an endpoint of its own that mails a fresh link for the existing user (`UserManager.GenerateEmailConfirmationTokenAsync`), checking the page against `AllowedOrigins` with `AccountLinks.FindAllowedPage`, as the base action does.
+
+A `400` comes in one of three bodies: an input that fails model validation gets ASP.NET Core's `ValidationProblemDetails` (errors under `errors`); identity errors and a page on another origin get the field errors as the body itself, an identity error keyed by its code (`{ "PasswordTooShort": ["..."] }`); a malformed token gets a `ProblemDetails` without field errors. A client reads `errors` when present, else the body.
+
+### Mailed links: allowed origins
+
+The recover and confirmation mails carry a genuine token inside a link to the page the request names, so whoever
+controls that page receives the token. A page must therefore be on an origin the application lists:
+
+```csharp
+using Regira.Security.Authentication.Web.Models;          // AccountEmailOptions
+
+services.AddOptions<AccountEmailOptions>()
+    .Bind(configuration.GetSection("Authentication:AccountEmails"))
+    .Validate(o => o.AllowedOrigins.Count > 0, "Authentication:AccountEmails:AllowedOrigins lists no origin.")
+    .ValidateOnStart();
+```
+
+```json
+{
+  "Authentication": {
+    "AccountEmails": {
+      "SiteName": "Example",
+      "AllowedOrigins": [ "https://app.example.com" ]
+    }
+  }
+}
+```
+
+- `AllowedOrigins` — scheme, host and port of the SPA serving the reset and confirm pages; add the dev SPA's
+  (`http://localhost:5173`) in `appsettings.Development.json`. A `siteUrl` or `confirmEmailUrl` on any other origin
+  answers `400` and sends nothing — checked before the user lookup, so it reveals no account — and `POST users`
+  then creates no user.
+- ⚠️ **With no origin listed, `recover` and a `POST users` with `confirmEmailUrl` throw** `InvalidOperationException`
+  (500). Bound as above, the app stops at startup instead. An entry that is not an http(s) URL is reported, by name,
+  when a link is first needed. A `POST users` without `confirmEmailUrl` needs nothing.
+- `SiteName` starts the reset mail's subject ("Example Password Reset"); the request's `siteName` is ignored.
+- ⚠️ **The check runs in the base actions.** An override of `RecoverPassword` or `Create` that mails a link of its
+  own instead of calling the base must check the page itself, with `AccountLinks.FindAllowedPage`. To change only a mail's
+  wording or layout, wrap the `IEmailSender`: it receives the subject and the plain-text body, link included.
 
 ---
 
@@ -1038,9 +1358,9 @@ increments it (Identity lockout).
 |---|---|
 | `IHasher` | `Regira.Security.Abstractions` |
 | `Hasher` (PBKDF2) | `Regira.Security.Hashing` |
-| `SimpleHasher` (double-SHA) | `Regira.Security.Hashing` |
-| `IEncrypter` | `Regira.Security.Encryption` |
-| `SymmetricEncrypter` | `Regira.Security.Encryption` |
+| `SimpleHasher` (obsolete) | `Regira.Security.Hashing` |
+| `IEncrypter` | `Regira.Security.Abstractions` (assembly `Regira.Common`, which `Regira.Security` brings) |
+| `SymmetricEncrypter` (obsolete, decrypting only) | `Regira.Security.Encryption` |
 | `AesEncrypter` | `Regira.Security.Encryption` |
 | `CryptoOptions` | `Regira.Security.Core` |
 
@@ -1076,7 +1396,7 @@ increments it (Identity lockout).
 | `RefreshTokenService` / `InMemoryRefreshTokenStore` | `Regira.Security.Authentication.Jwt.Services` |
 | `AddRefreshTokens()` / `AddRefreshTokenStore<T>()` (extensions) | `Regira.Security.Authentication.Jwt.Extensions` |
 | `BearerValidationOptions` | `Regira.Security.Authentication.Jwt.Models` |
-| `EntraIdOptions` / `EntraIdDefaults` | `Regira.Security.Authentication.Jwt.Models` |
+| `EntraIdOptions` / `EntraIdOptionsBase` / `EntraIdDefaults` | `Regira.Security.Authentication.Jwt.Models` |
 | `AddBearerAuthentication()` / `AddEntraIdBearer()` (extensions) | `Regira.Security.Authentication.Jwt.Extensions` |
 | `OidcAuthOptions` / `EntraIdSignInOptions` | `Regira.Security.Authentication.OpenIdConnect.Models` |
 | `AddOidcAuthentication()` / `AddEntraIdSignIn()` (extensions) | `Regira.Security.Authentication.OpenIdConnect.Extensions` |

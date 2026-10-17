@@ -6,34 +6,16 @@ using Regira.Entities.Models;
 namespace Regira.Entities.Web.Controllers;
 
 /// <summary>
-/// Maps the two conflicts the write pipeline raises to a 409 Conflict: an uncaught
-/// <see cref="EntityConstraintException"/> with the generic <see cref="EntityConstraintException.ClientMessage"/>
-/// (the provider's constraint message is logged by the write service), and an uncaught
-/// <see cref="EntityConcurrencyException"/> with <see cref="EntityConcurrencyProblem"/>. Applied to the controller
-/// bases whose write actions call <c>SaveChanges</c> directly instead of going through the
-/// <see cref="ControllerExtensions"/> helpers.
-/// <para>
-/// Belt and braces: the application-wide <see cref="EntityExceptionFilter"/> that
-/// <c>ConfigureDefaultJsonOptions()</c> registers already produces these responses for every action. The
-/// attribute keeps those bases correct in a host that calls neither, and remains the way to scope the
-/// mapping to a single controller or action.
-/// </para>
+/// Maps what the write pipeline refuses on the controller or action it is applied to, as
+/// <see cref="EntityExceptionFilter"/> does application-wide: an <see cref="EntityInputException"/> to a 400 with its
+/// errors, an <see cref="EntityConstraintException"/> to a 409 with the generic
+/// <see cref="EntityConstraintException.ClientMessage"/> (the provider's constraint message is logged by the write
+/// service), and an <see cref="EntityConcurrencyException"/> to a 409 with <see cref="EntityConcurrencyProblem"/>.
+/// The entity and attachment controller bases carry it, so their actions, hand-written ones included, answer the same in
+/// a host that registers no filter.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
 public class EntityConstraintConflictAttribute : ExceptionFilterAttribute
 {
-    public override void OnException(ExceptionContext context)
-    {
-        switch (context.Exception)
-        {
-            case EntityConstraintException:
-                context.Result = new ConflictObjectResult(EntityConstraintProblem.Create());
-                context.ExceptionHandled = true;
-                break;
-            case EntityConcurrencyException:
-                context.Result = new ConflictObjectResult(EntityConcurrencyProblem.Create());
-                context.ExceptionHandled = true;
-                break;
-        }
-    }
+    public override void OnException(ExceptionContext context) => EntityExceptionMapping.Handle(context);
 }

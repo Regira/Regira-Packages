@@ -9,6 +9,10 @@ public static class ApiConfiguration
     // defaults below.
     public const string ConnectionStringKey = "TestApi:ConnectionString";
     public const string AttachmentsDirectoryKey = "TestApi:AttachmentsDirectory";
+    // "Endpoints" serves courses through MapEntityEndpoints() instead of their controllers, so the course tests run
+    // against both surfaces
+    public const string SurfaceKey = "TestApi:Surface";
+    public const string EndpointsSurface = "Endpoints";
 
     // Own file per test project: a shared temp name collides when the solution's test projects run in
     // parallel, and the loser fails with "the process cannot access the file" rather than anything
@@ -25,4 +29,6 @@ public static class ApiConfiguration
         => configuration[ConnectionStringKey] ?? ConnectionString;
     public static string ResolveAttachmentsDirectory(IConfiguration configuration)
         => configuration[AttachmentsDirectoryKey] ?? AttachmentsDirectory;
+    public static bool MapsEntityEndpoints(IConfiguration configuration)
+        => string.Equals(configuration[SurfaceKey], EndpointsSurface, StringComparison.OrdinalIgnoreCase);
 }

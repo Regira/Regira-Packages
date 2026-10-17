@@ -233,6 +233,34 @@ public class PgDatabaseTests
         Assert.That(await CreateService(HyphenatedDb).Exists(cn, HyphenatedDb), Is.True);
     }
 
+    [Test]
+    public async Task The_manager_restores_as_the_service_does()
+    {
+        var contents = new byte[] { 1, 2, 3, 4, 5 };
+        var processHelper = new CapturingProcessHelper();
+        var manager = new BackupRestoreManager(processHelper, new PgOptions { ToolsDirectory = Path.GetTempPath() });
+        var sourcePath = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllBytesAsync(sourcePath, contents);
+            await manager.Restore(_server, HyphenatedDb, sourcePath);
+        }
+        finally
+        {
+            File.Delete(sourcePath);
+        }
+
+        await using var cn = await OpenServerConnection();
+        var exists = await CreateService(HyphenatedDb).Exists(cn, HyphenatedDb);
+        Assert.Multiple(() =>
+        {
+            Assert.That(exists, Is.True);
+            Assert.That(Path.GetFileNameWithoutExtension(processHelper.FileName), Is.EqualTo("pg_restore"));
+            Assert.That(processHelper.SourceBytes, Is.EqualTo(contents));
+            Assert.That(processHelper.EnvironmentVariables!["PGPASSWORD"], Is.EqualTo(_server.Password));
+        });
+    }
+
     private static IMemoryFile Backup() => new byte[] { 1, 2, 3, 4, 5 }.ToMemoryFile();
 
     private PgRestoreService CreateService(string targetDb, IProcessHelper? processHelper = null, bool overwrite = false)

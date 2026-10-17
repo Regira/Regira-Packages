@@ -40,7 +40,12 @@ public static class CookieAuthenticationExtensions
     {
         var options = new CookieAuthOptions();
         configure?.Invoke(options);
+        return builder.AddCookieScheme(options);
+    }
 
+    /// <summary>Registers the cookie scheme <paramref name="options"/> describe, the instance itself kept as the scheme's options.</summary>
+    internal static AuthenticationBuilder AddCookieScheme(this AuthenticationBuilder builder, CookieAuthOptions options)
+    {
         // Keyed by scheme, because a host can register more than one cookie scheme — AddOidcAuthentication registers
         // one internally. An unkeyed singleton would leave SignInWithClaimsAsync resolving whichever was registered
         // last and signing users into the wrong scheme with the wrong normalization, silently.

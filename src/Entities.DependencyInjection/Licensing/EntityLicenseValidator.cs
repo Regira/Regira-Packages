@@ -24,6 +24,7 @@ internal class EntityLicenseValidator
     private readonly List<Type> _complexEntities = [];
     private bool _validated;
     private string? _tier;
+    private bool _keyLoaded;
     private int _simpleLimit;
     private int _complexLimit;
 
@@ -86,6 +87,7 @@ internal class EntityLicenseValidator
             }
             else
             {
+                _keyLoaded = true;
                 var license = LicenseValidator.Validate(best, LicenseDefaults.Products.Entities);
                 _tier = string.IsNullOrWhiteSpace(license.Tier) ? "paid" : license.Tier;
                 if (license.Limits == null)
@@ -105,6 +107,9 @@ internal class EntityLicenseValidator
         if (_simpleEntities.Count > _simpleLimit || _complexEntities.Count > _complexLimit)
         {
             throw new LicenseException(
+                (_keyLoaded ? "" :
+                    $"No Regira license key covering {LicenseDefaults.Products.Entities} was registered when the first For<>() ran, so the free tier applies. " +
+                    "UseRegira(configuration) reads the Regira:LicenseKeys array and must run before UseEntities().\n") +
                 $"Your Regira license allows {_simpleLimit} simple and {_complexLimit} complex entity registrations, " +
                 $"but this application registers {_simpleEntities.Count} simple and {_complexEntities.Count} complex.\n" +
                 $"- Simple ({_simpleEntities.Count}): {FormatNames(_simpleEntities)}\n" +

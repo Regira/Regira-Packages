@@ -59,4 +59,18 @@ public class StringUtilityTests
         var output = input.RemoveDiacritics();
         Assert.That(output, Is.EqualTo(expected));
     }
+
+    [Test]
+    public void Inject_Fills_Keys_And_Formats()
+    {
+        var output = "{name} owes {amount:0.00}".Inject(new Dictionary<string, object?> { ["name"] = "Ann", ["amount"] = 12.5m }, System.Globalization.CultureInfo.InvariantCulture);
+        Assert.That(output, Is.EqualTo("Ann owes 12.50"));
+    }
+    [Test]
+    public void Inject_Matches_A_Key_Literally()
+    {
+        var values = new Dictionary<string, object?> { ["Customer.Name"] = "Ann", ["Total (incl.)"] = "10", ["Items[0]"] = "pen" };
+        var output = "{Customer.Name} / {CustomerXName} / {Total (incl.)} / {Items[0]}".Inject(values);
+        Assert.That(output, Is.EqualTo("Ann / {CustomerXName} / 10 / pen"));
+    }
 }
