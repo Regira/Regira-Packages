@@ -1205,8 +1205,8 @@ a user account* describes.
 |---|:---:|---|---|---|
 | `POST auth?clientApp=…` | ✅ | `{ username, password }` | `200 { isAuthenticated, token }` — plus `refreshToken`, `expiresAt` when refresh tokens are registered | `401 { isLockedOut, lockedOutEnd }`; `401 { isNotAllowed: true }` for an unconfirmed address or account (below) |
 | `POST auth/validate` |  | *(bearer)* | `204` | `401` / `403` (user gone) |
-| `POST auth/refresh` |  | *(bearer, **still valid**)* | `200 { isAuthenticated, token }` | `401` |
-| `POST auth/refresh-token` | ✅ | `{ refreshToken }` | `200 { isAuthenticated, token, refreshToken, expiresAt }` | `401`; `404` when refresh tokens are not registered |
+| `POST auth/refresh` |  | *(bearer, **still valid**)* | `200 { isAuthenticated, token }` — plus `refreshToken`, `expiresAt` when refresh tokens are registered: a new rotation chain | `401`, also for a locked-out account or one the sign-in options refuse |
+| `POST auth/refresh-token` | ✅ | `{ refreshToken }` | `200 { isAuthenticated, token, refreshToken, expiresAt }` | `401`, also for a locked-out account or one the sign-in options refuse; `404` when refresh tokens are not registered |
 | `GET auth/personal-data` |  | *(bearer)* | `200 { given_name, family_name }` | `401` |
 
 `clientApp` = token audience — **set the API's `Jwt:Audience` (or `Audiences`) equal to the SPA's `clientApp`**,

@@ -71,8 +71,8 @@ Without this global requirement the non-anonymous endpoints (change-password, us
 |----------|:----:|--------------|---------|---------|
 | `POST auth?clientApp=…` | ✅ | `{ username, password }` | `200` `{ isAuthenticated: true, token }`, plus `refreshToken` and `expiresAt` when refresh tokens are registered | `401` `{ isLockedOut, lockedOutEnd }`; `401` `{ isNotAllowed: true }` for an unconfirmed address or account (below) |
 | `POST auth/validate` | | *(bearer)* | `204` | `401`, or `403` if the token is valid but the user is gone |
-| `POST auth/refresh` | | *(bearer, **still valid**)* | `200` `{ isAuthenticated: true, token }` | `401` |
-| `POST auth/refresh-token` | ✅ | `{ refreshToken }` | `200` `{ isAuthenticated: true, token, refreshToken, expiresAt }` | `401`; `404` when refresh tokens are not registered |
+| `POST auth/refresh` | | *(bearer, **still valid**)* | `200` `{ isAuthenticated: true, token }`, plus `refreshToken` and `expiresAt` (a new rotation chain) when refresh tokens are registered | `401`, also for a locked-out account or one the sign-in options refuse |
+| `POST auth/refresh-token` | ✅ | `{ refreshToken }` | `200` `{ isAuthenticated: true, token, refreshToken, expiresAt }` | `401`, also for a locked-out account or one the sign-in options refuse; `404` when refresh tokens are not registered |
 | `GET auth/personal-data` | | *(bearer)* | `200` `{ given_name, family_name }` | `401` |
 
 `auth/refresh` needs a **still-valid** bearer token, so it cannot renew an expired one — use `auth/refresh-token` for

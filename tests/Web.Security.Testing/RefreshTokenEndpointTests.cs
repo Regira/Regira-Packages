@@ -113,6 +113,40 @@ public class RefreshTokenEndpointTests : IClassFixture<TestingWebApplicationFact
             .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
+    /// <summary>
+    /// The exchange re-reads the user as sign-in does: an address changed since sign-in is unconfirmed again, and
+    /// <c>SignIn.RequireConfirmedEmail</c> refuses it a renewal too.
+    /// </summary>
+    [Fact]
+    public async Task Test_Unconfirmed_Address_Is_Refused_When_Required()
+    {
+        const string username = "refresh-unconfirmed";
+        var requiring = _withRefresh.WithWebHostBuilder(b => b.ConfigureTestServices(services =>
+            services.PostConfigure<Microsoft.AspNetCore.Identity.IdentityOptions>(o => o.SignIn.RequireConfirmedEmail = true)));
+        using (var scope = requiring.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<TestUser>>();
+            if (await userManager.FindByNameAsync(username) == null)
+            {
+                (await userManager.CreateAsync(new TestUser { UserName = username, Email = "refresh-unconfirmed@example.com", EmailConfirmed = true }, Password))
+                    .Succeeded.ShouldBeTrue();
+            }
+        }
+        var signIn = await requiring.CreateClient().PostAsJsonAsync("auth?clientApp=test", new { username, password = Password });
+        signIn.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var signedIn = (await signIn.Content.ReadFromJsonAsync<AuthenticateResponseDto>())!;
+
+        using (var scope = requiring.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<TestUser>>();
+            var user = await userManager.FindByNameAsync(username);
+            (await userManager.SetEmailAsync(user!, "refresh-changed@example.com")).Succeeded.ShouldBeTrue();
+        }
+        var response = await requiring.CreateClient().PostAsJsonAsync("auth/refresh-token", new { refreshToken = signedIn.RefreshToken });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
     [Fact]
     public async Task Test_Unknown_Refresh_Token_Is_Unauthorized()
     {

@@ -161,7 +161,7 @@ Save(inputDto) -> SaveResult
 > - The merge is one level deep: a nested object replaces the stored one whole, so a field it leaves out is cleared —
 >   send the whole object.
 > - The merge base is the current entity serialized to JSON and then deserialized as `TInputDto`, so only properties declared on the input model can be modified — audit/computed fields on `TEntity` are automatically excluded.
-> - Related collections not included in the patch body are left intact (the entity is fetched without includes, so `null` collections are treated as absent, not as "remove all").
+> - Related collections not included in the patch body are left intact: the entity is fetched without includes, so its collections read `null`, "absent", not "remove all". This holds while the entity declares them without an initializer (`ICollection<OrderLine>? Lines { get; set; }`, no `= []`): an initialized one reads `[]`, and the save deletes its rows.
 > - Assumes `TInputDto` property names match the corresponding `TEntity` property names.
 > - The merged input is validated against `TInputDto`'s DataAnnotations before the save: a failure answers the **400**
 >   of a validator's refusal, `errorDetails` included (below). The save then runs the validators as a `PUT` does.

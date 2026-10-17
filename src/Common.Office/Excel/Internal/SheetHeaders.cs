@@ -20,6 +20,9 @@ internal static class SheetHeaders
     public static string[] Keys(IReadOnlyList<object?> headerCells)
     {
         var used = new HashSet<string>(StringComparer.InvariantCultureIgnoreCase);
+        // the suffix each key's next repeat starts from: used only grows, so a suffix taken once stays taken, and a
+        // workbook of one repeated header is keyed in linear time, where restarting from 2 made it quadratic
+        var next = new Dictionary<string, int>(StringComparer.InvariantCultureIgnoreCase);
         return headerCells
             .Select((cell, i) =>
             {
@@ -28,11 +31,12 @@ internal static class SheetHeaders
                 {
                     return key;
                 }
-                for (var n = 2; ; n++)
+                for (var n = next.GetValueOrDefault(key, 2); ; n++)
                 {
                     var candidate = $"{key}_{n}";
                     if (used.Add(candidate))
                     {
+                        next[key] = n + 1;
                         return candidate;
                     }
                 }

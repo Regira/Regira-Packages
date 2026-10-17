@@ -51,6 +51,15 @@ public abstract class HtmlToPdfTestsBase(IHtmlToPdfService backend, string outpu
         Assert.That(file.ContentType, Is.EqualTo(ContentTypes.PDF));
     }
 
+    // every backend reads a missing HtmlContent as an empty page, not as an exception of its own
+    [Test]
+    public async Task An_Input_Without_Html_Content_Is_A_Blank_Page()
+    {
+        var pdf = await Create(new HtmlInput());
+
+        Assert.That(pdf.Pages, Has.Count.EqualTo(1));
+    }
+
     [Test]
     public async Task Default_Is_A4_Portrait_With_10mm_Margins()
     {

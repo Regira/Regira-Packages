@@ -56,7 +56,7 @@ simple and a complex registration:
 
 *Complex* = bases with `TSortBy` + `TIncludes`. The single-object `GET /search` (with `count`) and basic `GET /?q=…` text search are on **every** base, so a simple entity can page. Complexity adds only the batch body overloads (`POST /list`, `POST /search`) and typed `?includes=`/`?sortBy=`.
 
-> **PATCH notes:** Sends only the fields to change. Omitted fields are preserved; `null` clears a field. The merge base is the current entity projected through `TInputDto`, so audit/computed fields outside the input model cannot be patched. Related collections absent from the patch body are left untouched.
+> **PATCH notes:** Sends only the fields to change. Omitted fields are preserved; `null` clears a field. The merge base is the current entity projected through `TInputDto`, so audit/computed fields outside the input model cannot be patched. Related collections absent from the patch body are left untouched while the entity declares them without an initializer (no `= []`).
 
 ---
 

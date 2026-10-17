@@ -116,7 +116,8 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
             });
         }
         var user = await userManager.FindByIdAsync(userId);
-        if (user == null)
+        // a locked-out account, or one the sign-in options refuse, renews nothing: Authenticate would refuse it a token
+        if (user == null || await userManager.IsLockedOutAsync(user) || !await CanSignIn(user))
         {
             return Unauthorized(new
             {
@@ -151,11 +152,11 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
         }
 
         // Re-read the user on every refresh: a role removed an hour ago must not still be in force, and a disabled
-        // account must not keep working until its refresh token happens to expire.
+        // account, or one the sign-in options now refuse, must not keep working until its refresh token happens to expire.
         var pair = await refreshTokenService.Refresh(model.RefreshToken, async userId =>
         {
             var user = await userManager.FindByIdAsync(userId);
-            if (user == null || await userManager.IsLockedOutAsync(user))
+            if (user == null || await userManager.IsLockedOutAsync(user) || !await CanSignIn(user))
             {
                 return null;
             }

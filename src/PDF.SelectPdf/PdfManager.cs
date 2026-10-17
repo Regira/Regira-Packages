@@ -31,7 +31,7 @@ public class PdfManager : IHtmlToPdfService
         var pdfOrientation = (PdfPageOrientation)Enum.Parse(typeof(PdfPageOrientation), template.Orientation.ToString(), true);
         // HtmlInput measures its margins in units of its DPI; SelectPdf in PDF points
         var margins = template.Margins.ModifyDpi(template.DPI, PdfPointsPerInch);
-        var htmlString = template.HtmlContent;
+        var htmlString = template.HtmlContent ?? string.Empty;
 
         var converter = new HtmlToPdf
         {

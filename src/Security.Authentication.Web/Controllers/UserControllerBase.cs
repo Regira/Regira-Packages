@@ -75,7 +75,8 @@ Token: {token}
             // malformed token (invalid Base64 or unparseable payload)
             tokenModel = null;
         }
-        if (tokenModel == null)
+        // a payload without a user name or a token is malformed too
+        if (tokenModel?.Username == null || tokenModel.Token == null)
         {
             return BadRequest();
         }

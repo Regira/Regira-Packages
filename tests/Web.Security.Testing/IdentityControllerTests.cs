@@ -210,6 +210,51 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
         public Task<bool> IsConfirmedAsync(UserManager<TestUser> manager, TestUser user) => Task.FromResult(true);
     }
 
+    // --- refresh --------------------------------------------------------------------------------
+
+    // a client that renews its still-valid token before each expiry must not outlive the lockout of its account
+    [Fact]
+    public async Task Refresh_LockedOutUser_ReturnsUnauthorized()
+    {
+        const string username = "refresh-locked@test.local";
+        await SeedUser(username, "pass1");
+        var client = _factory.CreateClient();
+        client.SetBearerToken(await Authenticate(client, username, "pass1"));
+        (await client.PostAsync("auth/refresh", null)).StatusCode.ShouldBe(HttpStatusCode.OK);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<TestUser>>();
+            var user = await userManager.FindByNameAsync(username);
+            (await userManager.SetLockoutEndDateAsync(user!, DateTimeOffset.UtcNow.AddHours(1))).Succeeded.ShouldBeTrue();
+        }
+        var response = await client.PostAsync("auth/refresh", null);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        (await response.Content.ReadFromJsonAsync<AuthResult>())!.IsAuthenticated.ShouldBeFalse();
+    }
+
+    // an address changed since sign-in is unconfirmed again, and SignIn.RequireConfirmedEmail refuses it a renewal too
+    [Fact]
+    public async Task Refresh_UnconfirmedAddress_WhenRequired_ReturnsUnauthorized()
+    {
+        const string username = "refresh-unconfirmed@test.local";
+        var factory = RequiringConfirmedEmail();
+        await SeedUser(username, "pass1", factory, emailConfirmed: true);
+        var client = factory.CreateClient();
+        client.SetBearerToken(await Authenticate(client, username, "pass1"));
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<TestUser>>();
+            var user = await userManager.FindByNameAsync(username);
+            (await userManager.SetEmailAsync(user!, "refresh-changed@test.local")).Succeeded.ShouldBeTrue();
+        }
+        var response = await client.PostAsync("auth/refresh", null);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
     // --- guarded-by-default ---------------------------------------------------------------------
 
     [Fact]
@@ -281,6 +326,18 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
     }
 
     [Fact]
+    public async Task ResetPassword_WithTokenWithoutUserName_ReturnsBadRequest()
+    {
+        var client = _factory.CreateClient();
+        var token = """{"Token":"x"}""".Base64Encode();
+
+        var response = await client.PostAsJsonAsync("auth/password/reset",
+            new { token, password = "whatever1" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
     public async Task RecoverAndResetPassword_EndToEnd_Succeeds()
     {
         const string username = "recover@test.local";
@@ -317,6 +374,17 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
 
         var response = await client.PostAsJsonAsync("users/confirm-email",
             new { token = "not-a-valid-base64-token!!", userName = "someone" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task ConfirmEmail_WithTokenWithoutUserName_ReturnsBadRequest()
+    {
+        var client = _factory.CreateClient();
+        var token = """{"Token":"x"}""".Base64Encode();
+
+        var response = await client.PostAsJsonAsync("users/confirm-email", new { token });
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
