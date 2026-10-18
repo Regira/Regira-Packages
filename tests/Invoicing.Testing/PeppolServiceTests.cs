@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Text;
 using System.Xml.Linq;
@@ -100,6 +101,31 @@ public class PeppolServiceTests
         var read = Newtonsoft.Json.JsonConvert.DeserializeObject<UblDocumentRequest>(PeppolService.SerializeRequest(request))!;
 
         Assert.That(read.SenderName, Is.EqualTo(name));
+    }
+
+    // The seal is computed from the invariant date, so the date sent must be that same moment, in ISO 8601, whatever the
+    // server's culture: da-DK writes the time with dots, th-TH writes the Buddhist year.
+    [TestCase("da-DK")]
+    [TestCase("th-TH")]
+    public async Task The_Request_Date_Ignores_The_Current_Culture(string culture)
+    {
+        var handler = new GatewayStub("""{ "Status": true }""");
+        var service = new PeppolService(Settings, new JsonSerializer()) { Handler = handler };
+        var current = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo(culture);
+            await service.Send(Invoice());
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = current;
+        }
+
+        var sent = Newtonsoft.Json.JsonConvert.DeserializeObject<UblDocumentRequest>(handler.Body!)!.DateTime!;
+        Assert.That(sent, Does.Match(@"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{7}[+-]\d{2}:\d{2}$"));
+        var date = DateTimeOffset.ParseExact(sent, "yyyy-MM-ddTHH:mm:ss.fffffffzzz", CultureInfo.InvariantCulture);
+        Assert.That(date, Is.EqualTo(DateTimeOffset.Now).Within(TimeSpan.FromMinutes(1)));
     }
 
     [Test]

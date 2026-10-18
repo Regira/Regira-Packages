@@ -100,4 +100,49 @@ public class NewtonsoftTests
         Assert.That(json.Contains(TestStatus.Hard.ToString()), Is.True);
         Assert.That(output.Status, Is.EqualTo(input.Status));
     }
+
+    // th-TH counts years in the Buddhist calendar: JSON dates stay Gregorian and read back as the same day
+    [Test]
+    [SetCulture("th-TH")]
+    public void Dates_Ignore_The_Current_Culture()
+    {
+        var input = new Dated
+        {
+            Day = new DateTime(2026, 10, 18),
+            DayOffset = new DateTimeOffset(2026, 10, 18, 0, 0, 0, TimeSpan.FromHours(2)),
+            Moment = new DateTime(2026, 10, 18, 17, 38, 44),
+            Date = new DateOnly(2026, 10, 18)
+        };
+
+        var serializer = new JsonSerializer();
+        var json = serializer.Serialize(input);
+        var output = serializer.Deserialize<Dated>(json);
+
+        Assert.That(json, Is.EqualTo("""{"day":"2026-10-18","dayOffset":"2026-10-18","moment":"2026-10-18T17:38:44","date":"2026-10-18"}"""));
+        Assert.That(output.Day, Is.EqualTo(input.Day));
+        Assert.That(output.DayOffset?.Date, Is.EqualTo(input.DayOffset?.Date));
+        Assert.That(output.Moment, Is.EqualTo(input.Moment));
+        Assert.That(output.Date, Is.EqualTo(input.Date));
+    }
+
+    // other date text reads in the server's culture, as it always has: day-first on nl-BE
+    [TestCase("05/10/2026", 5)]
+    [TestCase("18/10/2026", 18)]
+    [SetCulture("nl-BE")]
+    public void Local_Date_Text_Reads_In_The_Current_Culture(string text, int day)
+    {
+        var output = new JsonSerializer().Deserialize<Dated>($$"""{"day":"{{text}}","dayOffset":"{{text}}","date":"{{text}}"}""");
+
+        Assert.That(output.Day, Is.EqualTo(new DateTime(2026, 10, day)));
+        Assert.That(output.DayOffset?.Date, Is.EqualTo(new DateTime(2026, 10, day)));
+        Assert.That(output.Date, Is.EqualTo(new DateOnly(2026, 10, day)));
+    }
+
+    public struct Dated
+    {
+        public DateTime? Day { get; set; }
+        public DateTimeOffset? DayOffset { get; set; }
+        public DateTime? Moment { get; set; }
+        public DateOnly? Date { get; set; }
+    }
 }

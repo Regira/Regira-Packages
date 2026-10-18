@@ -1,4 +1,5 @@
 ﻿using Newtonsoft.Json;
+using System.Globalization;
 
 namespace Regira.Serializing.Newtonsoft.Json;
 
@@ -32,7 +33,9 @@ public sealed class DateOnlyJsonConverter : JsonConverter<DateOnly?>
 
         if (vType == typeof(string))
         {
-            return DateOnly.Parse((string)v); //DateOnly can parse 00001-01-01
+            var text = (string)v;
+            // ISO text reads in the invariant culture, other text in the current one, as DateAndTimeConverter does
+            return DateOnly.Parse(text, DateText.IsIso(text) ? CultureInfo.InvariantCulture : CultureInfo.CurrentCulture); //DateOnly can parse 00001-01-01
         }
 
         if (vType == typeof(DateTime)) //when the object is from a property 

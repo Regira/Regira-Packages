@@ -985,6 +985,23 @@ public abstract class CourseAttachmentsTests<TFactory> : IClassFixture<TFactory>
         Assert.Equal("by name", await client.GetStringAsync($"/courses/11/files/{fileName}"));
     }
 
+    // A blank name drops the name filter just like an empty one. The mapped endpoint answers 404; the controller answers
+    // 400 before it looks, because model binding turns a blank route value into null.
+    [Theory]
+    [InlineData("%20")]
+    [InlineData("%09")]
+    [InlineData("%2F%20")]
+    public async Task A_Download_By_A_Blank_Name_Serves_No_File(string name)
+    {
+        using var client = _factory.CreateClient();
+        var fileName = $"blank-{Guid.NewGuid():N}.txt";
+        await Upload(client, 11, fileName, "by name");
+
+        using var response = await client.GetAsync($"/courses/11/files/{name}");
+
+        Assert.True(response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.BadRequest, $"{name} answered {response.StatusCode}");
+    }
+
     // A rename retypes the attachment before the validators run, so a rule on the type judges the type the file is stored
     // with: renaming an allowed file into a refused type is refused.
     [Fact]

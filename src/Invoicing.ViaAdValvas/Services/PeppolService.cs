@@ -2,6 +2,7 @@
 using Regira.Invoicing.Peppol;
 using Regira.Invoicing.ViaAdValvas.Models;
 using Regira.Serializing.Abstractions;
+using System.Globalization;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Xml.Linq;
@@ -77,7 +78,7 @@ public class PeppolService(GatewaySettings settings, ISerializer serializer)
         var request = new UblDocumentRequest
         {
             Channel = "Peppol",
-            DateTime = date.ToString("yyyy-MM-ddTHH:mm:ss.fffffffzzz"),
+            DateTime = date.ToString("yyyy-MM-ddTHH:mm:ss.fffffffzzz", CultureInfo.InvariantCulture),
             MessageReference = referenceId,
             ReceiverIdentification = receiverId,
             Seal = seal,

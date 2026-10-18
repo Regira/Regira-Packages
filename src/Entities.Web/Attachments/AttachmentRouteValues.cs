@@ -14,15 +14,15 @@ internal static class AttachmentRouteValues
     /// <summary>
     /// The id of owner <paramref name="objectId"/>'s link whose file is named <paramref name="fileName"/>, as a
     /// <c>{objectId}/files/{*fileName}</c> download routes it; <c>null</c> when there is none. Both downloads then send
-    /// <c>AttachmentFileQuery</c>, so one handler override covers them. A name is one file: one left empty (<c>/</c>)
-    /// drops the file-name filter, and a wildcard makes it a pattern, so both name none.
+    /// <c>AttachmentFileQuery</c>, so one handler override covers them. A name is one file: one left empty (<c>/</c>) or
+    /// blank drops the file-name filter, and a wildcard makes it a pattern, so both name none.
     /// </summary>
     public static async Task<int?> FindLinkId<TEntity>(IServiceProvider services, int objectId, string fileName, CancellationToken token = default)
         where TEntity : class, IEntityAttachment<int, int, int, Attachment>
     {
         var name = DecodeFileName(fileName);
         var keywords = (IQKeywordHelper?)services.GetService(typeof(IQKeywordHelper)) ?? new QKeywordHelper();
-        if (string.IsNullOrEmpty(name) || keywords.ParseKeyword(name).HasWildcard)
+        if (string.IsNullOrWhiteSpace(name) || keywords.ParseKeyword(name).HasWildcard)
         {
             return null;
         }
