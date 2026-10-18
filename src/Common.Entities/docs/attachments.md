@@ -189,7 +189,7 @@ Endpoints exposed (with `[Route("products")]`):
 | `GET` | `attachments` | List links across owners (`EntityAttachmentSearchObject`) |
 | `GET` | `attachments/{id}` | Attachment metadata |
 | `PUT` | `{objectId}/attachments/{id}` | Update attachment metadata: `NewFileName` renames the file and retypes it, `NewBytes` replaces its content; the link keeps its attachment, whatever `AttachmentId` the body sends |
-| `DELETE` | `attachments/{id}` | Delete (also removes the file) |
+| `DELETE` | `attachments/{id}` | Remove the link, and its attachment and file unless another link of its type names it |
 | `GET` | `files/{id}` · `{objectId}/files/{fileName}` | Download the file |
 
 Every `{id}` is the id of the link row (`EntityAttachmentDto.Id`), not its `AttachmentId`; `{objectId}` is the
@@ -255,9 +255,11 @@ store sweeps it against the stored `Path` values:
   a savepoint undid, changed no row, and the file stays. Only that row is read: two attachment rows naming one path —
   one added with another's `Path` and no content of its own — share the file, and deleting either removes it.
 - Removing a link, or giving it a new attachment, deletes the attachment it leaves, with its file, unless another link
-  still names it: links can share an attachment, since a new link may name one its owner links already.
+  still names it: links can share an attachment, since a new link may name one its owner links already. Only links of
+  the same type count, so an attachment that a link of another owner type names too is deleted all the same.
   `HasAttachments<…>(x => x.Attachments, a => a.HasStrictRelation = false)` keeps the attachments the owner's links
-  leave, for attachments that outlive their links.
+  leave on the owner's save, for attachments that outlive their links; the link's own `DELETE` and a file replace
+  still delete an attachment no other link names.
 - Deleting an owner keeps its attachments and their files, by design: its links go with it, and an attachment can be
   linked from more than one entity, so the library does not decide that it is no longer needed. To delete them with
   the owner, override `RemoveItem` on the owner's write service — it runs once the validators passed — call the base

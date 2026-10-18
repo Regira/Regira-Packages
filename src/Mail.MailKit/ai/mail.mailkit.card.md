@@ -16,7 +16,9 @@
   `SecureSocketOptions.None`.
 - **A refusal throws `MailException`** (`Regira.Office.Mail.Exceptions`): the credentials, the sender, a recipient or
   the message. One refused recipient aborts the whole message, and `ResponseContent` names the address. A connection
-  fault (`SocketException`, `SslHandshakeException`, `TimeoutException`) passes through unwrapped.
+  fault (`SocketException`, `SslHandshakeException`, `TimeoutException`, and `NotSupportedException` for a server
+  without the STARTTLS or AUTH the options ask for) passes through unwrapped; a server that drops the session throws
+  `MailException`.
 - Each send opens its own connection (connect, authenticate, send, quit). OAuth2 sign-in is not supported.
 - The message types (`MessageObject`, `MailAddress`, `MailRecipient`) are in `Regira.Office.Mail.Models`; every using:
   `get_package(id: "Regira.Office", section: "office.namespaces", heading: "Mail")`.

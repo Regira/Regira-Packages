@@ -118,29 +118,36 @@ else
 
 ## Example 5: Accept email requests via a JSON API endpoint
 
-Use `MailInput` from `Mail.Web` to receive and validate a send request over HTTP.
+Use `MailInput` from `Mail.Web` to receive and validate a send request over HTTP. The caller chooses the recipients, the body and the attachments, so the endpoint requires a signed-in user and sends from the app's own address; limit the recipients to the ones the app allows as well.
 
 ```csharp
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using Regira.Office.Mail.Abstractions;   // IMailService
 using Regira.Office.Mail.Exceptions;     // MailException
+using Regira.Office.Mail.Models;         // MailAddress
 using Regira.Office.Mail.Web;
 
 [ApiController]
+[Authorize]
 [Route("mail")]
-public class MailController(IMailService mailer) : ControllerBase
+public class MailController(IMailService mailer, ILogger<MailController> logger) : ControllerBase
 {
     [HttpPost("send")]
     public async Task<IActionResult> Send([FromBody] MailInput input)
     {
+        var message = input.ToMessageObject();
+        message.From = new MailAddress { Email = "no-reply@example.com" };   // the app's sender, not the caller's
         try
         {
-            var result = await mailer.Send(input.ToMessageObject());
+            var result = await mailer.Send(message);
             return Ok(new { result.Status });
         }
-        catch (MailException ex)   // the provider refused the message
+        catch (MailException ex)   // the provider refused the message: log its reply, don't return it
         {
-            return StatusCode(502, new { ex.ResponseContent });
+            logger.LogWarning(ex, "Mail refused: {Response}", ex.ResponseContent);
+            return StatusCode(502);
         }
     }
 }
@@ -150,7 +157,6 @@ A JSON body accepted by this endpoint:
 
 ```json
 {
-  "from":    { "email": "sender@example.com", "displayName": "Sender" },
   "to":      [{ "email": "alice@example.com" }],
   "subject": "Hello",
   "body":    "<p>Hi Alice!</p>",

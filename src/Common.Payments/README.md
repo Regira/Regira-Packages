@@ -28,8 +28,8 @@ Regira Payments provides payment processing via Mollie and POM, built on the sha
 | `Api` | `string` | Not read: the underlying `PaymentClient` is constructed from `Key` only |
 | `Key` | `string` | Mollie API key. A `test_…` key is test mode — there is no separate switch; a `live_…` key takes real payments |
 | `MaxPageSize` | `int` | Default `250` |
-| `RedirectFactory` | `Func<IPayment, string>?` | Builds redirect URL per payment |
-| `WebhookFactory` | `Func<IPayment, string>?` | Builds webhook URL per payment |
+| `RedirectFactory` | `Func<IPayment, string>?` | Builds redirect URL per payment. It runs before Mollie assigns the payment's `Id`, so build it from the app's own reference in `Metadata` |
+| `WebhookFactory` | `Func<IPayment, string>?` | Builds webhook URL per payment, before its `Id` is set too. Mollie posts the payment id to it as the form field `id` |
 
 ### PaymentService
 
@@ -38,23 +38,24 @@ Regira Payments provides payment processing via Mollie and POM, built on the sha
 var svc = new Regira.Payments.Mollie.Services.PaymentService(new MollieConfig
 {
     Key             = configuration["Mollie:Key"]!,
-    RedirectFactory = p => $"https://myapp.com/payment/return/{p.Id}",
-    WebhookFactory  = p => $"https://myapp.com/payment/webhook/{p.Id}"
+    RedirectFactory = p => $"https://myapp.com/payment/return/{p.Metadata!["orderId"]}",
+    WebhookFactory  = _ => "https://myapp.com/payment/webhook"
 });
 
 // CRUD
 IPayment?             payment  = await svc.Details(paymentId);
 IEnumerable<IPayment> list     = await svc.List();
+newPayment.Metadata = new Dictionary<string, object?> { ["orderId"] = orderId }; // the factories above read it
 var response = await svc.Save(newPayment); // creates payment, sets newPayment.Id
 var checkoutUrl = response.CheckoutUrl;    // redirect the customer here
 // or Save(newPayment, orderId): a repeat with the same idempotency key returns the first payment
 await svc.Delete(payment!);                // cancels the payment
 
-// Handle webhook
+// Handle webhook: paymentId is the form field "id" Mollie posts; WebHook reads the payment back from Mollie
 await svc.WebHook(paymentId, async p =>
 {
     if (p?.Status == PaymentStatus.Paid)
-        await orderService.MarkPaid(p.Id);
+        await orderService.MarkPaid(p.Metadata!["orderId"]!.ToString()!);
 });
 ```
 

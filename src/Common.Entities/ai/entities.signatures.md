@@ -804,11 +804,11 @@ public static EntityServiceCollectionOptions AddPrepper<TEntity>(
     Action<TEntity> prepareFunc)
     where TEntity : class;
 
-public static EntityServiceCollectionOptions AddPrepper<TContext, TEntity, TKey>(
+public static EntityServiceCollectionOptions AddPrepper<TContext, TEntity>(
     this EntityServiceCollectionOptions options,
     Func<TEntity, TContext, Task> prepareFunc)
     where TContext : DbContext
-    where TEntity : class, IEntity<TKey>;
+    where TEntity : class;
 ```
 
 #### Validators (global)
@@ -2012,7 +2012,7 @@ Every `{id}` is the **link** id (`EntityAttachmentDto.Id`), never `attachmentId`
 | `POST {objectId}/files` | upload — multipart `file` + the input DTO's fields as form values; always creates a link, whatever `id` the form sends. The new link's `SortOrder` is 0 (the default input DTO has no sort field), so it ties with the first link; to rank it, save the owner with its `Attachments` in order |
 | `PUT {objectId}/files/{id}` | replace the file's bytes (multipart `file`) |
 | `PUT {objectId}/attachments/{id}` | update the link's own fields (JSON input DTO); `newFileName` renames the file and retypes it, `newBytes` replaces its content. The link keeps its attachment, whatever `attachmentId` the body sends |
-| `DELETE attachments/{id}` | remove the link and its file |
+| `DELETE attachments/{id}` | remove the link, and its attachment and file unless another link of its type names it |
 | `GET files/{id}` · `GET {objectId}/files/{*fileName}` | download by link id · by the client `FileName` (`?inline=false` → attachment) |
 
 A write a validator refuses answers 400 with a `ValidationProblemDetails`, and so do the two `PUT` routes for a link of

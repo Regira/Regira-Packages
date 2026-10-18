@@ -657,7 +657,7 @@ curl -X PATCH {base}/xs/{id} -H "Content-Type: application/merge-patch+json" -d 
 ```
 
 The body is a JSON merge patch (RFC 7386): the fields given change, `null` clears one, and an owned collection left
-out stays as it is. The action reads the body itself, so `application/json` is accepted too. A `@regira/modules`
+out stays as it is while `Includes()` loads it only behind a flag (`entities.instructions` → Step 13, *PATCH vs PUT*). The action reads the body itself, so `application/json` is accepted too. A `@regira/modules`
 client sends it with `service.patch(id, { isActive: false })` (front-end `entities.patterns` → *State toggle*).
 <!-- no-compile -->
 ```csharp
@@ -1190,7 +1190,9 @@ public static class ProductOperations
 
 A handler (above) changes what an operation answers — for the controller, the mapped endpoint and every other sender
 at once — so a rule about the data belongs there. A plain `For<Product>()` lists and searches with the `SearchObject`
-record on both surfaces: its list handler replaces `ListQuery<Product, int, SearchObject, ProductDto>`. Replace the
+record on both surfaces: its list handler replaces `ListQuery<Product, int, SearchObject, ProductDto>`. A mapped
+endpoint does the same for `For<Product, int>()`, whose controller base (`EntityControllerBase<Product, int,
+SearchObject<int>, …>`) sends `SearchObject<int>`: a handler for that one does not reach the endpoint. Replace the
 endpoint itself only for what belongs to HTTP: an attribute, a header, a status code, a parameter the request does not
 carry.
 

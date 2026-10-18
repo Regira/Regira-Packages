@@ -1,6 +1,6 @@
 # Invoicing — Example: B2B Electronic Invoice
 
-> Context: A wholesale distributor creates invoices in its own domain model, converts them to UBL XML, and transmits them via Peppol. Invoices are also pushed to Billit for accounting.
+> Context: A wholesale distributor creates invoices in its own domain model and transmits them via Peppol: as UBL XML through AdValVas, or through Billit, which delivers over Peppol as well. Each invoice goes out one way only.
 
 ## DI Registration
 
@@ -41,13 +41,14 @@ public async Task SendPeppolInvoice(Order order)
 }
 ```
 
-## Create and send via Billit
+## Or: create and send via Billit
 
 <!-- no-compile -->
 ```csharp
 public async Task SendViaBillit(IInvoice invoice)
 {
-    var created = await _invoiceManager.Create(invoice);
-    await _invoiceManager.Send(created.InvoiceId);
+    // instead of AdValVas, not as well: both Billit sends deliver over Peppol. Send(invoice) creates the
+    // invoice in Billit, then sends it; Send(ids) sends one created before
+    await _invoiceManager.Send(invoice);
 }
 ```

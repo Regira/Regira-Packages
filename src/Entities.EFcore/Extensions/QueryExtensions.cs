@@ -250,6 +250,19 @@ public static class QueryExtensions
 #endif
         };
 
+    /// <summary>
+    /// The query with the archived filter suspended, for a read of the rows an owner's save syncs: the write path reads
+    /// that owner archived-inclusive (<see cref="ArchivedFilter.Included"/>), on any entity type. On <c>net8.0</c> no
+    /// archived query filter is installed, so there is nothing to suspend (see <see cref="FilterArchivable{TEntity}"/>).
+    /// </summary>
+    internal static IQueryable<TEntity> IncludingArchived<TEntity>(this IQueryable<TEntity> query)
+        where TEntity : class
+#if NET10_0_OR_GREATER
+        => query.IgnoreQueryFilters([ModelBuilderExtensions.ArchivedQueryFilterName]);
+#else
+        => query;
+#endif
+
     public static IQueryable<TEntity> FilterHasAttachment<TEntity>(this IQueryable<TEntity> query, bool? hasAttachment)
         where TEntity : IHasAttachments
     {

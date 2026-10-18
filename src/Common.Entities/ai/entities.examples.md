@@ -546,11 +546,11 @@ public class OrderQueryBuilder : IFilteredQueryBuilder<Order, int, OrderSearchOb
 // Three-way on the incoming collection — the Related() contract (Step 5):
 //   null = not sent, stored lines untouched   |   [] = delete-all   |   populated = the new set.
 // Only null may skip the recompute, and even then Total must come from the PERSISTED lines:
-// returning early leaves Total at the DTO's default (0) on every status-only PATCH.
+// returning early leaves Total at the DTO's default (0) on every save that leaves the lines out.
 // For Order the [] case is refused by the validator below, which runs after every prepper — but
 // keep the three-way: an aggregate that allows delete-all needs it.
 // A rule spanning a scalar and the lines (a supplier certified for every line's product) is no
-// different: a PATCH of the scalar alone arrives with OrderLines == null, so validate it against the
+// different: a save of the scalar alone can arrive with OrderLines == null, so validate it against the
 // persisted lines here too — inside the populated branch only, it is bypassable.
 public class OrderPricingPrepper(WebshopDbContext dbContext) : EntityPrepperBase<Order>
 {
@@ -599,7 +599,9 @@ public static EntityServiceCollection<WebshopDbContext> AddOrders(this IEntitySe
     {
         e.AddFilter<OrderQueryBuilder>();
         e.SortBy((query, sortBy) => query.OrderByDescending(x => x.Created));   // one fixed order: sortBy is ignored
-        e.Includes((query, includes) => query                                  // every read includes customer and lines: includes is ignored
+        e.Includes((query, includes) => query                                  // every read includes customer and lines: includes is ignored.
+                                                                               // A PATCH's merge base carries the lines too, so a PATCH saves them again through
+                                                                               // OrderLineInputDto: UnitPrice and SubTotal come back from the pricing prepper
             .Include(x => x.Customer!)
             .Include(x => x.OrderLines!.OrderBy(l => l.SortOrder))
                 .ThenInclude(ol => ol.Product!));

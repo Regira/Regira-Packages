@@ -21,7 +21,7 @@ Exact usings: `office.namespaces.md`.
 ## Installation
 
 ```bash
-# Tesseract — configurable languages, cross-platform
+# Tesseract — English bundled, more by .traineddata; Windows natives bundled
 dotnet add package Regira.Office.OCR.Tesseract
 
 # PaddleOCR — multilingual including Chinese, Windows-only
@@ -34,7 +34,7 @@ dotnet add package Regira.Office.OCR.PaddleOCR
 
 | Package | Engine | Languages | Platform |
 |---|---|---|---|
-| `Regira.Office.OCR.Tesseract` | Tesseract 5 | English bundled; others from their `.traineddata` | Cross-platform |
+| `Regira.Office.OCR.Tesseract` | Tesseract 5 | English bundled; others from their `.traineddata` | Windows natives bundled; on Linux or macOS, install the Tesseract 5 and Leptonica natives |
 | `Regira.Office.OCR.PaddleOCR` | PaddleOCR (ONNX) | 12 scripts: English, Latin, Chinese, Korean, Arabic, Cyrillic, East Slavic, Devanagari, Greek, Tamil, Telugu, Thai | Windows only |
 
 ---
@@ -69,7 +69,10 @@ Tesseract takes its `Options` through the constructor, so register an instance:
 ## Tesseract
 
 The package brings Tesseract's native libraries (Windows x86 and x64) and `eng.traineddata`, which its build copies
-to the output's `tessdata/` folder, the default `DataDirectory`. For another language, add its `.traineddata` from
+to the output's `tessdata/` folder. The default `DataDirectory`, `./tessdata`, finds it there whatever the working
+directory: a relative `DataDirectory` that does not exist under the working directory resolves against the output
+folder (`AppContext.BaseDirectory`), and an empty one leaves the folder to Tesseract's `TESSDATA_PREFIX` (a system
+`tessdata`). For another language, add its `.traineddata` from
 `github.com/tesseract-ocr/tessdata` to that folder, named by the ISO 639-2 code `lang` maps to: `nl` → `nld.traineddata`,
 `fr` → `fra`, `de` → `deu`. The input is an image: render a PDF's pages first (`IPdfToImageService`).
 
@@ -117,6 +120,7 @@ OcrResult nl = await ocr.Read(imageFile, lang: "nl");
 ## Notes
 
 - Input is any `IMemoryFile`: `bytes.ToMemoryFile("image/png")` or `ToBinaryFile()`.
-- Tesseract is the cross-platform choice; PaddleOCR is Windows-only but bundles models automatically.
+- Tesseract also runs on Linux and macOS once the Tesseract 5 and Leptonica natives are installed; PaddleOCR is
+  Windows-only but bundles models automatically.
 
 ---

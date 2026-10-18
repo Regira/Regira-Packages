@@ -135,7 +135,7 @@ public class ProductInputDto
 using Regira.Entities.Web.Controllers.Abstractions;
 
 [ApiController]
-[Route("[controller]")]
+[Route("products")]
 public class ProductsController : EntityControllerBase<Product, ProductSearchObject, ProductSortBy, ProductIncludes, ProductDto, ProductInputDto>
 {
 }
@@ -220,7 +220,7 @@ public class CategoryInputDto
 using Regira.Entities.Web.Controllers.Abstractions;
 
 [ApiController]
-[Route("[controller]")]
+[Route("categories")]
 public class CategoriesController : EntityControllerBase<Category, CategoryDto, CategoryInputDto>
 {
 }
@@ -316,7 +316,7 @@ Both entity and attachment endpoints require a controller:
 <!-- no-compile -->
 ```csharp
 [ApiController]
-[Route("[controller]")]
+[Route("products")]
 public class ProductsController : EntityControllerBase<Product, ProductSearchObject, ProductSortBy, ProductIncludes, ProductDto, ProductInputDto>
 {
 }

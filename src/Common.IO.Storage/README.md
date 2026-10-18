@@ -127,7 +127,8 @@ refuse a null character, where a server may end the path. Zip extraction to a fo
 `ZipUtility.Unzip(IBinaryFile)` returns each entry name as stored, `../x` included — check one before using it as a
 path. Folder names compare as the file system does: regardless of case on Windows and macOS, exactly elsewhere. The
 check is on by default (`Contained = true` on `FileSystemOptions`, `SftpConfig`, `AzureOptions` and `GitHubOptions`);
-turn it off only for trusted input.
+turn it off only for trusted input. An empty `RootFolder` turns it off too: the file-system identifiers are then
+paths, relative to the working directory or absolute, so set one whenever an identifier comes from a user.
 
 ### Converting between identifier and absolute URI
 

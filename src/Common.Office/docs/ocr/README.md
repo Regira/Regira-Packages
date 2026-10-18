@@ -6,7 +6,7 @@ Regira OCR provides optical character recognition via two underlying engines. Bo
 
 | Project | Package | Engine | Languages |
 |---------|---------|--------|-----------|
-| `OCR.Tesseract` | `Regira.Office.OCR.Tesseract` | Tesseract 5 | English, Dutch (configurable) |
+| `OCR.Tesseract` | `Regira.Office.OCR.Tesseract` | Tesseract 5 | English bundled; others from their `.traineddata` |
 | `OCR.PaddleOCR` | `Regira.Office.OCR.PaddleOCR` | PaddleOCR (ONNX) | Multi-script — 12 PP-OCRv5 models (see table below) |
 
 ## Installation
@@ -37,7 +37,7 @@ Pass `lang` as an ISO 639-1 code (e.g. `"en"`, `"nl"`, `"zh"`). When `null`, Tes
 
 ## Tesseract
 
-Requires language data files in the `tessdata` directory.
+Reads its language data from `DataDirectory`, `./tessdata` by default. The build copies the bundled `eng.traineddata` to the output's `tessdata/`, and a relative `DataDirectory` that does not exist under the working directory resolves against the output folder (`AppContext.BaseDirectory`), so the default works under `dotnet run` too. An empty `DataDirectory` leaves the folder to Tesseract's `TESSDATA_PREFIX`, for a system `tessdata`.
 
 ```csharp
 var ocr = new Regira.Office.OCR.Tesseract.OcrManager(new()
@@ -90,4 +90,4 @@ OcrResult nl = await ocr.Read(imageFile, lang: "nl");
 
 - Input is `IMemoryFile` — use `bytes.ToBinaryFile()`; an `IFileService.GetBytes()` result is `byte[]?`, so convert it with `.ToBinaryFile()` too.
 - Both implementations set `OcrResult.Text` to an empty string when no text is detected — never `null`.
-- Tesseract is cross-platform; PaddleOCR is Windows-only.
+- Tesseract bundles its Windows natives (x86, x64); on Linux or macOS, install the Tesseract 5 and Leptonica natives. PaddleOCR is Windows-only.

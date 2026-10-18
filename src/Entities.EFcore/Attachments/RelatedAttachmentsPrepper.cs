@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Query;
 using Regira.Entities.Attachments.Abstractions;
 using Regira.Entities.Attachments.Extensions;
 using Regira.Entities.EFcore.Extensions;
@@ -48,7 +49,8 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
         }
         else
         {
-            var originalItems = selectorFunc(original);
+            // the owner's read did not load its links: diff against the stored ones all the same
+            var originalItems = selectorFunc(original) ?? await LoadStoredLinks(original.Id, selectorFunc, token);
 
             if (originalItems == null)
             {
@@ -144,6 +146,26 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
             var attachment = group.Select(x => x.Attachment).FirstOrDefault(x => x != null) ?? new TAttachment { Id = group.Key };
             dbContext.Entry(attachment).State = EntityState.Deleted;
         }
+    }
+
+    /// <summary>
+    /// The owner's stored links with their attachments, through the owner's navigation as the include loads them, and
+    /// for an archived owner too, as the write service reads it. A default id has none, and <c>FilterId</c> would not
+    /// filter on it.
+    /// </summary>
+    private async Task<ICollection<TEntityAttachment>?> LoadStoredLinks(TEntityKey id, Func<TEntity, ICollection<TEntityAttachment>?> selectorFunc,
+        CancellationToken token)
+    {
+        if (id is null || id.Equals(default(TEntityKey)))
+        {
+            return null;
+        }
+
+        IIncludableQueryable<TEntity, IEnumerable<TEntityAttachment>> links = dbContext.Set<TEntity>().AsNoTracking().IncludingArchived().Include(navigationExpression)!;
+        var stored = await links.ThenInclude(x => x.Attachment)
+            .FilterId<TEntity, TEntityKey>(id)
+            .FirstOrDefaultAsync(token);
+        return stored != null ? selectorFunc(stored) : null;
     }
 
     private static bool IsNew(TEntityAttachment link) => link.Id == null || link.Id.Equals(default(TEntityAttachmentKey));

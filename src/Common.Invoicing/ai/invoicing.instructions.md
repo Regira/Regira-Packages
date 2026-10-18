@@ -249,8 +249,9 @@ XDocument ubl = new UblConverter().Convert(new UblDocumentInput { Invoice = invo
 // 3. Transmit via Peppol
 var result = await peppolService.Send(ubl);
 
-// 4. (Optional) also create in Billit for accounting, then send the invoice it created
+// 4. (Optional) also record it in Billit for accounting: Create only. Both Billit sends deliver over Peppol,
+//    Send(ids) for an invoice created before and Send(invoice), which creates it first, so either would
+//    deliver the invoice a second time
 var created = await invoiceManager.Create(invoice);
-await invoiceManager.Send(created.InvoiceId);
 ```
 

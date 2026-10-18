@@ -13,8 +13,9 @@ services.AddSingleton(_ => new Regira.Payments.Mollie.Services.PaymentService(
     new MollieConfig
     {
         Key             = configuration["Mollie:Key"]!,
-        RedirectFactory = p => $"https://myshop.com/checkout/return/{p.Id}",
-        WebhookFactory  = p => $"https://myshop.com/checkout/webhook/{p.Id}"
+        // the factories run before Mollie assigns the payment's Id: build on the app's own reference in Metadata
+        RedirectFactory = p => $"https://myshop.com/checkout/return/{p.Metadata!["orderId"]}",
+        WebhookFactory  = _ => "https://myshop.com/checkout/webhook"
     }));
 ```
 
@@ -30,7 +31,8 @@ public async Task<string> StartCheckout(Order order)
     {
         Amount      = order.Total,
         Currency    = "EUR",
-        Description = $"Order #{order.Number}"
+        Description = $"Order #{order.Number}",
+        Metadata    = new Dictionary<string, object?> { ["orderId"] = order.Number }
     };
 
     var response = await _paymentService.Save(payment); // sets payment.Id
@@ -42,13 +44,14 @@ public async Task<string> StartCheckout(Order order)
 
 <!-- no-compile -->
 ```csharp
-[HttpPost("checkout/webhook/{orderId}")]
-public async Task<IActionResult> Webhook(string orderId)
+// Mollie posts the payment id as the form field "id"; WebHook reads the payment back from Mollie
+[HttpPost("checkout/webhook")]
+public async Task<IActionResult> Webhook([FromForm] string id)
 {
-    await _paymentService.WebHook(orderId, async p =>
+    await _paymentService.WebHook(id, async p =>
     {
         if (p?.Status == PaymentStatus.Paid)
-            await _orderService.MarkPaid(orderId);
+            await _orderService.MarkPaid(p.Metadata!["orderId"]!.ToString()!);
     });
     return Ok();
 }

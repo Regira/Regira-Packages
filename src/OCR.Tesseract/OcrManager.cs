@@ -18,6 +18,8 @@ public class OcrManager : IOcrService
         /// <summary>
         /// Put language models in this directory
         /// Download more models at https://github.com/tesseract-ocr/tessdata/
+        /// A relative path that does not exist under the working directory resolves against the app's output folder.
+        /// An empty one is passed to Tesseract, which then reads <c>TESSDATA_PREFIX</c>.
         /// </summary>
         public string DataDirectory { get; set; } = "./tessdata";
     }
@@ -28,7 +30,11 @@ public class OcrManager : IOcrService
     {
         options ??= new Options();
         _lang = options.Language;
-        _dataDirectory = options.DataDirectory;
+        // the build copies tessdata/ to the output folder, which is not the working directory under dotnet run
+        // an empty one goes to Tesseract as it is, which then reads TESSDATA_PREFIX
+        _dataDirectory = string.IsNullOrEmpty(options.DataDirectory) || Path.IsPathRooted(options.DataDirectory) || Directory.Exists(options.DataDirectory)
+            ? options.DataDirectory
+            : Path.Combine(AppContext.BaseDirectory, options.DataDirectory);
     }
 
 

@@ -97,6 +97,32 @@ public class HtmlTemplateParserTests
     }
 
     [Test]
+    public async Task HtmlEncode_Raw_Value_Cannot_Spell_A_Token()
+    {
+        // a raw value goes in as it is, so its own text must not be read as a token that writes another value raw
+        var parser = new HtmlTemplateParser(new JsonSerializer()) { HtmlEncode = true };
+        var template = "<i>{title:raw}</i>\n<ul>\n<!--{{lines}}-->\n<li>{name} {name:raw}</li>\n<!--{{/lines}}-->\n</ul><p>{secret}</p>";
+        var parsedHtml = await parser.Parse(template, new
+        {
+            Title = "<b>T</b>{secret:raw}",
+            Secret = "<script>s</script>",
+            Lines = new[] { new { Name = "{secret:raw}<img>" } }
+        });
+
+        Assert.That(parsedHtml, Is.EqualTo("<i><b>T</b>{secret:raw}</i>\n<ul>\n<li>&#123;secret:raw&#125;&lt;img&gt; {secret:raw}<img></li>\n</ul><p>&lt;script&gt;s&lt;/script&gt;</p>"));
+    }
+
+    [Test]
+    public async Task HtmlEncode_Value_Cannot_Spell_A_Raw_Placeholder()
+    {
+        var parser = new HtmlTemplateParser(new JsonSerializer()) { HtmlEncode = true };
+        var forged = (char)0xE000 + "0" + (char)0xE001;
+        var parsedHtml = await parser.Parse("<p>{title}</p><i>{secret:raw}</i>", new { Title = forged, Secret = "<b>S</b>" });
+
+        Assert.That(parsedHtml, Is.EqualTo("<p>&#xE000;0&#xE001;</p><i><b>S</b></i>"));
+    }
+
+    [Test]
     public async Task HtmlEncode_Encodes_ValueConverter_Output()
     {
         var parser = new HtmlTemplateParser(new JsonSerializer(), (_, value) => $"<em>{value}</em>") { HtmlEncode = true };

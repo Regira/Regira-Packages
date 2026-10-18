@@ -71,7 +71,8 @@ public class MailGunMailer(MailgunConfig config) : MailerBase
         };
         // parameters
         request.AddParameter("domain", _domain, ParameterType.UrlSegment);
-        request.AddParameter("from", FormatAddress(message.From!));
+        var from = message.From ?? throw new MailException("The message has no sender") { MessageObject = message };
+        request.AddParameter("from", FormatAddress(from));
         foreach (var to in message.To)
         {
             string toName;

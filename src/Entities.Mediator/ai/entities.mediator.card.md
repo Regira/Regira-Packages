@@ -8,7 +8,7 @@
 - **Requests** (`Regira.Entities.Mediator.Requests`): `DetailsQuery`, `ListQuery`, `SearchQuery`, `SaveCommand`,
   `PatchCommand`, `DeleteCommand`, plus an owner's attachment routes. They are positional records, built with their
   constructor: `new DetailsQuery<Product, int, ProductDto>(id)`. The type list is the endpoint's — a plain
-  `For<Product>()` lists with the `SearchObject` record.
+  `For<Product>()` lists with the `SearchObject` record, and so does `For<Product, int>()` on mapped endpoints.
 - **`null` means not found;** a refused write throws `EntityInputException`, `EntityConstraintException` or
   `EntityConcurrencyException`.
 - **Replace one operation for one entity** with a closed `IEntityRequestHandler<TRequest, TResponse>`, usually derived

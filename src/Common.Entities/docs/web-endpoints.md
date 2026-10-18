@@ -33,7 +33,7 @@ EntityControllerBase<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto, TIn
 ### Route prefix
 
 Best practice: 
-Keep controller `[Route]` attributes **resource-relative** — `[Route("[controller]")]`, or the resource name (e.g. `[Route("products")]`). Apply a shared `api` base **once**, in a single configurable place:
+Keep controller `[Route]` attributes **resource-relative**, and spell the resource as the kebab-case plural the mapped endpoints use (`[Route("products")]`, `[Route("intervention-types")]`). Avoid the `[controller]` token: it expands to the class-name stem, so an `InterventionTypesController` serves `/InterventionTypes`, which a client calling `intervention-types` does not reach. Apply a shared `api` base **once**, in a single configurable place:
 
 - **At the host:** an IIS virtual directory / reverse-proxy path, or `app.UsePathBase("/api")`.
 - **In the app:** a global route-prefix convention (the prefix can come from configuration):
@@ -114,7 +114,7 @@ Search([FromBody] searchObject[], pagingInfo, includes[], sortBy[]) -> SearchRes
 
 #### Paging
 
-List and Search endpoints accept optional `page` and `pageSize` query parameters. By default, when no `pageSize` is sent, the **full set** is returned. You can configure a default and/or maximum page size so endpoints page automatically:
+List and Search endpoints accept optional `page` and `pageSize` query parameters. `UseDefaults()` sets a default page size of **10** and a maximum of **100**, so a request without `pageSize` gets the first 10 rows; without either setting, it gets the full set. Configure the default and the maximum per app or per entity:
 
 <!-- no-compile -->
 ```csharp
@@ -135,7 +135,7 @@ services.UseEntities<AppDbContext>(options =>
 ```
 
 - Both values are optional; `null` means that aspect is off.
-- The default only fills in when the request has no positive `pageSize`; an explicit larger `pageSize` is honoured unless `MaxPageSize` clamps it; `page` is preserved.
+- The default fills in when the request sends no `pageSize`; a `pageSize` of 0 or less takes `MaxPageSize`; an explicit larger `pageSize` is honoured unless `MaxPageSize` clamps it; `page` is preserved.
 - **Enforced by the list and search requests, not the service** — the `ListQuery` and `SearchQuery` handlers apply the single shared clamp (`EntityListOptionsExtensions.ApplyPagingDefaults`), so the controllers, the mapped endpoints and any other sender of those requests page alike and `MaxPageSize` cannot be escaped through them. Calling `IEntityService.List(...)` directly (without `PagingInfo`) still returns the full set — the service layer keeps full control.
 
 #### Save (Add/Modify/Patch)
@@ -161,7 +161,8 @@ Save(inputDto) -> SaveResult
 > - The merge is one level deep: a nested object replaces the stored one whole, so a field it leaves out is cleared —
 >   send the whole object.
 > - The merge base is the current entity serialized to JSON and then deserialized as `TInputDto`, so only properties declared on the input model can be modified — audit/computed fields on `TEntity` are automatically excluded.
-> - Related collections not included in the patch body are left intact: the entity is fetched without includes, so its collections read `null`, "absent", not "remove all". This holds while the entity declares them without an initializer (`ICollection<OrderLine>? Lines { get; set; }`, no `= []`): an initialized one reads `[]`, and the save deletes its rows.
+> - Related collections not included in the patch body are left intact while the merge base leaves them out. The entity is read with no includes flag, so a collection that `Includes()` loads only behind a flag (`includes?.HasFlag(…) == true`) reads `null`, "absent", not "remove all". This holds while the entity declares it without an initializer (`ICollection<OrderLine>? Lines { get; set; }`, no `= []`): an initialized one reads `[]`, and the save deletes its rows.
+> - A collection that `Includes()` loads on every read is part of the merge base, so a PATCH saves it again through the child input DTO: a child column that DTO leaves out, and not `[ServerOwned]`, is cleared. Gate that include behind a flag, or keep every child column on the child input DTO or `[ServerOwned]`.
 > - Assumes `TInputDto` property names match the corresponding `TEntity` property names.
 > - The merged input is validated against `TInputDto`'s DataAnnotations before the save: a failure answers the **400**
 >   of a validator's refusal, `errorDetails` included (below). The save then runs the validators as a `PUT` does.
@@ -315,7 +316,11 @@ public class ProductImporter(IEntitySender sender)
   same 400 a validator's refusal has.
 - **Replacing one operation for one entity.** Register a closed `IEntityRequestHandler<TRequest, TResponse>` for the
   request type — typically derived from the default handler, such as `DetailsHandler<Product, int, ProductDto>` from
-  `Regira.Entities.Mediator.Handlers`. It answers for the endpoint and for every other sender. A `PATCH` saves its
+  `Regira.Entities.Mediator.Handlers`. It answers for the endpoint and for every other sender. An int-keyed simple
+  registration without a search object of its own (`For<Product>()`, `For<Product, int>()`) lists and searches with the
+  `SearchObject` record on mapped endpoints, so its list handler replaces `ListQuery<Product, int, SearchObject,
+  ProductDto>`; a controller on `EntityControllerBase<Product, int, SearchObject<int>, …>` sends `SearchObject<int>`,
+  which that handler does not reach. A `PATCH` saves its
   merged input itself rather than through the `SaveCommand` handler, so a rule about how an entity saves — an
   authorization check, say — overrides both `SaveCommand` and `PatchCommand`, or `PATCH` bypasses it.
 - **Replacing one endpoint.** For what belongs to HTTP — an attribute, a header, a status code — replace the endpoint

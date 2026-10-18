@@ -105,7 +105,7 @@ Task<IMailResponse> Send(IMessageObject message, CancellationToken cancellationT
 | `Success` | `bool` | `true` whenever a sending backend's `Send` returns: SendGrid, Mailgun and MailKit throw `MailException` on a refusal instead. `DummyMailer` returns `false` |
 | `Status` | `string?` | HTTP status code or provider status text; `OK` for SMTP |
 | `Content` | `string?` | Raw response body; for SMTP the server's reply, with its queue id (`2.0.0 Ok: queued as …`) |
-| `Exception` | `Exception?` | Set when sending fails |
+| `Exception` | `Exception?` | Not set by the shipped backends, which throw instead |
 
 ## Core Models
 
@@ -287,7 +287,9 @@ message, with the server's reply on `ResponseContent`, and before connecting whe
 recipients, or an address or attachment content type MimeKit cannot parse. One refused recipient aborts the whole message: nothing is delivered, not even to the accepted
 recipients, and `ResponseContent` names the refused address. A connection fault is not a refusal and passes
 through unwrapped — `SocketException`, `SslHandshakeException`, `NotSupportedException` (`StartTls` against a
-server without STARTTLS), `TimeoutException` or `OperationCanceledException`.
+server without STARTTLS, or a `UserName` for a server that offers no AUTH), `TimeoutException` or
+`OperationCanceledException`. A server that drops the session mid-exchange throws `MailException`, with the
+`SmtpProtocolException` inside.
 
 | Property | Type | Description |
 |----------|------|-------------|
@@ -320,12 +322,15 @@ services.AddSingleton<IMailService, DummyMailer>();
 
 <!-- no-compile -->
 ```csharp
+[Authorize]
 [HttpPost]
 public async Task<IActionResult> Send([FromBody] MailInput input, IMailService mailer)
 {
+    var message = input.ToMessageObject();
+    message.From = new MailAddress { Email = "no-reply@example.com" };   // the app's sender, not the caller's
     try
     {
-        await mailer.Send(input.ToMessageObject());
+        await mailer.Send(message);
         return Ok();
     }
     catch (MailException)   // Regira.Office.Mail.Exceptions: the provider or SMTP server refused the message
@@ -335,11 +340,13 @@ public async Task<IActionResult> Send([FromBody] MailInput input, IMailService m
 }
 ```
 
+The caller chooses the recipients, the body and the attachments, so an anonymous endpoint relays spam or phishing through the app's mail account. Never expose one without authorization, set `From` on the server rather than taking `input.From`, and limit the recipients to the ones the app allows.
+
 ### MailInput structure
 
 | Property | Type | Validation | Description |
 |----------|------|------------|-------------|
-| `From` | `Address?` | — | Optional sender override |
+| `From` | `Address?` | — | The sender the caller names; an endpoint sets its own |
 | `To` | `ICollection<Recipient>?` | `[Required]` | Recipients |
 | `ReplyTo` | `Address?` | — | Reply-To address |
 | `Subject` | `string?` | `[Required]` | Email subject |

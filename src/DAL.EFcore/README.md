@@ -69,6 +69,8 @@ services.AddDbContext<AppDbContext>((sp, options) => options
     .AddInterceptors(sp.GetServices<IInterceptor>()));
 ```
 
+`GetServices<IInterceptor>()` finds only the registrations made as `IInterceptor`, where `AddRegisteredInterceptors` also took one registered as `ISaveChangesInterceptor` or as its own class: add such an interceptor by its registered type, `sp.GetRequiredService<AuditInterceptor>()`.
+
 ---
 
 ## Auto-Truncate

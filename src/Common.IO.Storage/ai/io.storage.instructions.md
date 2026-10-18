@@ -249,7 +249,7 @@ var service = new BinaryFileService(new FileSystemOptions { RootFolder = "/var/a
 
 | Option | Type | Default | Description |
 |---|---|---|---|
-| `RootFolder` | `string` | `""` | Base directory; all identifiers resolve inside it |
+| `RootFolder` | `string` | `""` | Base directory; all identifiers resolve inside it. An empty one turns containment off: identifiers are then paths, relative to the working directory or absolute — so a missing configuration key does too |
 | `Contained` | `bool` | `true` | Reject identifiers that escape `RootFolder` (path traversal) |
 
 `List` answers identifiers with `/` between folders on every platform, as `Save` does, so they compare and split

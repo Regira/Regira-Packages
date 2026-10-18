@@ -253,9 +253,9 @@ The table below lists the optional steps; the required steps (1–6, 11–15) fo
 - Declare a collection navigation to related rows (a `Related()` child, `Attachments`) **nullable and uninitialized**:
   `ICollection<OrderLine>? Lines { get; set; }`, never `= []` or `= new List<…>()` as EF Core's samples write it. A
   save reads the mapped entity's collection as the rows to keep (`null` = untouched, `[]` = **delete all**), and an
-  initializer leaves `[]` wherever nothing overwrites it. A PATCH's merge base loads no includes, so with an
-  initializer a status-only PATCH deletes the rows, and an owner's attachment files with them. Step 5 sets the same
-  rule for the input DTO
+  initializer leaves `[]` wherever nothing overwrites it. A PATCH's merge base is read with no includes flag, so with
+  an initializer a status-only PATCH deletes the rows of a collection it does not load, and an owner's attachment
+  files with them (Step 13 → *PATCH vs PUT*). Step 5 sets the same rule for the input DTO
 
 **Interface selection checklist:**
 
@@ -674,7 +674,8 @@ read as the rule (`ValueTooLarge`, `order.notOpen`). The 400 body is in §Respon
 - **Children are validated through their parent.** Validators check the entity a write service saves, not the rows a
   `Related()` sync writes — validate `Lines` from the `Order` validator (key `Lines[0].Quantity`). `ctx.Item.Lines`
   holds the rows being saved, without the stored rows the sync marks `Deleted`, and is `null` when the request leaves
-  the collection out (a PATCH of a scalar): a rule over the whole set then reads the stored rows. A validator scoped
+  the collection out (a PATCH of a scalar, unless `Includes()` loads it on every read: Step 13 → *PATCH vs PUT*): a
+  rule over the whole set then reads the stored rows. A validator scoped
   to a child without a `For<>()` never runs; startup validation warns — except for FluentValidation (below).
 - ⚠️ **A lookup through the `DbContext` skips row security.** Global filters (tenant, owner) scope the entity
   services' reads, not `db`: `db.Customers.AnyAsync(…)` sees every tenant's rows, so it accepts another tenant's
@@ -995,7 +996,7 @@ IEntityService<Order, int, OrderSearchObject, OrderSortBy, OrderIncludes>       
 
 > **Response envelope.** Responses are wrapped, not bare DTOs: Details → `{ "item": {…} }`; List → `{ "items": [...] }`; Search → `{ "items": [...], "count": N }` (each also carries `duration` in ms). Unwrap `item`/`items` client-side.
 
-> **PATCH vs PUT:** Use `PUT` when the client has the full entity. Use `PATCH` when only a subset of fields should change. The PATCH implementation deserializes the incoming JSON Merge Patch into `TInputDto`, so only fields declared on the input model can be modified. `TInputDto` property names must match `TEntity` property names (camelCase in JSON, PascalCase in C#, which is the STJ default). Related collections absent from the body are left intact while the entity declares them uninitialized (Step 1), and a scalar field **declared on `TInputDto`** but omitted from a PATCH body is preserved too — Merge Patch writes only the keys you send. The merge is one level deep: a nested object in the body replaces the stored one whole, so a field it leaves out is cleared, not kept — send the whole object. The merged input is validated against `TInputDto`'s DataAnnotations first: a failure answers the 400 of a validator's refusal, `errorDetails` included (§Error Handling). The trap is the opposite case: a field the DTO **never declares** maps as `null`/default on every PATCH *and* PUT — see ⚠️ below.
+> **PATCH vs PUT:** Use `PUT` when the client has the full entity. Use `PATCH` when only a subset of fields should change. The PATCH implementation deserializes the incoming JSON Merge Patch into `TInputDto`, so only fields declared on the input model can be modified. `TInputDto` property names must match `TEntity` property names (camelCase in JSON, PascalCase in C#, which is the STJ default). Related collections absent from the body are left intact while the entity declares them uninitialized (Step 1) and the merge base leaves them out: the entity is read with no includes flag, so a collection `Includes()` loads on every read is part of the merge base, and a PATCH saves it again through the child input DTO — a child column that DTO leaves out, and not `[ServerOwned]`, is cleared. Gate such an include behind a flag (`includes?.HasFlag(…) == true`), or keep every child column on the child input DTO or `[ServerOwned]`. A scalar field **declared on `TInputDto`** but omitted from a PATCH body is preserved too — Merge Patch writes only the keys you send. The merge is one level deep: a nested object in the body replaces the stored one whole, so a field it leaves out is cleared, not kept — send the whole object. The merged input is validated against `TInputDto`'s DataAnnotations first: a failure answers the 400 of a validator's refusal, `errorDetails` included (§Error Handling). The trap is the opposite case: a field the DTO **never declares** maps as `null`/default on every PATCH *and* PUT — see ⚠️ below.
 
 > **⚠️ A field absent from `TInputDto` maps as `null`/default on PATCH *and* PUT.** Server-owned/immutable
 > values (`OwnerId` FKs, generated codes, computed totals) silently reset — a `[Required]` column 500s, a
@@ -1695,7 +1696,7 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
    - New bytes go under a key of their own, so a refused save or a rolled-back transaction leaves the stored file as it was.
    - A failed save leaves the file it wrote; the attachment keeps naming it, so a retry of the same instance saves that file instead of writing another.
    - The reactor reads the attachment's row by key, past query filters, before it removes a file: a save an interceptor suppressed, or one a rollback to a savepoint undid, keeps the file the row still names. Only that row is read, so two attachment rows naming one path (one added with another's `Path` and no content of its own) share a file that deleting either removes.
-   - Removing a link, or giving it a new attachment, deletes the attachment it leaves, with its file, unless another link still names it (a new link may name an attachment its owner links already). `e.HasAttachments<…>(x => x.Attachments, a => a.HasStrictRelation = false)` keeps the attachments the owner's links leave.
+   - Removing a link, or giving it a new attachment, deletes the attachment it leaves, with its file, unless another link of the same type still names it (a new link may name an attachment its owner links already; a link of another owner type does not count, so an attachment several owner types link is deleted all the same). `e.HasAttachments<…>(x => x.Attachments, a => a.HasStrictRelation = false)` keeps the attachments the owner's links leave on the owner's save; the link's own `DELETE` and a file replace still delete an attachment no other link names.
    - **Deleting the owner leaves its attachments, by design.** Its links go with it, but the `Attachment` rows and their files stay: an attachment can be linked from more than one entity, so the library does not decide that it is no longer needed. To delete them with the owner, mark them in its write service: *Deleting an owner's attachments with it* below.
 7. *(web apps)* Call `options.UseAttachmentUris()` (before registering entities, on the **same** `UseEntities` options instance) and register `AddHttpContextAccessor()` so attachment DTOs resolve a `Uri`: a link to the owner's mapped download when `MapEntityEndpoints()` serves it, else to the attachment controller's `GetFile` action. The `Uri` takes the request's host, so behind a proxy (the SPA's dev server) add `app.UseForwardedHeaders(...)` with `XForwardedHost | XForwardedProto`, or it names the API's own origin (`entities.setup` → P3).
 
@@ -1758,8 +1759,7 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 
 > ⚠️ **Marking one attachment as the primary one? Mark the link entity, don't point the owner at it.** An
 > owner FK to one of its own attachments makes the two tables reference each other: SQL Server refuses the
-> migration and every owner `DELETE` answers 500. Use `SortOrder` or a flag on the link entity; startup
-> validation warns, and [`entities.patterns.md`](./entities.patterns.md) → *An entity that references one of its
+> migration and every owner `DELETE` answers 500. Use `SortOrder` or a flag on the link entity, and [`entities.patterns.md`](./entities.patterns.md) → *An entity that references one of its
 > own children* covers the case where the FK has to stay.
 
 > ⚠️ **Owner is `IArchivable`?** The link entity is separately registered and has no navigation back to its owner, so archiving the owner leaves its attachments visible to `/{ownerId}/attachments`. Startup validation flags the shape; the working model configuration is in [`entities.patterns.md`](./entities.patterns.md) → Soft Delete > *Attachments on an archivable owner*.
@@ -1964,7 +1964,7 @@ All base controller endpoints return typed wrappers (`DetailsResult`, `ListResul
 | `GET /` (List) | `{ "items": [ … ], "duration": 5 }` — no count |
 | `GET /search`, `POST /search` | `{ "items": [ … ], "count": 42, "duration": 5 }` |
 | `POST` / `PUT` / `PATCH` (Save) | `{ "item": { … }, "isNew": true, "affected": 1, "duration": 5 }` |
-| `DELETE` | `{ "item": { … }, "duration": 5 }` |
+| `DELETE` | `{ "item": { … }, "affected": 1, "duration": 5 }` |
 
 Populated, so a client can be typed against it without calling the API first. `item`/`items` carry your DTO
 verbatim; everything around them is the wrapper:
@@ -2168,7 +2168,7 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 | Problem | Likely Cause | Fix |
 |---|---|---|
 | No startup-validation lines in the log | The host runs as Production (`Hosting environment: Production`) — started without its launch profile (`dotnet run --no-launch-profile`) or published; the validation runs in Development only | Start with the launch profile or `ASPNETCORE_ENVIRONMENT=Development`, or turn it on everywhere with `o.ConfigureValidation(v => v.Enabled = true)` |
-| Normalizer not running | Interceptor not wired — no `UseDefaults()` and no `WireDbContext(NormalizerInterceptors)` | Call `UseDefaults()` (or `e.WireDbContext(DbContextWiring.NormalizerInterceptors)`) — startup validation fails fast on this in Development |
+| Normalizer not running | Interceptor not wired — no `UseDefaults()` and no `WireDbContext(NormalizerInterceptors)` | Call `UseDefaults()` (or `e.WireDbContext(DbContextWiring.NormalizerInterceptors)`) — startup validation warns about this in Development |
 | Primers not running | Interceptor not wired — no `UseDefaults()` and no `WireDbContext(PrimerInterceptors)` | Same as above |
 | A validator never runs | Its scope matches no registered entity (a `Related()` child is validated through its parent); the write service calls `EntityWriteService`'s constructor without validators; a custom repository does not take `IEnumerable<IEntityValidator>`; or the write path takes them and skips them — a custom repository that never calls `ValidateItem`, an override of `Remove` that skips `base.Remove` | Startup validation warns about the first three; the last one it cannot see — §Step 8 → Validators |
 | Reactor never runs | Interceptor not wired (no `UseDefaults()`, no `DbContextWiring.Reactors`); or the save ran inside a transaction that was never committed through EF | Wire it (startup validation warns); commit through the `IDbContextTransaction` — §Step 9 → Reactors |

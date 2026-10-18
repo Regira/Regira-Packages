@@ -249,8 +249,9 @@ MailKit specifics:
 - **One refused recipient aborts the whole message** — nothing is delivered, not even to the accepted
   recipients — and `ResponseContent` names the refused address.
 - A connection fault is not a refusal and passes through unwrapped: `SocketException` (no server),
-  `SslHandshakeException`, `NotSupportedException` (`StartTls` against a server without STARTTLS),
-  `TimeoutException`, `OperationCanceledException`.
+  `SslHandshakeException`, `NotSupportedException` (`StartTls` against a server without STARTTLS, or a `UserName` for
+  a server that offers no AUTH), `TimeoutException`, `OperationCanceledException`. A server that drops the session
+  mid-exchange throws `MailException`, with the `SmtpProtocolException` inside.
 
 | Property | Type | Description |
 |---|---|---|
@@ -284,12 +285,15 @@ Accept email requests over HTTP with `Mail.Web`:
 
 <!-- no-compile -->
 ```csharp
+[Authorize]
 [HttpPost]
 public async Task<IActionResult> Send([FromBody] MailInput input, IMailService mailer)
 {
+    var message = input.ToMessageObject();
+    message.From = new MailAddress { Email = "no-reply@example.com" };   // the app's sender, not the caller's
     try
     {
-        await mailer.Send(input.ToMessageObject());
+        await mailer.Send(message);
         return Ok();
     }
     catch (MailException)   // Regira.Office.Mail.Exceptions: the provider or SMTP server refused the message
@@ -300,6 +304,10 @@ public async Task<IActionResult> Send([FromBody] MailInput input, IMailService m
 ```
 
 `MailInput` and `MailInputExtensions.ToMessageObject()` are provided by `Regira.Office.Mail.Web`.
+
+The caller chooses the recipients, the body and the attachments, so an anonymous endpoint relays spam or phishing
+through the app's mail account. Never expose one without authorization, set `From` on the server rather than taking
+`input.From`, and limit the recipients to the ones the app allows.
 
 ---
 

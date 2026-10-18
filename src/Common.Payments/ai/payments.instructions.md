@@ -44,8 +44,8 @@ Both accept and return the shared `IPayment` model and can be registered as sing
 | `Api` | `string` | Not read: the Mollie client calls Mollie's API itself |
 | `Key` | `string` | Mollie API key. A `test_…` key is test mode — there is no separate switch; a `live_…` key takes real payments |
 | `MaxPageSize` | `int` | Default `250` |
-| `RedirectFactory` | `Func<IPayment, string>?` | Builds redirect URL per payment |
-| `WebhookFactory` | `Func<IPayment, string>?` | Builds webhook URL per payment |
+| `RedirectFactory` | `Func<IPayment, string>?` | Builds redirect URL per payment. It runs before Mollie assigns the payment's `Id`, so build it from the app's own reference in `Metadata` |
+| `WebhookFactory` | `Func<IPayment, string>?` | Builds webhook URL per payment, before its `Id` is set too. Mollie posts the payment id to it as the form field `id` |
 
 ### `PaymentService` (Mollie)
 
@@ -54,12 +54,13 @@ Both accept and return the shared `IPayment` model and can be registered as sing
 var svc = new Regira.Payments.Mollie.Services.PaymentService(new MollieConfig
 {
     Key             = configuration["Mollie:Key"]!,
-    RedirectFactory = p => $"https://myapp.com/payment/return/{p.Id}",
-    WebhookFactory  = p => $"https://myapp.com/payment/webhook/{p.Id}"
+    RedirectFactory = p => $"https://myapp.com/payment/return/{p.Metadata!["orderId"]}",
+    WebhookFactory  = _ => "https://myapp.com/payment/webhook"
 });
 
 IPayment?              payment = await svc.Details(paymentId);
 IEnumerable<IPayment>  list    = await svc.List();
+newPayment.Metadata = new Dictionary<string, object?> { ["orderId"] = orderId }; // the factories above read it
 var response = await svc.Save(newPayment); // creates payment, sets newPayment.Id
 var checkoutUrl = response.CheckoutUrl;    // redirect the customer here
 // or Save(newPayment, orderId): a repeat with the same idempotency key returns the first payment
@@ -72,10 +73,11 @@ Every instance sends through a connection pool the package shares, so it can be 
 
 <!-- no-compile -->
 ```csharp
+// paymentId: the form field "id" Mollie posts to the webhook URL; WebHook reads the payment back from Mollie
 await svc.WebHook(paymentId, async p =>
 {
     if (p?.Status == PaymentStatus.Paid)
-        await orderService.MarkPaid(p.Id);
+        await orderService.MarkPaid(p.Metadata!["orderId"]!.ToString()!);
 });
 ```
 
@@ -102,8 +104,10 @@ await svc.WebHook(paymentId, async p =>
 | `WebhookKey` | `string?` | Not read by `PaymentService` |
 
 There is no `Add…` extension, configuration section or default endpoint. Take `AuthApi`, `CreatePaylinkApi` and
-`PaylinkStatusApi` from POM, bind a section yourself, and register the service as a singleton:
-`services.AddSingleton(new Regira.Payments.Pom.PaymentService(configuration.GetSection("Payments:Pom").Get<PomSettings>()!, serializer));`.
+`PaylinkStatusApi` from POM, bind a section yourself, and register the service as a singleton, under its class for
+`CreatePaylink` and under `IPaymentService`:
+`services.AddSingleton(new Regira.Payments.Pom.PaymentService(configuration.GetSection("Payments:Pom").Get<PomSettings>()!, serializer));`
+then `services.AddSingleton<IPaymentService>(sp => sp.GetRequiredService<Regira.Payments.Pom.PaymentService>());`.
 Authentication posts the whole `PomSettings` object to `AuthApi`.
 
 ### `PaymentService` (POM)

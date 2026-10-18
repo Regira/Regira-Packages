@@ -49,6 +49,15 @@ public class MailGunRequestTests
         Assert.That(Values(request, "h:Reply-To"), Is.Empty);
     }
 
+    [Test]
+    public void Request_Without_A_Sender_Throws_MailException()
+    {
+        var msg = new MessageObject { To = [new MailRecipient { Email = "alice@example.com" }], Subject = "Hello" };
+
+        var ex = Assert.Throws<MailException>(() => _mailer.BuildRequest(msg));
+        Assert.That(ex!.MessageObject, Is.SameAs(msg));
+    }
+
     [TestCase(null, "alice@example.com")]
     [TestCase("", "alice@example.com")]
     [TestCase("  ", "alice@example.com")]
