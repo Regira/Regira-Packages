@@ -125,10 +125,13 @@ public class AttachmentFileHandler<TEntity>(IServiceProvider services)
 
 internal static class AttachmentLinks
 {
-    /// <summary>A link with its attachment but without the file content.</summary>
+    /// <summary>
+    /// A link with its attachment but without the file content. Id 0 is none: the list skips an id filter of 0, and the
+    /// first link in scope would stand in for it.
+    /// </summary>
     public static async Task<TEntity?> FetchLink<TEntity>(this IEntityService<TEntity, int> service, int id, CancellationToken token)
         where TEntity : class, IEntityAttachment<int, int, int, Attachment>
-        => (await service.List(new { id }, new PagingInfo { PageSize = 1 }, token)).SingleOrDefault();
+        => id == 0 ? null : (await service.List(new { id }, new PagingInfo { PageSize = 1 }, token)).SingleOrDefault();
 
     public static EntityInputException<TEntity> NotALinkOfThisOwner<TEntity>()
         => new("Not a link of this owner.") { InputErrors = { ["objectId"] = "Not a link of this owner." } };

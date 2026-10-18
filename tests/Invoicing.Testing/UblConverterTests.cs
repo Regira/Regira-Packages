@@ -99,6 +99,30 @@ public class UblConverterTests
         Assert.That(doc.Root!.Element(Cac + "AccountingCustomerParty")!.Descendants(Cac + "PostalAddress"), Is.Empty);
     }
 
+    // the Peppol rules read an upper-case ISO 3166-1 alpha-2 code (BR-09), and refuse an address without one
+    [Test]
+    public void A_Country_Code_Is_Written_Upper_Case()
+    {
+        var invoice = CreateInvoice(new InvoiceLine { Title = "Brake service", Quantity = 1, UnitPriceExcl = 100, VatPercentage = 21 });
+        invoice.Supplier.Address = new PartyAddress { City = "Gent", CountryCode = " be " };
+
+        var doc = Convert(invoice);
+
+        var address = doc.Root!.Element(Cac + "AccountingSupplierParty")!.Element(Cac + "Party")!.Element(Cac + "PostalAddress")!;
+        Assert.That(address.Element(Cac + "Country")!.Element(Cbc + "IdentificationCode")!.Value, Is.EqualTo("BE"));
+    }
+
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase(" ")]
+    public void An_Address_Without_A_Country_Code_Throws(string? countryCode)
+    {
+        var invoice = CreateInvoice(new InvoiceLine { Title = "Brake service", Quantity = 1, UnitPriceExcl = 100, VatPercentage = 21 });
+        invoice.Supplier.Address = new PartyAddress { City = "Gent", CountryCode = countryCode! };
+
+        Assert.Throws<ArgumentException>(() => Convert(invoice));
+    }
+
     [Test]
     public void No_Element_Is_Empty()
     {

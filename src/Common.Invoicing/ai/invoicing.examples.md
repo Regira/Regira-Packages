@@ -13,6 +13,8 @@ services.AddBillit(sp => new BillitConfig
     PartyId = configuration["Billit:PartyId"],
     Api     = new() { BaseUrl = configuration["Billit:Api:Url"], Key = configuration["Billit:Api:Key"] }
 });
+// the ISerializer Billit's managers take, which AddBillit does not register
+services.AddSingleton<Regira.Serializing.Abstractions.ISerializer, Regira.Serializing.Newtonsoft.Json.JsonSerializer>();
 ```
 
 ## Convert and transmit a Peppol invoice
@@ -32,7 +34,8 @@ public async Task SendPeppolInvoice(Order order)
     });
 
     // 2. Transmit via AdValVas. Send returns once the gateway accepted the document; otherwise it throws
-    //    PeppolRequestException (a non-2xx answer) or PeppolResponseException (the document was not accepted)
+    //    PeppolRequestException (a non-2xx answer) or PeppolResponseException (the document was not accepted).
+    //    The serializer reads the gateway's answer; the request always carries the gateway's PascalCase names.
     var peppolService = new PeppolService(_gatewaySettings, _jsonSerializer);
     await peppolService.Send(ubl);
 }

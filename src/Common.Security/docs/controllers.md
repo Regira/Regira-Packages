@@ -86,11 +86,11 @@ An account the sign-in options refuse answers `401` `{ isNotAllowed: true }` onc
 
 | Endpoint | Anon | Request body | Success | Failure |
 |----------|:----:|--------------|---------|---------|
-| `POST auth/password` | | `{ currentPassword, newPassword }` | `200` | `400` identity errors / `404` |
+| `POST auth/password` | | `{ currentPassword, newPassword }` | `200`; the user's refresh tokens are revoked | `400` identity errors / `404` |
 | `POST auth/password/recover` | ✅ | `{ username, siteUrl }` | `200`, whether or not the user exists | `400` when `siteUrl` is not on an allowed origin |
-| `POST auth/password/reset` | ✅ | `{ token, password }` | `200` | `400` malformed token or identity errors |
+| `POST auth/password/reset` | ✅ | `{ token, password }` | `200`; the user's refresh tokens are revoked | `400` malformed token or identity errors |
 
-`recover` answers the same for an unknown user (it never reveals whether the user exists). A known user is emailed a link: `siteUrl`, the reset page, with its query string set to `?token=…`, percent-encoded so any query parser (`URLSearchParams`, vue-router's `route.query`) reads it back intact; a query `siteUrl` carried is dropped. The token is a Base64 payload of the Identity reset token plus the username. `reset` decodes that payload and returns `400` when it is malformed.
+`recover` answers the same for an unknown user, though a known one answers later: it waits on the reset token and the mail send, so rate-limit `recover` by client. A known user is emailed a link: `siteUrl`, the reset page, with its query string set to `?token=…`, percent-encoded so any query parser (`URLSearchParams`, vue-router's `route.query`) reads it back intact; a query `siteUrl` carried is dropped. The token is a Base64 payload of the Identity reset token plus the username. `reset` decodes that payload and returns `400` when it is malformed.
 
 ### `UserControllerBase<TUser>` — route `users`
 

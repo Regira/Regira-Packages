@@ -246,7 +246,10 @@ app.MapEntityEndpoints(o => o.Prefix = "api").RequireAuthorization();
 - **Behaviour.** Every endpoint sends the same request as the matching controller action (see *Entity Operations*
   below). A request body's DataAnnotations are checked by that request — the attachment upload's and update's too — so
   an invalid body answers the 400 of a validator's refusal, `errorDetails` included. A missing row answers a `ProblemDetails` 404, and the uploads skip
-  antiforgery validation. JSON is `System.Text.Json`; an application on `AddNewtonsoftJson` keeps its controllers.
+  antiforgery validation. A multipart form post needs no CORS preflight, so a cookie-authenticated application excludes
+  `EntityEndpoint.Upload` and `EntityEndpoint.ReplaceFile` and serves uploads from an attachment controller under
+  `[AutoValidateAntiforgeryToken]`, or maps its own with antiforgery; a bearer-token application is unaffected. JSON is
+  `System.Text.Json`; an application on `AddNewtonsoftJson` keeps its controllers.
 - **Query strings** bind the search object's simple and collection properties as MVC does — repeated keys
   (`ids=1&ids=2`) or indexed ones (`ids[0]=1`), enums by name in any case — plus `includes` and `sortBy` on a complex
   entity. A value that does not convert answers 400. MVC's binding attributes (`[BindNever]`, `[FromQuery(Name = …)]`)

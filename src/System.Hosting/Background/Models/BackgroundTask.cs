@@ -4,7 +4,8 @@ namespace Regira.System.Hosting.Background.Models;
 
 public class BackgroundTask : IBackgroundTask
 {
-    internal CancellationToken Token { get; set; }
+    /// <summary>The host's shutdown token, set when the task starts: pass it on to the work.</summary>
+    public CancellationToken Token { get; private set; }
 
     public string Id { get; set; } = null!;
     public BackgroundTaskStatus Status { get; private set; }

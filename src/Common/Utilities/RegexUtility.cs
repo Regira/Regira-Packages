@@ -119,7 +119,7 @@ public static class RegexUtility
         }
 
         // short number (sms)
-        if (allowShortNumber && Regex.IsMatch(input, @"\d{4,6}"))
+        if (allowShortNumber && Regex.IsMatch(input, PatternToExactMatch(@"\d{4,6}")))
         {
             return true;
         }

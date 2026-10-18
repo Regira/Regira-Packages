@@ -139,10 +139,16 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
 
         return Task.FromResult(GetIdentifier(uri));
     }
+    /// <exception cref="ArgumentException">The identifier resolves to the root (<c>""</c>, <c>"."</c>, <c>"x/.."</c>)</exception>
     public Task Delete(string identifier)
     {
         _communicator?.EnsureConnected();
         var uri = ResolveUri(identifier);
+        // the root is within itself, so containment lets it through: refused, as the SFTP backend refuses it
+        if (IsRoot(uri))
+        {
+            throw new ArgumentException("The identifier resolves to the root, which is not deleted.", nameof(identifier));
+        }
         if (File.Exists(uri))
         {
             File.Delete(uri);
@@ -187,6 +193,11 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
     // directory did not match, and the absolute path passed for the identifier. Both separators are separators in the
     // root, as in an identifier: on Linux a '\' would otherwise be part of a folder's name.
     private bool IsContained => options.Contained && !string.IsNullOrWhiteSpace(Root);
+    private bool IsRoot(string path)
+        => !string.IsNullOrWhiteSpace(Root) && string.Equals(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(FileNameUtility.ConvertForwardSlashes(Root))),
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
     private string ResolvedRoot => IsContained ? Path.GetFullPath(FileNameUtility.ConvertForwardSlashes(Root)) : Root;
     /// <summary>Where <paramref name="uri"/> lands, as <see cref="ResolveUri"/> spells it, without refusing a path outside the root.</summary>
     private string Locate(string uri)

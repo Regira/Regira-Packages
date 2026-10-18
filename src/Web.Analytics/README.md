@@ -138,6 +138,8 @@ runtime type or the subclass's columns are silently lost — see the JSON-lines 
 | `BotDetection:Markers` / `Exceptions` | `[]` | your additions; an exception cancels only the marker it overlaps with |
 | `BotDetection:BrowserTokens` | `[]` | extra product tokens that count as a browser (`mozilla/`, `opera/` built in) |
 | `BotDetection:ProbePaths` | `[]` | extra paths this site is swept for but does not serve |
+| `BotDetection:DetectForgedReferrers` | `false` | flag a Referer no browser sends (opt-in) |
+| `BotDetection:ReferrerMarkers` | `[]` | Referer substrings that flag a visit (referrer spam); no built-in list |
 
 The default `HtmlPageVisitFilter` tracks GET requests whose `Accept` contains `text/html` and whose
 last path segment has no dot, and skips the built-in prefixes `/favicon`, `/.well-known`,
@@ -145,7 +147,7 @@ last path segment has no dot, and skips the built-in prefixes `/favicon`, `/.wel
 `/sitemapping` would be skipped too; a host with such routes registers its own filter. `IgnorePaths`
 adds the host's own prefixes on top.
 
-`BotDetector` answers two independent questions, and a visit is flagged when either says yes.
+`BotDetector` answers three independent questions, and a visit is flagged when any says yes.
 
 **Does the agent claim to be a person?** (`IsBot`) — a user agent shorter than `MinUserAgentLength`, a
 marker substring, or, with `RequireBrowserToken`, an agent that names no browser at all. That last one
@@ -160,21 +162,33 @@ against path **and** query so an attack riding in `?file=../../.env` is caught o
 page. This is the only signal that survives a scanner copying a real browser's user agent, which is
 how most `/wp-admin` and `/.env` sweeps arrive. The built-in list stays deliberately unambiguous —
 scanners also try `/admin` and `/login`, but those are somebody's real page, so flagging them is the
-host's call via `ProbePaths`:
+host's call via `ProbePaths`.
+
+**Could a browser have sent this referrer?** (`IsForgedReferrer`) — with `DetectForgedReferrers`, a
+Referer that is not an absolute URL, an http(s) URL with nothing after the host (`https://example.com`:
+a browser writes at least the `/`), or one carrying a `#fragment` (a browser strips it). Other schemes
+are not judged: Chrome on Android sends `android-app://…`. Like `IsProbe`, it reads the request rather
+than the agent, so it survives a crawler copying a real browser's user agent. It is off by default;
+switch it on when the log shows crawler traffic arriving with origin-only referrers. `ReferrerMarkers`
+flags a Referer containing one of its substrings whether or not the switch is on — referrer spam, or a
+source that never sends visitors. It has no built-in list, because a spam domain is one site's evidence,
+not a universal rule. A flagged row still stores the Referer as sent.
 
 ```json
 "Analytics": {
   "BotDetection": {
     "Markers": [ "acmeprobe" ],
     "BrowserTokens": [ "kioskshell/" ],
-    "ProbePaths": [ "/legacy-cms" ]
+    "ProbePaths": [ "/legacy-cms" ],
+    "DetectForgedReferrers": true,
+    "ReferrerMarkers": [ "backlink" ]
   }
 }
 ```
 
-The rule lists are compiled into the package; `AddAnalyticsConfiguration()` additionally loads an
-optional, watched `botdetector.json` from the content root so new crawlers and sweep paths can be
-flagged without a restart.
+The rule lists, all but `ReferrerMarkers`, are compiled into the package; `AddAnalyticsConfiguration()`
+additionally loads an optional, watched `botdetector.json` from the content root so new crawlers, sweep
+paths and referrer spam can be flagged without a restart.
 
 ## Stats endpoint
 

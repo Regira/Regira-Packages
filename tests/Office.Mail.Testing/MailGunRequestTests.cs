@@ -1,4 +1,5 @@
 using Regira.Office.Mail.Abstractions;
+using Regira.Office.Mail.Exceptions;
 using Regira.Office.Mail.MailGun;
 using Regira.Office.Mail.Models;
 using Regira.Office.Mail.Web;
@@ -59,6 +60,20 @@ public class MailGunRequestTests
     {
         IMailAddress address = new MailAddress { Email = "alice@example.com", DisplayName = displayName };
         Assert.That(MailGunMailer.FormatAddress(address), Is.EqualTo(expected));
+    }
+
+    // an IMailAddress other than MailAddress is not validated, and Mailgun reads a comma in it as a second recipient
+    [TestCase("x,victim@other.com")]
+    [TestCase("x;victim@other.com")]
+    [TestCase("x@other.com>")]
+    [TestCase("x@other.com\r\nBcc: victim@other.com")]
+    public void FormatAddress_Refuses_An_Email_That_Holds_A_Separator(string email)
+        => Assert.Throws<MailException>(() => MailGunMailer.FormatAddress(new PlainAddress { Email = email }));
+
+    private sealed class PlainAddress : IMailAddress
+    {
+        public string? DisplayName { get; set; }
+        public string Email { get; set; } = null!;
     }
 
     private static string?[] Values(RestRequest request, string name)

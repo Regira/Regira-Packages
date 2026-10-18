@@ -25,8 +25,23 @@ public class PdfClient(HttpClient client) : OfficeClientBase(client),
         return await PostJsonForFileAsync(FromHtmlPath, dto, cancellationToken);
     }
 
+    /// <exception cref="NotSupportedException">
+    /// <paramref name="input"/> asks for another <see cref="PdfInputBase.Format"/>, <see cref="PdfInputBase.Orientation"/>
+    /// or <see cref="PdfInputBase.Margins"/> than the defaults: the API takes the images only, and lays them out on its own
+    /// defaults
+    /// </exception>
     public async Task<IMemoryFile?> ImagesToPdf(ImagesInput input, CancellationToken cancellationToken = default)
     {
+        // a DPI alone changes no page: the margins are the default at the input's own DPI, or the 96-DPI default a DPI set
+        // in an initializer leaves in place
+        var defaults = new ImagesInput(input.DPI);
+        var defaultMargins = input.Margins.Equals(defaults.Margins) || input.Margins.Equals(new ImagesInput().Margins);
+        if (input.Format != defaults.Format || input.Orientation != defaults.Orientation || !defaultMargins)
+        {
+            throw new NotSupportedException(
+                $"The Office API takes the images only, so it lays them out on its default {nameof(ImagesInput.Format)}, " +
+                $"{nameof(ImagesInput.Orientation)} and {nameof(ImagesInput.Margins)}. Convert with an in-process PDF backend instead.");
+        }
         using var content = new MultipartFormDataContent();
         var i = 0;
         foreach (var imageBytes in input.Images)

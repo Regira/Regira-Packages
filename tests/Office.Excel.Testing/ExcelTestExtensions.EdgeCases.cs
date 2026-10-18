@@ -34,6 +34,17 @@ public static partial class ExcelTestExtensions
         });
     }
 
+    // Excel opens no workbook without a sheet, so no sheets write one empty sheet
+    public static async Task Run_Create_No_Sheets<TService>(this TService service)
+        where TService : IExcelService
+    {
+        using var excelFile = await service.Create([]);
+        AssertReadableWithoutRewind(excelFile);
+
+        using var workbook = new XLWorkbook(new MemoryStream(excelFile.GetBytes()!));
+        Assert.That(workbook.Worksheets, Has.Count.EqualTo(1));
+    }
+
     public static async Task Run_Create_Rows_With_Different_Keys<TService>(this TService service)
         where TService : IExcelService
     {
@@ -221,7 +232,7 @@ public static partial class ExcelTestExtensions
         Assert.That(sheets.Select(s => s.Data), Has.All.Empty);
 
         // an empty sheet still carries the header row
-        using var workbook = new XLWorkbook(excelFile.GetStream()!);
+        using var workbook = new XLWorkbook(new MemoryStream(excelFile.GetBytes()!));
         Assert.That(workbook.Worksheets.Select(ws => ws.Cell(1, 1).GetString()), Has.All.EqualTo(nameof(ExcelCountry.Name)));
     }
 

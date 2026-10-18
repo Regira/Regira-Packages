@@ -2,6 +2,8 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
+using Regira.Security.Authentication.Jwt.Abstraction;
 using Regira.Security.Authentication.Web.Extensions;
 using Regira.Security.Authentication.Web.Models;
 using Regira.Utilities;
@@ -26,6 +28,7 @@ public abstract class PasswordControllerBase<TUser>(UserManager<TUser> userManag
         var result = await userManager.ChangePasswordAsync(user, model.CurrentPassword, model.NewPassword);
         if (result.Succeeded)
         {
+            await RevokeRefreshTokens(user);
             return Ok();
         }
 
@@ -103,8 +106,16 @@ Token: {token}
                 ModelState.AddIdentityErrors(response.Errors);
                 return BadRequest(ModelState);
             }
+            await RevokeRefreshTokens(user);
         }
 
         return Ok();
     }
+
+    /// <summary>
+    /// Ends the sessions the old password opened, when refresh tokens are registered: a refresh token stolen before the
+    /// change or the reset renews nothing after it. Resolved per request, as <c>AccountControllerBase</c> resolves it.
+    /// </summary>
+    private Task RevokeRefreshTokens(TUser user)
+        => HttpContext.RequestServices.GetService<IRefreshTokenService>()?.RevokeAllForUser(user.Id) ?? Task.CompletedTask;
 }

@@ -87,6 +87,26 @@ public class LicenseEnforcementTests
                 .For<OfficeAssignment>());
     }
 
+    // without a signed key the free limits hold: an unsigned License may lower them, never raise them
+    [Test]
+    public void For6thSimpleEntity_WithAnUnsignedLicenseRaisingTheLimits_Throws()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(new License
+        {
+            Products = ["regira.entities"],
+            Limits = new Dictionary<string, int> { ["entities.simple"] = 999, ["entities.complex"] = 999 }
+        });
+        Assert.Throws<LicenseException>(() =>
+            services.UseEntities<ContosoContext>()
+                .For<Course>()
+                .For<Department>()
+                .For<Enrollment>()
+                .For<Instructor>()
+                .For<OfficeAssignment>()
+                .For<Student>());
+    }
+
     [Test]
     public void For6thSimpleEntity_WithFreeLicense_Throws()
     {

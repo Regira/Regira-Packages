@@ -31,8 +31,11 @@ string plain = legacy.Decrypt(storedCipher);
 ### AesEncrypter
 
 AES-256 with a random salt per value, so it produces different ciphertext on each call — recommended for stored secrets.
-The costly step, PBKDF2 over the secret (about 0.2 s), runs once per secret in a process and is cached; each value then
-gets a key of its own from its salt with HKDF, in microseconds, so decrypting in an EF value converter stays cheap. The
+The costly step, PBKDF2 over the secret (about 0.2 s), runs once per secret and key salt and is cached for the process;
+each value then gets a key of its own from its salt with HKDF, in microseconds. A process picks one key salt per secret
+for what it encrypts, so it pays the step once for its own values and once for each earlier process lifetime or other
+instance whose values it reads: decrypting in an EF value converter stays cheap, and the first read after a restart
+costs about 0.2 s per earlier writer. The
 text is `aes1:` and Base64, 64 bytes longer than the cipher: 32 of salt and a 32-byte HMAC-SHA256 tag, so a value that
 was changed, or encrypted with another secret, throws `CryptographicException`. A value without that prefix, written before 6.6.0,
 still decrypts, paying the derivation on its first read in a process; decrypt and encrypt it again to move it. A version

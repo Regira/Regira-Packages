@@ -49,6 +49,9 @@ public class MiniExcelTests
     public Task Create_Empty_Sheets() => CreateExcelManager()
         .Run_Create_Empty_Sheets();
     [Test]
+    public Task Create_No_Sheets() => CreateExcelManager()
+        .Run_Create_No_Sheets();
+    [Test]
     public Task Create_Rows_With_Different_Keys() => CreateExcelManager()
         .Run_Create_Rows_With_Different_Keys();
     [Test]

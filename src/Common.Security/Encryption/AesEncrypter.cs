@@ -77,7 +77,16 @@ public class AesEncrypter(CryptoOptions? options = null) : IEncrypter
 
         if (encryptedText.StartsWith(FormatPrefix, StringComparison.Ordinal))
         {
-            var bytes = Convert.FromBase64String(encryptedText[FormatPrefix.Length..]);
+            byte[] bytes;
+            try
+            {
+                bytes = Convert.FromBase64String(encryptedText[FormatPrefix.Length..]);
+            }
+            catch (FormatException ex)
+            {
+                // cut to a length Base64 cannot have, by a column too short: refused as any other changed text is
+                throw new CryptographicException("The text is not an aes1 value.", ex);
+            }
             if (bytes.Length < MinFormatSize) throw new CryptographicException("The text is too short to be an aes1 value.");
 
             var body = bytes[..^TagSize];

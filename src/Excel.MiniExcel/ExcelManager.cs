@@ -73,6 +73,8 @@ public class ExcelManager(ExcelManager.Options? options = null) : IExcelService
     public Task<IMemoryFile> Create(IEnumerable<ExcelSheet> sheets, CancellationToken cancellationToken = default)
     {
         var sheetList = sheets.ToList();
+        // a workbook holds at least one sheet: Excel opens none without
+        if (sheetList.Count == 0) sheetList.Add(new ExcelSheet());
         var sheetNames = SheetNames.Resolve(sheetList.Select(s => s.Name).ToList());
 
         var miniSheets = new Dictionary<string, object>();
@@ -142,6 +144,8 @@ public class ExcelManager<T> : IExcelService<T>
     public Task<IMemoryFile> Create(IEnumerable<ExcelSheet<T>> sheets, CancellationToken cancellationToken = default)
     {
         var sheetList = sheets.ToList();
+        // a workbook holds at least one sheet: Excel opens none without
+        if (sheetList.Count == 0) sheetList.Add(new ExcelSheet<T>());
         var sheetNames = SheetNames.Resolve(sheetList.Select(s => s.Name).ToList());
         var miniSheets = new Dictionary<string, object>();
         for (var i = 0; i < sheetList.Count; i++)

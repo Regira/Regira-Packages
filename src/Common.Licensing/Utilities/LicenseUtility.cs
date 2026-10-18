@@ -43,12 +43,14 @@ public static class LicenseUtility
 
     /// <summary>
     /// Returns the best license for <paramref name="productCode"/> from <paramref name="licenses"/>,
-    /// preferring paid tiers over free. Returns <c>null</c> when none match.
+    /// preferring paid tiers over free, then the one that expires last (a key without an expiry date first), so a
+    /// renewal wins over the key it renews in whatever order they are configured. Returns <c>null</c> when none match.
     /// </summary>
     public static License? Resolve(IEnumerable<License> licenses, string productCode) =>
         licenses
             .Where(l => l.Products.Any(p => string.Equals(p, productCode, StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(l => l.IsPaid ? 1 : 0)
+            .ThenByDescending(l => l.ExpiresAtUnix ?? long.MaxValue)
             .FirstOrDefault();
 
 

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Regira.Security.Authentication.Web.Models;
+using Regira.Utilities;
 using Shouldly;
 using System.Net;
 using System.Net.Http.Json;
@@ -143,6 +144,43 @@ public class RefreshTokenEndpointTests : IClassFixture<TestingWebApplicationFact
             (await userManager.SetEmailAsync(user!, "refresh-changed@example.com")).Succeeded.ShouldBeTrue();
         }
         var response = await requiring.CreateClient().PostAsJsonAsync("auth/refresh-token", new { refreshToken = signedIn.RefreshToken });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    /// <summary>
+    /// A new password ends the sessions the old one opened: a refresh token stolen before the change, or before an
+    /// account recovery, renews nothing after it.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Test_A_New_Password_Revokes_The_Refresh_Tokens(bool byReset)
+    {
+        var username = $"refresh-password-{Guid.NewGuid():N}";
+        using (var scope = _withRefresh.Services.CreateScope())
+        {
+            var userManager = scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<TestUser>>();
+            (await userManager.CreateAsync(new TestUser { UserName = username, Email = $"{username}@example.com" }, Password)).Succeeded.ShouldBeTrue();
+        }
+        var signIn = await _withRefresh.CreateClient().PostAsJsonAsync("auth?clientApp=test", new { username, password = Password });
+        var signedIn = (await signIn.Content.ReadFromJsonAsync<AuthenticateResponseDto>())!;
+
+        var client = _withRefresh.CreateClient();
+        if (byReset)
+        {
+            using var scope = _withRefresh.Services.CreateScope();
+            var userManager = scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<TestUser>>();
+            var resetToken = await userManager.GeneratePasswordResetTokenAsync((await userManager.FindByNameAsync(username))!);
+            var token = JsonSerializer.Serialize(new UserTokenModel { Token = resetToken, Username = username }).Base64Encode();
+            (await client.PostAsJsonAsync("auth/password/reset", new { token, password = "Pass2" })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        }
+        else
+        {
+            client.DefaultRequestHeaders.Authorization = new("Bearer", signedIn.Token);
+            (await client.PostAsJsonAsync("auth/password", new { currentPassword = Password, newPassword = "Pass2" })).StatusCode.ShouldBe(HttpStatusCode.OK);
+        }
+        var response = await _withRefresh.CreateClient().PostAsJsonAsync("auth/refresh-token", new { refreshToken = signedIn.RefreshToken });
 
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }

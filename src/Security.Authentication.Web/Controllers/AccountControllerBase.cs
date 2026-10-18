@@ -30,9 +30,10 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
     /// Whether <see cref="SignInOptions"/> let the user sign in, as <c>SignInManager.CanSignInAsync</c> decides: a
     /// confirmed email, phone number or account, where the options require one. The account is confirmed when the
     /// registered <see cref="IUserConfirmation{TUser}"/> says so — resolved per request, like
-    /// <see cref="RefreshTokenService"/>, so the constructor stays unchanged — and by its address otherwise.
+    /// <see cref="RefreshTokenService"/>, so the constructor stays unchanged — and by its address otherwise. A sign-in
+    /// action of a subclass (a second credential) checks it before it issues a token, as the actions here do.
     /// </summary>
-    private async Task<bool> CanSignIn(TUser user)
+    protected async Task<bool> CanSignIn(TUser user)
     {
         var options = userManager.Options.SignIn;
         if (options.RequireConfirmedEmail && !await userManager.IsEmailConfirmedAsync(user))

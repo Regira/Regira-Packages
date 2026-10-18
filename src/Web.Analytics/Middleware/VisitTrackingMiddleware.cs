@@ -69,13 +69,13 @@ public class VisitTrackingMiddleware<TPageView>(RequestDelegate next, PageViewQu
         var userAgent = Truncate(request.Headers.UserAgent.ToString(), 512);
         var path = Truncate(request.Path.Value, 256) ?? "/";
         var queryString = Truncate(request.QueryString.Value, 512);
+        var referrer = Truncate(request.Headers.Referer.ToString(), 512);
 
-        // Two independent signals: what the client claims to be, and what it asked for.
-        var isBot = botDetector.IsBot(userAgent) || botDetector.IsProbe(path, queryString);
+        // Three independent signals: what the client claims to be, what it asked for, and where it says it came from.
+        var isBot = botDetector.IsBot(userAgent) || botDetector.IsProbe(path, queryString)
+                    || botDetector.IsForgedReferrer(referrer);
         if (isBot && !config.RecordBots)
             return null;
-
-        var referrer = Truncate(request.Headers.Referer.ToString(), 512);
 
         var view = new TPageView
         {

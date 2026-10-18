@@ -118,8 +118,16 @@ public class MailGunMailer(MailgunConfig config) : MailerBase
     /// special is quoted: Mailgun splits a recipient parameter on commas, so <c>Doe, John</c> would read as two
     /// addresses. Line breaks become spaces, keeping the name on its header line.
     /// </summary>
+    /// <exception cref="MailException">
+    /// The email holds a character Mailgun reads as a separator or a header break: an <see cref="IMailAddress"/> other
+    /// than <see cref="MailAddress"/> is not validated, and <c>x,victim@other.com</c> would add a recipient
+    /// </exception>
     internal static string FormatAddress(IMailAddress address)
     {
+        if (address.Email.IndexOfAny(EmailSeparators) >= 0)
+        {
+            throw new MailException($"'{address.Email}' is not a single email address.");
+        }
         var name = address.DisplayName?.ReplaceLineEndings(" ").Trim();
         if (string.IsNullOrEmpty(name))
         {
@@ -131,5 +139,6 @@ public class MailGunMailer(MailgunConfig config) : MailerBase
         }
         return $"{name} <{address.Email}>";
     }
+    private static readonly char[] EmailSeparators = [',', ';', '<', '>', '"', '\r', '\n'];
     private static readonly char[] AddressSpecials = ['(', ')', '<', '>', '[', ']', ':', ';', '@', '\\', ',', '.', '"'];
 }

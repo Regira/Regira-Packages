@@ -13,7 +13,7 @@ The `.razor` files compile in the consuming project, which needs the Razor SDK: 
 ## Documentation
 
 - [Razor components](https://regira.github.io/Regira-Packages/src/Common.Web/#razor-components) — the `IHtmlComponentRenderer` contract, registration, and how rendering behaves: encoding, async lifecycle methods, layouts, services and culture
-- [Render an invoice component](https://regira.github.io/Regira-Packages/src/Common.Web/docs/examples.html#example-6-render-an-invoice-component) — the invoice as a component, feeding HTML-to-PDF
+- [Render an invoice component](https://regira.github.io/Regira-Packages/src/Common.Web/docs/examples.html#example-5-render-an-invoice-component) — the invoice as a component, feeding HTML-to-PDF
 
 ## License
 

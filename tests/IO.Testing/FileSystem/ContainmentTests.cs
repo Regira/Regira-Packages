@@ -39,6 +39,17 @@ public class ContainmentTests
         Assert.Throws<UnauthorizedAccessException>(() => svc.Exists(identifier));
     }
 
+    // the root is within itself, so containment lets it through: a delete of it is refused, and the root stays
+    [TestCase("")]
+    [TestCase(".")]
+    [TestCase("subfolder/..")]
+    public async Task FileService_Delete_Of_The_Root_Throws(string identifier)
+    {
+        var svc = new BinaryFileService(new FileSystemOptions { RootFolder = _root });
+        await Assert.ThrowsAsync<ArgumentException>(() => svc.Delete(identifier));
+        Assert.That(Directory.Exists(_root), Is.True);
+    }
+
     [Test]
     public void FileService_Save_Traversal_Throws()
     {

@@ -50,7 +50,7 @@ public class RefreshTokenStartup(IConfiguration configuration)
         services.AddSingleton<SentEmailStore>();
         services.AddTransient<IEmailSender, FakeEmailSender>();
 
-        services.AddControllersFor(typeof(TestAccountController), typeof(TestUsersController));
+        services.AddControllersFor(typeof(TestAccountController), typeof(TestPasswordController), typeof(TestUsersController));
     }
 
     public void Configure(IApplicationBuilder app, IHostEnvironment env)

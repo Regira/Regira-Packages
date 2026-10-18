@@ -126,19 +126,22 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
         var leavingLinkIds = removedLinks.Concat(replacedLinks.Select(x => x.Link)).Select(x => x.Id).ToArray();
         var left = replacedLinks.Select(x => (Id: x.Attachment.Id, Attachment: (TAttachment?)x.Attachment))
             .Concat(removedLinks.Select(x => (Id: x.AttachmentId, x.Attachment)))
-            .Where(x => x.Id != null && !comparer.Equals(x.Id, default!));
-        foreach (var group in left.GroupBy(x => x.Id, comparer))
+            .Where(x => x.Id != null && !comparer.Equals(x.Id, default!))
+            .GroupBy(x => x.Id, comparer)
+            .Where(group => !links.Any(link => link.Attachment?.IsNew() != true && comparer.Equals(link.AttachmentId, group.Key)))
+            .ToList();
+        if (left.Count == 0)
         {
-            var attachmentId = group.Key;
-            if (links.Any(link => link.Attachment?.IsNew() != true && comparer.Equals(link.AttachmentId, attachmentId))
-                || await EntityAttachmentContent.IsLinkedElsewhere<TEntityAttachment, TEntityAttachmentKey, TEntityKey, TAttachmentKey, TAttachment>(
-                    dbContext, attachmentId, leavingLinkIds, token))
-            {
-                continue;
-            }
+            return;
+        }
+        // one query for every attachment left, rather than one each
+        var linkedElsewhere = await EntityAttachmentContent.LinkedElsewhere<TEntityAttachment, TEntityAttachmentKey, TEntityKey, TAttachmentKey, TAttachment>(
+            dbContext, left.Select(group => group.Key).ToArray(), leavingLinkIds, token);
+        foreach (var group in left.Where(group => !linkedElsewhere.Contains(group.Key)))
+        {
             // a stub when the owner's read did not load it: a key is enough to delete a row, and the token primer points
             // the stub of an IHasConcurrencyToken attachment at the stored token
-            var attachment = group.Select(x => x.Attachment).FirstOrDefault(x => x != null) ?? new TAttachment { Id = attachmentId };
+            var attachment = group.Select(x => x.Attachment).FirstOrDefault(x => x != null) ?? new TAttachment { Id = group.Key };
             dbContext.Entry(attachment).State = EntityState.Deleted;
         }
     }

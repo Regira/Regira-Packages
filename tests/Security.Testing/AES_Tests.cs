@@ -110,6 +110,17 @@ public class AES_Tests
         var truncated = "aes1:" + Convert.ToBase64String(bytes[..40]);
         Assert.Throws<System.Security.Cryptography.CryptographicException>(() => encrypter.Decrypt(truncated));
     }
+    // a column too short cuts the text to a length that is not Base64, which a caller's catch of the documented
+    // exception must still see
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    public void A_Value_Cut_To_No_Base64_Throws(int cut)
+    {
+        var encrypter = new AesEncrypter(new CryptoOptions { Secret = "secret" });
+        var encrypted = encrypter.Encrypt("password");
+        Assert.Throws<System.Security.Cryptography.CryptographicException>(() => encrypter.Decrypt(encrypted[..^cut]));
+    }
     // the key derivation (about 0.2 s) runs once per secret, not per value: an EF value converter decrypts every row it
     // reads, and 50 rows took 10 s
     [Test]

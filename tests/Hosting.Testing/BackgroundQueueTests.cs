@@ -43,6 +43,33 @@ public class BackgroundQueueTests
         Assert.That(reported, Is.TypeOf<InvalidOperationException>());
     }
 
+    // A manager injected into a controller is built from the request's scope, which is disposed by the time the work runs.
+    [Test]
+    public async Task A_Manager_From_A_Disposed_Scope_Runs_Its_Task()
+    {
+        await using var sp = new ServiceCollection().UseBackgroundQueue()
+            .BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
+        IBackgroundQueueManager manager;
+        using (var request = sp.CreateScope())
+        {
+            manager = request.ServiceProvider.GetRequiredService<IBackgroundQueueManager>();
+        }
+        using var cts = new CancellationTokenSource();
+        CancellationToken seen = default;
+
+        var bgTask = manager.Execute((workServices, t) =>
+        {
+            workServices.GetRequiredService<IBackgroundTaskManager>(); // resolved from the work item's own scope
+            seen = t.Token;
+        });
+        Assert.That(sp.GetRequiredService<IBackgroundTaskManager>().Find(bgTask.Id), Is.SameAs(bgTask), "a poll finds the task before it runs");
+        var workItem = await sp.GetRequiredService<IBackgroundTaskQueue>().DequeueAsync(CancellationToken.None);
+        await workItem!(cts.Token);
+
+        Assert.That(bgTask.Status, Is.EqualTo(BackgroundTaskStatus.Finished), bgTask.Error);
+        Assert.That(seen, Is.EqualTo(cts.Token), "the work sees the host's token");
+    }
+
     [Test]
     public async Task Initial_Queue_Items_Are_Dequeued()
     {

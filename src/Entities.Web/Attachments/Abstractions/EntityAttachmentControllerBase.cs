@@ -23,6 +23,9 @@ namespace Regira.Entities.Web.Attachments.Abstractions;
 
 public abstract class EntityAttachmentControllerBase<TEntity> : EntityAttachmentControllerBase<TEntity, EntityAttachmentDto, EntityAttachmentInputDto>
     where TEntity : class, IEntityAttachment<int, int, int, Attachment>, IEntity<int>;
+// [ApiController] answers an invalid body, or a missing file part, with 400 before an action runs: the actions send their
+// requests without validating the input again
+[ApiController]
 [EntityConstraintConflict]
 public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> : ControllerBase
     where TEntity : class, IEntityAttachment<int, int, int, Attachment>, IEntity<int>
@@ -98,6 +101,11 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
     /// <returns></returns>
     protected async Task<TEntity?> FetchItem(int id)
     {
+        // id 0 is none: the list skips an id filter of 0, and the first link in scope would stand in for it
+        if (id == 0)
+        {
+            return null;
+        }
         var service = HttpContext.RequestServices.GetRequiredService<IEntityService<TEntity, int>>();
         return (await service.List(new { id }, new PagingInfo { PageSize = 1 })).SingleOrDefault();
     }

@@ -51,9 +51,11 @@ which is published with the source.
 ### `AesEncrypter` — AES with random salt
 
 Produces different ciphertext on each call. **Recommended for stored secrets.** The costly step, 500,000 PBKDF2-SHA512
-iterations over the secret (`CryptoUtility.DefaultIterations`, about 0.2 s), runs once per secret in a process and is
-cached; each value then gets a key of its own from its random salt in microseconds, so an EF value converter or a list
-projection decrypts 50 rows in milliseconds. The text is `aes1:` and the Base64 of 32 bytes of salt, the cipher (the
+iterations over the secret (`CryptoUtility.DefaultIterations`, about 0.2 s), runs once per secret and key salt, and is
+cached for the process; each value then gets a key of its own from its random salt in microseconds. Each process picks
+one key salt per secret for what it encrypts, so a process pays the step once for its own values and once for each
+earlier process lifetime or other instance whose values it reads: 50 rows one process wrote decrypt in milliseconds,
+rows written across 50 restarts cost about 10 s on the first read after the next one. The text is `aes1:` and the Base64 of 32 bytes of salt, the cipher (the
 value's bytes padded to the next 16) and a 32-byte HMAC-SHA256 tag: size a column for it, a 34-character IBAN taking 157
 characters. A value that was changed, or encrypted with another secret, throws `CryptographicException`. A value written
 without the `aes1:` prefix, by `Regira.Security` before 6.6.0, still decrypts; it pays the derivation the first time a
@@ -85,7 +87,8 @@ ciphertext out; and an endpoint of its own returns the one decrypted value, behi
 | Property | Type | Default | Description |
 |---|---|---|---|
 | `Secret` | `string?` | `null` | The key `AesEncrypter` derives from; it refuses to encrypt without one. Without it, decrypting and the obsolete `SymmetricEncrypter` and `SimpleHasher` use a built-in key, published with the source |
-| `AlgorithmType` | `string?` | `"SHA512"` | Hash algorithm for key derivation |
+| `AlgorithmType` | `string?` | `"SHA512"` | Hash algorithm — read only by `SymmetricEncrypter`, `SimpleHasher`, and the BCrypt hasher; `AesEncrypter` and the PBKDF2 `Hasher` hard-wire SHA-512 |
+| `Iterations` | `int?` | `500000` | PBKDF2 iteration count used by the `Hasher` |
 | `Encoding` | `Encoding?` | UTF-8 | Text encoding |
 
 ---
@@ -104,7 +107,8 @@ bool   Verify(string plainText, string hashedValue);
 
 ### `Hasher` — PBKDF2 (in `Regira.Security`)
 
-Per-hash random salt + PBKDF2 digest (10 000 iterations, SHA-512, 64-byte output). Constant-time verification.
+Per-hash random salt + PBKDF2 digest (500,000 iterations by default, `CryptoUtility.DefaultIterations`, set with
+`CryptoOptions.Iterations`; SHA-512, 64-byte output). Constant-time verification.
 
 ```csharp
 var hasher = new Regira.Security.Hashing.Hasher();
@@ -504,7 +508,8 @@ whether one row changed.
 holds `TokenKey`, `FamilyId`, `UserId`, `Audience`, `CreatedAt`, `ExpiresAt`, `FamilyExpiresAt`, `RevokedAt`,
 `ReplacedByTokenKey` — note it does **not** hold the token itself.
 
-Call `RevokeAllForUser` on a password change or when an account is disabled; nothing does it automatically.
+`PasswordControllerBase`'s change and reset call `RevokeAllForUser`; call it yourself when an account is disabled, and
+on a password change of your own.
 
 ---
 
@@ -1027,7 +1032,9 @@ public class UsersController(UserManager<AppUser> userManager)
 **A second credential** (a PIN, a one-time code) goes in your `AccountControllerBase<TUser>` subclass, so it shares
 the `auth` route and the response the SPA reads. Check `userManager.IsLockedOutAsync(user)` first, verify the
 credential, and count a failure with `userManager.AccessFailedAsync(user)`, the lockout the password uses; check the
-`IdentityResult` it returns, since an uncounted failure lets parallel guesses through. On success,
+`IdentityResult` it returns, since an uncounted failure lets parallel guesses through. Once the credential checks,
+`await CanSignIn(user)` applies the `SignIn.RequireConfirmed*` options, as `POST auth` does: refuse with
+`StatusCode(401, CreateFailedResponse(false) with { IsNotAllowed = true })` when it is `false`. On success,
 `return Ok(await CreateSuccessResponse((await claimsFactory.CreateAsync(user)).Claims, clientApp, user.Id));` (the
 three-argument overload, which also issues a refresh token when they are on); on failure,
 `Unauthorized(CreateFailedResponse(isLockedOut))`. Allow it only for the roles that need it, and rate-limit the action.
@@ -1226,13 +1233,14 @@ set (Identity's default confirmation checks the address). A user you seed, or cr
 
 | Endpoint | Anon | Request | Success | Failure |
 |---|:---:|---|---|---|
-| `POST auth/password` |  | `{ currentPassword, newPassword }` | `200` | `400` / `404` |
+| `POST auth/password` |  | `{ currentPassword, newPassword }` | `200`; the user's refresh tokens are revoked | `400` / `404` |
 | `POST auth/password/recover` | ✅ | `{ username, siteUrl }` | `200`, whether or not the user exists | `400` `siteUrl` not on an allowed origin |
-| `POST auth/password/reset` | ✅ | `{ token, password }` | `200` | `400` malformed token / identity errors |
+| `POST auth/password/reset` | ✅ | `{ token, password }` | `200`; the user's refresh tokens are revoked | `400` malformed token / identity errors |
 
-`recover` answers alike for an unknown user (no user enumeration); for a known one it emails a link — `siteUrl`, the reset **page**, with its query string set to `?token=<Base64 of the reset token and user name>` (a query `siteUrl` carried is dropped) — the Base64 of the UTF-8 JSON of a `UserTokenModel` (`{"Token":"…","Username":"…"}`, `System.Text.Json` defaults, so PascalCase keys; `reset` reads them case-sensitively), percent-encoded so any query parser (`URLSearchParams`, vue-router's `route.query`) reads it back intact. `reset` returns `400` on a malformed token. The body is plain English text, though `IEmailSender` calls it `htmlMessage`: `Follow link below to reset password`, the link, a blank line, `Token: <token>`. `POST users` sends `Welcome <username>,`, `Please follow link below to confirm email`, the link and the token, subject `Welcome`. `IdentityMailer` passes the body on unchanged as an HTML message (`MessageObject.IsHtml` defaults to `true`): it encodes nothing, and the line breaks collapse. The only user value in it is the welcome mail's user name, which Identity's default `UserOptions.AllowedUserNameCharacters` keeps free of `<`, `>`, `&` and `"`. With wider user-name characters, or to keep the line breaks, register an `IEmailSender` that wraps `IdentityMailer` and passes on `WebUtility.HtmlEncode(htmlMessage).ReplaceLineEndings("<br>")`.
+`recover` answers an unknown user alike; for a known one it emails a link — `siteUrl`, the reset **page**, with its query string set to `?token=<Base64 of the reset token and user name>` (a query `siteUrl` carried is dropped) — the Base64 of the UTF-8 JSON of a `UserTokenModel` (`{"Token":"…","Username":"…"}`, `System.Text.Json` defaults, so PascalCase keys; `reset` reads them case-sensitively), percent-encoded so any query parser (`URLSearchParams`, vue-router's `route.query`) reads it back intact. `reset` returns `400` on a malformed token. The body is plain English text, though `IEmailSender` calls it `htmlMessage`: `Follow link below to reset password`, the link, a blank line, `Token: <token>`. `POST users` sends `Welcome <username>,`, `Please follow link below to confirm email`, the link and the token, subject `Welcome`. `IdentityMailer` passes the body on unchanged as an HTML message (`MessageObject.IsHtml` defaults to `true`): it encodes nothing, and the line breaks collapse. The only user value in it is the welcome mail's user name, which Identity's default `UserOptions.AllowedUserNameCharacters` keeps free of `<`, `>`, `&` and `"`. With wider user-name characters, or to keep the line breaks, register an `IEmailSender` that wraps `IdentityMailer` and passes on `WebUtility.HtmlEncode(htmlMessage).ReplaceLineEndings("<br>")`.
 
-`recover` is anonymous and mails the named account on every call, so a caller can flood that inbox and spend the app's mail quota: rate-limit it like `refresh-token`. Limit by client, not by account, so a `429` reveals no more than the `200` does.
+`recover` is anonymous and mails the named account on every call, so a caller can flood that inbox and spend the app's mail quota: rate-limit it like `refresh-token`. Limit by client, not by account, so a `429` reveals no more than the `200` does. The
+response time still tells a name exists, as `auth`'s does: a known user waits on the reset token and the mail send.
 
 #### Rate-limiting the anonymous actions
 

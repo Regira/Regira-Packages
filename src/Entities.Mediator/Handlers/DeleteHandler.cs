@@ -16,6 +16,11 @@ public class DeleteHandler<TEntity, TKey, TDto>(IServiceProvider services)
 
     public virtual async Task<DeleteResult<TDto>?> Handle(DeleteCommand<TEntity, TKey, TDto> request, CancellationToken token = default)
     {
+        // a default id is none: the list skips its id filter, and would load every row in scope
+        if (EqualityComparer<TKey>.Default.Equals(request.Id, default))
+        {
+            return null;
+        }
         var service = Services.GetRequiredEntityService<IEntityService<TEntity, TKey>>();
         // Archived-inclusive widens nothing but the archived flag — the lookup is the regular filtered query, so
         // tenant/owner row security (global filters and the app's own EF query filters) still constrains it

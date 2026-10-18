@@ -114,6 +114,8 @@ public class ExcelManager : IExcelService
     public Task<IMemoryFile> Create(IEnumerable<ExcelSheet> sheets, CancellationToken cancellationToken = default)
     {
         var sheetList = sheets.ToList();
+        // a workbook holds at least one sheet: Excel opens none without
+        if (sheetList.Count == 0) sheetList.Add(new ExcelSheet());
         var sheetNames = SheetNames.Resolve(sheetList.Select(s => s.Name).ToList(), GeneratedSheetName);
         using var package = new ExcelPackage();
         for (var i = 0; i < sheetList.Count; i++)

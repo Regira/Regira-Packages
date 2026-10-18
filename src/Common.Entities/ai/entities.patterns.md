@@ -1660,7 +1660,10 @@ app.MapEntityEndpoints().RequireAuthorization();   // GET/POST products, PUT/PAT
 - **What differs from a controller.** The input DTO's DataAnnotations are checked by the request, with the 400 of a
   validator's refusal (`errorDetails` included) rather than MVC's automatic one. A missing row answers a `ProblemDetails`
   404. JSON is `System.Text.Json` only — a host on `AddNewtonsoftJson` keeps its controllers. The upload routes skip
-  antiforgery validation, since an API client sends no token.
+  antiforgery validation, since an API client sends no token. A multipart form post needs no CORS preflight, so a
+  **cookie-authenticated** app excludes them (`o.Exclude(EntityEndpoint.Upload, EntityEndpoint.ReplaceFile)`) and
+  serves uploads from an attachment controller under `[AutoValidateAntiforgeryToken]`, or maps its own with
+  antiforgery; a bearer-token app is unaffected.
 - **The query string** binds the search object's scalar and collection properties — `ids=1&ids=2` or `ids[0]=1`,
   invariant culture, enums by name in any case — and `includes` / `sortBy` on a complex entity. A property of a complex
   type does not bind, and MVC's binding attributes are not read: a property marked `[BindNever]` binds here, and one

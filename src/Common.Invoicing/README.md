@@ -111,7 +111,7 @@ without it has no seller, which Peppol validation refuses (EN 16931 rule BR-06).
 | `IInvoiceParty.Code` | `PartyTaxScheme/CompanyID`, `PartyLegalEntity/CompanyID` and `PartyIdentification/ID`: the VAT number with its country prefix (BR-CO-09) |
 | `IInvoiceParty.Identifiers` | The first entry is the `EndpointID` (the Peppol participant ID) with `Scheme` as its `schemeID`. Without one, `Code` is split on `:`, and a code without `:` gets scheme `9956` (`UblDefaults.EndpointSchemeId`), the legacy Belgian enterprise-number scheme that `0208` replaces; a Belgian VAT number is an endpoint only under scheme `9925` (`9925:BE0123456749`). Always give the identifier |
 | `IInvoiceParty.Title` | `PartyName/Name`, `PartyLegalEntity/RegistrationName` and `Contact/Name` |
-| `IInvoiceParty.Address` | `PostalAddress`. Peppol requires one with a `CountryCode` for both parties (BR-08 to BR-11) |
+| `IInvoiceParty.Address` | `PostalAddress`. Peppol requires one with a `CountryCode` for both parties (BR-08 to BR-11). The code is written trimmed and upper-case, and an address without one throws `ArgumentException` |
 | `IInvoiceParty.ContactData` | `Contact/Telephone` and `Contact/ElectronicMail`: the first phone and e-mail entry |
 | `IInvoice.Code` | `ID`, `OrderReference/ID` and each attachment's `ID`. `BuyerReference` (BT-10) is not written: when the buyer gave one, add it to the returned `XDocument` |
 | `IInvoice.IssueDate`, `DueDate` | `IssueDate`, `DueDate` |
@@ -155,7 +155,7 @@ Not written: `IInvoiceLine.Code`, `IInvoiceLine.EndDate` and a payee bank accoun
 
 <!-- no-compile -->
 ```csharp
-var service = new PeppolService(gatewaySettings, new Regira.Serializing.Newtonsoft.Json.JsonSerializer());   // the ISerializer it takes
+var service = new PeppolService(gatewaySettings, new Regira.Serializing.Newtonsoft.Json.JsonSerializer());   // reads the gateway's answer
 
 try
 {
@@ -172,6 +172,8 @@ catch (PeppolResponseException ex)   // it answered, but did not accept the docu
     Console.WriteLine($"Not sent: {ex.SerializedResponse}");
 }
 ```
+
+The request always goes out with the declared (PascalCase) property names the gateway expects, nulls included, whatever `ISerializer` the service is given: that serializer only reads the gateway's answer, so the camelCase `Regira.Serializing.Newtonsoft.Json.JsonSerializer` works as well as any other.
 
 Every instance sends through a connection pool the package shares, so it can be registered with any lifetime. Never repeat a `Send` that may have reached the gateway: the document would go out twice.
 

@@ -931,6 +931,60 @@ public abstract class CourseAttachmentsTests<TFactory> : IClassFixture<TFactory>
         Assert.Equal("their file", await client.GetStringAsync($"/courses/9/files/{theirsName}"));
     }
 
+    // Link id 0 names no link. The list behind the update and the file replace skips an id filter of 0, so its first link
+    // would pass the owner check for its own owner, and the update would save as a new link to whatever attachment the
+    // body names: another owner's file, served from then on under this owner.
+    [Fact]
+    public async Task Link_0_Answers_404_And_Links_Nothing()
+    {
+        using var client = _factory.CreateClient();
+
+        var theirs = await Upload(client, 9, $"theirs-{Guid.NewGuid():N}.txt", "their file");
+        var first = (await client.GetFromJsonAsync<ListResult<CourseAttachmentDto>>("/courses/attachments?pageSize=1"))!.Items.Single();
+
+        using var update = await client.PutAsJsonAsync($"/courses/{first.ObjectId}/attachments/0", new CourseAttachmentInputDto { AttachmentId = theirs.AttachmentId });
+        using var replace = await client.PutAsync($"/courses/{first.ObjectId}/files/0",
+            new MultipartFormDataContent { { new StreamContent(FileUtility.GetStreamFromString("my file")), "file", "mine.txt" } });
+
+        Assert.Equal(HttpStatusCode.NotFound, update.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, replace.StatusCode);
+        var links = (await client.GetFromJsonAsync<ListResult<CourseAttachmentDto>>($"/courses/{first.ObjectId}/attachments"))!.Items;
+        Assert.DoesNotContain(links, x => x.AttachmentId == theirs.AttachmentId && x.Id != theirs.Id);
+        var stored = await client.GetFromJsonAsync<DetailsResult<CourseAttachmentDto>>($"/courses/attachments/{first.Id}");
+        Assert.Equal(first.AttachmentId, stored!.Item.AttachmentId);
+    }
+
+    // a form without its file part is the client's mistake: 400, not the 500 of a null file
+    [Fact]
+    public async Task An_Upload_Without_A_File_Answers_400()
+    {
+        using var client = _factory.CreateClient();
+
+        var upload = await client.PostAsync("/courses/12/files", new MultipartFormDataContent { { new StringContent("no file"), "description" } });
+        var uploaded = await Upload(client, 12, $"replaced-{Guid.NewGuid():N}.txt", "kept");
+        var replace = await client.PutAsync($"/courses/12/files/{uploaded.Id}", new MultipartFormDataContent { { new StringContent("no file"), "description" } });
+
+        Assert.Equal(HttpStatusCode.BadRequest, upload.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, replace.StatusCode);
+    }
+
+    // A download by name serves one file: an empty name would drop the name filter, and a wildcard would make the name a
+    // pattern that serves the first match and probes the owner's file names.
+    [Theory]
+    [InlineData("%2F")]
+    [InlineData("*")]
+    [InlineData("by-name*")]
+    [InlineData("*.txt")]
+    public async Task A_Download_By_An_Empty_Or_Wildcard_Name_Answers_404(string name)
+    {
+        using var client = _factory.CreateClient();
+        var fileName = $"by-name-{Guid.NewGuid():N}.txt";
+        await Upload(client, 11, fileName, "by name");
+
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync($"/courses/11/files/{name}")).StatusCode);
+        Assert.Equal("by name", await client.GetStringAsync($"/courses/11/files/{fileName}"));
+    }
+
     // A rename retypes the attachment before the validators run, so a rule on the type judges the type the file is stored
     // with: renaming an allowed file into a refused type is refused.
     [Fact]

@@ -135,4 +135,19 @@ public class LicenseUtilityTests
         var license = Bake(null, LicenseDefaults.Products.Mcp);
         Assert.That(license.Limits, Is.Null);
     }
+
+    // --- Resolve ---
+
+    // a renewal appended after the key it renews, or the old key kept under the legacy setting (listed first), still wins
+    [Test]
+    public void Resolve_Prefers_The_Paid_Key_That_Expires_Last()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var expired = new License { Tier = "paid", Products = [LicenseDefaults.Products.Entities], ExpiresAtUnix = now.AddDays(-30).ToUnixTimeSeconds() };
+        var renewed = new License { Tier = "paid", Products = [LicenseDefaults.Products.Entities], ExpiresAtUnix = now.AddYears(1).ToUnixTimeSeconds() };
+        var free = LicenseUtility.CreateFree();
+
+        Assert.That(LicenseUtility.Resolve([free, expired, renewed], LicenseDefaults.Products.Entities), Is.SameAs(renewed));
+        Assert.That(LicenseUtility.Resolve([renewed, expired], LicenseDefaults.Products.Entities), Is.SameAs(renewed));
+    }
 }

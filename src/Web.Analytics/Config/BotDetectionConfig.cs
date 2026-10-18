@@ -42,4 +42,18 @@ public class BotDetectionConfig
     /// against path + query. Add the paths this site is swept for but does not serve.
     /// </summary>
     public string[] ProbePaths { get; set; } = [];
+
+    /// <summary>
+    /// Flag a Referer no browser sends: not an absolute URL, an http(s) URL with nothing after the host
+    /// (browsers write at least "/"), or one carrying a #fragment (browsers strip it). Off by default:
+    /// switch it on when the log shows crawler traffic arriving with origin-only referrers.
+    /// </summary>
+    public bool DetectForgedReferrers { get; set; }
+
+    /// <summary>
+    /// Referer substrings that flag a visit: referrer spam, or a source that never sends visitors. Matched
+    /// whether or not <see cref="DetectForgedReferrers"/> is on; no built-in defaults, so an empty list
+    /// matches nothing.
+    /// </summary>
+    public string[] ReferrerMarkers { get; set; } = [];
 }

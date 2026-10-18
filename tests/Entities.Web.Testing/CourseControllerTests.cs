@@ -81,6 +81,23 @@ public abstract class CourseTests<TFactory> : IClassFixture<TFactory>, IDisposab
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("Course (patched)", (await client.GetFromJsonAsync<DetailsResult<CourseDto>>($"/courses/{id}"))!.Item.Title);
     }
+    // Id 0 names no row. The list behind PATCH and DELETE skips an id filter of 0: the patch would merge into the first row
+    // in scope, and the delete would load every row.
+    [Fact]
+    public async Task Patch_And_Delete_Of_Id_0_Answer_404()
+    {
+        using var client = _factory.CreateClient();
+        var inputResponse = await client.PostAsJsonAsync("/courses", new CourseInputDto { Title = "Course (untouched)", DepartmentId = 1, Credits = 2 });
+        inputResponse.EnsureSuccessStatusCode();
+        var id = (await inputResponse.Content.ReadFromJsonAsync<SaveResult<CourseDto>>())!.Item.Id;
+
+        using var patch = await client.PatchAsync("/courses/0", new StringContent("""{ "title": "Patched" }""", System.Text.Encoding.UTF8, "application/merge-patch+json"));
+        using var delete = await client.DeleteAsync("/courses/0");
+
+        Assert.Equal(HttpStatusCode.NotFound, patch.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, delete.StatusCode);
+        Assert.Equal("Course (untouched)", (await client.GetFromJsonAsync<DetailsResult<CourseDto>>($"/courses/{id}"))!.Item.Title);
+    }
     [Fact]
     public async Task Insert_And_Get_Details()
     {

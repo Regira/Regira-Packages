@@ -103,6 +103,8 @@ Vivamus tempus enim lacinia nisi molestie vulputate. Praesent 1:2:3:4:5:6:7:8 tu
     [TestCase("446688", true)]
     [TestCase("xxxx", false)]
     [TestCase("44xx", false)]
+    [TestCase("anything 1234", false)]
+    [TestCase("1234 anything", false)]
     public void TestValidPhone_AllowShortNumbers(string input, bool expected)
     {
         var isValid = RegexUtility.IsValidPhoneNumber(input, true);

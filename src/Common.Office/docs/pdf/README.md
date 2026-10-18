@@ -135,7 +135,9 @@ Task<IMemoryFile?>       ImagesToPdf(ImagesInput input, CancellationToken cancel
 `ToImages` returns an image per page, fitted to `PdfToImagesOptions.Size` either way round — the page's shorter side
 to the smaller dimension, its longer side to the larger — keeping the page's aspect ratio, so the default
 `1080 × 1920` gives a portrait A4 page 1080 pixels wide and a landscape one 1080 pixels high. Without options it takes
-`PdfDefaults.ImageSize` and `PdfDefaults.ImageFormat` (JPEG). `ImagesToPdf` without images returns `null`.
+`PdfDefaults.ImageSize` and `PdfDefaults.ImageFormat` (JPEG). `ImagesToPdf` without images returns `null`. `PdfClient`
+(`Regira.Office.Clients`) posts the images only, so the Office API lays them out on its defaults: an `ImagesInput` with
+another `Format`, `Orientation` or `Margins` throws `NotSupportedException`.
 
 ### IPdfTextExtractor / IPdfTextService
 
@@ -173,7 +175,7 @@ Composite: `IPdfEditor + IPdfImageService + IPdfTextService`. Implemented by Pdf
 | `Format` | `PageSize` | `A4` | Paper size |
 | `Orientation` | `PageOrientation` | `Portrait` | Portrait / Landscape |
 | `Margins` | `Margins` | `10mm` all | Page margins, in units of `DPI`; `Margins.ModifyDpi` measures them at another. A `float[]` gives one value for every side, two for left and right then top and bottom, three for top, left and right, bottom, four for top, right, bottom, left. A `new Margins()` starts every side at `Margins.DEFAULT_MARGIN` (70.85, 25 mm at 72 DPI), not at this default: set all four sides |
-| `DPI` | `int` | `96` | Units per inch of `Margins` |
+| `DPI` | `int` | `96` | Units per inch of `Margins`. Pass it to the constructor (`new HtmlInput(72)`, `new ImagesInput(300)`): the default `Margins` are computed from the constructor's DPI, so `new ImagesInput { DPI = 300 }` keeps 37.8 units, 3.2 mm at 300 |
 
 ### DocumentInput
 

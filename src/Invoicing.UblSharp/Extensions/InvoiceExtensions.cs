@@ -49,12 +49,18 @@ internal static class InvoiceExtensions
         };
     }
 
+    /// <exception cref="ArgumentException">The address has no <c>CountryCode</c>, which Peppol requires of both parties</exception>
     public static AddressType ToAddressType(this PartyAddress address) => new()
     {
         StreetName = NullIfBlank(address.Street),
         PostalZone = NullIfBlank(address.PostalCode),
         CityName = NullIfBlank(address.City),
-        Country = new CountryType { IdentificationCode = address.CountryCode }
+        // ISO 3166-1 alpha-2, upper case, as the Peppol rules read it
+        Country = new CountryType
+        {
+            IdentificationCode = NullIfBlank(address.CountryCode)?.Trim().ToUpperInvariant()
+                ?? throw new ArgumentException("A postal address needs a CountryCode: Peppol refuses an address without one.", nameof(address))
+        }
     };
     static string? NullIfBlank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 

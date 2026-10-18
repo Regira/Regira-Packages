@@ -16,6 +16,10 @@ public class BackgroundQueueManager<TTask>(
     : IBackgroundQueueManager<TTask>
     where TTask : class, IBackgroundTask, new()
 {
+    // The root's factory, whatever scope built this manager: one injected into a controller holds the request's scope,
+    // which is disposed by the time the work item runs.
+    private readonly IServiceScopeFactory _scopeFactory = serviceProvider.GetRequiredService<IServiceScopeFactory>();
+
     public event Action<Exception, TTask, IServiceProvider>? OnError;
 
 
@@ -33,23 +37,29 @@ public class BackgroundQueueManager<TTask>(
         {
             Id = Guid.NewGuid().ToString()
         };
+        // known before it can run, so a poll by its id finds it from the start
+        backgroundTaskManager.Add(bgTask);
         queue.QueueBackgroundWorkItem(async token =>
         {
             bgTask.Start(token);
 
-            using var scope = serviceProvider.CreateScope();
+            IServiceScope? scope = null;
             try
             {
+                scope = _scopeFactory.CreateScope();
                 var result = await func(scope.ServiceProvider, bgTask);
                 bgTask.Finish(result);
             }
             catch (Exception ex)
             {
                 bgTask.SetError(ex);
-                OnError?.Invoke(ex, bgTask, scope.ServiceProvider);
+                OnError?.Invoke(ex, bgTask, scope?.ServiceProvider ?? serviceProvider);
+            }
+            finally
+            {
+                scope?.Dispose();
             }
         });
-        backgroundTaskManager.Add(bgTask);
 
         return bgTask;
     }

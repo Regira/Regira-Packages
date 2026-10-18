@@ -67,6 +67,12 @@ internal class EntityLicenseValidator
     private static bool IsSharedAttachmentBase(Type entityType)
         => typeof(IAttachment).IsAssignableFrom(entityType);
 
+    private static int FreeLimit(License? unsigned, string key)
+    {
+        var limit = LicenseDefaults.EntityFreeLimits.TryGetValue(key, out var free) ? free : 0;
+        return unsigned?.Limits?.TryGetValue(key, out var own) == true ? Math.Min(limit, own) : limit;
+    }
+
     private void ValidateIfNeeded(IServiceCollection services)
     {
         if (!_validated)
@@ -81,9 +87,9 @@ internal class EntityLicenseValidator
             if (best == null || string.IsNullOrWhiteSpace(best.RawKey))
             {
                 _tier = "free";
-                var freeLimits = best?.Limits ?? LicenseDefaults.EntityFreeLimits;
-                _simpleLimit = freeLimits.TryGetValue("entities.simple", out var sl) ? sl : 0;
-                _complexLimit = freeLimits.TryGetValue("entities.complex", out var cl) ? cl : 0;
+                // an unsigned License may lower the free limits (a test does), never raise them
+                _simpleLimit = FreeLimit(best, "entities.simple");
+                _complexLimit = FreeLimit(best, "entities.complex");
             }
             else
             {

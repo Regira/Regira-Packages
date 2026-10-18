@@ -2,6 +2,8 @@ using Regira.DAL.Paging;
 using Regira.Entities.Attachments.Abstractions;
 using Regira.Entities.Attachments.Extensions;
 using Regira.Entities.Attachments.Models;
+using Regira.Entities.Keywords;
+using Regira.Entities.Keywords.Abstractions;
 using Regira.Entities.Mediator;
 using Regira.Entities.Services.Abstractions;
 
@@ -12,13 +14,20 @@ internal static class AttachmentRouteValues
     /// <summary>
     /// The id of owner <paramref name="objectId"/>'s link whose file is named <paramref name="fileName"/>, as a
     /// <c>{objectId}/files/{*fileName}</c> download routes it; <c>null</c> when there is none. Both downloads then send
-    /// <c>AttachmentFileQuery</c>, so one handler override covers them.
+    /// <c>AttachmentFileQuery</c>, so one handler override covers them. A name is one file: one left empty (<c>/</c>)
+    /// drops the file-name filter, and a wildcard makes it a pattern, so both name none.
     /// </summary>
     public static async Task<int?> FindLinkId<TEntity>(IServiceProvider services, int objectId, string fileName, CancellationToken token = default)
         where TEntity : class, IEntityAttachment<int, int, int, Attachment>
     {
+        var name = DecodeFileName(fileName);
+        var keywords = (IQKeywordHelper?)services.GetService(typeof(IQKeywordHelper)) ?? new QKeywordHelper();
+        if (string.IsNullOrEmpty(name) || keywords.ParseKeyword(name).HasWildcard)
+        {
+            return null;
+        }
         var service = services.GetRequiredEntityService<IEntityService<TEntity, int>>();
-        var links = await service.List(new { objectId = new[] { objectId }, fileName = DecodeFileName(fileName) }, new PagingInfo { PageSize = 1 }, token);
+        var links = await service.List(new { objectId = new[] { objectId }, fileName = name }, new PagingInfo { PageSize = 1 }, token);
         return links.FirstOrDefault()?.Id;
     }
 

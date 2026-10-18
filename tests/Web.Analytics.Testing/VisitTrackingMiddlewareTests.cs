@@ -22,9 +22,9 @@ public class VisitTrackingMiddlewareTests
     private static VisitTrackingMiddleware<PageView> CreateMiddleware(
         RequestDelegate next, PageViewQueue<PageView> queue, AnalyticsConfig config,
         IEnumerable<IVisitContributor<PageView>>? contributors = null,
-        ILogger<VisitTrackingMiddleware<PageView>>? logger = null)
+        ILogger<VisitTrackingMiddleware<PageView>>? logger = null, BotDetectionConfig? detection = null)
     {
-        var detector = new BotDetector(new TestOptionsMonitor<BotDetectionConfig>(new BotDetectionConfig()),
+        var detector = new BotDetector(new TestOptionsMonitor<BotDetectionConfig>(detection ?? new BotDetectionConfig()),
             NullLogger<BotDetector>.Instance);
         return new VisitTrackingMiddleware<PageView>(next, queue, detector,
             new HtmlPageVisitFilter(config), contributors ?? [], config,
@@ -161,6 +161,54 @@ public class VisitTrackingMiddlewareTests
 
         Assert.That(queue.Reader.TryRead(out var pending), Is.True);
         Assert.That(pending!.View.IsBot, Is.True);
+    }
+
+    [Test]
+    public async Task ForgedReferrer_IsFlagged_BehindARealBrowserUserAgent_AndStoredAsSent()
+    {
+        var config = new AnalyticsConfig();
+        var queue = CreateQueue(config);
+        var context = CreateContext();
+        context.Request.Headers.Referer = "https://blog.regira.com";
+
+        await CreateMiddleware(Respond(200), queue, config, detection: new BotDetectionConfig { DetectForgedReferrers = true })
+            .InvokeAsync(context);
+
+        Assert.That(queue.Reader.TryRead(out var pending), Is.True);
+        Assert.Multiple(() =>
+        {
+            Assert.That(pending!.View.IsBot, Is.True);
+            Assert.That(pending.View.Referrer, Is.EqualTo("https://blog.regira.com"), "the claim is kept as sent");
+            Assert.That(pending.View.ReferrerHost, Is.EqualTo("blog.regira.com"));
+        });
+    }
+
+    [Test]
+    public async Task ForgedReferrer_IsDropped_WhenRecordBotsOff()
+    {
+        var config = new AnalyticsConfig { RecordBots = false };
+        var queue = CreateQueue(config);
+        var context = CreateContext();
+        context.Request.Headers.Referer = "https://blog.regira.com";
+
+        await CreateMiddleware(Respond(200), queue, config, detection: new BotDetectionConfig { DetectForgedReferrers = true })
+            .InvokeAsync(context);
+
+        Assert.That(queue.Reader.TryRead(out _), Is.False);
+    }
+
+    [Test]
+    public async Task OriginOnlyReferrer_CountsAsHuman_ByDefault()
+    {
+        var config = new AnalyticsConfig();
+        var queue = CreateQueue(config);
+        var context = CreateContext();
+        context.Request.Headers.Referer = "https://blog.regira.com";
+
+        await CreateMiddleware(Respond(200), queue, config).InvokeAsync(context);
+
+        Assert.That(queue.Reader.TryRead(out var pending), Is.True);
+        Assert.That(pending!.View.IsBot, Is.False);
     }
 
     [Test]

@@ -37,6 +37,11 @@ public class PatchHandler<TEntity, TKey, TDto, TInputDto>(IServiceProvider servi
             };
         }
 
+        // a default id is none: the list skips its id filter, and the first row in scope would take the patch
+        if (EqualityComparer<TKey>.Default.Equals(request.Id, default))
+        {
+            return null;
+        }
         var service = Services.GetRequiredEntityService<IEntityService<TEntity, TKey>>();
         // List instead of Details to avoid loading related entities (Details fetches max includes).
         // Archived-inclusive: patching an archived row (e.g. to restore it) must reach it. The lookup runs

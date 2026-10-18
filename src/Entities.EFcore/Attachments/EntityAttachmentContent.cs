@@ -59,6 +59,20 @@ internal static class EntityAttachmentContent
         where TAttachment : class, IAttachment<TAttachmentKey>, new()
         => dbContext.Set<TEntityAttachment>().IgnoreQueryFilters().AsNoTracking()
             .AnyAsync(x => x.AttachmentId!.Equals(attachmentId) && !exceptLinkIds.Contains(x.Id), token);
+    /// <summary>
+    /// Which of <paramref name="attachmentIds"/> a stored link other than <paramref name="exceptLinkIds"/> names, past query
+    /// filters: <see cref="IsLinkedElsewhere{TEntityAttachment, TKey, TObjectKey, TAttachmentKey, TAttachment}"/> for many
+    /// attachments in one query.
+    /// </summary>
+    public static async Task<HashSet<TAttachmentKey>> LinkedElsewhere<TEntityAttachment, TKey, TObjectKey, TAttachmentKey, TAttachment>(DbContext dbContext,
+        TAttachmentKey[] attachmentIds, TKey[] exceptLinkIds, CancellationToken token)
+        where TEntityAttachment : class, IEntityAttachment<TKey, TObjectKey, TAttachmentKey, TAttachment>
+        where TAttachment : class, IAttachment<TAttachmentKey>, new()
+        => (await dbContext.Set<TEntityAttachment>().IgnoreQueryFilters().AsNoTracking()
+            .Where(x => attachmentIds.Contains(x.AttachmentId) && !exceptLinkIds.Contains(x.Id))
+            .Select(x => x.AttachmentId)
+            .Distinct()
+            .ToListAsync(token)).ToHashSet();
 
     /// <summary>
     /// Whether a link carries a <c>NewFileName</c> or <c>NewBytes</c> for the attachment it links.

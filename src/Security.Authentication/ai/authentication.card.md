@@ -28,7 +28,7 @@
   `auth/refresh-token` is for. ⚠️ The default `InMemoryRefreshTokenStore` is **dev only**: it loses sessions on restart
   and is per-process, so behind a load balancer users are signed out at random. Implement `IRefreshTokenStore` and
   register it with `.AddRefreshTokenStore<T>()` first. `Refresh` requires a claims resolver so claims are re-read —
-  never replayed. Call `RevokeAllForUser` on password change / disable; nothing does it automatically.
+  never replayed. `PasswordControllerBase`'s change and reset call `RevokeAllForUser`; call it yourself on disable.
 - **Someone else's tokens (Entra ID, Auth0, Keycloak, Okta):** `AddBearerAuthentication(o => { o.Authority = …;
   o.Audience = …; })`, or `AddEntraIdBearer(o => { o.TenantId = …; o.ClientId = …; })`.
   **`AddJwtAuthentication` cannot do this** — it requires a `Secret` and derives a symmetric key, while an external

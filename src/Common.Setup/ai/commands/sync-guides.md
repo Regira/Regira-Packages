@@ -1,42 +1,47 @@
-Detect and refresh stale Regira guide files in the current project's `.regira/instructions/` directory.
+Refresh the Regira guides extracted into the solution's `.regira/instructions/` and the Regira commands in `.claude/commands/`.
+
+A solution build copies only the files that are missing, so a file extracted from an older package stays until it is
+deleted. This command deletes Regira's own files and builds the solution again, which extracts the installed packages'
+versions. A Regira command you edited is replaced by the package's copy.
 
 ## Step 1 — Check installed Regira packages
 
-Run:
+Run from the solution root:
 ```bash
 dotnet list package --include-transitive
 ```
 
-Filter results to lines containing `Regira.`. Record each package name and its resolved version.
+Filter results to lines containing `Regira.`. Record each package name and its resolved version. With none installed,
+report that and stop.
 
-## Step 2 — Check the latest published AI guide version
+## Step 2 — Delete Regira's extracted files
 
-Run:
-```bash
-git ls-remote --tags https://github.com/Regira/Regira-Packages "refs/tags/ai-v*"
+`.regira/instructions/` holds only extracted guides. `.claude/commands/` also holds the solution's own commands, so only
+the four Regira commands go.
+
+PowerShell:
+```powershell
+Remove-Item -Recurse -Force .regira/instructions -ErrorAction SilentlyContinue
+Remove-Item -Force .claude/commands/new-project.md, .claude/commands/new-entity.md, .claude/commands/sync-guides.md, .claude/commands/evaluate.md -ErrorAction SilentlyContinue
 ```
 
-Identify the latest `ai-v*` tag (e.g. `ai-v5.0.0`). Extract the version number.
-
-## Step 3 — Compare
-
-If the installed Regira package versions match the latest `ai-v*` tag version, guides are up to date. Report that and stop.
-
-If the versions differ (or if no `ai-v*` tags are reachable), treat guides as potentially stale and continue.
-
-## Step 4 — Refresh extracted guides
-
-Delete the existing extracted files:
+bash:
 ```bash
-Remove-Item -Recurse -Force .regira/instructions
-Remove-Item -Recurse -Force .claude/commands
+rm -rf .regira/instructions
+rm -f .claude/commands/new-project.md .claude/commands/new-entity.md .claude/commands/sync-guides.md .claude/commands/evaluate.md
 ```
 
-Re-trigger extraction by running:
+## Step 3 — Extract again
+
+Build the solution file, from the solution root. The packages extract only in a solution build; a build of a single
+project extracts nothing.
 ```bash
-dotnet build
+dotnet build <name>.slnx
 ```
 
-## Step 5 — Report
+Use `<name>.sln` for a classic solution file.
 
-List the guide files now present in `.regira/instructions/` and command files in `.claude/commands/` and confirm they were refreshed.
+## Step 4 — Report
+
+List the guide files now present in `.regira/instructions/` and the Regira command files in `.claude/commands/`, with
+the package versions from Step 1, and confirm they were refreshed.
