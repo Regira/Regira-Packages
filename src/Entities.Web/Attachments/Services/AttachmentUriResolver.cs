@@ -41,8 +41,8 @@ public class AttachmentUriResolver<TEntityAttachment, TEntityAttachmentKey, TObj
 
         var byName = !string.IsNullOrWhiteSpace(source.Attachment?.FileName);
         object values = byName
-            ? new { objectId = source.ObjectId, filename = source.Attachment!.FileName, inline = true }
-            : new { id = source.Id, inline = true };
+            ? new { objectId = source.ObjectId, filename = source.Attachment!.FileName, inline = "true" }
+            : new { id = source.Id, inline = "true" };
 
         // a mapped download endpoint (MapEntityEndpoints) is found by its name, an attachment controller's by the controller
         var endpointName = byName ? EntityEndpointNames.GetFileByName(typeof(TEntityAttachment)) : EntityEndpointNames.GetFile(typeof(TEntityAttachment));

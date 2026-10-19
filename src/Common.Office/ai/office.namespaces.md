@@ -20,7 +20,7 @@ the provider only at registration.
 | `Regira.Office.Models` | `FileFormat`, `PageSize`, `PageSizes`, `PageOrientation`, `Margins` |
 | `Regira.Office.MimeTypes` | `ContentTypes` |
 | `Regira.Office.Utilities` | `PageSizeUtility` |
-| `Regira.Utilities` | `DimensionsUtility` — `MmToPt(float mm, int dpi)`, `MmToIn`, `InToMm`, `ModifyDpi`: millimetres to the DPI units `Margins` and page sizes are held in; assembly `Regira.Common` |
+| `Regira.Utilities` | `DimensionsUtility` — `MmToPt(float mm, int dpi = DPI.DEFAULT)`, `MmToIn`, `InToMm`, `ModifyDpi`: millimetres to the DPI units `Margins` and page sizes are held in; assembly `Regira.Common` |
 | `Regira.Media.Drawing.Models.Abstractions` | `IImageFile` (extends `IMemoryFile`) — what the barcode/QR and image services return; assembly `Regira.Media` |
 | `Regira.Media.Drawing.Dimensions` | `ImageSize` — `PdfToImagesOptions.Size`; assembly `Regira.Media` |
 | `Regira.Media.Drawing.Enums` | `ImageFormat` — `PdfToImagesOptions.Format`; assembly `Regira.Media` |

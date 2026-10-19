@@ -228,7 +228,7 @@ dotnet add package Microsoft.AspNetCore.OpenApi
 dotnet add package Scalar.AspNetCore
 ```
 
-> **⚠️ On the native `Microsoft.AspNetCore.OpenApi`/Scalar path, `Microsoft.OpenApi` must stay on 2.x** _(while on .NET 10 — remove once the OpenAPI source generator supports 3.x)_. (This does **not** apply to a Swashbuckle setup, which supports 3.x.)
+> **⚠️ On the native `Microsoft.AspNetCore.OpenApi`/Scalar path, `Microsoft.OpenApi` must stay on 2.x** _(while on .NET 10 — remove once the OpenAPI source generator supports 3.x)_. (A `Regira.Web.Swagger` setup stays on 2.x too: it and `Regira.Security.Authentication.Web` reference `Microsoft.OpenApi` 2.12.2.)
 > Leave it **transitive**: from **10.0.11** on, `Microsoft.AspNetCore.OpenApi` declares the 2.x range its generator
 > is compatible with, already past the 2.x security advisory (10.0.12 → `[2.12.0, 3.0.0)`), so no direct reference
 > is needed; 10.0.10 and earlier pull the vulnerable 2.0.0 — raise that pin instead. Never

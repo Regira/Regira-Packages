@@ -26,6 +26,14 @@ public class MessageObjectTests
     }
 
     [Test]
+    public void Error_Named_Email_Names_The_Input()
+    {
+        MailAddress Convert(string value) => value;
+        var ex = Assert.Throws<EmailFormatException>(() => Convert("BlogAdv <no-reply@example.com>"))!;
+        Assert.That(ex.Message, Does.Contain("'BlogAdv <no-reply@example.com>'").And.Contain("DisplayName"));
+    }
+
+    [Test]
     public void MailRecipient_ToString_Keeps_The_MailAddress_Format()
     {
         var recipient = new MailRecipient { DisplayName = "A", Email = "a@example.com" };

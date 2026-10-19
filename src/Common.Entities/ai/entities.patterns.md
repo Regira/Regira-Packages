@@ -2098,7 +2098,7 @@ Cases the declaration does not cover, and what to use instead:
 |---|---|
 | Mint from an injected service (a code generator, `IHttpContextAccessor`), or re-derive on every save | a **prepper** — `EntityPrepperBase<T>.Prepare(modified, original, …)`, registered with `e.AddPrepper<T>()` |
 | Stamp the field even when a raw-`DbContext` writer creates the row (what `HasCreatedDbPrimer` does for `Created`) | a **primer** — accepting that it reverts such a writer's updates too |
-| Mint a sequential code that must not skip numbers | a **primer** — the mint and preppers run before the validators, so a create they refuse has already used its number (§Server-generated sequential codes) |
+| Mint a sequential code that a refused create must not use up (it can still skip on a rollback; gapless numbers need a counter table) | a **primer** — the mint and preppers run before the validators, so a create they refuse has already used its number (§Server-generated sequential codes) |
 
 The primer form, for that second case — stamp on create, restore on update:
 

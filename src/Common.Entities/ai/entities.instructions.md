@@ -316,6 +316,7 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 
 - `SortBy` is a plain (non-`[Flags]`) enum
 - A request may carry several sort values (`List(...)` accepts `IList<TSortBy>`, applied left to right). The framework calls your `SortBy(...)` builder lambda once per value, each time passing the query already ordered by the previous values — so the lambda receives a single `TSortBy?` and continues the order. See the Product example.
+- The lambda sees the sort value, not the search object. To order by a value the request carries (relevance to a `relatedToId`), derive the entity's query builder from `QueryBuilder<TEntity, TKey, TSearchObject, TSortBy, TIncludes>` (`Regira.Entities.EFcore.QueryBuilders`; drop `TKey` for an `int` key), override `SortBy(query, so, sortBy, includes)` (it receives the search objects; call `base.SortBy` for the other values) and register it with `e.UseQueryBuilder<T>()`.
 
 > **⚠️ Order via `query.OrderOrThenBy(...)` / `OrderOrThenByDescending(...)`** (`Regira.Entities.EFcore.Extensions`) — they start the ordering or continue it with `ThenBy` as appropriate. Never branch on `query is IOrderedQueryable<T>` yourself: EF Core queries satisfy that check *before* any ordering is applied, so the intuitive guard compiles, passes DI validation, and throws `Expression of type 'IQueryable<T>' cannot be used for parameter of type 'IOrderedQueryable<T>' of method 'ThenBy'` on the first sorted request.
 >
@@ -421,7 +422,7 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 > | Protect on update; optionally mint on create from the entity itself | `[ServerOwned]` / `e.ServerOwned(…)` |
 > | Mint from an injected service, or re-derive the value on every save | a **prepper** (`EntityPrepperBase<T>`; `original` is `null` on create, the stored row on update) |
 > | Stamp the field even when a raw-`DbContext` writer creates the row (`Created`) | a **primer** — but it also *reverts* such a writer's updates (§Step 9) |
-> | Mint a sequential code that must not skip numbers | a **primer**: the mint and preppers run before the validators, so a create they refuse has already used its number ([`entities.patterns.md`](./entities.patterns.md) → Server-generated sequential codes) |
+> | Mint a sequential code that a refused create must not use up (it can still skip on a rollback; gapless numbers need a counter table) | a **primer**: the mint and preppers run before the validators, so a create they refuse has already used its number ([`entities.patterns.md`](./entities.patterns.md) → Server-generated sequential codes) |
 > | Only a gated domain action may set or change it (`Status` on approve) | a **prepper** that restores it unless a scoped trusted-writer flag is set — [`entities.patterns.md`](./entities.patterns.md) → Role-gated transitions (server-owned state) |
 > | A counter a public action bumps (views, likes) | `[ServerOwned]`, so an edit keeps it, and the bump as one statement on the `DbContext`: `await db.Products.Where(x => x.Id == id).ExecuteUpdateAsync(s => s.SetProperty(x => x.ViewCount, x => x.ViewCount + 1), token)` — atomic; no prepper, primer or reactor runs, so the concurrency token stays and an open edit is not made stale. Repeat the read's scope in the `Where` (global filters do not run on `db`). An edit writes every column, so a bump during one is lost: a count that must be exact goes on a row of its own |
 >
@@ -1745,7 +1746,8 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 > only at an attachment the owner already links: one naming another owner's is cleared, and without `NewBytes` of its
 > own the save answers 409.
 > The upload route always creates a link, whatever `Id` its form sends. Repeat a link rule — allowed file types, a file that must not be deleted — in the owner's validator (keys like
-> `Attachments[0].NewFileName`). Leaving `Attachments` off the owner's input DTO is no way out: start-up warns about it,
+> `Attachments[0].NewFileName`). A Regira SPA sends `NewFileName` on every kept link (the slice's `create` copies the
+> stored name), so test `NewBytes` (or `Id <= 0`) for a new file, and compare with the stored name for a rename. Leaving `Attachments` off the owner's input DTO is no way out: start-up warns about it,
 > and a Regira SPA sends renames, order and removals in the owner's save, which are then dropped without an error.
 > `configure` receives the link entity's builder, so a link validator registers there:
 > `e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments, a => a.AddValidator<ProductAttachmentValidator>())`,
@@ -1889,7 +1891,9 @@ field-level 400 beats a generic 409.
 A write built on a stale read — the row no longer holds the concurrency token the client sent, or another
 writer removed it — surfaces as `EntityConcurrencyException` (EF's `DbUpdateConcurrencyException` is its
 `InnerException`). Every write surface returns **409 Conflict** through the same filter, with a `ProblemDetails`
-titled **"Concurrency conflict"**, so a client can tell "reload and try again" from the constraint 409. Tokens,
+titled **"Concurrency conflict"**, so a client can tell "reload and try again" from the constraint 409. Its detail is
+always `EntityConcurrencyException.ClientMessage`: the message you pass is not sent, so explain a refusal with an
+`EntityInputException` (400) instead. Tokens,
 the DTO rules and what each route checks: [`entities.patterns.md`](./entities.patterns.md) → Optimistic
 concurrency.
 

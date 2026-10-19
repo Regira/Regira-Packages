@@ -1,6 +1,6 @@
 # Regira Office AI Agent Instructions
 
-> Regira Office is a collection of document and communication libraries for .NET. All modules share a common set of abstractions from `Common.Office` and are designed to be interchangeable.
+> Regira Office is a collection of document and communication libraries for .NET. All modules share a common set of abstractions from `Regira.Office` and are designed to be interchangeable.
 
 **When a user's request targets a specific Office sub-module, load its dedicated instruction file for the exact API.**
 

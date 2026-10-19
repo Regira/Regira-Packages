@@ -6,7 +6,7 @@
 
 <!-- no-compile -->
 ```csharp
-var ocr = new Regira.Office.OCR.Tesseract.OcrManager(new OcrManager.Options
+var ocr = new Regira.Office.OCR.Tesseract.OcrManager(new Regira.Office.OCR.Tesseract.OcrManager.Options
 {
     Language      = "en",
     DataDirectory = "./tessdata"

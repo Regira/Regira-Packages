@@ -128,7 +128,7 @@ XDocument ubl = converter.Convert(new UblDocumentInput
 | `IInvoiceParty.Title` | `PartyName/Name`, `PartyLegalEntity/RegistrationName` and `Contact/Name` |
 | `IInvoiceParty.Address` | `PostalAddress`. Peppol requires one with a `CountryCode` for both parties (BR-08 to BR-11); `IInvoiceParty` implementations without the property write none. The code is written trimmed and upper-case, and an address without one throws `ArgumentException` |
 | `IInvoiceParty.ContactData` | `Contact/Telephone` and `Contact/ElectronicMail`: the first phone and the first e-mail entry |
-| `IInvoice.Code` | `ID`, `OrderReference/ID` and each attachment's `ID`. `BuyerReference` (BT-10) is not written: when the buyer gave one, add it to the returned `XDocument` |
+| `IInvoice.Code` | `ID`, `OrderReference/ID` and each attachment's `ID`. `BuyerReference` (BT-10) is not written: when the buyer gave one, add it to the returned `XDocument`. `PeppolService` sends `OrderReference/ID` as the message reference and seals it: replace it only together with a unique reference of your own |
 | `IInvoice.IssueDate`, `DueDate` | `IssueDate`, `DueDate` |
 | `IInvoice.Description` | The invoice `Note` |
 | `IInvoice.Attachments` | `AdditionalDocumentReference`, each file embedded |

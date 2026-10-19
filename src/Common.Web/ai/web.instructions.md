@@ -323,7 +323,7 @@ the UI inside the Development block: `app.UseSwagger(); app.UseSwaggerUI();`.
 Display enums as strings in Swagger:
 
 ```csharp
-builder.Services.AddControllers().DisplayEnumAsString();
+builder.Services.AddControllers().DisplayEnumAsString();   // using Regira.Web.Swagger.Extensions;
 ```
 
 ---

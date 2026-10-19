@@ -154,7 +154,14 @@ public class SupplierNormalizer(INormalizer normalizer, ContactDataNormalizer co
 `ContactDataNormalizer` and `AddressNormalizer` are app classes too: an `EntityNormalizerBase<IContactDetails>` that
 fills `NormalizedValue` and an `EntityNormalizerBase<AddressBase>` that fills `NormalizedContent`, each registered with
 `services.AddTransient<…>()`. Normalize phone numbers with `Regira.Globalization.LibPhoneNumber`'s
-`PhoneNumberFormatter` inside the contact-data normalizer, so `0475…` and `+32 475…` match the same search.
+`PhoneNumberFormatter` inside the contact-data normalizer, so `+32 475…` and `32475…` find the row. `?q=` itself is not
+phone-normalized: a national-format query (`0475…`) matches only when the national form is stored too, so append it to
+`NormalizedValue`.
+
+- **Re-normalization timing** is as for EntityLabels (*Gotchas*): a save that leaves `ContactData` or `Addresses` out (a
+  PATCH, a PUT without them) hands the normalizer `null`, and `NormalizedContent` loses their text. Keep that text in a
+  column of its own that a prepper sets only when the collection is not `null`, listed in
+  `[Normalized(SourceProperties = …)]`.
 
 ### DTOs
 
@@ -484,7 +491,7 @@ same on `PartyId` — and scope a signed-in user's rows by the claim with a glob
 ### Gotchas
 
 - **Filtered includes trip an EF warning.** A filtered include chained into a `ThenInclude` (`.Include(x => x.ParentRelationships!.Where(r => r.TypeId == typeId)).ThenInclude(...)`) triggers `CoreEventId.NavigationBaseIncludeIgnored`; suppress it in `AddDbContext`: `options.ConfigureWarnings(w => w.Ignore(CoreEventId.NavigationBaseIncludeIgnored))`. Archived counterparts need no such predicate — the archived query filter reaches into `Include()` on its own.
-- **Normalize children before composing the parent.** The party normalizer first runs the contact-data/address normalizers, then joins their normalized output into the party's `NormalizedContent` — so one global `Q` filter finds parties by phone number or city (see §Filtering with Normalized Content in the instructions). Normalize phone numbers with `Regira.Globalization.LibPhoneNumber`'s `PhoneNumberFormatter` so `0475…` and `+32 475…` match.
+- **Normalize children before composing the parent.** The party normalizer first runs the contact-data/address normalizers, then joins their normalized output into the party's `NormalizedContent` — so one global `Q` filter finds parties by phone number or city (see §Filtering with Normalized Content in the instructions). Normalize phone numbers with `Regira.Globalization.LibPhoneNumber`'s `PhoneNumberFormatter` so `+32 475…` and `32475…` match; `?q=` is not phone-normalized, so store the national form (`0475…`) too when users search by it.
 - **Sorting builder:** implement `ISortedQueryBuilder<Party, int, PartySortBy>` directly (there is no `SortedQueryBuilderBase`) and continue existing ordering with `OrderOrThenBy(...)`/`OrderOrThenByDescending(...)` — never a hand-rolled `is IOrderedQueryable<T>` check.
 - **TPH costs one budget slot**, not one per subtype — a strong reason to prefer TPH over a table per party type.
 
@@ -729,7 +736,7 @@ services.AddSingleton<ITenantContext>(p => p.GetRequiredService<WritableTenantCo
 The active tenant travels **inside the caller's credential** as a `tenant` claim — no header or route parameter on ordinary requests:
 
 - At sign-in, a claims step reads the requested tenant (e.g. `?tenantId=`), verifies membership, and adds `new Claim("tenant", tenantId)` plus that tenant's permission claims (`permissions=can_read`, …) from a `TenantUserClaim` store (user × tenant × claim rows).
-- **Switching tenants = re-issuing the credential.** With a JWT that means re-minting the token; with a cookie session it means signing in again with the new claim set. Either way `TenantContext` picks the new claim up automatically — it reads `HttpContext.User`, so it does not care which scheme put the claim there.
+- **Switching tenants = re-issuing the credential.** With a JWT that means re-minting the token; with a cookie session it means signing in again with the new claim set. `AccountControllerBase.Refresh()` rebuilds the claims through the same `IUserClaimsPrincipalFactory`, so a claims step that reads `?tenantId=` (and verifies membership) also serves the SPA's `authStore.refresh({ tenantId })`: no `Refresh()` override is needed. Either way `TenantContext` picks the new claim up automatically — it reads `HttpContext.User`, so it does not care which scheme put the claim there.
   - ⚠️ If you drive this off a refresh endpoint, note that `auth/refresh` and `auth/refresh-token` are different: the first needs a **still-valid** bearer token, the second takes the refresh token and works after expiry. See `security.instructions` → *Refresh Tokens*.
 - Per-tenant permissions are enforced with a global authorization filter checking the claim (e.g. forbid unless `permissions=can_read`).
 - **On Microsoft Entra ID the tenant is already there** as `tid`, and the stable per-user key is **`oid`, not `sub`** — Entra's `sub` is pairwise per application, so keying tenant or owner rows on it fragments one person across apps.

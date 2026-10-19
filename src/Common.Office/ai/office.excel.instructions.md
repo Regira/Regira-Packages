@@ -52,7 +52,7 @@ Only NpoiMapper reads the legacy binary `.xls` (Excel 97–2003); the other back
 
 **NpoiMapper pins NPOI to exactly 2.7.2.** From 2.8.0 the NPOI binaries on nuget.org carry an Open Source Maintenance Fee agreement that requires a paid subscription from organisations with annual revenue of US$10,000 or more. Do not raise NPOI in the application: a direct reference overrides the pin with only a restore warning (NU1608). From 2.7.3 Npoi.Mapper throws `MissingMethodException` when it writes a cell, and 2.8 or later puts the application under that agreement.
 
-**NpoiMapper pins SixLabors.ImageSharp to 3.1.12**, because from 3.2.0 and 4.0.0 a project that references ImageSharp directly needs a Six Labors licence key to build. 3.1.12 restores with advisories GHSA-j3p4-wp97-rph4, GHSA-j9gm-c75j-xc9q and GHSA-jjfr-hcj7-qf5w (NU1903) and GHSA-gwg2-r3hj-4w44 and GHSA-wmxv-xphr-5c9g (NU1902), which 3.2.0 and 4.1.2 fix. The backend decodes no images: NPOI loads a picture through ImageSharp only when the application calls `IPicture.Resize()`, `GetPreferredSize()` or `GetImageDimension()`. Taking the fixes is the user's licence decision, not a routine bump: the application references `SixLabors.ImageSharp` 3.2.0 and then needs a key to build (`sixlabors.lic` in the project directory, or the `SixLaborsLicenseKey` property), which Six Labors issues on application to open-source projects, non-profits and companies under US$1M annual revenue, and sells otherwise. NuGet audit can keep flagging 3.2.0: it reads the GitHub Advisory Database, whose entries name only 4.1.2, while Six Labors' own advisories name 3.2.0 as well.
+**NpoiMapper pins SixLabors.ImageSharp to 3.1.12**, because from 3.2.0 and 4.0.0 a project that references ImageSharp directly needs a Six Labors licence key to build in Release (a Debug build only warns; `-c Release` and `dotnet publish` fail). 3.1.12 restores with advisories GHSA-j3p4-wp97-rph4, GHSA-j9gm-c75j-xc9q and GHSA-jjfr-hcj7-qf5w (NU1903) and GHSA-gwg2-r3hj-4w44 and GHSA-wmxv-xphr-5c9g (NU1902), which 3.2.0 and 4.1.2 fix. The backend decodes no images: NPOI loads a picture through ImageSharp only when the application calls `IPicture.Resize()`, `GetPreferredSize()` or `GetImageDimension()`. Taking the fixes is the user's licence decision, not a routine bump: the application references `SixLabors.ImageSharp` 3.2.0 and then needs a key to build (`sixlabors.lic` in the project directory, or the `SixLaborsLicenseKey` property), which Six Labors issues on application to open-source projects, non-profits and companies under US$1M annual revenue, and sells otherwise. NuGet audit can keep flagging 3.2.0: it reads the GitHub Advisory Database, whose entries name only 4.1.2, while Six Labors' own advisories name 3.2.0 as well.
 
 ---
 
@@ -128,8 +128,8 @@ foreach (var sheet in sheets)
 
 // Read typed
 IExcelService<Product> typed = new Regira.Office.Excel.MiniExcel.ExcelManager<Product>();
-var sheets = await typed.Read(file);
-foreach (var product in sheets.First().Data!)
+var products = await typed.Read(file);
+foreach (var product in products.First().Data!)
     Console.WriteLine(product.Name);
 
 // Write sheets to a new workbook

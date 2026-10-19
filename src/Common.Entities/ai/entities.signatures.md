@@ -2057,6 +2057,8 @@ public class EntityConstraintException(string message, Exception? innerException
 
 // HTTP 409, ProblemDetails title "Concurrency conflict": a stale concurrency token, or a row another writer
 // removed. InnerException is EF Core's DbUpdateConcurrencyException (the conflicting rows are in Entries).
+// The response detail is always ClientMessage: the message you pass is not sent. Explain a refusal with an
+// EntityInputException (400) instead.
 public class EntityConcurrencyException(string message, Exception? innerException = null)
     : Exception(message, innerException)
 {

@@ -94,7 +94,7 @@ Task<IMailResponse> Send(IMessageObject message, CancellationToken cancellationT
 ```csharp
 using Regira.Office.Mail.Models;                        // MailAddress, MailRecipient
 
-MailAddress addr  = "alice@example.com";  // implicit from string
+MailAddress addr  = "alice@example.com";  // implicit from a bare address only: "Alice <alice@example.com>" throws EmailFormatException; set DisplayName instead
 MailAddress named = new() { Email = "alice@example.com", DisplayName = "Alice" };
 ```
 

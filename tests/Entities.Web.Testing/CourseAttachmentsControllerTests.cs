@@ -45,7 +45,7 @@ public class CourseAttachmentsEndpointTests(ContosoEndpointsApiFactory factory) 
         Assert.Equal(HttpStatusCode.OK, upload.StatusCode);
         var saved = (await upload.Content.ReadFromJsonAsync<SaveResult<EntityAttachmentDto>>())!.Item;
 
-        Assert.Equal("http://localhost/courses/3/files/v2.txt?inline=True", saved.Uri);
+        Assert.Equal("http://localhost/courses/3/files/v2.txt?inline=true", saved.Uri);
         Assert.Equal("mapped twice", await client.GetStringAsync(saved.Uri));
         Assert.Equal("mapped twice", await client.GetStringAsync($"/v2/courses/files/{saved.Id}"));
         Assert.Equal("mapped twice", await client.GetStringAsync("/v2/courses/3/files/v2.txt"));

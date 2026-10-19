@@ -61,7 +61,7 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
     public virtual async Task<ActionResult<DeleteResult<TDto>>?> Delete([FromRoute] int id)
         => await this.Delete<TEntity, int, TDto>(id) ?? NotFound();
 
-    // Download
+    /// <summary>Downloads the file of link <paramref name="id"/>: the link's <c>Id</c>, not its <c>AttachmentId</c>.</summary>
     [HttpGet("files/{id}")]
     public virtual async Task<IActionResult> GetFile([FromRoute] int id, bool inline = true)
     {

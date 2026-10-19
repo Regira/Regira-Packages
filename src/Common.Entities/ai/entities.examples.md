@@ -1057,6 +1057,10 @@ using Regira.Entities.DependencyInjection.Attachments;       // HasAttachments
 using Regira.Entities.DependencyInjection.Extensions;        // UseEntities, UseDefaults
 using Regira.Entities.Web.Attachments.DependencyInjection;   // UseAttachmentUris
 using Regira.IO.Storage.FileSystem;                          // BinaryFileService, FileSystemOptions
+// for the model and controller below
+using Regira.Entities.Attachments.Abstractions;              // IHasAttachments, IEntityAttachment
+using Regira.Entities.Attachments.Models;                    // EntityAttachment, Attachment
+using Regira.Entities.Web.Attachments.Abstractions;          // EntityAttachmentControllerBase
 
 // Attachment entity — inherit the `EntityAttachment` base (maps to int, int, int, Attachment) and set
 // ObjectType in the constructor.
