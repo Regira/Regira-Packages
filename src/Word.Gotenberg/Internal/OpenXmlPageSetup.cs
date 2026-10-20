@@ -9,6 +9,9 @@ using WordDrawing = DocumentFormat.OpenXml.Wordprocessing.Drawing;
 using Margins = Regira.Office.Models.Margins;
 using RegiraPageOrientation = Regira.Office.Models.PageOrientation;
 using Wp = DocumentFormat.OpenXml.Drawing.Wordprocessing;
+using WordPageSizes = Regira.Office.Word.Layout.WordPageSizes;
+using PictureScaling = Regira.Office.Word.Layout.PictureScaling;
+using TableScaling = Regira.Office.Word.Layout.TableScaling;
 
 namespace Regira.Office.Word.Gotenberg.Internal;
 
@@ -24,6 +27,7 @@ namespace Regira.Office.Word.Gotenberg.Internal;
 internal static class OpenXmlPageSetup
 {
     private const double TwipsPerPoint = 20;
+    private const double EmusPerPoint = 12700;
 
     public static byte[] Apply(byte[] source, ConversionOptions options)
     {
@@ -89,7 +93,7 @@ internal static class OpenXmlPageSetup
 
         var originalWidth = TextWidth(pageSize, pageMargin);
 
-        var (width, height) = PageSizes.Twips(settings.PageSize);
+        var (width, height) = WordPageSizes.Twips(settings.PageSize);
         var landscape = settings.PageOrientation == RegiraPageOrientation.Landscape;
         pageSize.Width = landscape ? height : width;
         pageSize.Height = landscape ? width : height;
@@ -118,9 +122,10 @@ internal static class OpenXmlPageSetup
         }
         if (options.AutoScalePictures)
         {
-            foreach (var drawing in blocks.SelectMany(DescendantsAndSelf<WordDrawing>))
+            // top-level drawings only: a drawing nested in one, a picture in a text box, keeps its size, as on the other backends
+            foreach (var drawing in blocks.SelectMany(DescendantsAndSelf<WordDrawing>).Where(drawing => !drawing.Ancestors<WordDrawing>().Any()))
             {
-                ScalePicture(drawing, scale);
+                ScalePicture(drawing, originalWidth.Value, newWidth.Value);
             }
         }
     }
@@ -167,8 +172,7 @@ internal static class OpenXmlPageSetup
             ? dxa
             : grid.Sum(column => TryParse(column.Width?.Value, out var w) ? w : 0);
 
-        // the Word.Spire rule: leave a table alone when it is more than 10% narrower than the text width
-        if (width <= 0 || originalWidth / width - 1 >= .1)
+        if (!TableScaling.SpansTextWidth(originalWidth, width))
         {
             return;
         }
@@ -192,20 +196,44 @@ internal static class OpenXmlPageSetup
         }
     }
 
-    private static void ScalePicture(WordDrawing drawing, double scale)
+    /// <param name="drawing">The drawing to scale</param>
+    /// <param name="originalTextWidth">The text width before the page setting</param>
+    /// <param name="newTextWidth">The text width after it</param>
+    private static void ScalePicture(WordDrawing drawing, double originalTextWidth, double newTextWidth)
     {
-        // wp:extent sizes the picture in the text flow, a:ext the graphic inside it; both in EMUs
-        foreach (var extent in drawing.Descendants<Wp.Extent>())
+        // wp:extent sizes the picture in the text flow, a:ext the graphic inside it; both in EMUs. Only the top-level
+        // graphic's a:ext: a:graphicData / pic:pic, wps:wsp or wpg:wgp / its spPr or grpSpPr / a:xfrm. The shapes in a group
+        // sit in the child space its a:chOff and a:chExt map onto that a:ext, so they follow it; the shapes of a drawing
+        // canvas, and a drawing nested in this one, keep their size
+        var flowExtents = Own<Wp.Extent>(drawing);
+        var graphicExtents = Own<A.Extents>(drawing).Where(extents => IsGraphic(Shape(extents)));
+
+        // as far as the text width grows, stopping at Word's 22-inch shape limit as the other Word backends do; the
+        // picture's size in the text flow decides where that is
+        var size = flowExtents.FirstOrDefault();
+        var scale = PictureScaling.Factor(originalTextWidth, newTextWidth, (size?.Cx?.Value ?? 0) / EmusPerPoint, (size?.Cy?.Value ?? 0) / EmusPerPoint);
+
+        foreach (var extent in flowExtents)
         {
             if (extent.Cx?.Value is { } cx) extent.Cx = Scale(cx, scale);
             if (extent.Cy?.Value is { } cy) extent.Cy = Scale(cy, scale);
         }
-        foreach (var extents in drawing.Descendants<A.Extents>())
+        foreach (var extents in graphicExtents)
         {
             if (extents.Cx?.Value is { } cx) extents.Cx = Scale(cx, scale);
             if (extents.Cy?.Value is { } cy) extents.Cy = Scale(cy, scale);
         }
     }
+
+    /// <summary>The shape an <c>a:xfrm</c>'s <c>a:ext</c> sizes: <c>a:xfrm</c> / its <c>spPr</c> or <c>grpSpPr</c> / the shape.</summary>
+    private static OpenXmlElement? Shape(OpenXmlElement transformPart) => transformPart.Parent?.Parent?.Parent;
+
+    /// <summary>Whether the shape is the drawing's graphic itself.</summary>
+    private static bool IsGraphic(OpenXmlElement? shape) => shape?.Parent is A.GraphicData;
+
+    /// <summary>The drawing's elements of the given type, leaving out those of a drawing nested in it.</summary>
+    private static List<T> Own<T>(WordDrawing drawing) where T : OpenXmlElement
+        => drawing.Descendants<T>().Where(element => element.Ancestors<WordDrawing>().First() == drawing).ToList();
 
     private static T GetOrAdd<T>(SectionProperties properties) where T : OpenXmlElement, new()
     {

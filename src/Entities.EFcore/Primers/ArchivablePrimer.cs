@@ -4,10 +4,8 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using Regira.DAL.EFcore.Extensions;
 using Regira.Entities.EFcore.Extensions;
 using Regira.Entities.EFcore.Primers.Abstractions;
-using Regira.Entities.EFcore.Utilities;
 using Regira.Entities.Models.Abstractions;
 using System.Collections;
-using System.Runtime.CompilerServices;
 
 namespace Regira.Entities.EFcore.Primers;
 
@@ -20,21 +18,15 @@ namespace Regira.Entities.EFcore.Primers;
 /// <para>
 /// The row still exists, so a soft delete leaves the rows that depend on it as they are — archivable or not, loaded
 /// or not. EF has already cascaded the delete to the loaded ones by the time this primer runs (see
-/// <see cref="UndoCascades"/>), and this primer undoes that first.
+/// <see cref="UndoCascades"/>), and the primer pass undoes that first. The pass recognizes this primer by its type, a
+/// subclass included: a primer that wraps it in a decorator is not recognized, and EF's cascade then deletes the
+/// loaded dependents of a row this primer only archives. Derive from it rather than wrap it.
 /// </para>
 /// </summary>
 public class ArchivablePrimer : EntityPrimerBase<IArchivable>
 {
-    private static readonly EntryMarks SoftDeletes = new();
-    private static readonly ConditionalWeakTable<DbContext, object> CascadesUndone = new();
-
     public override Task PrepareAsync(IArchivable entity, EntityEntry entry, CancellationToken token = default)
     {
-        if (entry.State == EntityState.Deleted)
-        {
-            // before the first delete of the pass is converted — a cascaded dependent may be one of the deletes
-            UndoCascades(entry.Context);
-        }
         if (entry.State == EntityState.Deleted)
         {
             // Modified flags every column — unflag them (which also resets each to its original value), then set and flag
@@ -51,7 +43,6 @@ public class ArchivablePrimer : EntityPrimerBase<IArchivable>
             }
             entity.IsArchived = true;
             entry.Property(nameof(IArchivable.IsArchived)).IsModified = true;
-            SoftDeletes.Add(entry);
         }
         return Task.CompletedTask;
     }
@@ -70,14 +61,12 @@ public class ArchivablePrimer : EntityPrimerBase<IArchivable>
     /// cascades nothing to undo (<see cref="ArchivableRemovalExtensions"/>), so there a dependent the caller removed
     /// stays removed. Nothing is undone on a context that does not cascade immediately.
     /// </para>
+    /// <para>
+    /// The primer pass calls it once, before this primer converts the first delete of the pass.
+    /// </para>
     /// </summary>
-    private static void UndoCascades(DbContext dbContext)
+    internal static void UndoCascades(DbContext dbContext)
     {
-        if (CascadesUndone.TryGetValue(dbContext, out _))
-        {
-            return;
-        }
-        CascadesUndone.AddOrUpdate(dbContext, dbContext);
         if (dbContext.ChangeTracker.CascadeDeleteTiming != CascadeTiming.Immediate)
         {
             return;
@@ -151,26 +140,8 @@ public class ArchivablePrimer : EntityPrimerBase<IArchivable>
         };
 
     /// <summary>
-    /// Whether this primer turned <paramref name="entry"/>'s delete into the soft delete it now holds. Recorded when it
-    /// converts one, since the result cannot be told from an ordinary update that archives: a stub attached with
-    /// <c>IsArchived = true</c> flags the same single column. Like the delete it came from, a soft delete may be a stub,
-    /// whose original values are not the stored ones. The record lasts until a primer pass completes (<see cref="EndPass"/>).
+    /// Ends a completed primer pass: the deletes the write path marked without a cascade are converted. A pass broken
+    /// off keeps the marks for the save's retry.
     /// </summary>
-    internal static bool IsSoftDelete(EntityEntry entry) => SoftDeletes.Contains(entry);
-
-    /// <summary>
-    /// Starts a primer pass: the cascades of its deletes are still to be undone. Reset here rather than when a pass
-    /// ends, so a pass that a later primer broke off does not leave the next one skipping the undo.
-    /// </summary>
-    internal static void BeginPass(DbContext dbContext) => CascadesUndone.Remove(dbContext);
-
-    /// <summary>
-    /// Ends a completed primer pass: the primers that read <see cref="IsSoftDelete"/> have run, and the deletes the
-    /// write path marked without a cascade are converted. A pass broken off keeps both for the save's retry.
-    /// </summary>
-    internal static void EndPass(DbContext dbContext)
-    {
-        SoftDeletes.Clear(dbContext);
-        dbContext.ForgetRemovalsWithoutCascade();
-    }
+    internal static void EndPass(DbContext dbContext) => dbContext.ForgetRemovalsWithoutCascade();
 }

@@ -13,8 +13,9 @@ Requires an Azure Storage account: `AzureOptions` takes its connection string an
 ## Documentation
 
 - [Azure Blob Storage](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/#azure-blob-storage-binaryblobservice) — setup, the `AzureOptions` settings, and how `Save` sets a blob's content type
+- [File identification](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/#file-identification) — identifiers relative to the container, and the check that keeps them inside it
 - [IO.Storage examples](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/docs/examples.html) — swapping backends by configuration and mirroring a GitHub folder to Azure
-- [Regira IO.Storage](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/) — the shared `IFileService` contract and how files are identified
+- [Regira IO.Storage](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/) — the shared `IFileService` contract and the other storage backends
 
 ## License
 

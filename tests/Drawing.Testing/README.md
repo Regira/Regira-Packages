@@ -3,7 +3,8 @@
 NUnit tests for the two `IImageService` backends of [Regira Drawing](../../src/Common.Media/README.md):
 [Drawing.GDI](../../src/Drawing.GDI/README.md) and [Drawing.SkiaSharp](../../src/Drawing.SkiaSharp/README.md). Each
 backend runs the same suite — format conversion, resize, crop, rotate, transparency, drawing positions and text, and
-`ImageBuilder` composition — alongside color and dimension tests.
+`ImageBuilder` composition — alongside color and dimension tests. `GdiPrintServiceTests` covers how
+[Printing.GDI](../../src/Printing.GDI/README.md) picks a printer's paper tray; nothing is printed.
 
 ## Running
 

@@ -1,6 +1,6 @@
 # Regira.Office.Clients
 
-HTTP clients for the hosted Regira Office API, so an application uses [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/) services without hosting their backends. `AddOfficeClients` registers typed `HttpClient` implementations of the Office interfaces, pointed at `OfficeClientOptions.BaseUrl`: HTML and images to PDF, PDF merge, split, text and page images, Word creation, conversion, merging and text extraction, Excel, CSV, barcodes and QR codes, OCR, and mail-message parsing. Every call carries the application's `regira.services` license key, registered with `UseRegira`, in the `X-License-Key` header; `ILicenseStatusClient.GetStatus()` asks the API what it makes of that key.
+HTTP clients for the hosted Regira Office API, so an application uses [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/) services without hosting their backends. `AddOfficeClients` registers typed `HttpClient` implementations of the Office interfaces, pointed at `OfficeClientOptions.BaseUrl`: HTML and images to PDF, PDF merge, split, text and page images, Word creation, conversion, merging and text extraction, Excel, CSV, barcodes and QR codes, OCR, and mail-message parsing. Every call carries the application's `regira.services` license key, registered with `UseRegira`, in the `X-License-Key` header; `ILicenseStatusClient.GetStatus()` asks the API what it makes of that key. Each client is named after its interface, so `services.AddHttpClient(nameof(IWordConverter), …)` sets its timeout, handlers or resilience; a conversion can outlast `HttpClient`'s 100-second default.
 
 ## Installation
 
@@ -14,6 +14,7 @@ Without a key, calls fall under the rate-limited free tier of the hosted service
 
 - [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/) — the Office modules and the interfaces these clients implement
 - [Licensing](https://regira.github.io/Regira-Packages/licensing.html) — the free-tier limits, registering a key with `UseRegira`, and checking it with `ILicenseStatusClient`
+- [Word through the Office API](https://regira.github.io/Regira-Packages/src/Common.Office/docs/word/#office-api) — what `WordClient` sends, and the page settings the API's conversion does not take: orientation and margins
 - [Word.Gotenberg beside the Office clients](https://regira.github.io/Regira-Packages/src/Common.Office/docs/word/#wordgotenberg) — converting Word documents with a Gotenberg server while the Office API serves the rest
 
 ## License

@@ -42,7 +42,7 @@ public static class DrawUtility
         var img = imageLayer.Source;
         var options = imageLayer.Options ?? new ImageLayerOptions();
 
-        var source = img.ToBitmap();
+        using var source = img.ToBitmap();
 
         // Change opacity
         using var opacityImage = GdiUtility.ChangeOpacity(source, options.Opacity);

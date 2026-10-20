@@ -256,4 +256,92 @@ public class BotDetectorTests
 
         Assert.That(detector.IsBot("Mozilla/5.0 AcmeProbe/1.0 uptime check"), Is.True);
     }
+
+    /// <summary>
+    /// Referers no browser sends: an http(s) origin with no "/" after the host (a browser writes at least
+    /// "/"), a #fragment (a browser strips it), or no absolute URL at all.
+    /// </summary>
+    [TestCase("https://blog.regira.com")]
+    [TestCase("http://regira.com")]
+    [TestCase("http://www.regira.com?utm_source=x")]
+    [TestCase("https://regira.com/licensing#request")]
+    [TestCase("HTTPS://EXAMPLE.COM")]
+    [TestCase("https://example.com:8443")]
+    [TestCase("binance.com")]
+    // no scheme, only a "://" in the query: not another scheme's URL
+    [TestCase("example.com/?r=https://example.org/")]
+    public void ForgedReferrers_AreFlagged_WhenEnabled(string referrer)
+    {
+        using var detector = Create(new BotDetectionConfig { DetectForgedReferrers = true });
+        Assert.That(detector.IsForgedReferrer(referrer), Is.True);
+    }
+
+    [TestCase("https://regira.com/")]
+    [TestCase("https://www.google.com/")]
+    [TestCase("https://blog.regira.com/a-post?x=1")]
+    [TestCase("https://example.com:8443/")]
+    // Chrome on Android, opened from the Gmail app: other schemes are not judged
+    [TestCase("android-app://com.google.android.gm/")]
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase(" ")]
+    public void BrowserReferrers_AreNotFlagged_WhenEnabled(string? referrer)
+    {
+        using var detector = Create(new BotDetectionConfig { DetectForgedReferrers = true });
+        Assert.That(detector.IsForgedReferrer(referrer), Is.False);
+    }
+
+    [Test]
+    public void ForgedReferrerDetection_IsOffByDefault()
+    {
+        using var detector = Create();
+        Assert.Multiple(() =>
+        {
+            Assert.That(detector.IsForgedReferrer("https://blog.regira.com"), Is.False);
+            Assert.That(detector.IsForgedReferrer("binance.com"), Is.False);
+        });
+    }
+
+    [Test]
+    public void ReferrerMarkers_Flag_WithTheSwitchOff_CaseInsensitively()
+    {
+        using var detector = Create(new BotDetectionConfig { ReferrerMarkers = [" Backlink "] });
+        Assert.Multiple(() =>
+        {
+            Assert.That(detector.IsForgedReferrer("https://SEOBacklinkGenerator.example/"), Is.True);
+            Assert.That(detector.IsForgedReferrer("https://www.google.com/"), Is.False);
+            Assert.That(detector.IsForgedReferrer("https://blog.regira.com"), Is.False, "the shape check stays off");
+        });
+    }
+
+    [Test]
+    public void ReferrerRules_CountAsRules()
+    {
+        var logger = new CapturingLogger<BotDetector>();
+        using var detector = Create(
+            new BotDetectionConfig
+            {
+                IncludeDefaultMarkers = false, MinUserAgentLength = 0, DetectProbeRequests = false,
+                ReferrerMarkers = ["backlink", "dofollow"]
+            }, logger);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Error), Is.False, "a referrer list is a rule");
+            Assert.That(logger.Entries.Any(e => e.Message.Contains("loaded 2 bot detection rules")), Is.True);
+        });
+    }
+
+    [Test]
+    public void HotReload_SwapsTheReferrerMarkers()
+    {
+        var monitor = new TestOptionsMonitor<BotDetectionConfig>(new BotDetectionConfig());
+        using var detector = new BotDetector(monitor, NullLogger<BotDetector>.Instance);
+
+        Assert.That(detector.IsForgedReferrer("https://freedofollow.example/"), Is.False);
+
+        monitor.Set(new BotDetectionConfig { ReferrerMarkers = ["dofollow"] });
+
+        Assert.That(detector.IsForgedReferrer("https://freedofollow.example/"), Is.True);
+    }
 }

@@ -14,6 +14,8 @@ public class GdiDrawPositionTests
 
     [Test]
     public Task AddImage_No_Params() => _imgService.AddImage_No_Params();
+    [Test]
+    public Task AddImage_Rotated() => _imgService.AddImage_Rotated();
 
     // Positioned
     [Test]

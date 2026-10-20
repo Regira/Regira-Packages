@@ -22,47 +22,35 @@ public class HasConcurrencyTokenDbPrimer : EntityPrimerBase<IHasConcurrencyToken
     public override async Task PrepareAsync(IHasConcurrencyToken entity, EntityEntry entry, CancellationToken token = default)
     {
         var property = entry.Property(nameof(IHasConcurrencyToken.ConcurrencyToken));
-        if (entry.State == EntityState.Modified)
-        {
-            // a soft delete — the ArchivablePrimer made this update of a delete, possibly of a stub, and says so — carries
-            // no token of its own, like the delete it came from; any other update is compared with the token its entry holds
-            if (!property.IsModified && ArchivablePrimer.IsSoftDelete(entry))
-            {
-                await CompareUnclaimedWithStored(entry, property, token);
-            }
-            entity.ConcurrencyToken = Guid.NewGuid();
-            return;
-        }
-
-        if (entry.State == EntityState.Added && entity.ConcurrencyToken == Guid.Empty)
-        {
-            entity.ConcurrencyToken = Guid.NewGuid();
-            return;
-        }
-
-        if (entry.State == EntityState.Deleted && entity.ConcurrencyToken == Guid.Empty)
+        // a token marked modified is a claim — the write path marks every property of an update it tracks — and is
+        // compared as it stands, an empty stored token included
+        if (entry.State is EntityState.Modified or EntityState.Deleted && !property.IsModified)
         {
             await CompareUnclaimedWithStored(entry, property, token);
+        }
+
+        if (entry.State == EntityState.Modified || (entry.State == EntityState.Added && entity.ConcurrencyToken == Guid.Empty))
+        {
+            entity.ConcurrencyToken = Guid.NewGuid();
         }
     }
 
     /// <summary>
-    /// Points a stub delete — hard or soft — at the stored token, so it deletes or archives the row instead of failing
-    /// as a conflict.
+    /// Points an update or delete that makes no claim — its token empty and not marked modified — at the stored token,
+    /// so it writes, archives or deletes the row instead of failing as a conflict.
     /// </summary>
     /// <remarks>
     /// A delete is commonly issued from a stub — <c>Remove(new Order { Id = id })</c>, and the framework's own
-    /// related-collection handling does the same — which carries no token. EF builds
-    /// <c>DELETE ... WHERE ConcurrencyToken = @original</c> from that stub — or, for an <see cref="IArchivable"/>,
-    /// <c>UPDATE ... WHERE ConcurrencyToken = @original</c> — so the row is compared against <see cref="Guid.Empty"/>,
-    /// matches nothing, and the delete fails as a concurrency conflict every time it is retried: opting an entity into
-    /// the marker would otherwise make such deletes impossible. An empty token is the absence of a claim rather than a
-    /// claim of emptiness, so the delete goes ahead unconditionally, as it did before the entity carried the marker. A
-    /// caller that *does* hold a token keeps its check: a non-empty value is compared.
+    /// related-collection handling does the same — which carries no token, and so does the soft delete the
+    /// <see cref="ArchivablePrimer"/> makes of it, or an update of an attached stub. EF builds
+    /// <c>... WHERE ConcurrencyToken = @original</c>, so the row is compared against <see cref="Guid.Empty"/>, matches
+    /// nothing, and the write fails as a concurrency conflict every time it is retried: opting an entity into the marker
+    /// would otherwise make such deletes impossible. An empty token is the absence of a claim rather than a claim of
+    /// emptiness, so the write goes ahead unconditionally. A caller that *does* hold a token keeps its check: a
+    /// non-empty value is compared, and so is an empty one the write path tracked as the row's.
     /// <para>
-    /// One read per stub row, so removing N stubs in a loop is N round trips — a caller deleting many rows by key
-    /// loads them in one query instead. The attachments prepper resolves its own attachment stubs before this runs,
-    /// for the case of a file row that is already gone, which is a skip there and a conflict here.
+    /// One read per such row, so removing N stubs in a loop is N round trips — a caller deleting many rows by key
+    /// loads them in one query instead. A row another writer removed meanwhile stays a conflict.
     /// </para>
     /// </remarks>
     private static async Task CompareUnclaimedWithStored(EntityEntry entry, PropertyEntry property, CancellationToken token)

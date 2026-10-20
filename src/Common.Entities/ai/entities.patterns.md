@@ -85,13 +85,13 @@ foreach (var product in products)
 await links.SaveChanges();   // one flush; pipeline writes files, fills Path/Length, assigns AttachmentId
 ```
 
-- The bytes→file step runs only inside this pipeline, **not** during an owner-graph cascade. Set the nested `Attachment` on the link, don't nest under `owner.Attachments` and save the owner.
-- The `New*` fields (`NewBytes`/`NewFileName`) **replace** an existing attachment's content — they don't create one. Setting them without a nested `Attachment` leaves `AttachmentId` at `0` and fails the FK. The content type follows the file name: `NewContentType` is obsolete and ignored.
+- A new link takes its file either as a nested `Attachment` (`FileName` + `Bytes`) or as `NewFileName` + `NewBytes`, through the link service or inside the owner's `Attachments` — on an owner created with it, or updated with it added. An owner update syncs that collection whole, so a link it leaves out is deleted: for an owner that already has files, add through the link service.
+- On a kept link, `NewFileName` renames and `NewBytes` replaces its file. The content type follows the file name: `NewContentType` is obsolete and ignored.
 
 ## In-code recipes (how_to)
 
 Task-oriented answers for the in-code jobs that don't map onto a single type — the source of the MCP
-`how_to` tool. Each recipe below carries a `<!-- how_to: key=… aliases=… -->` marker; the knowledge-base
+`how_to` tool (a few recipes live in other guides, under their own heading). Each recipe below carries a `<!-- how_to: key=… aliases=… -->` marker; the knowledge-base
 builder parses these markers and the body under them (up to the next heading) into the `how_to` tool's
 recipe set, so the tool and this guide never drift. To add or edit a recipe, edit the body here.
 
@@ -116,22 +116,130 @@ await links.Add(new ProductAttachment
 await links.SaveChanges(); // pipeline writes the file, fills Path/Length, assigns AttachmentId
 ```
 
-- The bytes→file step runs only inside this pipeline, **not** during an owner-graph cascade.
-- `New*` fields (`NewBytes`/`NewFileName`) **replace** an existing
-  attachment's content — they don't create one. Without a nested `Attachment`, `AttachmentId`
-  stays `0` and the FK fails. The content type follows the file name (`NewContentType` is ignored).
+- `NewFileName` + `NewBytes` in place of the nested `Attachment` work too, and so does saving the
+  link inside the owner's `Attachments` — but an owner update syncs that collection whole, so a
+  link it leaves out is deleted.
+- On a kept link, `NewFileName` renames and `NewBytes` replaces its file. The content type follows
+  the file name (`NewContentType` is ignored).
 
 **See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "Bulk insert / update")`
 and `get_package(id: "Regira.Entities", section: "examples", heading: "Attachments")`.
 
+### Transform uploaded files before they are stored (resize photos)
+<!-- how_to: key=transform-uploads aliases=resize,orient,exif,compress,photo,image,upload,thumbnail -->
+A prepper changes a file before it is stored: every prepper runs in `Add`/`Modify`/`Save`, and `AttachmentPrimer`
+stores the file after them, inside `SaveChanges()`. Which preppers run, and where they find the content, depends on
+the route; the attachment routes sit under the owner's:
+
+| Route | Preppers | The content |
+|---|---|---|
+| the owner's `POST` / `PUT`, with `Attachments` | the owner's | `NewBytes` and `NewFileName` on each link |
+| `POST {objectId}/files`, `PUT {objectId}/files/{id}` (stores a new `Attachment` and repoints the link) | the link's | a `Stream` on the link's `Attachment`, `Bytes` null |
+| `PUT {objectId}/attachments/{id}` | the link's | `NewBytes` on the link |
+
+Register both preppers on the `UseEntities` options: a prepper registered there runs before the link preppers
+`HasAttachments` adds, which hand `NewBytes` to the link's `Attachment`. Registered after them, a prepper replaces
+`NewBytes` too late.
+
+```csharp
+using Regira.Entities.Attachments.Abstractions;   // IHasAttachments, IEntityAttachment
+using Regira.Entities.Preppers.Abstractions;      // EntityPrepperBase
+using Regira.IO.Extensions;                       // HasStream(), GetBytes()
+
+public interface IPhotoShrinker { byte[] Shrink(byte[] file); }   // yours: turn upright, resize, re-encode; other files as they are
+
+// the owner's POST / PUT
+public class OwnerPhotoPrepper(IPhotoShrinker photos) : EntityPrepperBase<IHasAttachments>
+{
+    public override Task Prepare(IHasAttachments modified, IHasAttachments? original, CancellationToken token = default)
+    {
+        foreach (var link in modified.Attachments ?? [])
+        {
+            if (link.NewBytes?.Length > 0) link.NewBytes = photos.Shrink(link.NewBytes);
+        }
+        return Task.CompletedTask;
+    }
+}
+
+// the link's own routes
+public class LinkPhotoPrepper(IPhotoShrinker photos) : EntityPrepperBase<IEntityAttachment>
+{
+    public override Task Prepare(IEntityAttachment modified, IEntityAttachment? original, CancellationToken token = default)
+    {
+        if (modified.NewBytes?.Length > 0) modified.NewBytes = photos.Shrink(modified.NewBytes);
+        if (modified.Attachment is { } file && file.HasStream())
+        {
+            file.Bytes = photos.Shrink(file.GetBytes()!);
+            file.Stream = null;   // the primer stores the Stream when there is one
+        }
+        return Task.CompletedTask;
+    }
+}
+// services.UseEntities<AppDbContext>(o => o.AddPrepper<OwnerPhotoPrepper>().AddPrepper<LinkPhotoPrepper>())   // before .For<>()
+// AddPrepper on the options: Regira.Entities.DependencyInjection.Preppers
+```
+
+- The owner's prepper reaches every owner through the non-generic `IHasAttachments`, which an owner implements
+  next to `IHasAttachments<TAttachment>`.
+- Clear `Stream` once read: `AttachmentPrimer` stores the `Stream` when there is one, and records its length.
+- Both preppers run for every owner and every file: when only some owners hold photos, return early for the others
+  (`modified is not Product` in the owner's, `modified.ObjectType != nameof(Product)` in the link's). When the
+  shrinker changes the format, rename to match — `link.NewFileName = Path.ChangeExtension(link.NewFileName, ".jpg")`,
+  or the upload's `file.FileName` — since the stored `ContentType` follows the file name.
+
+**See:** `get_package(id: "Regira.Entities", section: "instructions", heading: "Write-pipeline order")`.
+
+### Download an owner's attachments as one ZIP
+<!-- how_to: key=zip-owner-attachments aliases=zip,archive,download,bundle,attachments,files -->
+Read the owner first, so row security decides (out of scope is a 404), then its links through the link service
+`HasAttachments` registered, and zip their bytes under de-duplicated names:
+
+<!-- no-compile -->
+```csharp
+// using Regira.Entities.Attachments.Models;   ← EntityAttachmentSearchObject
+// using Regira.IO.Models;                      ← BinaryFileItem
+// using Regira.IO.Storage.Compression;         ← Zip() — package Regira.IO.Storage
+[HttpGet("{id}/files.zip")]
+public async Task<IActionResult> DownloadAll(int id, CancellationToken token)
+{
+    if (await vehicles.Details(id, token) == null) return NotFound();                 // IEntityService<Vehicle, int>
+    var links = await vehicleAttachments.List(new EntityAttachmentSearchObject { ObjectId = [id] }, token: token);   // IEntityService<VehicleAttachment, int>
+    var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var entries = new List<BinaryFileItem>();
+    foreach (var link in links.Where(x => x.Attachment != null))
+    {
+        var bytes = await files.GetBytes(link.Attachment!, token);                      // IAttachmentFileService<Attachment, int>
+        if (bytes == null) continue;
+        var fileName = link.Attachment!.FileName ?? $"file-{link.Id}";                  // may hold virtual folders (a/b.pdf)
+        var name = fileName;
+        var extension = Path.GetExtension(fileName);
+        for (var i = 2; !names.Add(name); i++)                                          // a repeated name overwrites the earlier entry
+            name = $"{fileName[..^extension.Length]} ({i}){extension}";
+        entries.Add(new BinaryFileItem { FileName = name, Bytes = bytes });             // no Identifier: it would name the entry
+    }
+    var zip = entries.Zip();                                                            // stream-backed, positioned at 0
+    return File(zip.Stream!, "application/zip", $"vehicle-{id}.zip");
+}
+```
+
+Every file is read into memory: cap the count or the summed `Length` for owners with many large files.
+
+**See:** `get_package(id: "Regira.IO.Storage", section: "io.storage.instructions", heading: "ZIP / Compression")`.
+
 ### Mark one child as the primary / featured one
 <!-- how_to: key=primary-child aliases=featured,cover,primary,default,main,thumbnail,flag,attachment -->
 Put the marker on the **child** — a flag, or a rank column it already has (an attachment link entity's
-`SortOrder`, assigned from the incoming array position). A foreign key from the owner to one of its own child
-rows makes the two tables reference each other: SQL Server refuses the migration (Msg 1785) and every owner
-`DELETE` answers 500 with EF's *circular dependency*, which no primer can fix — EF orders deletes from the
-**original** foreign-key values. If the reference has to stay, map it `DeleteBehavior.ClientSetNull` and drop it
-in a save of its own.
+`SortOrder`, assigned from the incoming array position on an owner save; an upload through `POST {objectId}/files`
+gets 0). A foreign key from the owner to one of its own child rows makes the two tables reference each other: SQL
+Server refuses the migration (Msg 1785) and every owner `DELETE` answers 500 with EF's *circular dependency*, which
+no primer can fix — EF orders deletes from the **original** foreign-key values. If the reference has to stay, map it
+`DeleteBehavior.ClientSetNull` and drop it in a save of its own.
+
+**One file per owner** (a profile photo): a link validator,
+`e.HasAttachments<AppDbContext, Product, ProductAttachment>(x => x.Attachments, a => a.AddValidator<OnePhotoValidator>())`,
+refuses a second link for the same owner, so the client replaces the file of the existing link
+(`PUT {objectId}/files/{id}`) instead of uploading another. The owner's save runs only the owner's validators: repeat
+the rule there (at most one entry in `Attachments`), or keep `Attachments` off its input DTO.
 
 **See:** `get_package(id: "Regira.Entities", section: "patterns", heading: "An entity that references one of its own children")`.
 
@@ -201,6 +309,9 @@ return await this.Details<CreditRequest, CreditRequestDto>(id) ?? NotFound();   
 - **Who may set the state?** Anyone with PATCH rights → the fields stay on `TInputDto`. Only the action →
   take them off and restore them in a prepper guarded by a scoped trusted-writer flag the action flips
   (`[ServerOwned]` has no bypass, so it would revert the action too).
+- **Through `IEntitySender`?** A `PatchCommand` carries only `TInputDto`'s fields, so a transition whose fields are
+  off the DTO is a request of the app's own (`IEntityRequest<DetailsResult<TDto>>`, declaring its `EntityType` and
+  `Operation`) whose handler is the trusted writer — *Role-gated transitions* → *Sent through the mediator*.
 - **Gate the transition set, not only the fields.** A generic transition endpoint that reaches a state a
   role-gated action also reaches voids that action's role check; decide who may reach which state in the one
   service every path calls.
@@ -211,7 +322,7 @@ return await this.Details<CreditRequest, CreditRequestDto>(id) ?? NotFound();   
 — *Role-gated transitions* is its sub-section.
 
 ### React to a committed change (status pipelines, mail, jobs)
-<!-- how_to: key=after-commit aliases=reactor,reactors,react,after-save,aftersave,committed,commit,side-effect,side-effects,event,events,trigger,pipeline,notify,notification,mail,hangfire,background-job,status-changed -->
+<!-- how_to: key=after-commit aliases=reactor,reactors,react,after-save,aftersave,committed,commit,side-effect,side-effects,event,events,trigger,pipeline,notify,notification,mail,email,send,sends,hangfire,background-job,status-changed,schedule,scheduled,reminder,reminders,hosted,hostedservice,backgroundservice,periodic,periodictimer,timer -->
 What must *follow* a change — mail the customer, start a follow-up workflow, enqueue a background job — is a
 **reactor**. It runs once the save is committed (never for a failed save or a rolled-back transaction), on
 every write path that reaches the row — CRUD PATCH, a domain action, an import, a raw `DbContext` writer:
@@ -230,6 +341,67 @@ e.React(x => x.Status, OrderStatus.Shipped, (change, services, token) =>
 `change.Original` holds the stored row beside the committed `change.Entity`; a reactor runs in a DI scope of its
 own, and one that throws is logged while the save stands. Don't put this after `SaveChanges()` in a controller
 action: the other paths to the same state would skip it.
+
+**Not for a time-based trigger** (a reminder N minutes before a start): a reactor fires on a commit, never at a
+moment. Poll from a hosted service: a `BackgroundService` with a `PeriodicTimer`, whose every tick opens a scope of
+its own (`CreateAsyncScope()`, so a fresh `DbContext`), queries what is due, sends, and stamps a sent column per row.
+Declare that column `[ServerOwned]`, so a client's edit cannot clear it and send again, and stamp it through the
+`DbContext`: on the `IEntityService` path the guard restores it.
+
+<!-- no-compile -->
+```csharp
+public class DueNoticeJob(IServiceScopeFactory scopes, ILogger<DueNoticeJob> logger) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1));
+        while (await timer.WaitForNextTickAsync(stoppingToken))
+        {
+            try
+            {
+                await using var scope = scopes.CreateAsyncScope();                 // a fresh DbContext per tick
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var mailer = scope.ServiceProvider.GetRequiredService<IOrderMailer>();
+                var now = DateTime.UtcNow;
+                var due = await db.Orders.Where(x => x.NoticeSentAt == null && x.NoticeDueAt <= now)
+                    .Select(x => x.Id).ToListAsync(stoppingToken);
+                foreach (var id in due)
+                {
+                    await mailer.SendNotice(id, stoppingToken);
+                    await db.Orders.Where(x => x.Id == id)                         // the DbContext: IEntityService would restore a [ServerOwned] column
+                        .ExecuteUpdateAsync(s => s.SetProperty(x => x.NoticeSentAt, DateTime.UtcNow), CancellationToken.None);
+                }
+            }
+            catch (Exception ex) when (!stoppingToken.IsCancellationRequested)     // an HttpClient timeout is an OperationCanceledException too
+            {
+                logger.LogError(ex, "A due-notice tick failed");                   // left unhandled, it stops the host
+            }
+        }
+    }
+}
+// builder.Services.AddHostedService<DueNoticeJob>();
+```
+
+The stamp takes `CancellationToken.None`, so a shutdown that lands after the send still records it. Stamped after
+the send, a crash between the two sends that row again; stamp first instead — the update filtered on
+`NoticeSentAt == null` and reporting 1 row — for at most once, or when several instances run the job.
+
+**At a time of day** (a nightly backup, a 07:00 mail), sleep until the next run instead of ticking:
+
+<!-- no-compile -->
+```csharp
+// in ExecuteAsync, in place of the PeriodicTimer loop
+var at = new TimeOnly(7, 0);
+while (!stoppingToken.IsCancellationRequested)
+{
+    var next = DateTime.Today + at.ToTimeSpan();
+    if (next <= DateTime.Now) next = next.AddDays(1);
+    // slices of at most an hour, so a clock or daylight-saving change is picked up
+    for (var wait = next - DateTime.Now; wait > TimeSpan.Zero; wait = next - DateTime.Now)
+        await Task.Delay(wait < TimeSpan.FromHours(1) ? wait : TimeSpan.FromHours(1), stoppingToken);
+    // then the tick's body above: its own scope, the work, the try/catch
+}
+```
 
 **See:** `get_package(id: "Regira.Entities", section: "instructions", heading: "Reactors — after the commit")`.
 
@@ -257,7 +429,7 @@ discounts; party → relationships → relationship contact data) syncs in one r
 <!-- no-compile -->
 ```csharp
 e.Related(
-    item => item.ChildRelationships, item => item.ChildRelationships?.Prepare(),   // level 1: parent-level prepare
+    item => item.ChildRelationships, item => item.ChildRelationships?.Prepare(),   // level 1: Prepare() = the app's sort-order helper (blueprints, Stakeholders § Registration)
     rel => rel.Related(r => r.ContactData, r => r.ContactData?.Prepare())          // level 2: per-row nested sync
 );
 ```
@@ -399,7 +571,7 @@ scoped to that category                  count  43 | items   0   ← 43 rows nob
 
 Startup validation reports this shape (`ArchivableReferenceDataValidator`, a **warning** naming both entities) — it fires only for a dependent that is separately registered, since an `e.Related()` child is never queried on its own.
 
-**If it really is an aggregate parent**, suppress the warning per context with `.ConfigureWarnings(w => w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning))` on the `AddDbContext` options. And for any dependent you **also query directly**, mirror the filter — `modelBuilder.Entity<OrderLine>().HasQueryFilter(x => !x.Order!.IsArchived)` — which is what keeps its count and items in agreement. A filter you add to a dependent that is **not itself `IArchivable`** never collides with the named archived filter: the archived filter only touches `IArchivable` types, so your filter on such a dependent is unopposed.
+**If it really is an aggregate parent**, suppress the warning per context with `.ConfigureWarnings(w => w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning))` on the `AddDbContext` options. The ignore covers every such pair in the context, reference data included; Regira's startup validation still reports each separately registered dependent behind a required foreign key without a query filter of its own. And for any dependent you **also query directly**, mirror the filter — `modelBuilder.Entity<OrderLine>().HasQueryFilter(x => !x.Order!.IsArchived)` — which is what keeps its count and items in agreement. Each such dependent needs its own, and one without a navigation back to the parent needs that navigation first (*Attachments on an archivable owner*, below). A filter you add to a dependent that is **not itself `IArchivable`** never collides with the named archived filter: the archived filter only touches `IArchivable` types, so your filter on such a dependent is unopposed.
 
 **What mirroring costs.** `?archived=` opts in on the queried entity only, and a mirrored filter is your own filter on a dependent that is not `IArchivable` — no opt-in ever lifts it. An archived parent's children are then unreachable through the API for everyone, the administrator who archived it included. When they must stay readable, don't mirror: keep the parent out of the children's reads — no `Include` of it, no filter through its navigation, and the one field their list shows denormalised onto them (`AssetCode` on the record) — so no join exists for the archived filter to drop rows through. Startup validation still warns, since it inspects the model's shape rather than your queries; with no read joining the parent, that warning stands by design.
 
@@ -408,7 +580,7 @@ Startup validation reports this shape (`ArchivableReferenceDataValidator`, a **w
 The mirrored filter above needs a **navigation** on the dependent to bind to (`x.Order`), and a per-owner
 attachment link has none: `EntityAttachment` carries `ObjectId` / `ObjectType` only, and the model
 configuration in [`entities.examples.md`](./entities.examples.md) → Attachments maps it with a bare
-`WithOne()`. So on an `IArchivable` owner the validator's remedy does not compile until you add the
+`WithOne()`. So on an `IArchivable` owner the mirrored filter does not compile until you add the
 navigation yourself. This is a common intersection, not an edge case: soft delete belongs on aggregate
 parents, which are exactly the entities that own files, and the per-owner link is always separately
 registered (it costs its own simple slot).
@@ -481,11 +653,16 @@ On `net10.0` the two opt-ins suspend the archived filter **by name** and nothing
 Flip one field (e.g. `IsActive`) without a full update: expose it on `TInputDto` and let the base `PATCH /{id}` map only the supplied fields — no custom action needed.
 
 ```bash
-curl -X PATCH {base}/xs/{id} -H "Content-Type: application/json" -d '{ "isActive": false }'
+curl -X PATCH {base}/xs/{id} -H "Content-Type: application/merge-patch+json" -d '{ "isActive": false }'
 ```
+
+The body is a JSON merge patch (RFC 7386): the fields given change, `null` clears one, and an owned collection left
+out stays as it is while `Includes()` loads it only behind a flag (`entities.instructions` → Step 13, *PATCH vs PUT*). The action reads the body itself, so `application/json` is accepted too. A `@regira/modules`
+client sends it with `service.patch(id, { isActive: false })` (front-end `entities.patterns` → *State toggle*).
 <!-- no-compile -->
 ```csharp
-// Server-side (seeding/jobs) — there is no service.Patch; load, flip, Modify, persist:
+// Server-side (seeding/jobs): IEntityService has no Patch — load, flip, Modify, persist;
+// or send a PatchCommand through IEntitySender (§Entity operations outside a controller):
 var item = await service.Details(id);
 item!.IsActive = false;
 await service.Modify(item);
@@ -546,6 +723,10 @@ public class DashboardController(AppDbContext db) : ControllerBase
 }
 ```
 
+An app without controllers writes the same query as `app.MapGroup("api/dashboard").RequireAuthorization().MapGet("spend-by-month", …)`,
+its prefix spelled out: no route-prefix convention reaches a minimal API (dropping `AddControllers()`:
+[`entities.setup.md`](./entities.setup.md) → *P3: Program.cs*).
+
 This is the sanctioned shape, not a deviation — but keep it **read-only**, and know what you are outside of:
 
 - ✅ `AsNoTracking()`, `GroupBy`/`Sum` server-side. Never fetch rows to aggregate in the client, and never
@@ -582,9 +763,55 @@ This is the sanctioned shape, not a deviation — but keep it **read-only**, and
 - ✅ **These translate on SQLite, so keep the metric:** `.Year`/`.Month`/`.Date`/`.DayOfWeek` (grouping by
   month included), `AddDays`/`AddHours`, `g.Count(pred)`, a conditional `g.Sum(x => cond ? 1 : 0)`,
   `g.Select(x => x.OtherId).Distinct().Count()`, and `DateOnly` comparisons and `.Month`.
+- ⚠️ **A decimal on SQLite depends on the target.** Decimal `Sum` and `Average`, grouped too, translate on every
+  target. Decimal `Min`, `Max` and `OrderBy` (ordering by a grouped sum included) translate on `net10.0` only; EF Core 9
+  throws `NotSupportedException`, so order the grouped rows after `ToListAsync()`.
 - On the client this is a plain `useAxios()` call with its own `useFeedback()` — not a slice, not a pooled
   store. See the front-end `entities.patterns` → *Custom endpoints on a service* and *Feedback for custom
   saves*.
+
+### Export what the overview shows
+
+An export of the rows a list shows is not an aggregate: it reads through the entity service, so the keyword `Q`
+filter, the search object's filters and row security (`IGlobalFilteredQueryBuilder`) all apply. Bind the overview's
+search object from the query and call `List(IList<TSearchObject?>, IList<TSortBy>, TIncludes?, pagingInfo: null)` on
+`IEntityService<TEntity, TSearchObject, TSortBy, TIncludes>`. A direct service call is never capped, so one call
+returns every matching row; no paging loop. A mediator `ListQuery` is clamped to `MaxPageSize`, so send no
+`ListQuery` for an export. Uncapped also means unbounded: keep such an endpoint behind authorization, or, where a
+caller can reach it anonymously, require a filter or pass `new PagingInfo { PageSize = max }`.
+
+```csharp
+using Microsoft.AspNetCore.Mvc;
+using Regira.Entities.Models;
+using Regira.Entities.Models.Abstractions;
+using Regira.Entities.Services.Abstractions;
+
+public class Product : IEntityWithSerial
+{
+    public int Id { get; set; }
+    public string? Title { get; set; }
+    public decimal Price { get; set; }
+}
+public record ProductSearchObject : SearchObject
+{
+    public decimal? MaxPrice { get; set; }
+}
+public enum ProductSortBy { Default, Title, Price }
+[Flags] public enum ProductIncludes { Default = 0 }
+
+[ApiController, Route("products/export")]
+public class ProductExportController(IEntityService<Product, ProductSearchObject, ProductSortBy, ProductIncludes> products)
+    : ControllerBase
+{
+    [HttpGet]
+    public async Task<IActionResult> Export([FromQuery] ProductSearchObject so, [FromQuery] ProductSortBy[]? sortBy, CancellationToken token)
+    {
+        var rows = await products.List([so], sortBy ?? [], pagingInfo: null, token: token);
+        var csv = string.Join(Environment.NewLine, rows.Select(x => $"{x.Id};{x.Title};{x.Price}"));
+        return File(System.Text.Encoding.UTF8.GetBytes(csv), "text/csv", "products.csv");
+    }
+}
+```
 
 ## Domain actions on an entity resource
 
@@ -631,11 +858,16 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
 }
 ```
 
+- **Keep the action typed `ActionResult<DetailsResult<TDto>>`.** `NotFound()`, `Forbid()` and
+  `ValidationProblem(…)` convert to it, as above. `this.Details<…>(id)` answers `null` for a missing row, otherwise an
+  `ActionResult` whose `Result` is the `OkObjectResult` (its `Value` stays `null`); from an `IActionResult` action
+  return `(await this.Details<TEntity, TDto>(id))?.Result ?? NotFound()`.
 - **Either form returns a 400 `ValidationProblemDetails` here.** `ModelState` + `ValidationProblem` as above, or
   `throw new EntityInputException<CreditRequest>(…) { InputErrors = { [nameof(item.Status)] = "…" } }` — the
   filter `ConfigureDefaultJsonOptions()` registers maps the exception on **any** action, so this controller
   and the generated one answer alike. Either message can be a translation key; only the exception adds `errorDetails`,
   with the args a translation fills in: `Errors = { new EntityInputError(nameof(item.Status), "…", new Dictionary<string, object?> { … }) }`.
+  `InputErrors` is a view over `Errors`: fill one of them, and never write it while enumerating `Errors`.
   (`BadRequest(ModelState)` is a different body — a bare map, no `errors` wrapper.) That covers the write pipeline too: validators and preppers run inside
   the `service.Modify(item)` above, so a validator's errors — and a prepper that throws — land on the same
   filter rather than escaping as a 500. Catch it explicitly only to add context — and then
@@ -653,6 +885,12 @@ public class CreditRequestWorkflowController(IEntityService<CreditRequest, int> 
   through the collections. **Clearing** a relation takes the navigation too
   (`item.AssigneeId = null; item.Assignee = null;`): an empty key beside a loaded navigation is what a body
   sending only the nested object looks like, so the navigation keeps deciding it.
+- ⚠️ **That holds within one graph.** Two entities read by separate `Details` calls each carry their own instance of
+  a principal they share — two allocations of the same employee — so modifying both in one save tracks that principal
+  twice and throws *"…cannot be tracked because another instance with the same key value…"*, a 500. Clear the shared
+  reference navigation on each and keep its key (`source.Employee = null; next.Employee = null;`), so only the key
+  decides. Rows read by one `List()` call share one instance of each principal, so `Modify` each and save once
+  without clearing it.
 - **Answer with a re-read, exactly as `GET /{id}` would.** `this.Details<TEntity, TDto>(id)`
   (`Regira.Entities.Web.Controllers`) reads the row back through the service, maps it to the read DTO and
   wraps it as `{ "item": … }`, so a client reads `data.item` on every route and the SPA service needs no
@@ -677,10 +915,15 @@ keeping `Status` on `TInputDto` hands every PATCH caller a state pen. Invert the
 
 1. **Take the workflow fields off `TInputDto`** (`Status`, `DecidedOn`, decider ids). The role-gated action is
    now the only writer.
-2. **Restore them in a prepper** so ordinary PUT/PATCH round-trips them untouched instead of resetting them —
+2. **Restore them in a prepper** so ordinary PUT/PATCH round-trips them untouched instead of resetting them, and
+   start a create in the initial state, so no `Add` — an import, a job — creates a request already decided. It is
    guarded by a scoped flag the trusted writer flips, or the restore would also undo the action's own write.
    That flag is why these fields are not `[ServerOwned]`: its restore has no bypass, so the action's
-   `Modify` would be reverted too.
+   `Modify` would be reverted too. A field only a trusted writer may set **on create** (a series id) takes the same
+   guard: clear it on a create unless the flag is set, and restore it from `original` on every update.
+   `[ServerOwned]` is no substitute here either: on create it keeps whatever the client sent. When the trusted
+   write must still run the guard's derivations, scope the flag to that one field, or stamp the field after the
+   sends with an `ExecuteUpdate` in the same transaction.
 
 <!-- no-compile -->
 ```csharp
@@ -691,11 +934,12 @@ public class CreditRequestGuard(WorkflowContext workflow) : EntityPrepperBase<Cr
 {
     public override Task Prepare(CreditRequest modified, CreditRequest? original, CancellationToken token = default)
     {
-        if (original != null && !workflow.IsTrustedWriter)
+        if (workflow.IsTrustedWriter)
         {
-            modified.Status = original.Status;
-            modified.DecidedOn = original.DecidedOn;
+            return Task.CompletedTask;
         }
+        modified.Status = original?.Status ?? RequestStatus.Draft;          // an update keeps the stored state,
+        modified.DecidedOn = original?.DecidedOn;                           // a create starts undecided
         return Task.CompletedTask;
     }
 }
@@ -707,15 +951,125 @@ public class CreditRequestGuard(WorkflowContext workflow) : EntityPrepperBase<Cr
 <!-- no-compile -->
 ```csharp
 workflowContext.IsTrustedWriter = true;
-item.Status = RequestStatus.Approved;
-item.DecidedOn = DateTime.UtcNow;
-await service.Modify(item);
-await service.SaveChanges();
+try
+{
+    item.Status = RequestStatus.Approved;
+    item.DecidedOn = DateTime.UtcNow;
+    await service.Modify(item);
+    await service.SaveChanges();
+}
+finally
+{
+    workflowContext.IsTrustedWriter = false;
+}
 ```
 
-A seeder that stamps historical states is a trusted writer too — flip the same flag in its scope. The guard
+The flag lives as long as the scope, so left set it lets every later write in that scope past the guard — a second
+request the same handler sends, every write a job makes from one scope. Hold it for the one write, as the `finally`
+does. A seeder that stamps historical states is a trusted writer too — flip the same flag around its writes. The guard
 stays in the prepper (not the controller) so *every* write path — CRUD PUT/PATCH, other services, future
 endpoints — passes through it.
+
+**Sent through the mediator** (§Entity operations outside a controller). `PatchCommand` and `SaveCommand` carry
+only what `TInputDto` declares, so with the workflow fields off it (step 1) a transition cannot be a patch. Make the
+transition a request of the app's own, whose handler is the trusted writer: it writes the fields through
+`IEntityService` exactly as above, and the app's behaviours wrap it like every entity operation, since it declares its
+entity and operation:
+
+```csharp
+using Microsoft.AspNetCore.Authorization;
+using Regira.Entities.Mediator;                     // EntityOperation
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Requests;
+using Regira.Entities.Web.Models;                   // DetailsResult<T>
+
+public enum RequestStatus { Draft, Submitted, Approved }
+public class CreditRequest : IEntity<int>
+{
+    public int Id { get; set; }
+    public RequestStatus Status { get; set; }
+    public DateTime? DecidedOn { get; set; }
+}
+public class CreditRequestDto { public int Id { get; set; } public RequestStatus Status { get; set; } public DateTime? DecidedOn { get; set; } }
+public sealed class WorkflowContext { public bool IsTrustedWriter { get; set; } }
+
+// a behaviour sees the approval as a Save of CreditRequest
+public sealed record ApproveCreditRequest(int Id) : IEntityRequest<DetailsResult<CreditRequestDto>>
+{
+    Type IEntityRequest.EntityType => typeof(CreditRequest);
+    EntityOperation IEntityRequest.Operation => EntityOperation.Save;
+}
+
+public class ApproveCreditRequestHandler(IEntityService<CreditRequest, int> service, WorkflowContext workflow, IEntitySender sender)
+    : IEntityRequestHandler<ApproveCreditRequest, DetailsResult<CreditRequestDto>>
+{
+    public async Task<DetailsResult<CreditRequestDto>?> Handle(ApproveCreditRequest request, CancellationToken token = default)
+    {
+        var item = await service.Details(request.Id, token);
+        if (item == null)
+        {
+            return null;                                                     // → 404
+        }
+        if (item.Status != RequestStatus.Submitted)
+        {
+            throw new EntityInputException<CreditRequest>("Only a submitted request can be approved.")
+            {
+                InputErrors = { [nameof(item.Status)] = "Only a submitted request can be approved." }
+            };
+        }
+
+        workflow.IsTrustedWriter = true;                                     // the guard prepper lets this write through
+        try
+        {
+            item.Status = RequestStatus.Approved;
+            item.DecidedOn = DateTime.UtcNow;
+            await service.Modify(item, token);
+            await service.SaveChanges(token);
+        }
+        finally
+        {
+            workflow.IsTrustedWriter = false;                                // for this write only (above)
+        }
+        return await sender.Send(new DetailsQuery<CreditRequest, int, CreditRequestDto>(request.Id), token);   // what GET {id} answers
+    }
+}
+
+public static class CreditWorkflowConfiguration
+{
+    public static IServiceCollection AddCreditWorkflow(this IServiceCollection services)
+        => services
+            .AddScoped<WorkflowContext>()
+            .AddTransient<IEntityRequestHandler<ApproveCreditRequest, DetailsResult<CreditRequestDto>>, ApproveCreditRequestHandler>();
+}
+
+[ApiController, Route("credit-requests"), Authorize(Roles = "Manager")]
+public class CreditRequestWorkflowController(IEntitySender sender) : ControllerBase
+{
+    [HttpPost("{id:int}/approve")]
+    public async Task<ActionResult<DetailsResult<CreditRequestDto>>> Approve(int id)
+    {
+        var result = await sender.Send(new ApproveCreditRequest(id));
+        if (result == null)
+        {
+            return NotFound();
+        }
+        return result;
+    }
+}
+```
+
+- **`EntityType` and `Operation` are the request's to declare** — `IEntityRequest` requires both, and a behaviour
+  reads them to tell which entity and which operation it wraps. Implementing them explicitly keeps them off the
+  record's own members, as the built-in requests do.
+- The answer's `DetailsQuery` passes the behaviours too, as a read: an audit behaviour records the approval as a
+  `Save` followed by a `Details`.
+- The other route — the fields kept on `TInputDto` behind the guard prepper, the action flipping the flag and sending
+  a `PatchCommand` or, for a create-time field, a `SaveCommand` — works too, but puts the fields back on the input DTO
+  every caller binds, where the guard alone keeps a caller from setting them. Prefer the request.
+- **A transition that also creates rows** — an approval that adds a decision row — does both in its handler, on the
+  same scope's `DbContext`: a `SaveCommand` for the new row, `IEntityService.Modify` followed by `SaveChanges()` for
+  the transition, and a transaction around them when they must succeed together (*Several sends in one transaction*).
+  Hold the trusted-writer flag around the `Modify` only: a create sent while it is set keeps whatever its input carries.
 
 ⚠️ **Gate the transition set, not only the fields.** The guard decides *who writes the fields*; which role may
 reach which **state** is a second rule. When a generic action (`POST {id}/transitions` taking the target state)
@@ -728,7 +1082,607 @@ the workflow service is its only writer, so its validator refuses any create or 
 trusted-writer flag, the parent's input DTO leaves the collection out (one writer per save
 path), and its controller exposes no `DELETE` (override it to return `405`).
 
-## Input validation with FluentValidation
+## Entity operations outside a controller
+
+<!-- how_to: key=entity-operations aliases=sender,ientitysender,mediator,mediatr,request,requests,handler,behavior,behaviour,minimal-api,operation,operations -->
+
+*Opt-in — reach for it when code outside a controller needs what an endpoint answers, or the app already runs
+MediatR.* Every generated endpoint sends a request through `IEntitySender` (package `Regira.Entities.Mediator`,
+which `Regira.Entities.Web` brings): `DetailsQuery`, `ListQuery`, `SearchQuery`, `SaveCommand`, `PatchCommand`,
+`DeleteCommand` in `Regira.Entities.Mediator.Requests`. A job, an import or the app's own minimal-API endpoint sends
+the same requests and gets the endpoint's semantics — the paging defaults, the archived-inclusive update lookup, the
+re-read after a save, the DTO mapping and the result envelope — where `IEntityService` gives entities and leaves those
+to the caller. `UseEntities()` registers the sender; inject it like any scoped service:
+
+```csharp
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Requests;
+
+public class Product : IEntityWithSerial
+{
+    public int Id { get; set; }
+    public string? Title { get; set; }
+    public decimal Price { get; set; }
+}
+public class ProductDto { public int Id { get; set; } public string? Title { get; set; } public decimal Price { get; set; } }
+public class ProductInputDto { public int Id { get; set; } [Required, MaxLength(100)] public string? Title { get; set; } public decimal Price { get; set; } }
+
+public class PriceImporter(IEntitySender sender)
+{
+    // checks the input's DataAnnotations, saves, re-reads and maps — what POST /products answers
+    public async Task<ProductDto?> Import(ProductInputDto input, CancellationToken token)
+        => (await sender.Send(new SaveCommand<Product, int, ProductDto, ProductInputDto>(input), token))?.Item;
+}
+```
+
+- **The type list is the controller's.** `EntityControllerBase<Product, ProductDto, ProductInputDto>` sends
+  `DetailsQuery<Product, int, ProductDto>`; a complex entity's `ListQuery` and `SearchQuery` take its search object,
+  sort and includes types too. A list that matches no `For<>()` registration fails at its first send, naming what
+  was registered.
+- **`null` means not found.** A refused write throws, as the write pipeline does: `EntityInputException`,
+  `EntityConstraintException`, `EntityConcurrencyException`.
+- **`SaveCommand` checks the input DTO first**, by the rules MVC judges a request body by — DataAnnotations and
+  `IValidatableObject`, nested objects and collection items too, and the implicit `[Required]` on a non-nullable
+  reference — and refuses with an `EntityInputException`. `[ValidateNever]` leaves a property out; MVC validator
+  providers an app registers, and `SuppressImplicitRequiredAttributeForNonNullableReferenceTypes`, do not apply here.
+  The controllers turn that off (`ValidateInput: false`), since MVC has answered an invalid body by then: the bases
+  carry `[ApiController]`, which a subclass inherits, so it needs only its `[Route]` (repeating the attribute is
+  harmless). The mapped endpoints keep it on, as no MVC ran. A patch's merged input is always checked.
+- **`PatchCommand` without `SerializerOptions`** merges with `JsonSerializerDefaults.Web`, cycles ignored, enums by
+  name or number. The endpoints pass the app's JSON options; a job whose patch relies on a converter of the app's own
+  passes them too — `IOptions<Microsoft.AspNetCore.Mvc.JsonOptions>.Value.JsonSerializerOptions`, or
+  `Microsoft.AspNetCore.Http.Json.JsonOptions` for minimal APIs. The patch's keys are the input DTO's JSON names
+  (camelCase under `ConfigureDefaultJsonOptions()`).
+- **One entity per request.** A bulk write or a seed of many rows stays on `IEntityService` with one `SaveChanges()`
+  (§Bulk insert / update).
+- In a domain action, `this.Details<TEntity, TDto>(id)` (§Domain actions on an entity resource) already sends a
+  `DetailsQuery`.
+
+Below: *Replacing one operation for one entity*, *Several sends in one transaction*, *Behaviours around every
+operation* and *Dispatching through a mediator library*.
+
+### Replacing one operation for one entity
+
+Register a closed handler for the request type; it answers in place of the default, for the endpoint and every other
+sender alike, with no controller override. Deriving from the default handler keeps its behaviour:
+
+```csharp
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Handlers;
+using Regira.Entities.Mediator.Requests;
+using Regira.Entities.Web.Models;
+
+public class Product : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductDto { public int Id { get; set; } public string? Title { get; set; } public int Stock { get; set; } }
+
+public interface IWarehouse { Task<int> Stock(int productId, CancellationToken token); }
+
+// GET products/{id} — and a job's DetailsQuery — answers with the stock the warehouse holds now
+public class ProductDetailsHandler(IServiceProvider services, IWarehouse warehouse)
+    : DetailsHandler<Product, int, ProductDto>(services)
+{
+    public override async Task<DetailsResult<ProductDto>?> Handle(DetailsQuery<Product, int, ProductDto> request, CancellationToken token = default)
+    {
+        var result = await base.Handle(request, token);
+        if (result != null)
+        {
+            result.Item.Stock = await warehouse.Stock(result.Item.Id, token);
+        }
+        return result;
+    }
+}
+
+public static class ProductOperations
+{
+    public static IServiceCollection AddProductOperations(this IServiceCollection services)
+        => services.AddTransient<IEntityRequestHandler<DetailsQuery<Product, int, ProductDto>, DetailsResult<ProductDto>>, ProductDetailsHandler>();
+}
+```
+
+- **One request type each.** A `PATCH` saves its merged input itself, not through the `SaveCommand` handler: a change
+  to how an entity saves overrides both `SaveCommand<…>` and `PatchCommand<…>`.
+- A request of the app's own — a record implementing `IEntityRequest<TResponse>` — works the same way: it has no
+  default handler, so it needs a registered one, and its first send says so when it is missing. It declares the
+  `EntityType` and `Operation` a behaviour reads; a worked one is §Role-gated transitions → *Sent through the
+  mediator*.
+
+### Replacing one endpoint
+
+A handler (above) changes what an operation answers — for the controller, the mapped endpoint and every other sender
+at once — so a rule about the data belongs there. A plain `For<Product>()` lists and searches with the `SearchObject`
+record on both surfaces: its list handler replaces `ListQuery<Product, int, SearchObject, ProductDto>`. A mapped
+endpoint does the same for `For<Product, int>()`, whose controller base (`EntityControllerBase<Product, int,
+SearchObject<int>, …>`) sends `SearchObject<int>`: a handler for that one does not reach the endpoint. Replace the
+endpoint itself only for what belongs to HTTP: an attribute, a header, a status code, a parameter the request does not
+carry.
+
+**On a controller**, override the action. The generated actions are `virtual`, and the override inherits the verb and
+route attributes and the parameters' binding attributes, so it declares only what it adds and delegates to `base`:
+
+```csharp
+using Microsoft.AspNetCore.Authorization;
+using Regira.DAL.Paging;
+using Regira.Entities.Web.Controllers.Abstractions;
+using Regira.Entities.Web.Models;
+
+public class Product : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductDto { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductInputDto { public int Id { get; set; } [Required] public string? Title { get; set; } }
+
+[ApiController, Route("products")]
+public class ProductController : EntityControllerBase<Product, ProductDto, ProductInputDto>
+{
+    // still GET products?q=…&page=…: the route and the query binding come from the base action
+    [Authorize(Policy = "Catalog")]
+    public override Task<ActionResult<ListResult<ProductDto>>> List(SearchObject so, PagingInfo pagingInfo)
+    {
+        Response.Headers.CacheControl = "private, max-age=60";
+        return base.List(so, pagingInfo);
+    }
+}
+```
+
+- **Keep the signature exactly.** A method with another parameter list is no override but a second action on the
+  same route, and every request to it fails as ambiguous.
+- The complex base has a second `List` and `Search` — `POST list` and `POST search`, with the search objects in the
+  body — and each is overridden on its own.
+
+**On mapped endpoints** there is no action to override: exclude the generated endpoint and map the app's own on the
+entity's route group. Sending the same request keeps a handler override and the behaviours in play:
+
+```csharp
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using Regira.DAL.Paging;
+using Regira.Entities.DependencyInjection.ServiceCollections;
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Requests;
+using Regira.Entities.Web.Endpoints;
+
+public class Product : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductDto { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductInputDto { public int Id { get; set; } [Required] public string? Title { get; set; } }
+
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+{
+    public DbSet<Product> Products => Set<Product>();
+}
+
+public static class ShopConfiguration
+{
+    public static EntityServiceCollection<AppDbContext> AddShop(this IServiceCollection services)
+        => services
+            .UseEntities<AppDbContext>(o => o.UseDefaults())
+            .For<Product>(e =>
+            {
+                e.UseMapping<ProductDto, ProductInputDto>();
+                e.Endpoints(o => o.Exclude(EntityEndpoint.List));          // GET products is the app's own below
+            });
+
+    public static IEndpointRouteBuilder MapShop(this IEndpointRouteBuilder app)
+    {
+        app.MapEntityEndpoints(o => o.ConfigureGroup<Product>(products => products
+            .MapGet("", async (IEntitySender sender, HttpContext http, string? q, int? page, int? pageSize) =>
+            {
+                http.Response.Headers.CacheControl = "private, max-age=60";
+                var paging = new PagingInfo { Page = page ?? 1, PageSize = pageSize };
+                return Results.Ok(await sender.Send(new ListQuery<Product, int, SearchObject, ProductDto>(new SearchObject { Q = q }, paging)));
+            })
+            .WithMetadata(new EntityEndpointMetadata(typeof(Product), EntityEndpoint.List))));
+        return app;
+    }
+}
+```
+
+- **Exclude first.** Without `o.Exclude(…)` two endpoints share the route, and every request to it fails as ambiguous.
+  `EntityEndpoint.List` covers `GET` and, on a complex entity, `POST list`; `EntityEndpoint.Search` covers both
+  searches.
+- **The group's exception filter applies**, so the endpoint answers a refused write with the 400 and 409 bodies the
+  mapped ones use, without an `AddEndpointFilter` of its own.
+- **Add the metadata.** A write-authorization policy keys on `EntityEndpointMetadata` (§Role-gated write
+  authorization filter → *On mapped endpoints*); without it the policy cannot tell the endpoint's entity, and refuses
+  it unless it is a `GET`.
+- **The endpoint binds its own parameters.** The mapped endpoints' query binder is not public, so take what the
+  endpoint needs as parameters (`q`, `page`, `pageSize` above) or `[AsParameters]` of a type of the app's own.
+
+### Several sends in one transaction
+
+Each send saves on its own, in EF's own transaction. A unit of work spanning several sends — an assignment that
+updates the asset and adds an assignment row — is the application's: open the transaction on the request's
+`DbContext`, inside the execution strategy, and send inside it.
+
+```csharp
+using Microsoft.EntityFrameworkCore;
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Requests;
+
+public class Shelf : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } public int Stock { get; set; } }
+public class ShelfDto { public int Id { get; set; } public string? Title { get; set; } public int Stock { get; set; } }
+public class ShelfInputDto { public int Id { get; set; } public string? Title { get; set; } public int Stock { get; set; } }
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options);
+
+// the context type AddDbContext registered — DI resolves AppDbContext, never the base DbContext — and the one the entity
+// services of this scope write through
+public class StockMove(AppDbContext db, IEntitySender sender)
+{
+    public async Task Move(ShelfInputDto from, ShelfInputDto to, CancellationToken token)
+    {
+        // a retrying strategy (EnableRetryOnFailure) replays the whole unit, so the transaction starts inside it
+        await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            db.ChangeTracker.Clear();   // a replay must not reuse what the failed attempt tracked
+            await using var tx = await db.Database.BeginTransactionAsync(token);
+            await sender.Send(new SaveCommand<Shelf, int, ShelfDto, ShelfInputDto>(from), token);
+            await sender.Send(new SaveCommand<Shelf, int, ShelfDto, ShelfInputDto>(to), token);
+            await tx.CommitAsync(token);
+        });
+    }
+}
+```
+
+A retrying strategy runs the lambda again on the same `DbContext`, whose change tracker still holds the failed
+attempt's rows: clear it first, as above.
+
+The handlers resolve their services from the scope the sender came from, so every send writes through that same
+`DbContext` and joins its transaction — and a later send's preppers and validators see the rows an earlier one saved.
+A `PatchCommand` in such a unit takes the app's JSON options, which merge the patch into the stored row. Those options
+leave nulls out, so serialize the patch itself with options that write them, or a `null` meant to clear a field sends
+nothing:
+
+```csharp
+// options: IOptions<Microsoft.AspNetCore.Mvc.JsonOptions>.Value.JsonSerializerOptions (minimal APIs: Http.Json.JsonOptions)
+// var patchOptions = new JsonSerializerOptions(options) { DefaultIgnoreCondition = JsonIgnoreCondition.Never };   // System.Text.Json.Serialization
+// var patch = JsonSerializer.SerializeToElement(new { endDate = DateTime.UtcNow, note = (string?)null }, patchOptions);
+// await sender.Send(new PatchCommand<Assignment, int, AssignmentDto, AssignmentInputDto>(id, patch, options), token);
+```
+ A send that throws leaves the transaction uncommitted, and disposing `tx`
+rolls back the sends before it. Reactors wait for `CommitAsync`, and a rolled-back unit fires none (*Reactors* in
+`entities.instructions`).
+
+An empty patch (`JsonDocument.Parse("{}").RootElement`) is a full update: every property is marked modified, primers
+stamp `LastModified` and the token, normalizers, preppers and validators run, and Modified reactors fire. It is how to
+recompute a derived value through the mediator:
+
+```csharp
+using System.Text.Json;
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Requests;
+
+public class Shelf : IEntityWithSerial { public int Id { get; set; } public int Stock { get; set; } }
+public class ShelfDto { public int Id { get; set; } public int Stock { get; set; } }
+public class ShelfInputDto { public int Id { get; set; } public int Stock { get; set; } }
+
+public class ShelfRecompute(IEntitySender sender)
+{
+    public async Task Recompute(int id, CancellationToken token)
+    {
+        using var empty = JsonDocument.Parse("{}");
+        await sender.Send(new PatchCommand<Shelf, int, ShelfDto, ShelfInputDto>(id, empty.RootElement), token);
+    }
+}
+```
+
+A handler override opens no transaction. One that must span two saves joins any open transaction
+(`Database.CurrentTransaction` or `Transaction.Current`) and begins its own only when none is open.
+
+### Overlap rule under concurrency
+
+An overlap validator (no two bookings of one room overlap) checks, then the save inserts, so two simultaneous
+requests can both pass it. Take the booked rooms' locks first, in a transaction the save joins: the second request
+waits at its `ExecuteUpdate`, and its validator then sees the first booking.
+
+```csharp
+using System.Text.Json;
+using System.Transactions;
+using Microsoft.EntityFrameworkCore;
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Handlers;
+using Regira.Entities.Mediator.Requests;
+using Regira.Entities.Models.Abstractions;
+using Regira.Entities.Web.Models;
+
+public class MeetingRoom : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } public int BookingVersion { get; set; } }
+public class Reservation : IEntityWithSerial
+{
+    public int Id { get; set; }
+    public DateTime Start { get; set; }
+    public DateTime End { get; set; }
+    public ICollection<ReservationRoom>? Rooms { get; set; }
+}
+public class ReservationRoom : IEntityWithSerial { public int Id { get; set; } public int ReservationId { get; set; } public int MeetingRoomId { get; set; } }
+public class ReservationDto { public int Id { get; set; } public DateTime Start { get; set; } public DateTime End { get; set; } }
+public class ReservationRoomInputDto { public int Id { get; set; } public int MeetingRoomId { get; set; } }
+public class ReservationInputDto
+{
+    public int Id { get; set; }
+    public DateTime Start { get; set; }
+    public DateTime End { get; set; }
+    public ICollection<ReservationRoomInputDto>? Rooms { get; set; }
+}
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+{
+    public DbSet<MeetingRoom> MeetingRooms => Set<MeetingRoom>();
+}
+
+public class RoomLock(AppDbContext db)
+{
+    public async Task<T> Run<T>(int reservationId, IEnumerable<int> requested, Func<Task<T>> save, CancellationToken token)
+    {
+        var roomIds = requested.Distinct().ToList();
+        if (db.Database.CurrentTransaction != null || Transaction.Current != null)
+        {
+            // a unit of several sends: lock inside it, and the lock holds until that unit commits
+            await Lock(reservationId, roomIds, token);
+            return await save();
+        }
+        return await db.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+        {
+            db.ChangeTracker.Clear();    // a retry starts from a clean context
+            await using var tx = await db.Database.BeginTransactionAsync(token);
+            await Lock(reservationId, roomIds, token);
+            var result = await save();   // preppers, the overlap validator and SaveChanges, inside the transaction
+            await tx.CommitAsync(token); // a refused write throws past this line, and disposing tx rolls back
+            return result;
+        });
+    }
+
+    // a write on each room the booking asks for or already holds (a save without rooms keeps the stored ones), in one
+    // statement: its lock holds until the commit (SQLite locks the whole database)
+    private Task Lock(int reservationId, List<int> roomIds, CancellationToken token)
+    {
+        var stored = db.Set<ReservationRoom>().Where(x => x.ReservationId == reservationId).Select(x => x.MeetingRoomId);
+        return db.MeetingRooms.Where(r => roomIds.Contains(r.Id) || stored.Contains(r.Id))
+            .ExecuteUpdateAsync(s => s.SetProperty(r => r.BookingVersion, r => r.BookingVersion + 1), token);
+    }
+}
+
+// POST, POST save and PUT
+public class ReservationSaveHandler(IServiceProvider services, RoomLock rooms)
+    : SaveHandler<Reservation, int, ReservationDto, ReservationInputDto>(services)
+{
+    public override Task<SaveResult<ReservationDto>?> Handle(SaveCommand<Reservation, int, ReservationDto, ReservationInputDto> request, CancellationToken token = default)
+        => rooms.Run(request.Id != 0 ? request.Id : request.Input.Id, request.Input.Rooms?.Select(r => r.MeetingRoomId) ?? [],
+            () => base.Handle(request, token), token);
+}
+
+// PATCH: the rooms it moves the booking to are in the patch, an array a merge patch replaces whole
+public class ReservationPatchHandler(IServiceProvider services, RoomLock rooms)
+    : PatchHandler<Reservation, int, ReservationDto, ReservationInputDto>(services)
+{
+    public override Task<SaveResult<ReservationDto>?> Handle(PatchCommand<Reservation, int, ReservationDto, ReservationInputDto> request, CancellationToken token = default)
+        => rooms.Run(request.Id, RoomIds(request.Patch), () => base.Handle(request, token), token);
+
+    // the input DTO's JSON names; a malformed patch locks no extra room, and the base handler refuses it
+    private static List<int> RoomIds(JsonElement patch)
+    {
+        var ids = new List<int>();
+        if (patch.ValueKind == JsonValueKind.Object && patch.TryGetProperty("rooms", out var list) && list.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var room in list.EnumerateArray())
+            {
+                if (room.ValueKind == JsonValueKind.Object && room.TryGetProperty("meetingRoomId", out var id)
+                    && id.ValueKind == JsonValueKind.Number && id.TryGetInt32(out var roomId))
+                {
+                    ids.Add(roomId);
+                }
+            }
+        }
+        return ids;
+    }
+}
+
+public static class ReservationOperations
+{
+    public static IServiceCollection AddReservationOperations(this IServiceCollection services)
+        => services
+            .AddScoped<RoomLock>()
+            .AddTransient<IEntityRequestHandler<SaveCommand<Reservation, int, ReservationDto, ReservationInputDto>, SaveResult<ReservationDto>>, ReservationSaveHandler>()
+            .AddTransient<IEntityRequestHandler<PatchCommand<Reservation, int, ReservationDto, ReservationInputDto>, SaveResult<ReservationDto>>, ReservationPatchHandler>();
+}
+```
+
+`BookingVersion` is an `int` column on the booked resource, there only to be written. The handlers answer for every
+sender (*Replacing one operation for one entity* above): the endpoints, a mapped endpoint and a job alike, so no
+controller override is needed. `RoomLock` takes the `AppDbContext` the entity services write through, so the save
+joins its transaction, and a send inside an open transaction (*Several sends in one transaction* above) locks inside
+it. On PostgreSQL an exclusion constraint refuses the overlap without code (`entities.instructions` → *Step 8*).
+
+### Behaviours around every operation
+
+An `IEntityPipelineBehavior<,>` registered as an open generic runs around every request — caching, or a log of the
+operation itself, reads and refused attempts included:
+
+```csharp
+using Microsoft.Extensions.Logging;
+using Regira.Entities.Mediator.Abstractions;
+
+public class OperationLog<TRequest, TResponse>(ILogger<OperationLog<TRequest, TResponse>> logger)
+    : IEntityPipelineBehavior<TRequest, TResponse>
+    where TRequest : IEntityRequest<TResponse>
+{
+    public async Task<TResponse?> Handle(TRequest request, EntityRequestDelegate<TResponse> next, CancellationToken token = default)
+    {
+        try
+        {
+            return await next();
+        }
+        finally
+        {
+            logger.LogInformation("{Operation} {Entity}", request.Operation, request.EntityType.Name);
+        }
+    }
+}
+
+public static class OperationLogging
+{
+    public static IServiceCollection AddOperationLog(this IServiceCollection services)
+        => services.AddTransient(typeof(IEntityPipelineBehavior<,>), typeof(OperationLog<,>));
+}
+```
+
+- Behaviours run in registration order, the first registered outermost. `Duration` spans them all and is written on
+  the result returned when it is an `IEntityResult`, as the built-in envelopes are; a request of the app's own that
+  answers with another type gets none. A cache hands out a copy (`cached with { }`), not the instance it keeps, or
+  every hit — parallel ones too — rewrites the shared instance.
+- **What follows a committed write is a reactor's job**, not a behaviour's: a reactor runs once the save commits,
+  whatever path wrote; a behaviour sees only the requests sent, and an attempt the pipeline then refused
+  (entities.instructions §Step 9 → Reactors).
+- **A behaviour that writes to the database** — an audit row per operation — writes through a scope of its own
+  (`IServiceScopeFactory.CreateAsyncScope()`, so its own `DbContext`), not the request's. A save refused at
+  `SaveChanges()`, a 409, leaves the request's `DbContext` tracking the refused change, so a `SaveChanges()` there
+  sends it again: the audit row fails with it, and a raw `DbContext.SaveChangesAsync()` turns the 409 into a 500. (A
+  validator's refusal, a 400, is taken back before anything is tracked.) Its own scope also keeps the audit row of an
+  operation that failed, which is usually what an audit is for.
+
+### Dispatching through a mediator library
+
+To run every entity request inside an app's own mediator pipeline — logging, tracing, authorization, a unit of work
+around the generated endpoints as around the app's other requests — replace the `IEntitySender` registration with a
+sender that sends through the library. Three small types do it; with MediatR:
+
+<!-- no-compile -->
+```csharp
+using MediatR;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Regira.Entities.Mediator;
+using Regira.Entities.Mediator.Abstractions;
+
+// one message for every entity request; Run sends it on to the in-house sender, typed
+public sealed record EntityMessage(IEntityRequest Request, Func<IEntitySender, CancellationToken, Task<object?>> Run) : IRequest<object?>;
+
+public class EntityMessageHandler(IServiceProvider services) : IRequestHandler<EntityMessage, object?>
+{
+    public Task<object?> Handle(EntityMessage message, CancellationToken token)
+        => message.Run(ActivatorUtilities.CreateInstance<EntitySender>(services), token);
+}
+
+public class MediatREntitySender(ISender mediator) : IEntitySender
+{
+    public async Task<TResponse?> Send<TResponse>(IEntityRequest<TResponse> request, CancellationToken token = default)
+        => (TResponse?)await mediator.Send(new EntityMessage(request, async (inner, t) => await inner.Send(request, t)), token);
+}
+
+// one of the app's behaviours: it reads the entity request on the message to tell a read from a write
+public class WriteLog<TRequest, TResponse>(ILogger<WriteLog<TRequest, TResponse>> logger) : IPipelineBehavior<TRequest, TResponse>
+    where TRequest : notnull
+{
+    public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
+    {
+        if (request is EntityMessage { Request.Operation: EntityOperation.Save or EntityOperation.Patch or EntityOperation.Delete } message)
+        {
+            logger.LogInformation("{Operation} {Entity}", message.Request.Operation, message.Request.EntityType.Name);
+        }
+        return await next();
+    }
+}
+
+// in the app's registration, before or after UseEntities()
+services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<EntityMessage>());
+services.AddTransient(typeof(IPipelineBehavior<,>), typeof(WriteLog<,>));
+services.Replace(ServiceDescriptor.Scoped<IEntitySender, MediatREntitySender>());
+```
+
+- **What stays the same:** the closed-handler override, the `IEntityPipelineBehavior`s and `Duration` — the
+  message's handler ends in the same `EntitySender` that `UseEntities()` registers.
+- **Keep the message one closed type.** A generic one needs an open-generic handler registration, and the container
+  resolves a closed service from the last open-generic registration of its type, so it would shadow the app's own
+  open-generic handlers or be shadowed by them. Another library follows the same shape: one message, one handler
+  that calls `Run`, and a sender that sends the message.
+- **MediatR's version is the app's choice, by licence.** MediatR 13 and later are commercially licensed and need the
+  app's licence key; an app without one pins **MediatR 12.5.0**, the last Apache-2.0 release — the one package where
+  "install the latest stable" does not apply.
+- ⚠️ **Let the entity exceptions through.** A behaviour that rethrows `EntityInputException`,
+  `EntityConstraintException` or `EntityConcurrencyException` wrapped in an exception of its own turns the endpoint's
+  400 and 409s into 500s.
+- A behaviour that opens a transaction around a write defers the reactors to its commit — the reactor rule
+  (entities.instructions §Step 9 → Reactors).
+
+## Mapped entity endpoints (no controllers)
+
+*Opt-in — for an app that wants no controller classes.* `app.MapEntityEndpoints()` (`Regira.Entities.Web.Endpoints`)
+maps every entity registered through `For<>()` as minimal-API endpoints: the controllers' route table, request bodies
+and response envelopes (entities.instructions §Step 13), and the attachment routes under an owner that
+`HasAttachments()` registered. Each endpoint sends the request the matching controller action sends (§Entity operations
+outside a controller), so handler overrides, behaviours and a replaced sender apply alike. The options on a registration
+say how its entity maps:
+
+```csharp
+using Regira.Entities.DependencyInjection.ServiceCollections;
+using Regira.Entities.Web.Endpoints;
+
+public class Product : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductDto { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductInputDto { public int Id { get; set; } [Required] public string? Title { get; set; } }
+public class AuditLog : IEntityWithSerial { public int Id { get; set; } public string? Message { get; set; } }
+
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+{
+    public DbSet<Product> Products => Set<Product>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+}
+
+public static class ShopServiceConfiguration
+{
+    public static EntityServiceCollection<AppDbContext> AddShop(this IServiceCollection services)
+        => services
+            .UseEntities<AppDbContext>(o => o.UseDefaults())
+            .For<Product>(e =>
+            {
+                e.UseMapping<ProductDto, ProductInputDto>();          // the DTO pair the endpoints answer with and bind
+                e.Endpoints(o => o.Exclude(EntityEndpoint.Delete));   // trim the set
+            })
+            .For<AuditLog>(e => e.Endpoints(o => o.Disable()));      // keep it off the surface
+}
+```
+
+```csharp
+using Microsoft.AspNetCore.Builder;                 // RequireAuthorization() — implicit in a Web SDK project
+using Regira.Entities.Web.Endpoints;
+
+app.MapEntityEndpoints().RequireAuthorization();   // GET/POST products, PUT/PATCH products/{id}, … — one policy for all
+```
+
+- **Every mapped entity declares its DTO pair** — `e.UseMapping<TDto, TInputDto>()`, or `e.Endpoints(o => o.UseDtos<TDto,
+  TInputDto>())` when the maps are configured elsewhere; `o.UseDtos<Product, Product>()` serves the entity as itself.
+  Without one, mapping throws at startup: there is no fallback to the entity, which would put every column on the wire.
+- **The route** is the kebab-case plural of the entity's name, the same spelling `scaffold.mjs` derives on the client:
+  `InterventionType` → `intervention-types`. A `y` after a consonant becomes `ies` (`Priority` → `priorities`); `s`,
+  `x`, `z`, `ch` and `sh` take `es` (`TicketStatus` → `ticket-statuses`, `Box` → `boxes`); anything else takes `s`, so
+  an irregular noun comes out regular (`Person` → `persons`) — set `o.Route = "people"` for it.
+  `app.MapEntityEndpoints(o => o.Prefix = "api")` puts every route under a base path.
+- **Per entity:** `o.Exclude(…)` trims the set, `o.AllowAnonymous(…)` opens chosen endpoints (public reads, §Role-gated
+  write authorization filter; the downloads an `<img>` loads, §Public (anonymous) attachment downloads), `o.Disable()` leaves the entity out, and
+  `app.MapEntityEndpoints(o => o.ConfigureGroup<Product>(g => g.RequireAuthorization("Editors")))` adds a policy for one
+  entity. It adds to the policy on the returned group rather than replacing it: a caller must pass both.
+- **Controllers and mapped endpoints mix.** An entity whose `EntityControllerBase` subclass MVC discovers is left to its
+  controller (logged), and so is an attachment link with an attachment controller, so an app moves one entity at a time.
+  A second `app.MapEntityEndpoints(o => o.Prefix = "v2")` maps the same set again under its own prefix, as a second API
+  version would.
+- **What differs from a controller.** The input DTO's DataAnnotations are checked by the request, with the 400 of a
+  validator's refusal (`errorDetails` included) rather than MVC's automatic one. A missing row answers a `ProblemDetails`
+  404. JSON is `System.Text.Json` only — a host on `AddNewtonsoftJson` keeps its controllers. The upload routes skip
+  antiforgery validation, since an API client sends no token. A multipart form post needs no CORS preflight, so a
+  **cookie-authenticated** app excludes them (`o.Exclude(EntityEndpoint.Upload, EntityEndpoint.ReplaceFile)`) and
+  serves uploads from an attachment controller under `[AutoValidateAntiforgeryToken]`, or maps its own with
+  antiforgery; a bearer-token app is unaffected.
+- **The query string** binds the search object's scalar and collection properties — `ids=1&ids=2` or `ids[0]=1`,
+  invariant culture, enums by name in any case — and `includes` / `sortBy` on a complex entity. A property of a complex
+  type does not bind, and MVC's binding attributes are not read: a property marked `[BindNever]` binds here, and one
+  renamed with `[FromQuery(Name = …)]` binds by its own name. A value that does not convert answers 400, keyed by the
+  property.
+- **Attachments** map under the owner's route with the attachment controller's sub-routes, so the app writes no
+  attachment controller. Only the `int`-keyed link shape (`IHasAttachments<TLink>`) maps; an owner with another key
+  type is logged and keeps an attachment controller. `UseAttachmentUris()` links the DTO `Uri` to the mapped download —
+  for an owner mapped twice, to its first mapping, since endpoint names are global.
+- **An endpoint of the app's own** sends its request through `IEntitySender`. Mapped outside the entity groups — on
+  `app` itself — it takes `.AddEndpointFilter<EntityExceptionEndpointFilter>()` for the 400 and 409 bodies the mapped
+  endpoints answer with. Mapped inside one, through `ConfigureGroup<TEntity>()`, it already has the filter, which the
+  group `MapEntityEndpoints()` returns carries.
+- **Write authorization** is a policy on the group, not a controller filter: §Role-gated write authorization filter →
+  *On mapped endpoints*.
+
+## Validators with FluentValidation
 
 `Regira.Entities.Validation.FluentValidation` runs `AbstractValidator<T>` rules as the write pipeline's validator
 stage (entities.instructions §Step 8 → Validators): after every prepper, on `DELETE` too, with every error in one 400.
@@ -778,7 +1732,10 @@ public class OrderValidator : AbstractValidator<Order>
 {
     public OrderValidator(AppDbContext db)
     {
-        RuleFor(x => x.Code).NotEmpty().MaximumLength(20);
+        // other rows: Code's shape (required, length) is the input DTO's DataAnnotations, checked before the preppers
+        RuleFor(x => x.Code)
+            .MustAsync(async (order, code, ct) => !await db.Orders.AnyAsync(o => o.Code == code && o.Id != order.Id, ct))
+            .WithMessage("Code is taken");
 
         // db sees every row: with scoped reads, check through the filtered read service (entities.instructions §Step 8 → Validators)
         RuleFor(x => x.CustomerId)
@@ -877,13 +1834,12 @@ public class WriteAuthorizationFilter(ILogger<WriteAuthorizationFilter> logger) 
     public Task OnAuthorizationAsync(AuthorizationFilterContext context)
     {
         var action = context.ActionDescriptor as ControllerActionDescriptor;
-        var route = action?.AttributeRouteInfo?.Template ?? "";
+        var method = context.HttpContext.Request.Method;
 
-        // Reads: every GET, plus the two POST query overloads. Everything else writes — including the
-        // attachment controller's upload/replace and any custom action, which is the safe default.
-        var isRead = HttpMethods.IsGet(context.HttpContext.Request.Method)
-            || route.EndsWith("/search", StringComparison.OrdinalIgnoreCase)
-            || route.EndsWith("/list", StringComparison.OrdinalIgnoreCase);
+        // Reads: every GET, plus the two POST query overloads (POST list, POST search). Everything else writes —
+        // including the attachment controller's upload/replace and any custom action, which is the safe default.
+        var isRead = HttpMethods.IsGet(method)
+            || (HttpMethods.IsPost(method) && action?.ActionName is "List" or "Search");
 
         // A write is public only when its ACTION says so: sign-in, password recovery, confirm-email, a
         // self-registration override. [AllowAnonymous] on a controller opens its reads, never its writes.
@@ -919,7 +1875,8 @@ public class WriteAuthorizationFilter(ILogger<WriteAuthorizationFilter> logger) 
 
 ⚠️ **`POST` is not a reliable "write" signal here** — `POST /{entity}/search` and `POST /{entity}/list` are
 the array-of-search-objects **read** overloads, so a bare method test 403s the reader's own list screen.
-Hence the two route exclusions above.
+Hence the exclusion above, by method and action name rather than by route: a custom action whose route ends in
+`/search` stays a write. Don't name a writing action `List` or `Search`.
 
 ⚠️ **Every writing controller needs an entry — the account controllers included.** `auth/validate` and
 `auth/refresh` are guarded `POST`s every identity must reach: give `AccountController` an empty entry, or the
@@ -937,9 +1894,77 @@ its own controller, so it needs its own entry for file upload (`POST {objectId}/
 (`PUT {objectId}/files/{id}`), the link's update (`PUT {objectId}/attachments/{id}`) and its delete
 (`DELETE attachments/{id}`). Without one those writes are refused and logged, not left open.
 
+⚠️ **Create and update are one action.** `POST /{entity}` and `POST /{entity}/save` both call `Save`: a body with
+the `Id` of a stored row updates that row. A tier that lets some roles create but not update (customers place
+orders, only the shop changes them) cannot be read from the action, and this filter runs before binding, so it
+never sees the `Id`. Give the controller the create tier here and refuse the update in a validator, which runs
+whatever the route: `if (ctx.Operation == EntityWriteOperation.Modify && !user.FindRoles().Contains("Administrator"))
+ctx.AddError(string.Empty, "Only the shop changes a placed order.");`, with `user` read from `IHttpContextAccessor`.
+
 **Check it** with a signed-in user outside the roles: a write to a gated controller answers 403, also with a
 malformed body, a `POST …/search` answers 200, and no warning names a controller you meant to list. On a
-controller open for anonymous reads, the same write without a token answers 401.
+controller open for anonymous reads, the same write without a token answers 401. A `POST /{entity}` carrying a
+stored `Id` from a create-only role answers 400 and changes nothing.
+
+### On mapped endpoints
+
+The mapped endpoints (§Mapped entity endpoints) have no controller to key on and run no MVC filter. Each carries an
+`EntityEndpointMetadata` — its entity (the owner, for an attachment route) and `IsWrite` — so the tier is an
+authorization policy on the mapped group. The authorization middleware runs it before binding, as the controller
+filter runs before model binding, and it fails closed the same way:
+
+<!-- no-compile -->
+```csharp
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;                       // HttpContext, GetEndpoint()
+using Regira.Entities.Web.Endpoints;                   // EntityEndpointMetadata
+using Regira.Security.Authentication.Jwt.Extensions;   // FindRoles() — package Regira.Security.Authentication
+
+public sealed class EntityWriteRequirement : IAuthorizationRequirement;
+
+// builder.Services.AddAuthorization(o => o.AddPolicy("EntityWrites", p => p.RequireAuthenticatedUser().AddRequirements(new EntityWriteRequirement())));
+// builder.Services.AddSingleton<IAuthorizationHandler, EntityWriteAuthorizationHandler>();
+// app.MapEntityEndpoints().RequireAuthorization("EntityWrites");
+public class EntityWriteAuthorizationHandler(ILogger<EntityWriteAuthorizationHandler> logger) : AuthorizationHandler<EntityWriteRequirement>
+{
+    // Keyed on the entity TYPE — the owner's entry covers its attachment routes. An empty array lets any signed-in user write.
+    private static readonly Dictionary<Type, string[]> WriteRoles = new()
+    {
+        [typeof(Product)] = ["Administrator", "Editor"],
+    };
+
+    protected override Task HandleRequirementAsync(AuthorizationHandlerContext context, EntityWriteRequirement requirement)
+    {
+        var http = context.Resource as HttpContext;
+        var metadata = http?.GetEndpoint()?.Metadata.GetMetadata<EntityEndpointMetadata>();
+        // an endpoint without the metadata — one of the app's own on the group — writes unless it is a GET: the safe default
+        var isWrite = metadata?.IsWrite ?? !HttpMethods.IsGet(http?.Request.Method ?? string.Empty);
+        if (!isWrite)
+        {
+            context.Succeed(requirement);                // a read — POST list and POST search included
+        }
+        else if (metadata == null || !WriteRoles.TryGetValue(metadata.EntityType, out var roles))
+        {
+            // fail closed — and say what is missing, or the 403 reads like a role problem
+            logger.LogWarning("EntityWriteAuthorizationHandler has no entry for {Endpoint}; its writes are refused. Add it to WriteRoles.",
+                metadata?.EntityType.Name ?? http?.GetEndpoint()?.DisplayName);
+        }
+        else if (roles.Length == 0 || roles.Intersect(context.User.FindRoles(), StringComparer.OrdinalIgnoreCase).Any())
+        {
+            context.Succeed(requirement);
+        }
+        return Task.CompletedTask;
+    }
+}
+```
+
+`o.AllowAnonymous(EntityEndpoint.Download)` on a registration exempts its downloads from the policy, as
+`[AllowAnonymous]` on a download action does. A public catalogue opens its reads per entity the same way:
+`e.Endpoints(o => o.AllowAnonymous(EntityEndpoint.List, EntityEndpoint.Search, EntityEndpoint.Details))`, plus `Download`
+for its images; its writes stay under the policy. ⚠️ Keep `RequireAuthenticatedUser()` in the policy: the handler
+succeeds every read, so without it every mapped entity's reads are anonymous. A write endpoint of the app's own on the group carries no entity metadata
+and is refused: gate it with a policy of its own, or give it `.WithMetadata(new EntityEndpointMetadata(typeof(CreditRequest),
+EntityEndpoint.Modify))` to share the entity's entry.
 
 ## Owned children that are both sortable and individually togglable
 
@@ -953,6 +1978,29 @@ controller open for anonymous reads, the same write without a token answers 401.
 > ⚠️ **The sync rewrites whole rows, not just the fields you own at collection level.** Once the parent sends the collection, `UpdateRelatedCollection` marks every matched row `Modified` and writes **all** its values from the payload — so the per-row field resets to `default` on every list save unless a parent-level `e.Prepare(entity, dbContext)` hook (registered **before** `Related()`) re-stamps it from the store first.
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — *Additional Patterns > Sortable owned child with a per-row toggle* for the full slice: entity, both DTOs, the guard, the PATCH controller, and the registration-order and covariance caveats.
+
+## Reordering separately registered rows
+
+A row with a `For<>()` of its own (`ISortable`, not a `Related()` child) has no parent DTO to carry the order, so the
+reorder is a collection-level action of its own: `POST /{resource}/sort` with the ids in their new order.
+
+<!-- no-compile -->
+```csharp
+// on CategoryController — a POST, so the write-authorization filter gates it with the controller's writes;
+// on mapped endpoints give it .WithMetadata(new EntityEndpointMetadata(typeof(Category), EntityEndpoint.Modify))
+[HttpPost("sort")]
+public async Task<IActionResult> Sort([FromBody] int[] ids, [FromServices] IEntityService<Category, int> service, CancellationToken token)
+{
+    if (ids.Length > 500) return BadRequest();                                      // one Modify, one re-read, per row
+    var rows = await service.List(new SearchObject<int> { Ids = ids }, token: token);   // row security applies
+    if (rows.Count != ids.Distinct().Count()) return NotFound();                    // an id the caller cannot see
+    var sorted = rows.OrderBy(x => Array.IndexOf(ids, x.Id)).ToList();               // List keeps its own order, not the ids'
+    sorted.SetSortOrder();                                                           // Regira.Entities.Extensions
+    foreach (var row in sorted) await service.Modify(row, token);                    // one List: shared principals are one instance
+    await service.SaveChanges(token);
+    return NoContent();
+}
+```
 
 ## Renamed DTO property
 
@@ -992,6 +2040,8 @@ e.Prepare(async (order, dbContext) =>
 
 - Throw `EntityInputException<Order>` on a rule breach — parameterized by the **serviced** entity (`Order`, the one with the `.For<>()`/controller), **not** the related `Product`. Both still return 400 (the registered filter matches the non-generic base), but the generated action's own `catch` is on its closed `EntityInputException<TEntity>`, so only the matching type argument gets the action's own 400 — another reaches the filter, and a host without it answers 500 — and any `catch` you write should be on the base for the same reason.
 - On **update** the decrement would compound — diff against the original quantities (prepper-with-original, or a primer branching on `EntityState.Modified`) and apply only the delta.
+- ⚠️ Two concurrent orders can read the same stock and lose a decrement; where that matters, give `Product` `IHasConcurrencyToken` so the losing save answers 409 (§Optimistic concurrency (stale-write detection)).
+- To insert a related row on update, `dbContext.Add(row)` with its FK set; it is saved with the parent and taken back if a validator refuses the write.
 
 ## Server-owned / immutable fields on update
 
@@ -1048,7 +2098,7 @@ Cases the declaration does not cover, and what to use instead:
 |---|---|
 | Mint from an injected service (a code generator, `IHttpContextAccessor`), or re-derive on every save | a **prepper** — `EntityPrepperBase<T>.Prepare(modified, original, …)`, registered with `e.AddPrepper<T>()` |
 | Stamp the field even when a raw-`DbContext` writer creates the row (what `HasCreatedDbPrimer` does for `Created`) | a **primer** — accepting that it reverts such a writer's updates too |
-| Mint a sequential code that must not skip numbers | a **primer** — the mint and preppers run before the validators, so a create they refuse has already used its number (§Server-generated sequential codes) |
+| Mint a sequential code that a refused create must not use up (it can still skip on a rollback; gapless numbers need a counter table) | a **primer** — the mint and preppers run before the validators, so a create they refuse has already used its number (§Server-generated sequential codes) |
 
 The primer form, for that second case — stamp on create, restore on update:
 
@@ -1074,12 +2124,22 @@ invoice number, source-system id).
 
 **Computed from the stored graph?** A `Total` diffed against the original lines needs the whole prior row —
 use a prepper instead: `EntityPrepperBase<T>.Prepare(modified, original, …)` hands you the full `original`
-entity (`null` on create); register with `e.AddPrepper<T>()`.
+entity (`null` on create); register with `e.AddPrepper<T>()`. An order line keeps the price it was ordered at the
+same way: price only the lines new to the order, or whose product changed, and take the rest from `original`
+(`entities.examples` → *Order + OrderLine entities*).
 
 **Another service writes the field through the raw `DbContext`?** `[ServerOwned]`/`e.ServerOwned(…)` already
 handles it — it is a prepper, so it never runs on that writer's save. Only the primer form above needs the
 warning; see *Primer vs prepper when a second writer exists* below. A writer going through `IEntityService` is
 restored like any client — §Role-gated transitions covers that case.
+
+### Owned rows frozen after create
+
+An order's lines never change once placed: register `e.Prepare(o => { if (o.Id > 0) o.Lines = null; })` **before**
+`e.Related(x => x.Lines)`. A `null` collection leaves the stored rows untouched, whatever a `PUT` or `PATCH` sends
+(`entities.instructions` → *Write-pipeline order*). On create, price the rows in a prepper, so the amounts a client
+sends never count (`[ServerOwned]` keeps them on create). When lines may still be added, price only the new ones
+instead (`entities.examples` → *Order + OrderLine entities*).
 
 ## Optimistic concurrency (stale-write detection)
 
@@ -1128,59 +2188,56 @@ A token you declare yourself goes through the same check:
 | Application-owned | `[ConcurrencyCheck, VersionStamp] public Guid Version { get; set; }` | **a primer you register** — `HasConcurrencyTokenDbPrimer` is the one to copy |
 | Data column | `[ConcurrencyCheck] public string? LastName { get; set; }` | nothing — the client edits it |
 
-A token is a **version stamp** when the database generates it on update, when it is the marker's
-`ConcurrencyToken`, or when it carries `[VersionStamp]` (`Regira.Entities.Attributes`). Declare an
-application-owned token so: the check then compares the client's value on every write, and startup validation
-checks its DTOs as below. An undeclared token is treated as a stamp only on a write where a prepper or primer
-changes it — which misses a primer that can produce the value the client already holds (a hash of the content: the
-stale client that sends back what it read is let through) — and startup validation reports its findings only as
-Info. **A token nothing moves is a data column:** the client's value is the edit itself, so it is written as sent — a
-change or a clear — and compared with nothing the client read: only a write racing the save is caught. That is also
-what an application-owned token without its primer gets, so two clients holding the same value both pass. The flip
-side: a primer that rewrites an undeclared data column in place (trimming, rounding) makes it look like a version
-stamp, and the edit it rewrote answers 409.
+A token is a **version stamp** only when it is declared one: the database generates it on update, it is the
+marker's `ConcurrencyToken`, or it carries `[VersionStamp]` (`Regira.Entities.Attributes`). A stamp's client value
+is compared on every write, and startup validation checks its DTOs as below. **Any other token is a data column,
+whatever moves it:** the value on the entity is written — the client's edit, or what a primer made of it — and it
+is compared with the stored row, never with what the client read, so only a write racing the save is caught. So an
+application-owned token needs `[VersionStamp]` as well as its primer: without the attribute a stale client is not
+refused, and startup validation warns about an undeclared token of a type a stamp takes (a `Guid`, an integer, `byte[]`, `DateTime` or `DateTimeOffset`). A primer that
+rewrites a data column in place (trimming, rounding) is just another edit.
 
 **2. Carry it on both DTOs, uninitialized** — `public Guid ConcurrencyToken { get; set; }` on `OrderDto` and
-`OrderInputDto`. Startup validation reports the shapes that break the check:
+`OrderInputDto`. An initializer (`= Guid.NewGuid()`) on the entity's token, with no input-DTO property to overwrite
+it, gives every mapped entity a token the row never held, so every `PUT`/`PATCH` answers 409; on the input DTO it
+does the same to a client that leaves the token out. Startup validation reports the shapes that silently break the
+check:
 
 - A DTO **without** the property: the client never receives the token or can never send it back, so every write
   is last-write-wins again (warning). For a token declared `[VersionStamp(Required = true)]` an input DTO without
   it means every update answers 400 instead (error).
-- An **initializer** on the entity's token (`= Guid.NewGuid()`) with no input-DTO property to overwrite it: the
-  mapper builds a fresh entity per request, so every `PUT`/`PATCH` carries a token the row never held and
-  answers 409 (error). An initializer on the input DTO — or on the entity's token when the entity is its own input
-  DTO — does the same to a client that omits the token (warning).
 - `[VersionStamp]` on a property the model does not treat as a concurrency token: nothing is compared (warning).
 
-These apply to declared version stamps; a data column needs none of them, so an undeclared token only gets them as
-Info.
+These apply to declared version stamps; a data column needs none of them.
 
 **Deleting by key still works, at one read per row.** A delete is commonly issued from a stub —
 `Remove(new Order { Id = id })` — which carries no token, and comparing the stored row against `Guid.Empty` would
 match nothing and fail as a conflict forever. An absent token is read as the absence of a claim, so the primer reads
 the stored token and deletes against that: the delete goes through, while a caller that *does* supply a token keeps
 its check and an already-deleted row still reports a conflict. The soft delete of an `IArchivable` stub is checked
-the same way; it writes the archive flag and the primers' stamps, never the stub's empty values. The cost is one
-extra `SELECT` per deleted row that carries the marker, so removing N stubs in a loop is N extra round trips — load
+the same way — it writes the archive flag and the primers' stamps, never the stub's empty values — and so is an
+update of an attached stub (`Attach(new Order { Id = id })`, then a change), as a `PUT` without the token is. The cost
+is one extra `SELECT` per such row that carries the marker, so removing N stubs in a loop is N extra round trips — load
 the entities you are deleting (a single query) when that matters. On a synchronous `SaveChanges()` each of those
 reads blocks the calling thread. One stub still needs the entity loaded: one whose row references its own children,
 whose reference is dropped by a direct `UPDATE` before any primer runs.
 
 **3. Handle the 409 on the client.** The body is a `ProblemDetails` titled **"Concurrency conflict"** — the
 constraint 409 is titled "Conflict" — so the client can tell "reload and try again" from "fix the input". Reload
-the row, which brings its current token, and let the user re-apply the edit.
+the row, which brings its current token, and let the user re-apply the edit. In a Vue SPA on `@regira/modules`: its
+`entities.patterns` → *Form validation & error handling* has the Reload recipe.
 
 What each write is checked against:
 
 | Write | Checked against |
 |---|---|
-| `PUT` carrying the token | the client's token — a stale one answers 409 |
+| `PUT` carrying the token, or a `SaveCommand` your own code sends with the token it read | the client's token — a stale one answers 409 |
 | `PUT` without it (`null`, empty, `Guid.Empty`, `0`) | nothing the client read: it writes, only a write racing it is caught, and the empty value never overwrites the token (the marker's primer still mints a new one). `[VersionStamp(Required = true)]` on the token refuses it instead — 400 naming the token (below), before anything is attached — for a client that must always prove what it read; on the marker, put the attribute on the implementing `ConcurrencyToken` property. An insert is never refused |
-| `PATCH` | the token in the body when it carries one; otherwise the merge base supplies the value read at `PATCH` time |
+| `PATCH`, or a `PatchCommand` | the token in the body when it carries one; otherwise the merge base supplies the value read at `PATCH` time |
 | `DELETE`, and child rows a save drops | no client token reaches them — only a write racing them is caught |
 | Your own code on the raw `DbContext` (load, copy the DTO, `SaveChanges()`) | the token the entity was **loaded** with — copying the client's token onto a tracked entity changes only its current value, so a stale client wins. Set the original yourself: `db.Entry(order).Property(x => x.ConcurrencyToken).OriginalValue = dto.ConcurrencyToken` |
 | Owned children (`Related()`) | each child's own token, when it declares one; one stale child fails the whole save. A CLR type EF maps more than once — a shared-type entity, an owned type with several owners — has no single model to read its token from, so only a write racing it is caught |
-| A data-column token | the stored row — only a write racing the save is caught |
+| A data-column token — any token not declared a version stamp | the stored row — only a write racing the save is caught |
 
 - A required stamp left out answers the field-level 400, keyed by the token's C# property name:
   `"errors": { "ConcurrencyToken": ["Required on an update: send the value read with the record."] }`. The camelCase naming
@@ -1223,16 +2280,52 @@ Three consequences follow from the child owning the write:
 
 - The amounts stay **off `TInputDto`** — same rule as any server-owned field; a client must not be able to
   state a total.
-- The value is **eventually consistent**: it settles when the parent is next saved, not when a child moves.
-  Attaching an intervention to an invoice therefore has to save the invoice too, or the total lags.
-- **Seeding needs a second pass over the parents.** At create time the total is necessarily `0`, so add a
-  final wave that re-`Modify()`s every parent purely to re-run this hook — see §Bulk insert / update.
-- ⚠️ **A query filter on the child also hides its rows from this recompute.** A dependent you query directly
-  carries `HasQueryFilter(x => !x.Parent!.IsArchived)` (§Step 11) — and that filter applies here too, while
-  the parent is *still archived at the moment the prepper runs*. A restore (`PATCH {"isArchived": false}`)
-  therefore sums zero rows and writes the total to `0`, returns 200, and logs nothing. Add
-  `IgnoreQueryFilters()` to the aggregate query, scoped by the parent FK so it can only ever see this
-  aggregate's own children.
+- Without the reactor below, the value is **eventually consistent**: it settles when the parent is next saved,
+  not when a child moves. Attaching an intervention to an invoice then has to save the invoice too, or the total lags.
+- Without the reactor below, **seeding needs a second pass over the parents.** At create time the total is
+  necessarily `0`, so add a final wave that re-`Modify()`s every parent purely to re-run this hook — see §Bulk
+  insert / update.
+
+**Settle it from the child with a reactor.** On the child's registration, re-save the parents a committed change
+touched — the old one too when the FK moved — so the prepper above re-sums them:
+
+<!-- no-compile -->
+```csharp
+// services.AddScoped<SettledInvoices>(); — the reactions of one committed save share one scope
+public sealed class SettledInvoices : HashSet<int> { }
+
+e.React(
+    change => change.Kind != EntityChangeKind.Modified || change.HasChanged(x => x.InvoiceId) || change.HasChanged(x => x.TotalCost),
+    async (change, services, token) =>
+    {
+        var db = services.GetRequiredService<AppDbContext>();
+        var invoices = services.GetRequiredService<IEntityService<Invoice, int>>();
+        var settled = services.GetRequiredService<SettledInvoices>();
+        foreach (var id in new[] { change.Entity.InvoiceId, change.Original?.InvoiceId }.OfType<int>().Distinct())
+        {
+            // re-summed once per committed save: the reactions start after the whole save committed
+            if (!settled.Add(id)) continue;
+            // the bare row, detached and without navigations: List and Details apply the registered includes, and an
+            // included to-one would ride into Modify as a graph to attach
+            var invoice = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, token);
+            if (invoice != null) await invoices.Modify(invoice, token);
+        }
+        await invoices.SaveChanges(token);
+    });
+```
+
+The reactor runs after the child's save committed, in a scope of its own, so the parent's save is a second
+commit: a failure there is logged and the child's save stands. With it registered, seeding needs no second pass
+over the parents: seed the parents first, and each child wave settles them. Each changed row is one reaction, so
+without `SettledInvoices` a wave of a hundred lines re-saves their invoice a hundred times; with it, once per save.
+A flag the seeder sets in its own scope never reaches the reactor, which runs in another.
+
+> ⚠️ **A query filter on the child also hides its rows from this recompute.** A dependent you query directly
+> carries `HasQueryFilter(x => !x.Parent!.IsArchived)` (§Step 11) — and that filter applies here too, while
+> the parent is *still archived at the moment the prepper runs*. A restore (`PATCH {"isArchived": false}`)
+> therefore sums zero rows and writes the total to `0`, returns 200, and logs nothing. Add
+> `IgnoreQueryFilters()` to the aggregate query, scoped by the parent FK so it can only ever see this
+> aggregate's own children.
 
 ## Server-generated sequential codes
 
@@ -1291,10 +2384,33 @@ Two constraints come with the shape:
   keep the index and let a genuine collision surface as a 409.
 
 Stamp from a primer exactly as above: mint on `Added`, restore from `entry.OriginalValues` on `Modified`.
-The primer is also what keeps the sequence gapless: it runs inside `SaveChanges()`, after the validators, so a
-create they refuse uses no number. Minted in a prepper or with `e.ServerOwned(x => x.Code, mint)`, which run
-before the validators, the refused create has already taken its number, and the next one skips it. Only a save that
-then fails in the database still leaves a gap.
+
+<!-- no-compile -->
+```csharp
+public class RequestCodePrimer(RequestCodeGenerator codes) : EntityPrimerBase<Request>
+{
+    public override async Task PrepareAsync(Request entity, EntityEntry entry, CancellationToken token = default)
+    {
+        if (entry.State == EntityState.Added && string.IsNullOrEmpty(entity.Code))
+            entity.Code = await codes.Next(DateTime.UtcNow.Year);                 // create — mint
+        else if (entry.State == EntityState.Modified)
+            entity.Code = (string?)entry.OriginalValues[nameof(entity.Code)];      // update — the stored code, whatever the body said
+    }
+}
+// Registration: services.AddSingleton<RequestCodeGenerator>(); e.AddPrimer<RequestCodePrimer>();
+```
+
+The restore holds on the service's `Modify` path too: it tracks the stored row's values as the entry's originals, so
+`OriginalValues` is the stored code even for an entity that arrived detached.
+The primer also keeps refused creates from using a number: it runs inside `SaveChanges()`, after the validators.
+Minted in a prepper or with `e.ServerOwned(x => x.Code, mint)`, which run before the validators, a refused create has
+already taken its number. A number the primer hands out is still spent for the life of the process when the save then
+fails in the database or a surrounding transaction rolls back, so the codes are unique and ordered, not gapless. Where
+numbers must be gapless (invoices), keep the counter in a table and increment it inside the insert's transaction, so a
+rollback returns the number.
+
+A `[Normalized]` property or `e.AddNormalizer<>()` sees a value a primer set: the normalizer interceptor runs after the
+primer interceptor in the same `SaveChanges` (`entities.instructions` → *Write-pipeline order*).
 
 ⚠️ **Primer vs prepper when a second writer exists.** A prepper runs only on the entity-service write path
 (`IEntityService.Add`/`Modify`/`Save` — so `original` is `null` on create, the stored row on update). A
@@ -1330,16 +2446,17 @@ public class ArticleAttachmentController : EntityAttachmentControllerBase<Articl
 ```
 
 Overriding only the id overload is the trap: the generated `Uri` points at the filename route, which stays
-guarded — the `<img>` still 401s. (Authorization is evaluated on the *routed* action only; the filename
-action's internal call into the id action is a plain method call.) Reserve this for genuinely public assets
+guarded — the `<img>` still 401s. (Authorization is evaluated on the *routed* action only.) On mapped endpoints
+(§Mapped entity endpoints) the owner's registration opens both downloads at once:
+`e.Endpoints(o => o.AllowAnonymous(EntityEndpoint.Download))`. Reserve this for genuinely public assets
 (product/article pictures) — the routes are guessable; sensitive documents stay on the authenticated path
-(download them through the shared axios, which sends the bearer).
+(download them through the shared axios, which sends the bearer, and show an image from an object URL).
 
 ## An entity that references one of its own children
 
 An owner with an optional foreign key to one of its own child rows — while the child's foreign key back is
 required, and therefore cascades — makes the two tables reference each other. Two independent things break, and
-neither failure names the relationship. Startup validation warns about the shape.
+neither failure names the relationship (§Troubleshooting in `entities.instructions` lists both symptoms).
 
 **Prefer marking the child over pointing at it.** A flag or a rank column on the child identifies the same row
 with no foreign key and neither failure below; an attachment link entity's `SortOrder` (assigned from the
@@ -1450,9 +2567,12 @@ Use a global `EntityPrimerBase<TInterface>` to stamp `CreatedBy`/`ModifiedBy` on
 - Define an audit interface (e.g. `IAuditable`) with `CreatedBy` and `ModifiedBy` properties
 - Implement `EntityPrimerBase<IAuditable>` — check `EntityState.Added` vs `Modified`
 - Register globally via `options.AddPrimer<UserTrackingPrimer>()`
-- Runs via the primer interceptor — auto-wired by `UseDefaults()`; without it, select `e.WireDbContext(DbContextWiring.PrimerInterceptors)`
+- Runs via the primer interceptor — auto-wired by `UseDefaults()`; without it, select `options.WireDbContext(DbContextWiring.PrimerInterceptors)` on the `UseEntities` options
 
-> **→ See:** [`entities.examples.md`](./entities.examples.md) — Additional Patterns > Primers
+An audit kept outside the database (MongoDB, a log service) is a reactor instead: it runs once the save is committed,
+and never for a rolled-back one (`entities.instructions` → *Reactors — after the commit*).
+
+> **→ See:** [`entities.examples.md`](./entities.examples.md) — Additional Patterns > Primers (the mechanism; read the user from `IHttpContextAccessor` in `PrepareAsync`)
 
 ## Hierarchical Data (Self-referencing)
 
@@ -1496,6 +2616,9 @@ full set with `e.AddDefaultInterceptors()` or select pieces à la carte with `e.
 | `ArchivedQueryFilter` | Applies the soft-delete filter (`e => !e.IsArchived`) to every `IArchivable` entity type — see §Soft Delete |
 | `ConcurrencyTokens` | Declares `IHasConcurrencyToken.ConcurrencyToken` a concurrency token on every implementing entity type — see §Optimistic concurrency |
 | `Reactors` | Runs registered reactors once a save's changes are committed (entities.instructions §Step 9 → Reactors) |
+
+The three interceptor rows run in table order inside `SaveChanges`; reactors run after the commit; the conventions
+shape the model and run at no save (`entities.instructions` → *Write-pipeline order*).
 
 > **À-la-carte pattern (no `UseDefaults()`):**
 > ```csharp

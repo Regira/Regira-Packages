@@ -185,6 +185,35 @@ public class RepositoryTests : IDisposable
     }
 
     [Test]
+    public async Task CountProducts_Applies_The_Filter_List_Uses()
+    {
+        var category = $"furniture-{Guid.NewGuid()}";
+        Product[] products =
+        [
+            new() { Name = "Desk", Category = category, Price = 120.5m },
+            new() { Name = "Chair", Category = category, Price = 45m },
+            new() { Name = "Lamp", Category = $"lighting-{Guid.NewGuid()}", Price = 30m }
+        ];
+        foreach (var product in products)
+        {
+            await _productRepo.Save(product);
+        }
+
+        var so = new ProductSearchObject { Category = category, MinPrice = 50 };
+        var count = await _productRepo.Count(so);
+        var listed = await _productRepo.List(so);
+
+        Assert.That(count, Is.EqualTo(1));
+        Assert.That(count, Is.EqualTo(listed.Count()));
+        Assert.That(await _productRepo.Count(new { products[2].Id }), Is.EqualTo(1));
+
+        foreach (var product in products)
+        {
+            await _productRepo.Delete(product);
+        }
+    }
+
+    [Test]
     public async Task Each_Communicator_Uses_Its_Own_Database()
     {
         var otherSettings = new MongoSettings("localhost", $"Test-{Guid.NewGuid()}");

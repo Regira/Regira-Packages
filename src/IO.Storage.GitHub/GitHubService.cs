@@ -1,4 +1,5 @@
 using Regira.IO.Storage.Abstractions;
+using Regira.IO.Storage.Utilities;
 using Regira.Serializing.Abstractions;
 using Regira.Web.Utilities;
 using System.Collections.Concurrent;
@@ -23,14 +24,14 @@ public class GitHubService(GitHubCommunicator communicator, ISerializer serializ
 
     public async Task<bool> Exists(string identifier)
     {
-        var uri = GetIdentifier(identifier);
-        var response = await communicator.Client.GetAsync(uri);
+        var uri = GetAbsoluteUri(identifier);
+        var response = await communicator.GetAsync(uri);
         return response.IsSuccessStatusCode;
     }
     public async Task<byte[]?> GetBytes(string identifier)
     {
         var uri = GetAbsoluteUri(identifier);
-        var response = await communicator.Client.GetAsync(uri);
+        var response = await communicator.GetAsync(uri);
         if (!response.IsSuccessStatusCode)
             return null;
         var json = await response.Content.ReadAsStringAsync();
@@ -46,9 +47,8 @@ public class GitHubService(GitHubCommunicator communicator, ISerializer serializ
     }
     public async Task<IEnumerable<string>> List(FileSearchObject? so = null)
     {
-        var folderPath = so?.FolderUri?.TrimStart(@"\/".ToCharArray());
-        var listUri = string.IsNullOrEmpty(folderPath) ? Root.TrimEnd('/') : folderPath;
-        var response = await communicator.Client.GetAsync(listUri);
+        var listUri = GetAbsoluteUri(so?.FolderUri ?? string.Empty);
+        var response = await communicator.GetAsync(listUri);
         if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
             return [];
         response.EnsureSuccessStatusCode();
@@ -100,63 +100,24 @@ public class GitHubService(GitHubCommunicator communicator, ISerializer serializ
 #if NET10_0_OR_GREATER
     public async IAsyncEnumerable<string> ListAsync(FileSearchObject? so = null)
     {
-        var folderPath = so?.FolderUri?.TrimStart(@"\/".ToCharArray());
-        var listUri = string.IsNullOrEmpty(folderPath) ? Root.TrimEnd('/') : folderPath;
-        var response = await communicator.Client.GetAsync(listUri);
-        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        foreach (var identifier in await List(so))
         {
-            yield break;
-        }
-        response.EnsureSuccessStatusCode();
-        var content = await response.Content.ReadAsStringAsync();
-        var items = serializer.Deserialize<GitHubItem[]>(content)!;
-
-        foreach (var item in items)
-        {
-            if (item.Type == GitHubItemType.Dir)
-            {
-                if (so == null || so.Type == FileEntryTypes.All || so.Type == FileEntryTypes.Directories)
-                {
-                    if (so?.Extensions == null)
-                    {
-                        var folder = item.Url.Split('?').First().TrimEnd('/') + "/";
-                        yield return folder;
-                    }
-                }
-                if (so?.Recursive == true)
-                {
-                    var dirSo = new FileSearchObject
-                    {
-                        FolderUri = $"{so.FolderUri}/{item.Name}".Trim(@"\/".ToCharArray()),
-                        Type = so.Type,
-                        Extensions = so.Extensions,
-                        Recursive = true
-                    };
-                    await foreach (var dirFile in ListAsync(dirSo))
-                    {
-                        yield return dirFile;
-                    }
-                }
-            }
-
-            if (item.Type == GitHubItemType.File)
-            {
-                if (so == null || so.Type == FileEntryTypes.All || so.Type == FileEntryTypes.Files)
-                {
-                    if (so == null || (so.Extensions?.Count ?? 0) == 0 || so.Extensions?.Any(e => item.Name.EndsWith(e, StringComparison.InvariantCultureIgnoreCase)) == true)
-                    {
-                        var identifier = GetIdentifier(item.Url);
-                        yield return identifier;
-                    }
-                }
-            }
+            yield return identifier;
         }
     }
 #endif
 
+    /// <summary>The address every request for <paramref name="identifier"/> goes to: below <see cref="Root"/>, a <c>?ref=</c> query kept.</summary>
+    /// <exception cref="UnauthorizedAccessException">Contained, the address leaves <see cref="Root"/>.</exception>
     public string GetAbsoluteUri(string identifier)
     {
-        return FileNameUtility.GetUri(identifier, Root);
+        // a # is part of a file's name, where a URL would read it as the start of a fragment and request a shorter name
+        var uri = FileNameUtility.GetUri(identifier, Root).Replace("#", "%23");
+        if (communicator.Contained)
+        {
+            UrlPath.EnsureContained(new Uri(uri), communicator.RootUri);
+        }
+        return uri;
     }
     public string GetIdentifier(string uri)
     {
@@ -193,7 +154,7 @@ public class GitHubService(GitHubCommunicator communicator, ISerializer serializ
                 body["sha"] = sha;
 
             var json = serializer.Serialize(body);
-            var response = await communicator.Client.PutAsync(path, new StringContent(json, Encoding.UTF8, "application/json"));
+            var response = await communicator.PutAsync(GetAbsoluteUri(path), new StringContent(json, Encoding.UTF8, "application/json"));
 
             // The sha we sent is wrong: GitHub answers 409 (a cached sha outlived an external write) or
             // 422 (a required sha was missing because the read-back raced the previous write). Drop the
@@ -250,11 +211,11 @@ public class GitHubService(GitHubCommunicator communicator, ISerializer serializ
             };
 
             var json = serializer.Serialize(body);
-            using var request = new HttpRequestMessage(HttpMethod.Delete, path)
+            using var request = new HttpRequestMessage(HttpMethod.Delete, GetAbsoluteUri(path))
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             };
-            var response = await communicator.Client.SendAsync(request);
+            var response = await communicator.SendAsync(request);
 
             // A stale cached sha makes GitHub reject the delete with 409 (sha mismatch) or 422 (missing
             // sha). Drop the cache and retry once with a freshly fetched sha — mirroring Save. On the retry
@@ -282,7 +243,7 @@ public class GitHubService(GitHubCommunicator communicator, ISerializer serializ
     private async Task<string?> GetFileSha(string identifier)
     {
         var uri = GetAbsoluteUri(identifier);
-        var response = await communicator.Client.GetAsync(uri);
+        var response = await communicator.GetAsync(uri);
         if (!response.IsSuccessStatusCode)
             return null;
         var content = await response.Content.ReadAsStringAsync();

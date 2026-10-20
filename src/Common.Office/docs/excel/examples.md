@@ -98,7 +98,7 @@ IExcelService excel = new Regira.Office.Excel.ClosedXML.ExcelManager();
 var file   = excelBytes.ToBinaryFile();
 var sheets = await excel.Read(file, headers: ["Name", "Email", "Phone"]);
 
-foreach (var row in sheets.First().Data!.Cast<IDictionary<string, object>>())
+foreach (var row in sheets.First().Data!.Cast<IDictionary<string, object?>>())
 {
     Console.WriteLine($"{row["Name"]} — {row["Email"]}");
 }

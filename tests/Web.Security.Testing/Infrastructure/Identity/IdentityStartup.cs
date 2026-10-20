@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Regira.Security.Authentication.Jwt.Extensions;
+using Regira.Security.Authentication.Web.Models;
 
 namespace Web.Security.Testing.Infrastructure.Identity;
 
@@ -50,6 +51,12 @@ public class IdentityStartup
 
         services.AddSingleton<SentEmailStore>();
         services.AddTransient<IEmailSender, FakeEmailSender>();
+        // The reset and confirmation pages are on the SPA's origin; a link to any other is refused.
+        services.Configure<AccountEmailOptions>(o =>
+        {
+            o.SiteName = "Example";
+            o.AllowedOrigins.Add("https://app.example.com");
+        });
 
         services.AddControllersFor(
             typeof(TestAccountController),

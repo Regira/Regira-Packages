@@ -14,10 +14,21 @@ namespace Regira.Payments.Mollie.Services;
 // https://github.com/Viincenttt/MollieApi
 public class PaymentService(MollieConfig config)
 {
+    // every instance shares one connection pool, recycled so a change to Mollie's DNS reaches a long-running process;
+    // no cookies, so nothing one instance receives rides on another's requests
+    private static readonly SocketsHttpHandler SharedHandler = new() { PooledConnectionLifetime = TimeSpan.FromMinutes(2), UseCookies = false };
+
     private readonly int _maxPageSize = config.MaxPageSize;
-    private readonly PaymentClient _paymentClient = new(config.Key);
+    // the check Mollie's client makes, at construction as before
+    private readonly string _key = string.IsNullOrWhiteSpace(config.Key) ? throw new ArgumentNullException("apiKey", "Mollie API key cannot be empty") : config.Key;
     private readonly Func<IPayment, string>? _webhookFactory = config.WebhookFactory;
     private readonly Func<IPayment, string>? _redirectFactory = config.RedirectFactory;
+
+
+    // the handler every client goes through; a test points it at a stub
+    internal HttpMessageHandler Handler { get; init; } = SharedHandler;
+
+    private PaymentClient CreatePaymentClient() => new(_key, new HttpClient(Handler, disposeHandler: false));
 
 
     public async Task<IPayment?> Details(object id)
@@ -27,7 +38,8 @@ public class PaymentService(MollieConfig config)
             throw new ArgumentNullException(nameof(id));
         }
 
-        var response = (await _paymentClient.GetPaymentAsync(id.ToString()!)).EnsureSuccess();
+        using var paymentClient = CreatePaymentClient();
+        var response = (await paymentClient.GetPaymentAsync(id.ToString()!)).EnsureSuccess();
 
         if (response == null!)
         {
@@ -40,13 +52,14 @@ public class PaymentService(MollieConfig config)
     {
         var list = new List<IPayment>();
         var so = DictionaryUtility.ToDictionary(o);
+        using var paymentClient = CreatePaymentClient();
         so.TryGetValue("PageSize", out int pageSize);
         IPayment? lastItem = null;
         int count;
         do
         {
             var limit = Math.Min(pageSize, _maxPageSize);
-            var response = (await _paymentClient.GetPaymentListAsync(lastItem?.Id, limit > 0 ? limit : null)).EnsureSuccess();
+            var response = (await paymentClient.GetPaymentListAsync(lastItem?.Id, limit > 0 ? limit : null)).EnsureSuccess();
 
             IEnumerable<IPayment> items = response.Items
                 .Select(Convert)
@@ -73,8 +86,32 @@ public class PaymentService(MollieConfig config)
 
     public async Task<CreatePaymentResponse> Save(IPayment item)
     {
+        using var paymentClient = CreatePaymentClient();
+        return await Save(paymentClient, item);
+    }
+    /// <summary>
+    /// Creates the payment as <see cref="Save(IPayment)"/> does, under <paramref name="idempotencyKey"/>:
+    /// a repeat with the same key, after a timeout say, gets the first payment back rather than creating a second one.
+    /// </summary>
+    /// <param name="item">The payment to create; its <see cref="IPayment.Id"/> is set.</param>
+    /// <param name="idempotencyKey">A key unique to this payment, such as the id of the order it pays for.</param>
+    public async Task<CreatePaymentResponse> Save(IPayment item, string idempotencyKey)
+    {
+        if (string.IsNullOrWhiteSpace(idempotencyKey))
+        {
+            throw new ArgumentException("An idempotency key is required.", nameof(idempotencyKey));
+        }
+
+        using var paymentClient = CreatePaymentClient();
+        using (paymentClient.WithIdempotencyKey(idempotencyKey))
+        {
+            return await Save(paymentClient, item);
+        }
+    }
+    private async Task<CreatePaymentResponse> Save(PaymentClient paymentClient, IPayment item)
+    {
         var request = Convert(item);
-        var response = (await _paymentClient.CreatePaymentAsync(request)).EnsureSuccess();
+        var response = (await paymentClient.CreatePaymentAsync(request)).EnsureSuccess();
         item.Id = response.Id;
         var checkoutUrl = response.Links.Checkout?.Href;
         return new CreatePaymentResponse
@@ -87,7 +124,8 @@ public class PaymentService(MollieConfig config)
     {
         // Not supported by Mollie anymore
         //await _paymentClient.DeletePaymentAsync(item.Id);
-        (await _paymentClient.CancelPaymentAsync(item.Id)).EnsureSuccess();
+        using var paymentClient = CreatePaymentClient();
+        (await paymentClient.CancelPaymentAsync(item.Id)).EnsureSuccess();
     }
 
     public async Task WebHook(string id, Func<IPayment?, Task> handleWebHook)

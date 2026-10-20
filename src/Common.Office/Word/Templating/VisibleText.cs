@@ -4,7 +4,7 @@ namespace Regira.Office.Word.Templating;
 
 /// <summary>
 /// A paragraph's visible text, collected as a backend walks the paragraph's inline content in order — the text
-/// <see cref="ConditionalBlocks"/> reads. Word shows neither a field's code nor a deleted revision, so neither counts:
+/// <see cref="TemplateBlocks"/> reads. Word shows neither a field's code nor a deleted revision, so neither counts:
 /// a marker there is not a block, and a key edited under track changes reads as edited. A field's result stays.
 /// The Open XML backends get the same text by reading only a paragraph's <c>w:t</c> elements.
 /// </summary>

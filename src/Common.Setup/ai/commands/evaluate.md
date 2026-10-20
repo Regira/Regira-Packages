@@ -62,7 +62,7 @@ Write the evaluation to `evaluations/{module}-evaluation.md` using this structur
 # {Module} Evaluation
 
 **Date:** {date}
-**Guide version:** {ai-v* tag or package version}
+**Guide version:** {the Regira package version the guides came from}
 
 ## Summary
 

@@ -12,6 +12,7 @@ public static class XmlUtility
     /// <param name="xml">The XML string to be converted into a stream.</param>
     /// <returns>A <see cref="Stream"/> containing the XML data.</returns>
     /// <exception cref="System.Xml.XmlException">Thrown if the provided XML string is not well-formed.</exception>
+    [Obsolete("Nothing in the Regira packages uses it. Will be removed in v7.")]
     public static Stream ToStream(string xml)
     {
         var doc = XDocument.Parse(xml);
@@ -24,6 +25,7 @@ public static class XmlUtility
     /// <returns>A string representation of the XML document.</returns>
     /// <exception cref="System.Xml.XmlException">Thrown if the XML data in the stream is not well-formed.</exception>
     /// <exception cref="System.ArgumentNullException">Thrown if the provided <paramref name="stream"/> is <c>null</c>.</exception>
+    [Obsolete("Nothing in the Regira packages uses it. Will be removed in v7.")]
     public static string FromStream(Stream stream)
     {
         var doc = XDocument.Load(stream);
@@ -35,6 +37,7 @@ public static class XmlUtility
     /// <param name="doc">The <see cref="XDocument"/> to be converted into a stream.</param>
     /// <returns>A <see cref="Stream"/> containing the XML data from the <paramref name="doc"/>.</returns>
     /// <exception cref="System.ArgumentNullException">Thrown if the provided <paramref name="doc"/> is <c>null</c>.</exception>
+    [Obsolete("Nothing in the Regira packages uses it. Will be removed in v7.")]
     public static Stream ToStream(this XDocument doc)
     {
         var ms = new MemoryStream();

@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Regira.Entities.DependencyInjection.ServiceCollections;
 
 namespace Regira.Entities.DependencyInjection.Validation;
 
@@ -9,7 +10,13 @@ namespace Regira.Entities.DependencyInjection.Validation;
 /// </summary>
 public sealed class EntityRegistrationLog
 {
-    public sealed record EntityRegistration(Type ContextType, Type EntityType, Type KeyType, Type SearchObjectType, bool IsComplex);
+    public sealed record EntityRegistration(Type ContextType, Type EntityType, Type KeyType, Type SearchObjectType, bool IsComplex)
+    {
+        /// <summary>The sort enum of a complex registration; <c>null</c> for a simple one.</summary>
+        public Type? SortByType { get; init; }
+        /// <summary>The includes enum of a complex registration; <c>null</c> for a simple one.</summary>
+        public Type? IncludesType { get; init; }
+    }
 
     /// <summary>A child collection synced by a parent's <c>Related()</c> — i.e. an entity the parent owns.</summary>
     public sealed record RelatedRegistration(Type ContextType, Type ParentType, Type RelatedType);
@@ -20,21 +27,12 @@ public sealed class EntityRegistrationLog
 
     /// <summary>
     /// Global filters contributed by <c>UseDefaults()</c> / <c>AddDefaultGlobalQueryFilters()</c> rather than
-    /// chosen by the app. The whole set is registered regardless of which capability interfaces the entities
-    /// implement, so an inert one carries no signal — while the same type registered deliberately does.
+    /// chosen by the app. No longer filled: startup validation does not check Regira's own filters.
     /// </summary>
+    [Obsolete("No longer filled or read: startup validation does not check Regira's own global filters. Will be removed in v7.")]
     public ISet<Type> DefaultGlobalFilters { get; } = new HashSet<Type>();
 
-    public static EntityRegistrationLog For(IServiceCollection services)
-    {
-        if (services.FirstOrDefault(d => d.ServiceType == typeof(EntityRegistrationLog))?.ImplementationInstance is EntityRegistrationLog existing)
-        {
-            return existing;
-        }
-        var log = new EntityRegistrationLog();
-        services.AddSingleton(log);
-        return log;
-    }
+    public static EntityRegistrationLog For(IServiceCollection services) => services.GetOrAddInstance<EntityRegistrationLog>();
 
     /// <summary>Gets (or creates) the log for <paramref name="services"/> and tracks <paramref name="contextType"/>.</summary>
     public static EntityRegistrationLog ForContext(IServiceCollection services, Type contextType)
@@ -53,8 +51,18 @@ public sealed class EntityRegistrationLog
     }
 
     public void TrackEntity(Type contextType, Type entityType, Type keyType, Type searchObjectType, bool isComplex)
+        => Track(new EntityRegistration(contextType, entityType, keyType, searchObjectType, isComplex));
+
+    /// <summary>Records a complex registration with its sort and includes enums.</summary>
+    public void TrackEntity(Type contextType, Type entityType, Type keyType, Type searchObjectType, Type sortByType, Type includesType)
+        => Track(new EntityRegistration(contextType, entityType, keyType, searchObjectType, IsComplex: true)
+        {
+            SortByType = sortByType,
+            IncludesType = includesType
+        });
+
+    private void Track(EntityRegistration registration)
     {
-        var registration = new EntityRegistration(contextType, entityType, keyType, searchObjectType, isComplex);
         if (!Entities.Contains(registration))
         {
             Entities.Add(registration);
@@ -75,6 +83,9 @@ public sealed class EntityRegistrationLog
         => For(services).TrackRelated(contextType, parentType, relatedType);
 
     /// <summary>Records that <paramref name="filterType"/> was contributed by the defaults, not chosen by the app.</summary>
+    [Obsolete("No longer read: startup validation does not check Regira's own global filters. Will be removed in v7.")]
     public static void TrackDefaultGlobalFilter(IServiceCollection services, Type filterType)
+#pragma warning disable CS0618 // goes with the property
         => For(services).DefaultGlobalFilters.Add(filterType);
+#pragma warning restore CS0618
 }

@@ -8,4 +8,5 @@ public class InvoiceParty : IInvoiceParty
     public string Title { get; set; } = null!;
     public ICollection<ContactData>? ContactData { get; set; } = [];
     public ICollection<PartyIdentifier>? Identifiers { get; set; } = [];
+    public PartyAddress? Address { get; set; }
 }

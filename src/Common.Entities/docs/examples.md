@@ -135,7 +135,7 @@ public class ProductInputDto
 using Regira.Entities.Web.Controllers.Abstractions;
 
 [ApiController]
-[Route("[controller]")]
+[Route("products")]
 public class ProductsController : EntityControllerBase<Product, ProductSearchObject, ProductSortBy, ProductIncludes, ProductDto, ProductInputDto>
 {
 }
@@ -171,7 +171,9 @@ services.UseEntities<ShopDbContext>(options =>
 ```
 
 An unknown category answers **400**, a `ValidationProblemDetails` whose `errors` hold
-`{ "CategoryId": ["Category 99 does not exist."] }`, instead of the database's 409. More on validators: [Services → Entity Validators](services.md#entity-validators).
+`{ "CategoryId": ["Category 99 does not exist."] }`, instead of the database's 409. The shape of the input — a title
+that is required and at most 200 characters, a price in range — is the input DTO's DataAnnotations, checked before the
+input is mapped; the validator takes what needs the database. More on validators: [Services → Entity Validators](services.md#entity-validators).
 
 ## Example 2: Category with Inline Configuration
 
@@ -218,7 +220,7 @@ public class CategoryInputDto
 using Regira.Entities.Web.Controllers.Abstractions;
 
 [ApiController]
-[Route("[controller]")]
+[Route("categories")]
 public class CategoriesController : EntityControllerBase<Category, CategoryDto, CategoryInputDto>
 {
 }
@@ -314,7 +316,7 @@ Both entity and attachment endpoints require a controller:
 <!-- no-compile -->
 ```csharp
 [ApiController]
-[Route("[controller]")]
+[Route("products")]
 public class ProductsController : EntityControllerBase<Product, ProductSearchObject, ProductSortBy, ProductIncludes, ProductDto, ProductInputDto>
 {
 }

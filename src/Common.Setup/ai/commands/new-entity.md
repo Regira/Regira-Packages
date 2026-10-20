@@ -38,7 +38,7 @@ Produce all of the following, in this order:
 5. **DTO classes** — `{Entity}Dto` (read) and `{Entity}InputDto` (write)
 6. **DbSet addition** — the `DbSet<{Entity}>` line in the `DbContext`
 7. **EF Core configuration** — fluent API or data annotations as appropriate
-8. **Controller** — inheriting from the correct Regira controller base class per `entities.signatures.md`
+8. **Controller** — inheriting from the correct Regira controller base class per `entities.signatures.md`. Skip it when the app maps its entities with `app.MapEntityEndpoints()` instead of controllers: the registration then declares the DTO pair (`e.UseMapping<{Entity}Dto, {Entity}InputDto>()`), and the entity's endpoints come with it (`entities.patterns.md` → Mapped entity endpoints)
 
 ## Step 4 — Checkpoint before DI registration
 

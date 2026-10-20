@@ -15,15 +15,15 @@
 
 ## Installation
 
-```xml
-<!-- Preferred — cross-platform (SkiaSharp) -->
-<PackageReference Include="Regira.Drawing.SkiaSharp" Version="6.*" />
+```bash
+# Preferred — cross-platform (SkiaSharp)
+dotnet add package Regira.Drawing.SkiaSharp
 
-<!-- Windows-only alternative (GDI+) -->
-<PackageReference Include="Regira.Drawing.GDI" Version="6.*" />
+# Windows-only alternative (GDI+)
+dotnet add package Regira.Drawing.GDI
 
-<!-- Video (FFMpeg) — see Video below -->
-<PackageReference Include="Regira.Media.FFMpeg" Version="6.*" />
+# Video (FFMpeg) — see Video below
+dotnet add package Regira.Media.FFMpeg
 ```
 
 ---
@@ -34,12 +34,14 @@
 |---|---|---|
 | **Recommended** | ✓ | – |
 | **Cross-platform** | ✓ (Win / Linux / macOS) | Windows only |
-| **Default resize quality** | 80 | 100 |
-| **EXIF auto-rotate** | – | ✓ |
-| **Printing support** | – | ✓ (`PrintUtility`) |
+| **Default resize quality** | 80 on the class, 100 through `IImageService` | ignored: a resize re-encodes at 80 |
+| **EXIF auto-rotate** | – | – |
 | **Engine** | Google Skia | GDI+ (`System.Drawing.Common`) |
 
 Both implement `IImageService` and are interchangeable.
+
+Neither backend applies a photo's EXIF orientation: read it with SkiaSharp's `SKCodec.Create(stream).EncodedOrigin` and
+turn the image before resizing. `Rotate` turns clockwise for positive degrees.
 
 ---
 
@@ -111,6 +113,9 @@ new ImageEdgeOffset(top: 10, left: 20, bottom: 10, right: 20)
 new ImageEdgeOffset(10, 20)   // top + left only
 ```
 
+In `CropRectangle` each side is the distance cut from that edge: the centred 400 × 400 square of a 1200 × 800 photo is
+`new ImageEdgeOffset(top: 200, left: 400, bottom: 200, right: 400)`.
+
 ### `ImageLayerOptions`
 
 Controls positioning when compositing layers.
@@ -128,7 +133,8 @@ Controls positioning when compositing layers.
 
 ## IImageService — Image Operations
 
-`IImageService` is a composite of five sub-interfaces.
+`IImageService` is a composite of five sub-interfaces. Every member ends with `CancellationToken cancellationToken = default`
+(left out below); after an optional parameter, pass it by name: `Rotate(image, 90, cancellationToken: token)`.
 
 ### Parsing
 
@@ -139,6 +145,11 @@ Task<IImageFile?> Parse(byte[]? bytes)
 Task<IImageFile?> Parse(byte[] rawBytes, ImageSize size, ImageFormat? format = null)
 Task<IImageFile?> Parse(IMemoryFile file)
 ```
+
+Decoding allocates width × height × 4 bytes whatever the file size: a 20 MB upload can declare 50,000 × 50,000 px.
+SkiaSharp's `Parse` and `GetDimensions`, and every transform on either backend, decode the whole image. Check an
+upload's header first with `SKCodec.Create(stream)` (its `Info` holds the size, read without decoding) and reject one
+above, say, 40 million pixels.
 
 ### Format
 
@@ -161,7 +172,10 @@ Task<IImageFile> FlipHorizontal(IImageFile input)
 Task<IImageFile> FlipVertical(IImageFile input)
 ```
 
-> SkiaSharp default quality: 80. GDI default quality: 100.
+> The default `quality` follows the type you call through: 100 on `IImageService`, 80 on the concrete SkiaSharp
+> `ImageService`. On SkiaSharp, a quality below 100 re-encodes as JPEG, which drops transparency even when the output
+> stays PNG: pass 100 for a PNG with alpha. GDI ignores `quality`: a resize re-encodes in the source's own format at
+> 80, so a JPEG loses detail and a PNG keeps its alpha.
 
 ### Color
 

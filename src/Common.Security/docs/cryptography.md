@@ -18,28 +18,46 @@ public interface IEncrypter
 
 ### SymmetricEncrypter
 
-AES-256 with a static key derived from `CryptoOptions.Secret`. Fast; same key always produces the same ciphertext.
+Obsolete. AES-256 with a key and vector derived from `CryptoOptions.Secret` alone, so a value always encrypts to the
+same ciphertext. Keep it only to decrypt what it encrypted; encrypt with `AesEncrypter`. Without a secret it uses the
+built-in key, which is published with the source.
 
+<!-- no-compile -->
 ```csharp
-var enc = new SymmetricEncrypter(new CryptoOptions { Secret = "my-app-key" });
-string cipher = enc.Encrypt("sensitive value");
-string plain  = enc.Decrypt(cipher);
+var legacy = new SymmetricEncrypter(new CryptoOptions { Secret = "my-app-key" });
+string plain = legacy.Decrypt(storedCipher);
 ```
 
 ### AesEncrypter
 
-AES with a random salt prepended per encryption. Slower but produces different ciphertext on each call — recommended for stored secrets.
+AES-256 with a random salt per value, so it produces different ciphertext on each call — recommended for stored secrets.
+The costly step, PBKDF2 over the secret (about 0.2 s), runs once per secret and key salt and is cached for the process;
+each value then gets a key of its own from its salt with HKDF, in microseconds. A process picks one key salt per secret
+for what it encrypts, so it pays the step once for its own values and once for each earlier process lifetime or other
+instance whose values it reads: decrypting in an EF value converter stays cheap, and the first read after a restart
+costs about 0.2 s per earlier writer. The
+text is `aes1:` and Base64, 64 bytes longer than the cipher: 32 of salt and a 32-byte HMAC-SHA256 tag, so a value that
+was changed, or encrypted with another secret, throws `CryptographicException`. A value without that prefix, written before 6.6.0,
+still decrypts, paying the derivation on its first read in a process; decrypt and encrypt it again to move it. A version
+before 6.6.0 cannot read the `aes1:` format.
+Encrypting needs a secret, `CryptoOptions.Secret` or a key passed to `Encrypt`, and throws `InvalidOperationException`
+without one. `Decrypt` without one uses the built-in key, so what an earlier version encrypted with it stays readable.
 
 ```csharp
 var enc = new AesEncrypter(new CryptoOptions { Secret = "my-app-key" });
 string cipher = enc.Encrypt("sensitive value");
 ```
 
+A value converter still decrypts the column whenever the entity loads, even into a DTO that drops it, and a read DTO
+that carries it sends the plain value to every client. For a value few screens show (a bank account), store the
+ciphertext in a plain property encrypted by a prepper from a write-only input, keep it out of the read DTOs (a masked
+copy can serve the lists), and decrypt it in an endpoint of its own that returns one value.
+
 ### CryptoOptions
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `Secret` | `string?` | built-in salt key | Signing / derivation secret |
+| `Secret` | `string?` | `null` | The key `AesEncrypter` derives from; it refuses to encrypt without one. Without it, decrypting and the obsolete `SymmetricEncrypter` and `SimpleHasher` use a built-in key, published with the source |
 | `AlgorithmType` | `string?` | `"SHA512"` | Hash algorithm — read only by `SymmetricEncrypter`, `SimpleHasher`, and the BCrypt hasher; `AesEncrypter` and the PBKDF2 `Hasher` hard-wire SHA-512 |
 | `Iterations` | `int?` | `500000` | PBKDF2 iteration count used by the `Hasher` |
 | `Encoding` | `Encoding?` | UTF-8 | Text encoding |
@@ -80,7 +98,8 @@ bool ok       = hasher.Verify("myPassword123", stored);
 
 ### SimpleHasher
 
-Double-SHA with salt — fast but weaker. Use for non-password data only.
+Obsolete: a double SHA with a fixed salt, compared in variable time. Hash with `Hasher` (PBKDF2), or the BCrypt
+`Hasher` for passwords.
 
 ---
 

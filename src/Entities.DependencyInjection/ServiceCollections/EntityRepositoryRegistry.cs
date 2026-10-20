@@ -122,22 +122,13 @@ public class EntityRepositoryRegistry
     }
 
     /// <summary>Gets (or registers) the singleton registry instance for this service collection.</summary>
-    public static EntityRepositoryRegistry For(IServiceCollection services)
-    {
-        if (services.FirstOrDefault(d => d.ServiceType == typeof(EntityRepositoryRegistry))?.ImplementationInstance is EntityRepositoryRegistry existing)
-        {
-            return existing;
-        }
-
-        var registry = new EntityRepositoryRegistry();
-        services.AddSingleton(registry);
-        return registry;
-    }
+    public static EntityRepositoryRegistry For(IServiceCollection services) => services.GetOrAddInstance<EntityRepositoryRegistry>();
 
     private static IEnumerable<Type> InterfacesOf(Type type, Type[] definitions)
         => type.GetInterfaces().Where(i => i.IsGenericType && definitions.Contains(i.GetGenericTypeDefinition()));
 
-    private static string FriendlyName(Type type)
+    /// <summary>A type as written: <c>EntityRepository&lt;Course, Int32&gt;</c>.</summary>
+    internal static string FriendlyName(Type type)
     {
         var name = type.Name.Split('`')[0];
         if (!type.IsGenericType)

@@ -16,8 +16,9 @@ namespace Regira.Entities.EFcore.Utilities;
 /// Work that completes synchronously — every built-in primer and normalizer — runs inline on the caller's thread and
 /// costs nothing. Work that awaits I/O holds the calling thread for that I/O, as the synchronous save already does for
 /// its own round trip, and an ambient <c>TransactionScope</c> created without <c>TransactionScopeAsyncFlowOption.Enabled</c>
-/// does not reach the code after its first real <c>await</c>. <c>GetAwaiter().GetResult()</c> rethrows the original
-/// exception rather than an <see cref="AggregateException"/>, so a caller's <c>catch</c> keeps matching.
+/// does not reach the code after its first real <c>await</c>, nor any of the work started on the default scheduler: a
+/// hook that needs <c>Transaction.Current</c> reads it before it calls <see cref="Wait"/>. <c>GetAwaiter().GetResult()</c>
+/// rethrows the original exception rather than an <see cref="AggregateException"/>, so a caller's <c>catch</c> keeps matching.
 /// </summary>
 internal static class SyncOverAsync
 {

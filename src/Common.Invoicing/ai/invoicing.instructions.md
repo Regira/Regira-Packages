@@ -15,15 +15,18 @@
 
 ## Installation
 
-```xml
-<!-- Billit — create and send invoices via Billit -->
-<PackageReference Include="Regira.Invoicing.Billit" Version="6.*" />
+```bash
+# Billit — create and send invoices via Billit
+dotnet add package Regira.Invoicing.Billit
 
-<!-- UblSharp — convert invoices to UBL XML (Peppol BIS) -->
-<PackageReference Include="Regira.Invoicing.UblSharp" Version="6.*" />
+# UblSharp — convert invoices to UBL XML (Peppol BIS)
+dotnet add package Regira.Invoicing.UblSharp
 
-<!-- ViaAdValvas — transmit UBL documents via AdValVas AP gateway -->
-<PackageReference Include="Regira.Invoicing.ViaAdValvas" Version="6.*" />
+# ViaAdValvas — transmit UBL documents via AdValVas AP gateway
+dotnet add package Regira.Invoicing.ViaAdValvas
+
+# the ISerializer Billit's managers and PeppolService take
+dotnet add package Regira.Serializing.Newtonsoft
 ```
 
 ---
@@ -35,7 +38,7 @@
 | Property | Type | Description |
 |---|---|---|
 | `PartyId` | `string?` | Your Billit party ID |
-| `Api.BaseUrl` | `string?` | Billit API base URL |
+| `Api.BaseUrl` | `string?` | The Billit API root (production or sandbox, from Billit). Required: there is no default, and a missing one throws `NullReferenceException` when the first manager is created |
 | `Api.Key` | `string?` | API key |
 
 ### DI Registration
@@ -49,7 +52,10 @@ services.AddBillit(sp => new BillitConfig
     PartyId = configuration["Billit:PartyId"],
     Api     = new() { BaseUrl = configuration["Billit:Api:Url"], Key = configuration["Billit:Api:Key"] }
 });
-// Registers: IInvoiceManager, IFileManager, IPartyManager, IPeppolManager
+// Registers: IInvoiceManager, IFileManager, IPartyManager, IPeppolManager (transient).
+// IInvoiceManager extends IInvoiceService, which AddBillit registers too (an IInvoiceService of your own wins).
+// The managers also need an ISerializer, which AddBillit does not register:
+services.AddSingleton<Regira.Serializing.Abstractions.ISerializer, Regira.Serializing.Newtonsoft.Json.JsonSerializer>();
 ```
 
 ### `IInvoiceManager`
@@ -72,10 +78,30 @@ Task<ISendInvoiceResult>   Send(IInvoice input);         // creates the invoice,
 XDocument Convert(UblDocumentInput input);
 ```
 
-Produces a UBL 2.1 `Invoice` document.
+Produces a UBL 2.1 `Invoice` document. `IUblDocumentValidator` and `IUblDocumentManager` are `[Obsolete]`: no package
+implements them, so validate with a Peppol validator of your own choice.
 
 ```csharp
-IInvoice invoice = new Invoice { /* lines, parties, tax, etc. */ };
+IInvoice invoice = new Invoice
+{
+    Code = "INV-001",
+    IssueDate = DateTime.Today,
+    Supplier = new InvoiceParty
+    {
+        Code = "BE0123456789",                                                         // VAT number
+        Title = "Fleet Services",
+        Identifiers = [new PartyIdentifier { Scheme = "0208", Value = "0123456789" }],   // Peppol participant ID
+        Address = new PartyAddress { Street = "Stationsstraat 1", PostalCode = "9000", City = "Gent", CountryCode = "BE" }
+    },
+    Customer = new InvoiceParty
+    {
+        Code = "BE0987654321",
+        Title = "Transport Co",
+        Identifiers = [new PartyIdentifier { Scheme = "0208", Value = "0987654321" }],
+        Address = new PartyAddress { Street = "Kaai 12", PostalCode = "2000", City = "Antwerpen", CountryCode = "BE" }
+    },
+    InvoiceLines = [new InvoiceLine { Title = "Brake service", Quantity = 1, UnitPriceExcl = 100, VatPercentage = 21 }]
+};
 
 var converter = new UblConverter();
 XDocument ubl = converter.Convert(new UblDocumentInput
@@ -93,6 +119,30 @@ XDocument ubl = converter.Convert(new UblDocumentInput
 | `Supplier` | `IInvoiceParty?` | The seller, written as `AccountingSupplierParty`. The converter does not read `Invoice.Supplier`, so a document converted without it has no seller, which Peppol validation refuses (EN 16931 rule BR-06) |
 | `PaymentConditions` | `string?` | Written as the payment terms note |
 
+### How the model maps to UBL
+
+| Member | UBL element |
+|---|---|
+| `IInvoiceParty.Code` | `PartyTaxScheme/CompanyID`, `PartyLegalEntity/CompanyID` and `PartyIdentification/ID`: give the VAT number with its country prefix (`BE0123456789`, rule BR-CO-09) |
+| `IInvoiceParty.Identifiers` | The first entry is the `EndpointID`, the Peppol participant ID, with `Scheme` as its `schemeID` (`0208` for a Belgian enterprise number). Without one, `Code` is split on `:`, and a code without `:` gets scheme `9956` (`UblDefaults.EndpointSchemeId`), the legacy Belgian enterprise-number scheme that `0208` replaces; a Belgian VAT number is an endpoint only under scheme `9925` (`9925:BE0123456749`). Always give the identifier |
+| `IInvoiceParty.Title` | `PartyName/Name`, `PartyLegalEntity/RegistrationName` and `Contact/Name` |
+| `IInvoiceParty.Address` | `PostalAddress`. Peppol requires one with a `CountryCode` for both parties (BR-08 to BR-11); `IInvoiceParty` implementations without the property write none. The code is written trimmed and upper-case, and an address without one throws `ArgumentException` |
+| `IInvoiceParty.ContactData` | `Contact/Telephone` and `Contact/ElectronicMail`: the first phone and the first e-mail entry |
+| `IInvoice.Code` | `ID`, `OrderReference/ID` and each attachment's `ID`. `BuyerReference` (BT-10) is not written: when the buyer gave one, add it to the returned `XDocument`. `PeppolService` sends `OrderReference/ID` as the message reference and seals it: replace it only together with a unique reference of your own |
+| `IInvoice.IssueDate`, `DueDate` | `IssueDate`, `DueDate` |
+| `IInvoice.Description` | The invoice `Note` |
+| `IInvoice.Attachments` | `AdditionalDocumentReference`, each file embedded |
+| `IInvoiceLine.Title` | `Item/Name` |
+| `IInvoiceLine.Description` | The line `Note` |
+| `IInvoiceLine.Quantity`, `UnitPriceExcl` | `InvoicedQuantity` (unit `NAR`); `Price/PriceAmount` with the price's own decimals; `LineExtensionAmount`, quantity × price rounded to two decimals, half away from zero like every amount in the document. A negative price is written as a negative quantity |
+| `IInvoiceLine.VatPercentage` | `ClassifiedTaxCategory/Percent`, and one `TaxSubtotal` per rate |
+| `IInvoiceLine.StartDate` | The line's `InvoicePeriod/StartDate`. The earliest and latest start dates form the invoice's `InvoicePeriod` |
+
+VAT is computed per rate, not per line: a rate's taxable amount is the sum of its rounded line amounts, and its VAT is
+that amount times the rate, rounded once, half away from zero (BR-CO-17). The invoice's VAT total, `TaxInclusiveAmount`
+and `PayableAmount` follow from those subtotals. Compute a printed invoice's totals the same way, or they can differ
+from the UBL document by a cent.
+
 ### What the converter writes
 
 Some fields are fixed rather than taken from the invoice:
@@ -102,7 +152,41 @@ Some fields are fixed rather than taken from the invoice:
   converter writes no credit notes
 - Currency `EUR`
 - Payment means `1` (not defined), with `RemittanceInfo` as the payment ID
-- Tax category `S` (standard rate) on every line
+- Tax category `S` (standard rate) on every line. Peppol refuses `S` with a 0 % rate (BR-S-05), so an exempt,
+  zero-rated or reverse-charge line needs its category changed in the returned `XDocument`
+
+For exempt 0 % lines, post-process the document: set each 0 % category to `E`, and give each VAT breakdown's
+`TaxCategory` an exemption reason (BR-E-10), right after `Percent` as the schema orders it. A line's
+`ClassifiedTaxCategory` takes no reason:
+
+```csharp
+using System.Xml.Linq;
+
+public static class UblExemptions
+{
+    // ubl = converter.Convert(input).MarkExemptCategories("Exempt under article 44 of the VAT Code");
+    public static XDocument MarkExemptCategories(this XDocument ubl, string exemptionReason)
+    {
+        XNamespace cac = Regira.Invoicing.Peppol.PeppolNamespaces.CAC;
+        XNamespace cbc = Regira.Invoicing.Peppol.PeppolNamespaces.CBC;
+        var zeroRated = ubl.Descendants(cac + "TaxCategory")             // TaxTotal/TaxSubtotal
+            .Concat(ubl.Descendants(cac + "ClassifiedTaxCategory"))     // InvoiceLine/Item
+            .Where(category => (decimal?)category.Element(cbc + "Percent") == 0)
+            .ToList();
+        foreach (var category in zeroRated)
+        {
+            category.Element(cbc + "ID")!.Value = "E";
+            if (category.Name == cac + "TaxCategory")
+            {
+                category.Element(cbc + "Percent")!.AddAfterSelf(new XElement(cbc + "TaxExemptionReason", exemptionReason));
+            }
+        }
+        return ubl;
+    }
+}
+```
+
+Not written: `IInvoiceLine.Code`, `IInvoiceLine.EndDate` and a payee bank account.
 
 ---
 
@@ -123,7 +207,7 @@ Some fields are fixed rather than taken from the invoice:
 
 <!-- no-compile -->
 ```csharp
-var service = new PeppolService(gatewaySettings, jsonSerializer);
+var service = new PeppolService(gatewaySettings, new Regira.Serializing.Newtonsoft.Json.JsonSerializer());   // reads the gateway's answer
 
 try
 {
@@ -140,6 +224,10 @@ catch (PeppolResponseException ex)   // it answered, but did not accept the docu
     Console.WriteLine($"Not sent: {ex.SerializedResponse}");
 }
 ```
+
+The request always goes out with the declared (PascalCase) property names the gateway expects, nulls included, whatever `ISerializer` the service is given: that serializer only reads the gateway's answer, so the camelCase `Regira.Serializing.Newtonsoft.Json.JsonSerializer` works as well as any other.
+
+Every instance sends through a connection pool the package shares, so it can be registered with any lifetime. Never repeat a `Send` that may have reached the gateway: the document would go out twice.
 
 `PeppolRequestException` and `PeppolResponseException` are in `Regira.Invoicing.ViaAdValvas.Models`.
 
@@ -161,8 +249,9 @@ XDocument ubl = new UblConverter().Convert(new UblDocumentInput { Invoice = invo
 // 3. Transmit via Peppol
 var result = await peppolService.Send(ubl);
 
-// 4. (Optional) also create in Billit for accounting, then send the invoice it created
+// 4. (Optional) also record it in Billit for accounting: Create only. Both Billit sends deliver over Peppol,
+//    Send(ids) for an invoice created before and Send(invoice), which creates it first, so either would
+//    deliver the invoice a second time
 var created = await invoiceManager.Create(invoice);
-await invoiceManager.Send(created.InvoiceId);
 ```
 

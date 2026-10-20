@@ -7,6 +7,7 @@ using Regira.Office.MimeTypes;
 using Regira.Office.Word.Abstractions;
 using Regira.Office.Word.Models;
 using Regira.Office.Word.Spire.Extensions;
+using Regira.Office.Word.Layout;
 using Regira.Office.Word.Spire.Internal;
 using Regira.Office.Word.Templating;
 using Regira.TreeList;
@@ -27,7 +28,6 @@ using RegiraParagraph = Regira.Office.Word.Models.Paragraph;
 using SpireFileFormat = Spire.Doc.FileFormat;
 using SpireHorizontalAlignment = Spire.Doc.Documents.HorizontalAlignment;
 using SpirePageOrientation = Spire.Doc.Documents.PageOrientation;
-using SpirePageSize = Spire.Doc.Documents.PageSize;
 using SpireParagraph = Spire.Doc.Documents.Paragraph;
 
 namespace Regira.Office.Word.Spire;
@@ -100,43 +100,69 @@ public class WordService : IWordService
 
     protected internal IMemoryFile ToMemoryFile(Document doc, SpireFileFormat format = SpireFileFormat.Docx)
         => doc.ToStream(format).ToMemoryFile(format == SpireFileFormat.Doc ? ContentTypes.DOC : ContentTypes.DOCX);
-    protected internal async Task<Document> MergeDocuments(IEnumerable<WordTemplateInput> inputs)
+    protected internal Task<Document> MergeDocuments(IEnumerable<WordTemplateInput> inputs)
     {
         var doc = new Document();
 
-        var inputList = inputs.AsList();
+        // the first input is the one the others take their Normal font from (InheritFont); it stays open to the end
         Document? firstDoc = null;
-        foreach (var input in inputList)
+        var previousIsPadded = false;
+        try
         {
-            using var newFile = await Create(input);
-#if NET8_0_OR_GREATER
-            await using var newStream = newFile.GetStream();
-#else
-            using var newStream = newFile.GetStream();
-#endif
-            var options = input.Options;
-            if (options != null)
+            foreach (var input in inputs.AsList())
             {
-                var inputDoc = new Document(newStream, SpireFileFormat.Auto);
-                firstDoc ??= inputDoc;
-                inputDoc = ProcessInputOptions(inputDoc, options, firstDoc);
+                // InsertTextFromStream appends the input's sections, the first of them starting a new page
+                var joint = doc.Sections.Count;
+                // its options processed once, InheritFont taking the first input's font before the padding counts the
+                // pages, so they are counted in the font the input ends up in
+                var created = CreateDocument(input, null, input.Options?.InheritFont == true ? firstDoc : null);
+                try
+                {
+                    // a save in between keeps the text boxes' fallback copies as they are: saving the merged document
+                    // rewrites them all
+                    using var stream = created.ToStream(synchronizeFallbacks: false);
+                    doc.InsertTextFromStream(stream, SpireFileFormat.Auto);
+                }
+                finally
+                {
+                    if (firstDoc == null)
+                    {
+                        firstDoc = created;
+                    }
+                    else
+                    {
+                        created.Dispose();
+                    }
+                }
 
-#if NET8_0_OR_GREATER
-                await using var processedDocStream = inputDoc.ToStream();
-#else
-                using var processedDocStream = inputDoc.ToStream();
-#endif
-                doc.InsertTextFromStream(processedDocStream, SpireFileFormat.Auto);
-            }
-            else
-            {
-                doc.InsertTextFromStream(newStream, SpireFileFormat.Auto);
+                // only the joint between two inputs changes; an input keeps its own section breaks
+                var isPadded = input.Options?.EnforceEvenAmountOfPages == true;
+                if (joint > 0 && doc.Sections.Count > joint)
+                {
+                    doc.Sections[joint].BreakCode = MergeJoints.StartsOnOddPage(previousIsPadded, isPadded) ? SectionBreakType.Oddpage : SectionBreakType.NewPage;
+                }
+                previousIsPadded = isPadded;
             }
         }
+        catch
+        {
+            doc.Dispose();
+            throw;
+        }
+        finally
+        {
+            firstDoc?.Dispose();
+        }
 
-        return doc;
+        return Task.FromResult(doc);
     }
     protected internal Document CreateDocument(WordTemplateInput input, Document? reference = null)
+        => CreateDocument(input, reference, null);
+    /// <summary>
+    /// Builds the input. Its headers and footers take their font from <paramref name="reference"/>, the input itself from
+    /// <paramref name="fontReference"/> where given: a merge's first input (<see cref="InputOptions.InheritFont"/>).
+    /// </summary>
+    private Document CreateDocument(WordTemplateInput input, Document? reference, Document? fontReference)
     {
         // nested documents, headers and footers all build through here
         using var nesting = NestedDocumentGuard.Enter();
@@ -152,7 +178,7 @@ public class WordService : IWordService
         }
 
         // first, so a dropped branch's placeholders are never filled or inserted
-        ResolveConditions(doc, input);
+        ResolveBlocks(doc, input);
 
         if (input.DocumentParameters?.Any() == true)
         {
@@ -194,7 +220,7 @@ public class WordService : IWordService
                 !hadEvenPages && pageSetup.DifferentOddAndEvenPagesHeaderFooter);
         }
 
-        return ProcessInputOptions(doc, input.Options, reference);
+        return ProcessInputOptions(doc, input.Options, fontReference ?? reference);
     }
 
     /// <summary>
@@ -234,26 +260,13 @@ public class WordService : IWordService
                 var section = (Section)sectionTreeItem.Value;
                 var originalWidth = section.PageSetup.ClientWidth;
 
-                // PageSize
-                var spireSize = GetPageSize(newSize);
-                if (spireSize != section.PageSetup.PageSize)
-                {
-                    section.PageSetup.PageSize = spireSize;
-                }
-                // Margins
+                SetPageSetup(section.PageSetup, newSize, newOrientation);
                 if (newMargins != null)
                 {
                     section.PageSetup.Margins = GetMargins(newMargins);
                 }
-                // Orientation
-                var spireOrientation = GetPageOrientation(newOrientation);
-                if (spireOrientation != section.PageSetup.Orientation)
-                {
-                    section.PageSetup.Orientation = spireOrientation;
-                }
 
                 var newWidth = section.PageSetup.ClientWidth;
-                var scaleFactor = newWidth / originalWidth;
 
                 // adjust tables
                 if (options.AutoScaleTables)
@@ -261,7 +274,7 @@ public class WordService : IWordService
                     var tables = sectionTreeItem.FindAllTables();
                     foreach (var table in tables)
                     {
-                        if (originalWidth / table.Width - 1 < .1)
+                        if (TableScaling.SpansTextWidth(originalWidth, table.Width))
                         {
                             table.AutoFit(AutoFitBehaviorType.AutoFitToWindow);
                         }
@@ -273,8 +286,21 @@ public class WordService : IWordService
                     var pictures = sectionTreeItem.FindAllPictures();
                     foreach (var picture in pictures)
                     {
-                        picture.Width *= scaleFactor;
-                        picture.Height *= scaleFactor;
+                        // Spire throws for a shape past Word's 22-inch limit, so the factor stops there
+                        var factor = PictureScaling.Factor(originalWidth, newWidth, picture.Width, picture.Height);
+                        if (factor == 1)
+                        {
+                            // left as it is: setting even its own size throws for a picture already past the limit
+                            continue;
+                        }
+                        // both sizes first, set with the aspect ratio unlocked: a locked picture recalculates the other
+                        // side from each, which can take the side held at the limit a rounding error past it
+                        var (width, height) = PictureScaling.Size(picture.Width, picture.Height, factor);
+                        var locked = picture.AspectRatioLocked;
+                        picture.AspectRatioLocked = false;
+                        picture.Width = (float)width;
+                        picture.Height = (float)height;
+                        picture.AspectRatioLocked = locked;
                     }
                 }
             }
@@ -291,7 +317,7 @@ public class WordService : IWordService
                 break;
             case RegiraFileFormat.Png:
             case RegiraFileFormat.Jpeg:
-                throw new Exception("Not supported. Use function ToImages instead");
+                throw new NotSupportedException("Image output is not produced by Convert. Use ToImages instead.");
         }
 
         var spireFormat = (SpireFileFormat)Enum.Parse(typeof(SpireFileFormat), options.OutputFormat.ToString(), true);
@@ -358,54 +384,26 @@ public class WordService : IWordService
         }
     }
     protected internal void AddHeader(Document doc, Document headerDoc, HeaderFooterType type)
-    {
-        // try find content in same type
-        var srcHeader = headerDoc.GetHeader(type);
-        // look for content in default type
-        if (type != HeaderFooterType.Default && IsEmpty(srcHeader))
-        {
-            srcHeader = headerDoc.GetHeader();
-        }
-        // get content from header, or when empty from body
-        var childObjects = srcHeader.ChildObjects.Count > 0
-            ? srcHeader.ChildObjects
-            : headerDoc.Sections[0].Body.ChildObjects;
-
-        var docHeader = doc.GetHeader(type);
-        docHeader.ReplaceChildObjects(childObjects);
-
-        if (type == HeaderFooterType.FirstPage)
-        {
-            var section = doc.Sections[0];
-            section.PageSetup.DifferentFirstPageHeaderFooter = true;
-        }
-        else if (type == HeaderFooterType.Even)
-        {
-            // even-page stories only render once the document tells odd and even pages apart
-            doc.Sections[0].PageSetup.DifferentOddAndEvenPagesHeaderFooter = true;
-        }
-    }
+        => AddStory(doc, headerDoc, type, (d, t) => d.GetHeader(t));
     protected internal void AddFooter(Document doc, Document footerDoc, HeaderFooterType type)
+        => AddStory(doc, footerDoc, type, (d, t) => d.GetFooter(t));
+    private void AddStory(Document doc, Document storyDoc, HeaderFooterType type, Func<Document, HeaderFooterType, HeaderFooter> story)
     {
-        // try find content in same type
-        var srcFooter = footerDoc.GetFooter(type);
-        // look for content in default type
-        if (type != HeaderFooterType.Default && IsEmpty(srcFooter))
+        var source = story(storyDoc, type);
+        // fall back to the default story, then to the body
+        if (type != HeaderFooterType.Default && IsEmpty(source))
         {
-            srcFooter = footerDoc.GetFooter();
+            source = story(storyDoc, HeaderFooterType.Default);
         }
-        // get content from header, or when empty from body
-        var childObjects = srcFooter.ChildObjects.Count > 0
-            ? srcFooter.ChildObjects
-            : footerDoc.Sections[0].Body.ChildObjects;
+        var childObjects = source.ChildObjects.Count > 0
+            ? source.ChildObjects
+            : storyDoc.Sections[0].Body.ChildObjects;
 
-        var docFooter = doc.GetFooter(type);
-        docFooter.ReplaceChildObjects(childObjects);
+        story(doc, type).ReplaceChildObjects(childObjects);
 
         if (type == HeaderFooterType.FirstPage)
         {
-            var section = doc.Sections[0];
-            section.PageSetup.DifferentFirstPageHeaderFooter = true;
+            doc.Sections[0].PageSetup.DifferentFirstPageHeaderFooter = true;
         }
         else if (type == HeaderFooterType.Even)
         {
@@ -413,93 +411,15 @@ public class WordService : IWordService
             doc.Sections[0].PageSetup.DifferentOddAndEvenPagesHeaderFooter = true;
         }
     }
-    /// <summary>Resolves the document's conditional blocks, as <see cref="ConditionalBlocks"/> describes them.</summary>
+    /// <summary>
+    /// Resolves the document's template blocks, as <see cref="TemplateBlocks"/> describes them, and fills the fields of
+    /// its loops' rows.
+    /// </summary>
+    protected internal void ResolveBlocks(Document doc, WordTemplateInput input)
+        => new SpireTemplateWalk(doc).Run(input);
+    [Obsolete("Use ResolveBlocks, which resolves loop blocks as well.", false)]
     protected internal void ResolveConditions(Document doc, WordTemplateInput input)
-    {
-        var paragraphs = doc.ToTreeList()
-            .FindAllParagraphs()
-            .Where(paragraph => !IsInNoteOrComment(paragraph))
-            .Select(paragraph => (Paragraph: paragraph, Text: GetVisibleText(paragraph)))
-            .ToArray();
-        if (!paragraphs.Any(paragraph => ConditionalBlocks.OpensBlock(paragraph.Text)))
-        {
-            return;
-        }
-
-        var containers = paragraphs
-            .Where(paragraph => ConditionalBlocks.ContainsMarker(paragraph.Text))
-            .Select(paragraph => paragraph.Paragraph.Owner)
-            .Distinct()
-            .ToArray();
-
-        foreach (var container in containers)
-        {
-            var children = container.ChildObjects;
-            var texts = children.Cast<DocumentObject>()
-                .Select(child => child is SpireParagraph paragraph ? GetVisibleText(paragraph) : null)
-                .ToArray();
-
-            foreach (var index in ConditionalBlocks.Resolve(texts, input).OrderByDescending(i => i))
-            {
-                children.RemoveAt(index);
-            }
-
-            // whatever holds paragraphs ends with one: a body, cell, header, footer, text box or content control
-            if (container is Body body && (children.Count == 0 || children[children.Count - 1] is Table))
-            {
-                body.AddParagraph();
-            }
-        }
-    }
-    /// <summary>
-    /// Whether the paragraph belongs to a footnote, endnote or comment, which are not part of a template's blocks.
-    /// </summary>
-    private static bool IsInNoteOrComment(SpireParagraph paragraph)
-    {
-        for (var owner = paragraph.Owner; owner != null; owner = owner.Owner)
-        {
-            if (owner is Footnote or Comment)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-    /// <summary>
-    /// The paragraph's text without its deleted revisions, and with an inline content control's — what
-    /// <see cref="SpireParagraph.Text"/> gives neither. Spire keeps a field's code on the field, out of the text.
-    /// </summary>
-    private static string GetVisibleText(SpireParagraph paragraph)
-    {
-        var text = new VisibleText();
-        Read(paragraph.ChildObjects);
-        return text.ToString();
-
-        void Read(DocumentObjectCollection items)
-        {
-            foreach (DocumentObject item in items)
-            {
-                switch (item)
-                {
-                    case Field:
-                        text.FieldStart();
-                        break;
-                    case FieldMark { Type: FieldMarkType.FieldSeparator }:
-                        text.FieldSeparator();
-                        break;
-                    case FieldMark { Type: FieldMarkType.FieldEnd }:
-                        text.FieldEnd();
-                        break;
-                    case TextRange range:
-                        text.Append(range.Text, range.IsDeleteRevision);
-                        break;
-                    case StructureDocumentTagInline control:
-                        Read(control.SDTContent.ChildObjects);
-                        break;
-                }
-            }
-        }
-    }
+        => ResolveBlocks(doc, input);
     protected internal void ReplaceGlobalParameters(Document doc, IDictionary<string, object> parameters)
     {
         var bookmarks = doc.Bookmarks
@@ -681,19 +601,26 @@ public class WordService : IWordService
             container.ChildObjects.RemoveAt(index);
         }
     }
+    /// <summary>
+    /// The page's portrait width and height in points. Written as a size rather than one of Spire's named sizes, which
+    /// cover only part of the A series, so every <see cref="RegiraPageSize"/> is honoured.
+    /// </summary>
     protected internal SizeF GetPageSize(RegiraPageSize size)
     {
-        switch (size)
-        {
-            case RegiraPageSize.A3:
-                return SpirePageSize.A3;
-            case RegiraPageSize.A5:
-                return SpirePageSize.A5;
-            case RegiraPageSize.A6:
-                return SpirePageSize.A6;
-            default:
-                return SpirePageSize.A4;
-        }
+        var (width, height) = WordPageSizes.Points(size);
+        return new SizeF((float)width, (float)height);
+    }
+
+    /// <summary>
+    /// Sets the page's size and orientation: the orientation first, then the size turned that way. Setting a portrait
+    /// size on a section already in landscape keeps its landscape flag, so a page set in the opposite order came out
+    /// portrait-shaped.
+    /// </summary>
+    protected internal void SetPageSetup(PageSetup pageSetup, RegiraPageSize size, RegiraPageOrientation orientation)
+    {
+        var portrait = GetPageSize(size);
+        pageSetup.Orientation = GetPageOrientation(orientation);
+        pageSetup.PageSize = orientation == RegiraPageOrientation.Landscape ? new SizeF(portrait.Height, portrait.Width) : portrait;
     }
     private MarginsF GetMargins(Margins margins)
     {

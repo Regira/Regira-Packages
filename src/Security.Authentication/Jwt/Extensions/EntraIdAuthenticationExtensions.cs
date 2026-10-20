@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Regira.Security.Authentication.Core.Models;
+using Regira.Security.Authentication.Core.Services;
 using Regira.Security.Authentication.Jwt.Models;
 using Regira.Security.Authentication.Jwt.Services;
 
@@ -42,8 +43,9 @@ public static class EntraIdAuthenticationExtensions
     /// <summary>Expands the app-registration values into the validation options Entra actually needs.</summary>
     internal static void ToBearerOptions(EntraIdOptions entra, BearerValidationOptions options)
     {
-        Require(entra.TenantId, nameof(entra.TenantId));
-        Require(entra.ClientId, nameof(entra.ClientId));
+        const string source = "the API's app registration";
+        RequiredOptions.Require(entra.TenantId, $"{nameof(EntraIdOptions)}.{nameof(entra.TenantId)}", source);
+        RequiredOptions.Require(entra.ClientId, $"{nameof(EntraIdOptions)}.{nameof(entra.ClientId)}", source);
 
         options.AuthenticationScheme = entra.AuthenticationScheme;
         options.Authority = entra.Authority;
@@ -63,29 +65,11 @@ public static class EntraIdAuthenticationExtensions
         options.Configure = bearer =>
         {
             entra.Configure?.Invoke(bearer);
-
-            if (!entra.IsSingleTenant)
-            {
-                // Applied *after* the consumer's delegate, and deliberately so: a security control that customization
-                // can overwrite is one that will eventually be overwritten, and this hole is silent — every token it
-                // then accepts is genuinely valid, just from a tenant nobody agreed to trust. Setting it last also
-                // means it survives a delegate that replaces TokenValidationParameters outright.
-                bearer.TokenValidationParameters.ValidateIssuer = true;
-                bearer.TokenValidationParameters.IssuerValidator =
-                    EntraIssuerValidation.ForMultiTenant(entra.Instance, entra.TenantId);
-            }
+            entra.ValidateWildcardIssuer(bearer.TokenValidationParameters);
         };
 
         // All four lists, not just roles: a caller who customised SubjectClaimTypes and had it silently dropped would
         // get a principal missing the identity they configured, with nothing to indicate why.
         entra.Claims.MergeInto(options.Claims);
-    }
-
-    private static void Require(string value, string name)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            throw new InvalidOperationException($"{nameof(EntraIdOptions)}.{name} is required — it comes from the API's app registration.");
-        }
     }
 }

@@ -87,6 +87,26 @@ public class LicenseEnforcementTests
                 .For<OfficeAssignment>());
     }
 
+    // without a signed key the free limits hold: an unsigned License may lower them, never raise them
+    [Test]
+    public void For6thSimpleEntity_WithAnUnsignedLicenseRaisingTheLimits_Throws()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(new License
+        {
+            Products = ["regira.entities"],
+            Limits = new Dictionary<string, int> { ["entities.simple"] = 999, ["entities.complex"] = 999 }
+        });
+        Assert.Throws<LicenseException>(() =>
+            services.UseEntities<ContosoContext>()
+                .For<Course>()
+                .For<Department>()
+                .For<Enrollment>()
+                .For<Instructor>()
+                .For<OfficeAssignment>()
+                .For<Student>());
+    }
+
     [Test]
     public void For6thSimpleEntity_WithFreeLicense_Throws()
     {
@@ -260,6 +280,32 @@ public class LicenseEnforcementTests
         Assert.That(ex.Message, Does.Contain("registers 6 simple and 0 complex"));
         Assert.That(ex.Message, Does.Contain("Course").And.Contain("Student"));
         Assert.That(ex.Message, Does.Contain("https://regira.com/licensing"));
+    }
+
+    [Test]
+    public void Without_A_Key_The_ExceptionMessage_Says_None_Was_Registered()
+    {
+        var services = new ServiceCollection();
+        var ex = Assert.Throws<LicenseException>(() =>
+            services.UseEntities<ContosoContext>()
+                .For<Course, CourseSearchObject, CourseSortBy, CourseIncludes>()
+                .For<Department, CourseSearchObject, CourseSortBy, CourseIncludes>()
+                .For<Enrollment, CourseSearchObject, CourseSortBy, CourseIncludes>());
+        Assert.That(ex!.Message, Does.StartWith("No Regira license key covering regira.entities was registered"));
+        Assert.That(ex.Message, Does.Contain("Regira:LicenseKeys"));
+    }
+
+    [Test]
+    public void With_A_Free_Key_The_ExceptionMessage_Does_Not_Say_None_Was_Registered()
+    {
+        var services = new ServiceCollection();
+        services.UseRegira(MakeFreeLicenseKey());
+        var ex = Assert.Throws<LicenseException>(() =>
+            services.UseEntities<ContosoContext>()
+                .For<Course, CourseSearchObject, CourseSortBy, CourseIncludes>()
+                .For<Department, CourseSearchObject, CourseSortBy, CourseIncludes>()
+                .For<Enrollment, CourseSearchObject, CourseSortBy, CourseIncludes>());
+        Assert.That(ex!.Message, Does.StartWith("Your Regira license allows"));
     }
 
     [Test]

@@ -201,34 +201,46 @@ public class StubSoftDeleteTests
 
     [TestCase(true)]
     [TestCase(false)]
-    public async Task An_Update_Of_An_Attached_Stub_Without_A_Token_Is_Still_Checked(bool synchronous)
+    public async Task An_Update_Of_An_Attached_Stub_Without_A_Token_Goes_Through(bool synchronous)
     {
-        // only a delete — soft or hard — carries no claim; an update built on a stub is compared with the empty token
+        // an empty token makes no claim, on an update as on a delete: it is compared with the stored token, as a PUT
+        // without one is
         var seeded = await Seed();
 
-        using var scope = _sp.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<SupplierContext>();
-        var stub = new Supplier { Id = seeded.Id };
-        db.Suppliers.Attach(stub);
-        stub.Title = "Renamed";
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SupplierContext>();
+            var stub = new Supplier { Id = seeded.Id };
+            db.Suppliers.Attach(stub);
+            stub.Title = "Renamed";
+            Assert.That(await Save(db, synchronous), Is.EqualTo(1));
+        }
 
-        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => Save(db, synchronous));
+        var stored = await Stored(seeded.Id);
+        Assert.Multiple(() =>
+        {
+            Assert.That(stored.Title, Is.EqualTo("Renamed"));
+            Assert.That(stored.Address.City, Is.EqualTo("Gent"), "only what the stub changed is written");
+            Assert.That(stored.ConcurrencyToken, Is.Not.EqualTo(seeded.ConcurrencyToken), "the update moves the token");
+        });
     }
 
     [TestCase(true)]
     [TestCase(false)]
-    public async Task An_Update_That_Archives_An_Attached_Stub_Without_A_Token_Is_Still_Checked(bool synchronous)
+    public async Task An_Update_That_Archives_An_Attached_Stub_Without_A_Token_Goes_Through(bool synchronous)
     {
-        // it sets the one column a soft delete writes, but it is an update: only a delete the primer converts carries no claim
         var seeded = await Seed();
 
-        using var scope = _sp.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<SupplierContext>();
-        var stub = new Supplier { Id = seeded.Id };
-        db.Suppliers.Attach(stub);
-        stub.IsArchived = true;
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<SupplierContext>();
+            var stub = new Supplier { Id = seeded.Id };
+            db.Suppliers.Attach(stub);
+            stub.IsArchived = true;
+            Assert.That(await Save(db, synchronous), Is.EqualTo(1));
+        }
 
-        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => Save(db, synchronous));
+        AssertArchivedAndKept(await Stored(seeded.Id), seeded);
     }
 
     [Test]

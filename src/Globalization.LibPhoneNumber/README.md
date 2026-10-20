@@ -35,7 +35,7 @@ string? local = be.Normalize("0471 12 34 56");        // "+32471123456"
 | `Normalize` | E.164 (e.g. `+32471123456`) — suitable for storage |
 | `Format` | International display (e.g. `+32 471 12 34 56`) |
 
-`null` or whitespace input is returned unchanged. Input that cannot be parsed as a phone number throws a `PhoneNumbers.NumberParseException` — wrap calls in a try/catch when the input is untrusted.
+`null` or whitespace input is returned unchanged. Input that cannot be parsed as a phone number throws a `PhoneNumbers.NumberParseException` — wrap calls in a try/catch when the input is untrusted. Parsing is not validation: a number that parses need not be valid for its region, and is normalized as it is. Check it with libphonenumber when that matters: `var util = PhoneNumbers.PhoneNumberUtil.GetInstance(); bool valid = util.IsValidNumber(util.Parse(input, "BE"));`.
 
 ## Country Utilities (Common)
 

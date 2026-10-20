@@ -143,6 +143,7 @@ public static class CollectionUtility
     /// <returns>The original list, with its size adjusted to the specified size.</returns>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="list"/> is <c>null</c>.</exception>
     /// <exception cref="ArgumentOutOfRangeException">Thrown if <paramref name="size"/> is less than 0.</exception>
+    [Obsolete("Use EnsureSize(list, size, defaultValue). Will be removed in v7.")]
     public static List<T?> SetSize<T>(this List<T> list, int size, T? defaultValue = default)
     {
         return EnsureSize(list!, size, defaultValue);
@@ -183,6 +184,7 @@ public static class CollectionUtility
     /// A sorted <see cref="IEnumerable{T}"/> based on the specified property and direction. 
     /// If the property is not found, the original collection is returned.
     /// </returns>
+    [Obsolete("Nothing in the Regira packages uses it. Will be removed in v7.")]
     public static IEnumerable<T> SortItems<T>(this IEnumerable<T> items, string sortBy)
     {
         var itemProperties = GetItemProperties<T>();

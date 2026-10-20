@@ -18,7 +18,10 @@
 ## Program.cs
 
 ```csharp
+using Microsoft.Extensions.Hosting.WindowsServices;   // WindowsServiceHelpers
+
 builder.Host.UseWebHostOptions();
+if (WindowsServiceHelpers.IsWindowsService()) builder.Host.UseWindowsService();
 
 builder.Services.UseBackgroundQueue();
 
@@ -36,15 +39,18 @@ app.AddWindowsServiceInstaller(new WindowsServiceOptions
 <!-- no-compile -->
 ```csharp
 [HttpPost("reports")]
-public IActionResult StartExport([FromServices] IBackgroundTaskQueue queue)
+public IActionResult StartExport([FromServices] IBackgroundQueueManager queue)
 {
-    queue.QueueBackgroundWorkItem(async token =>
+    // The work runs after this request ends, so it resolves its services from the scope the queue gives it (sp), never
+    // from the controller's fields: a DbContext behind them is disposed by then.
+    var task = queue.Execute<string>(async (sp, t) =>
     {
-        var data   = await _dataService.QueryAsync(token);
-        var excel  = _excelService.Export(data);
-        await _fileService.Save("reports/latest.xlsx", excel.GetBytes()!);
+        var data = await sp.GetRequiredService<IReportDataService>().QueryAsync(t.Token);
+        using var excel = await sp.GetRequiredService<IExcelService>()
+            .Create([new ExcelSheet { Name = "Report", Data = data.Cast<object>().ToList() }], t.Token);
+        return await sp.GetRequiredService<IFileService>().Save("reports/latest.xlsx", excel.GetBytes()!);
     });
-    return Accepted();
+    return Accepted(new { TaskId = task.Id });
 }
 ```
 

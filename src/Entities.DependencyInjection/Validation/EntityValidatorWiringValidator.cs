@@ -1,14 +1,22 @@
 using Microsoft.Extensions.DependencyInjection;
 using Regira.Entities.Services.Abstractions;
+using Regira.Entities.Validators;
 using Regira.Entities.Validators.Abstractions;
 
 namespace Regira.Entities.DependencyInjection.Validation;
 
 /// <summary>
-/// Reports entities whose write path cannot run the validators in their scope: the service that writes them has no
-/// constructor taking <c>IEnumerable&lt;IEntityValidator&gt;</c> and hands the write to nothing that has. That is a write
-/// service built on <c>EntityWriteService</c>'s constructor without validators, or a custom <c>IEntityRepository</c> over
-/// another store. Services registered through a factory are skipped, since their implementation type cannot be seen.
+/// Reports registered entity validators that never run, for either of two reasons.
+/// <list type="bullet">
+/// <item>A validator applies to none of the registered entities — the input validation counterpart of
+/// <see cref="GlobalFilterScopeValidator"/>. The usual cause is a validator scoped to the wrong type, or to a child row a
+/// parent's <c>Related()</c> sync writes: validators check the entity a write service saves, and a child is checked
+/// through its parent's validators. It compiles, starts cleanly and checks nothing.</item>
+/// <item>An entity's write path cannot run the validators in its scope: the service that writes it has no constructor
+/// taking <c>IEnumerable&lt;IEntityValidator&gt;</c> and hands the write to nothing that has. That is a write service
+/// built on <c>EntityWriteService</c>'s constructor without validators, or a custom <c>IEntityRepository</c> over another
+/// store. Services registered through a factory are skipped, since their implementation type cannot be seen.</item>
+/// </list>
 /// </summary>
 internal sealed class EntityValidatorWiringValidator : IEntityRegistrationValidator
 {
@@ -25,10 +33,23 @@ internal sealed class EntityValidatorWiringValidator : IEntityRegistrationValida
             yield break;
         }
 
-        if (!EntityValidatorDiagnostics.TryResolve(context, out var validators, out var issue))
+        // one instance of every registered validator type: resolving builds each one and its dependencies
+        var validators = context.Provider.GetServices<IEntityValidator>().DistinctBy(v => v.GetType()).ToArray();
+
+        var inert = validators
+            .Select(validator => validator.GetType())
+            .Where(validatorType => !registrations.Any(r => EntityValidatorDiagnostics.MayApplyTo(validatorType, r.EntityType)));
+        foreach (var validatorType in inert)
         {
-            yield return issue!;
-            yield break;
+            yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
+                $"Entity validator '{EntityValidatorDiagnostics.Describe(validatorType)}' is scoped to " +
+                $"{string.Join(", ", EntityValidatorScope.ScopesOf(validatorType).Select(EntityValidatorDiagnostics.Describe))}, " +
+                "which none of the registered entities (or a type deriving from one) is, derives from or implements — so it " +
+                "never runs. A validator applies to an item when the TScope of its IEntityValidator<TScope> is the item's type, " +
+                "one of its base types or an interface it implements. ACTION: check that scope. The usual causes are scoping an interface the entity does not " +
+                "implement, and scoping a child row a parent's Related() sync writes — validators check the entity a write " +
+                "service saves, so validate a child from its parent's validator (Lines[0].Quantity). " +
+                "See entities.instructions → Validators.");
         }
 
         foreach (var registration in registrations)

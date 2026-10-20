@@ -71,19 +71,8 @@ public class SqlServerRestoreService(SqlServerOptions options, ILogger<SqlServer
 
             if (exists)
             {
-                // an offline database is dropped without its files, so name the ones the restore will not overwrite
-                var existingFiles = await cn.QueryAsync<string>("SELECT physical_name FROM sys.master_files WHERE database_id = DB_ID(@targetDb)", new { targetDb });
-                var leftOver = existingFiles
-                    .Where(path => !moves.Any(move => string.Equals(move.PhysicalName, path, StringComparison.OrdinalIgnoreCase)))
-                    .ToArray();
-
                 logger?.LogDebug("Dropping database {Database} to restore over it", targetDb);
                 await Drop(cn, targetDb);
-
-                if (leftOver.Length > 0)
-                {
-                    logger?.LogWarning("Database {Database} was replaced; SQL Server keeps its former files {Files}, which the restore does not reuse", targetDb, leftOver);
-                }
             }
 
             var parameters = new DynamicParameters(new { targetDb, path = location.ServerPath });

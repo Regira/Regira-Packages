@@ -11,7 +11,7 @@
   `UserControllerBase<TUser>` (`users`), with `TUser : IdentityUser<string>`. `[ApiController]` + the routes
   are on the bases — **do not repeat `[ApiController]`/`[Route]` on the subclass**.
 - **Subclass with a forwarding ctor** (the bases' ctors are protected):
-  `AccountControllerBase<AppUser>(ITokenHelper, UserManager<AppUser>, IUserClaimsPrincipalFactory<AppUser>, ILogger)`;
+  `AccountControllerBase<AppUser>(ITokenHelper, UserManager<AppUser>, IUserClaimsPrincipalFactory<AppUser>, ILogger? logger = null)`;
   `PasswordControllerBase<AppUser>(UserManager<AppUser>)`; `UserControllerBase<AppUser>(UserManager<AppUser>)`.
   **No `ISerializer`** — payloads use `System.Text.Json` internally.
 - **Required services:** `AddIdentityCore<AppUser>().AddEntityFrameworkStores<TCtx>().AddSignInManager().AddDefaultTokenProviders()`,
@@ -20,8 +20,14 @@
   Regira — it ships in the ASP.NET Core shared framework, so there is no package to add); implement it or use this package's `IdentityMailer`
   (`Regira.Security.Authentication.Web.Mail`), which sends through a registered Regira `IMailService` —
   `Regira.Office` → `office.mail.instructions` → *ASP.NET Identity Integration*.
+- **Mailed links go only to allowed origins:** bind `AccountEmailOptions`
+  (`Regira.Security.Authentication.Web.Models`) from `Authentication:AccountEmails`, validated on start, with
+  `AllowedOrigins` = the SPA's origin and the app's `SiteName`. A `siteUrl` / `confirmEmailUrl` on another origin
+  answers `400`; **with none listed, `recover` throws** (500). An override, or a minimal-API endpoint, that mails a link of
+  its own checks the page with `AccountLinks.FindAllowedPage` — `security.instructions` → *Pre-built Auth
+  Controllers* (*An endpoint of your own that mails a token link*).
 - **Version floor:** floors `Microsoft.OpenApi` at **2.12.2** and `Microsoft.AspNetCore.OpenApi` at
-  **10.0.12** on net10 — a direct pin of either below the resolved version fails restore with NU1605, and
+  **10.0.13** on net10 — a direct pin of either below the resolved version fails restore with NU1605, and
   nothing restores or builds until it is cleared. Leave `Microsoft.OpenApi` **transitive**:
   `Microsoft.AspNetCore.OpenApi` brings the 2.x its source generator is compatible with (3.x breaks it).
   ⚠️ `dotnet new webapi` pins `Microsoft.AspNetCore.OpenApi` at its SDK's patch (`10.0.11` from SDK

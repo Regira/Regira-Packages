@@ -1,6 +1,6 @@
 # Regira.Invoicing.ViaAdValvas
 
-Peppol transmission for [Regira Invoicing](https://regira.github.io/Regira-Packages/src/Common.Invoicing/) through the AdValVas access point gateway. `PeppolService`, constructed with `GatewaySettings` and an `ISerializer`, posts a UBL `Invoice` or `CreditNote` (`XDocument`) to the gateway, seals each request with `SealUtility`, and returns a `UblDocumentResponse` carrying the message reference. It calls the gateway directly over `HttpClient`.
+Peppol transmission for [Regira Invoicing](https://regira.github.io/Regira-Packages/src/Common.Invoicing/) through the AdValVas access point gateway. `PeppolService`, constructed with `GatewaySettings` and an `ISerializer` that reads the gateway's answer, posts a UBL `Invoice` or `CreditNote` (`XDocument`) to the gateway with the declared (PascalCase) property names it expects, seals each request with `SealUtility`, and returns a `UblDocumentResponse` carrying the message reference. It calls the gateway directly, over a connection pool the package shares.
 
 ## Installation
 

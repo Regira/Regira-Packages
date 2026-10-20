@@ -24,7 +24,8 @@ internal sealed class QSearchValidator : IEntityRegistrationValidator
             yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
                 $"?q= text search is silently ignored for: {string.Join(", ", unsearchable)}. " +
                 "These entities do not implement IHasNormalizedContent and have no custom IFilteredQueryBuilder — " +
-                "a q parameter returns unfiltered results. Implement IHasNormalizedContent (with a [Normalized] source) or register a custom filter.");
+                "a q parameter returns unfiltered results. Implement IHasNormalizedContent (with a [Normalized] source) or register a custom filter." +
+                " An entity whose own IEntityService or IEntityRepository applies Q can ignore this.");
         }
     }
 

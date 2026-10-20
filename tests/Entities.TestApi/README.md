@@ -26,4 +26,8 @@ each start.
 Routes: `/departments`, `/courses` and `/persons` (courses and persons with `/{id}/attachments`),
 `/attachments/typed`, `/domain-actions`, and the minimal-API `/minimal/departments`.
 
+With `TestApi:Surface` set to `Endpoints` (`dotnet run --project tests/Entities.TestApi -- --TestApi:Surface=Endpoints`),
+`MapEntityEndpoints()` serves the course routes in place of the course controllers, which MVC then does not discover;
+departments and persons stay on their controllers, and enrollments are disabled for the mapped endpoints.
+
 No license key is needed: its 5 simple and 1 complex entity registrations fit the Entities free tier.

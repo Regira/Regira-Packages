@@ -73,12 +73,15 @@ public class UblConverter : IUblConverter
                 }
             }.ToList()
             : null;
+        var taxExclusiveAmount = GetAmount(invoice.InvoiceLines, x => x.GetTaxExclusiveAmount());
+        // BR-CO-15: the VAT total as written in TaxTotal, rounded per rate
+        var taxInclusiveAmount = taxExclusiveAmount + (taxTotalLines?.Sum(taxTotal => taxTotal.TaxAmount.Value) ?? 0);
         var monetaryTotal = new MonetaryTotalType
         {
             LineExtensionAmount = PeppolUtility.BuildAmountType(GetAmount(invoice.InvoiceLines, x => x.UnitPriceExcl * x.Quantity)),
-            TaxExclusiveAmount = PeppolUtility.BuildAmountType(GetAmount(invoice.InvoiceLines, x => x.GetTaxExclusiveAmount())),
-            TaxInclusiveAmount = PeppolUtility.BuildAmountType(GetAmount(invoice.InvoiceLines, x => x.GetTaxInclusiveAmount())),
-            PayableAmount = PeppolUtility.BuildAmountType(GetAmount(invoice.InvoiceLines, x => x.GetTaxInclusiveAmount()))
+            TaxExclusiveAmount = PeppolUtility.BuildAmountType(taxExclusiveAmount),
+            TaxInclusiveAmount = PeppolUtility.BuildAmountType(taxInclusiveAmount),
+            PayableAmount = PeppolUtility.BuildAmountType(taxInclusiveAmount)
         };
 
         var attachments = invoice.Attachments?
@@ -122,6 +125,6 @@ public class UblConverter : IUblConverter
     }
     protected internal decimal GetAmount(ICollection<InvoiceLine>? lines, Func<InvoiceLine, decimal> selector)
     {
-        return lines?.Sum(x => decimal.Round(selector(x), 2)) ?? 0;
+        return lines?.Sum(x => PeppolUtility.RoundAmount(selector(x))) ?? 0;
     }
 }

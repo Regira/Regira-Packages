@@ -77,7 +77,14 @@ public class PageViewWriter<TPageView>(PageViewQueue<TPageView> queue, Analytics
             {
                 // A write failure must never kill the loop.
                 logger.LogError(ex, "Analytics: failed to write page views");
-                await Task.Delay(TimeSpan.FromSeconds(30), CancellationToken.None);
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    // the host stops: the loop ends and what is still queued is flushed below
+                }
             }
         }
 

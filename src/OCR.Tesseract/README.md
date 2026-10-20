@@ -9,7 +9,8 @@ OCR backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Com
 ```
 
 - The English trained data ships in the package, and its build targets copy it into the build and publish output as `tessdata/eng.traineddata`, the default `Options.DataDirectory`. For another language, add its `.traineddata` file from [tessdata](https://github.com/tesseract-ocr/tessdata) or the smaller [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) to that folder, or point `DataDirectory` at a folder of your own. Set the MSBuild property `RegiraTesseractCopyTessData` to `false` to leave the English data out.
-- The Tesseract package brings native binaries for Windows x86 and x64, which need the [Visual C++ redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist).
+- `DataDirectory` is relative to the working directory when the folder exists there, and to the output folder otherwise, so the default finds `tessdata/` under `dotnet run` too. An empty one leaves the folder to Tesseract's `TESSDATA_PREFIX`.
+- The Tesseract package brings native binaries for Windows x86 and x64, which need the [Visual C++ redistributable](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist). On Linux or macOS, install the Tesseract 5 and Leptonica natives.
 
 ## Documentation
 

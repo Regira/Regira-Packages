@@ -19,56 +19,12 @@ public class PgRestoreService(PgOptions options, IProcessHelper processHelper, I
         var settings = options.DbSettings ?? PgSettings.FromConnectionString(options.ConnectionString ?? throw new ArgumentException("Connection data missing"));
         var targetDb = settings.DatabaseName ?? throw new ArgumentException("Database name missing");
 
-        // creating or dropping a database cannot happen from a connection to that same database
-        var maintenanceSettings = new PgSettings(
-            settings.Host,
-            options.MaintenanceDatabase ?? PgDefaults.MaintenanceDatabase,
-            settings.Username,
-            settings.Password,
-            settings.Port
-        );
-
-        await using var cn = new NpgsqlConnection(PgTools.MaintenanceConnectionString(maintenanceSettings));
-        await cn.OpenAsync();
-
-        var exists = await Exists(cn, targetDb);
-        if (exists && !options.Overwrite)
-        {
-            throw new Exception($"Database {targetDb} already exists.");
-        }
-
         // pg_restore opens the backup itself, so it must be written and closed before the process starts
         var sourcePath = Path.GetTempFileName();
         try
         {
             await file.SaveAs(sourcePath);
-
-            // read the archive before the target database is touched: dropping it for a backup that turns out to be
-            // unreadable would leave neither
-            ValidateArchive(sourcePath);
-
-            if (exists)
-            {
-                await Drop(cn, targetDb);
-            }
-
-            // create db
-            await Create(cn, targetDb);
-
-            // execute restoring tool
-            var args = PgTools.RestoreArguments(settings, targetDb, sourcePath);
-
-            // holds no password
-            logger?.LogDebug("Restoring backup with {ProcessPath} {Arguments}", _restoreProcessPath, args);
-
-            // execute restore process, capturing what pg_restore has to say: without it a failure reports an exit code and nothing else
-            var output = processHelper.ExecuteFile(_restoreProcessPath, PgTools.Environment(settings), waitForOutput: true, arguments: args);
-
-            if (output.ExitCode != 0)
-            {
-                // failed
-                throw new Exception($"Restore failed (ExitCode {output.ExitCode}): {PgTools.Tail(output.Error)}");
-            }
+            await RestoreFrom(processHelper, _restoreProcessPath, settings, targetDb, sourcePath, options.MaintenanceDatabase, options.Overwrite, logger);
         }
         finally
         {
@@ -78,8 +34,59 @@ public class PgRestoreService(PgOptions options, IProcessHelper processHelper, I
             }
             catch (Exception ex)
             {
-                logger?.LogWarning(ex, $"Could not delete temporary file {sourcePath}");
+                logger?.LogWarning(ex, "Could not delete temporary file {Path}", sourcePath);
             }
+        }
+    }
+
+    /// <summary>
+    /// Restores the backup at <paramref name="sourcePath"/> as <paramref name="targetDb"/>, creating it, or replacing
+    /// it with <paramref name="overwrite"/>, from a connection to the maintenance database; <c>pg_restore</c> gets the
+    /// password in its environment. <see cref="BackupRestoreManager"/> restores through it too.
+    /// </summary>
+    /// <exception cref="Exception">The database exists without <paramref name="overwrite"/>, the backup cannot be read, or the tool fails</exception>
+    internal static async Task RestoreFrom(IProcessHelper processHelper, string restorePath, PgSettings settings, string targetDb, string sourcePath,
+        string? maintenanceDatabase, bool overwrite, ILogger? logger)
+    {
+        // creating or dropping a database cannot happen from a connection to that same database
+        var maintenanceSettings = new PgSettings(
+            settings.Host,
+            maintenanceDatabase ?? PgDefaults.MaintenanceDatabase,
+            settings.Username,
+            settings.Password,
+            settings.Port
+        );
+
+        await using var cn = new NpgsqlConnection(PgTools.MaintenanceConnectionString(maintenanceSettings));
+        await cn.OpenAsync();
+
+        var exists = await cn.ExecuteScalarAsync<bool>(PgSql.DatabaseExists, new { databaseName = targetDb });
+        if (exists && !overwrite)
+        {
+            throw new Exception($"Database {targetDb} already exists.");
+        }
+
+        // read the archive before the target database is touched: dropping it for a backup that turns out to be
+        // unreadable would leave neither
+        ValidateArchive(processHelper, restorePath, sourcePath);
+
+        if (exists)
+        {
+            await cn.ExecuteAsync(PgSql.DropDatabase(targetDb));
+        }
+        await cn.ExecuteAsync(PgSql.CreateDatabase(targetDb));
+
+        var args = PgTools.RestoreArguments(settings, targetDb, sourcePath);
+
+        // holds no password
+        logger?.LogDebug("Restoring backup with {ProcessPath} {Arguments}", restorePath, args);
+
+        // capturing what pg_restore has to say: without it a failure reports an exit code and nothing else
+        var output = processHelper.ExecuteFile(restorePath, PgTools.Environment(settings), waitForOutput: true, arguments: args);
+
+        if (output.ExitCode != 0)
+        {
+            throw new Exception($"Restore failed (ExitCode {output.ExitCode}): {PgTools.Tail(output.Error)}");
         }
     }
 
@@ -88,11 +95,10 @@ public class PgRestoreService(PgOptions options, IProcessHelper processHelper, I
     /// be read here cannot be restored either, and finding that out first is what keeps a failed restore from
     /// costing the database it was meant to replace.
     /// </summary>
-    /// <param name="sourcePath">Path of the backup-file to read</param>
     /// <exception cref="Exception">The file is not an archive <c>pg_restore</c> can read</exception>
-    private void ValidateArchive(string sourcePath)
+    private static void ValidateArchive(IProcessHelper processHelper, string restorePath, string sourcePath)
     {
-        var output = processHelper.ExecuteFile(_restoreProcessPath, waitForOutput: true, arguments: PgTools.ListArchiveArguments(sourcePath));
+        var output = processHelper.ExecuteFile(restorePath, waitForOutput: true, arguments: PgTools.ListArchiveArguments(sourcePath));
 
         if (output.ExitCode != 0)
         {

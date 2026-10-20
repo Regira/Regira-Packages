@@ -1,6 +1,6 @@
 # Regira.Invoicing.Billit
 
-Billit backend for [Regira Invoicing](https://regira.github.io/Regira-Packages/src/Common.Invoicing/). `services.AddBillit(...)`, configured with a `BillitConfig`, registers `IInvoiceManager`, which creates and sends the shared `IInvoice` model through Billit, alongside `IFileManager`, `IPartyManager` and `IPeppolManager`. It calls the Billit REST API directly over `HttpClient`.
+Billit backend for [Regira Invoicing](https://regira.github.io/Regira-Packages/src/Common.Invoicing/). `services.AddBillit(...)`, configured with a `BillitConfig`, registers `IInvoiceManager`, which creates and sends the shared `IInvoice` model through Billit and is also registered as `IInvoiceService` (unless the app registered its own), alongside `IFileManager`, `IPartyManager` and `IPeppolManager`. It calls the Billit REST API directly over `HttpClient`.
 
 ## Installation
 

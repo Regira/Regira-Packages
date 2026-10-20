@@ -6,7 +6,7 @@
 
 <!-- no-compile -->
 ```csharp
-var ocr = new Regira.Office.OCR.Tesseract.OcrManager(new OcrManager.Options
+var ocr = new Regira.Office.OCR.Tesseract.OcrManager(new Regira.Office.OCR.Tesseract.OcrManager.Options
 {
     Language      = "en",
     DataDirectory = "./tessdata"
@@ -16,7 +16,7 @@ byte[]     imageBytes = await _fileService.GetBytes("scans/invoice-2024-001.jpg"
 IMemoryFile imgFile   = imageBytes.ToMemoryFile("image/jpeg");
 
 OcrResult result = await ocr.Read(imgFile);
-if (result.Text != null)
+if (!string.IsNullOrWhiteSpace(result.Text))   // no text detected is an empty string
     await ParseInvoiceText(result.Text);
 ```
 

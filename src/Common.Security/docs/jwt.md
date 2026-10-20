@@ -172,7 +172,8 @@ returning whether this caller did it. Two concurrent refreshes of one token woul
 the family into two live chains with no replay detected. Implement it as a conditional write: `ExecuteUpdate`
 filtered on `RevokedAt == null` with a row-count check, or `UPDATE … WHERE TokenKey = @k AND RevokedAt IS NULL`.
 
-Call `RevokeAllForUser` on a password change or when an account is disabled — nothing does it automatically.
+The password change and reset of `PasswordControllerBase` call `RevokeAllForUser`. Call it yourself when an account is
+disabled, and on a password change of your own.
 
 ---
 

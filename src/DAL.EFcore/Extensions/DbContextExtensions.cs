@@ -67,6 +67,7 @@ public static class DbContextExtension
         }
     }
 
+    [Obsolete("Builds a second service provider when none is passed, so singletons and scoped services are duplicated. Add the interceptors with AddInterceptors(...) from the application's provider instead. Will be removed in v7.", DiagnosticId = "REGIRA0001")]
     public static DbContextOptionsBuilder AddRegisteredInterceptors(this DbContextOptionsBuilder optionsBuilder,
         IServiceCollection services, IServiceProvider? sp = null)
     {
@@ -77,6 +78,7 @@ public static class DbContextExtension
             .Select(d => (IInterceptor)sp.GetRequiredService(d.ServiceType));
         return optionsBuilder.AddInterceptors(interceptors);
     }
+    [Obsolete("Use EF Core's own AddInterceptors. Will be removed in v7.")]
     public static DbContextOptionsBuilder AddInterceptors(this DbContextOptionsBuilder optionsBuilder, Func<IEnumerable<IInterceptor>> factory)
         => optionsBuilder.AddInterceptors(factory());
 

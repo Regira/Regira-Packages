@@ -12,7 +12,7 @@
     <Description>Shared Regira setup guides and AI instruction extraction support for consumer projects.</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.5.0</Version>
+    <Version>6.6.0</Version>
     <PackageTags>regira;setup;ai;guides;mcp;ai-agents</PackageTags>
   </PropertyGroup>
   <ItemGroup>
@@ -22,8 +22,6 @@
   <ItemGroup>
     <None Include="ai\project.setup.md" Pack="true" PackagePath="ai\" />
     <None Include="ai\shared.setup.md" Pack="true" PackagePath="ai\" />
-    <None Include="ai\CLAUDE.md" Pack="true" PackagePath="ai\" />
-    <None Include="ai\copilot-instructions.md" Pack="true" PackagePath="ai\" />
     <None Include="ai\commands\new-project.md" Pack="true" PackagePath="ai\commands\" />
     <None Include="ai\commands\new-entity.md" Pack="true" PackagePath="ai\commands\" />
     <None Include="ai\commands\sync-guides.md" Pack="true" PackagePath="ai\commands\" />

@@ -21,7 +21,7 @@ The nearest default per app shape; mix elements from several templates, or devia
 | Standard hosted API (IIS / Azure / Docker) **with** auth — incl. an authenticated Entities API | `BasicApi` + the auth registrations from `SelfHostingApiWithAuth` |
 | Lightweight self-hosted internal API, no auth | `SelfHostingApi` |
 | Self-hosted API protected by API key and/or JWT Bearer | `SelfHostingApiWithAuth` |
-| Must be deployable as a Windows Service | `SelfHostingApi` |
+| Must be deployable as a Windows Service | `SelfHostingApi`; with API key or JWT, `SelfHostingApiWithAuth` |
 | Self-hosted, controller-based routing with enforced authorization | `SelfHostingApiWithAuth` |
 | Minimal API endpoints with authentication | `SelfHostingApiWithAuth` |
 | Users sign in with a work Microsoft account (Entra ID), or any OpenID Connect provider | `SelfHostingApiWithAuth` + `AddEntraIdSignIn` / `AddOidcAuthentication` |
@@ -35,9 +35,9 @@ on top of it, so every scheme fits the same scaffold. See *Authentication conven
 differ in both — so take `BasicApi` as the host and layer Template 4's auth on top rather than stripping
 Template 4 down. From `SelfHostingApiWithAuth` you want the scheme registrations closed by
 `.AddSchemeSelector()` (⚠️ last — see *Authentication conventions*), `UseAuthentication()`/`UseAuthorization()`
-in that order, `.RequireAuthorization()` on `MapControllers()`, and `.AllowAnonymous()` on the OpenAPI/Scalar
-endpoints. You do **not** want its Kestrel-from-configuration block or the Windows-Service hosting, which is
-what makes it the wrong base for an IIS/Azure/Docker app. This combination — a hosted, authenticated,
+in that order, `.RequireAuthorization()` on `MapControllers()`, and the OpenAPI/Scalar endpoints mapped in
+Development only, with `.AllowAnonymous()`. You do **not** want its Kestrel-from-configuration block or the
+Windows-Service hosting, which is what makes it the wrong base for an IIS/Azure/Docker app. This combination — a hosted, authenticated,
 controller-based API — is the ordinary shape for an Entities app, not a deviation worth declaring.
 
 ---
@@ -98,19 +98,22 @@ All templates use Serilog with console + rolling file sinks configured from `app
 
 **Packages**
 
-```xml
-<PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="*" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="*" />
-    <PackageReference Include="Serilog.Extensions.Hosting" Version="*" />
-    <PackageReference Include="Serilog.Settings.Configuration" Version="*" />
-    <PackageReference Include="Serilog.Sinks.Console" Version="*" />
-    <PackageReference Include="Serilog.Sinks.File" Version="*" />
+Add each package with `dotnet add package`, which writes the version it resolves; never commit `Version="*"`
+(`entities.setup` → *Known-good package versions*).
+
+```bash
+dotnet add package Microsoft.Extensions.Configuration.UserSecrets
+dotnet add package Microsoft.Extensions.Hosting
+dotnet add package Serilog.Extensions.Hosting
+dotnet add package Serilog.Settings.Configuration
+dotnet add package Serilog.Sinks.Console
+dotnet add package Serilog.Sinks.File
 ```
 
-**Packages — Web APIs **
+**Packages — Web APIs**
 
-```xml
-<PackageReference Include="Serilog.AspNetCore" Version="*" />
+```bash
+dotnet add package Serilog.AspNetCore
 ```
 
 **Bootstrap pattern (web APIs)**
@@ -136,7 +139,7 @@ try
 
     app.Run();
 }
-catch (Exception ex)
+catch (Exception ex) when (ex is not HostAbortedException) // dotnet ef stops the host on purpose
 {
     Log.Fatal(ex, "Application start-up failed");
 }
@@ -180,17 +183,22 @@ Used by all templates.
 
 ### OpenAPI & Scalar UI
 
-All API templates expose:
+All API templates expose, in Development only:
 - **OpenAPI JSON** `/openapi/v1.json` — `app.MapOpenApi()`
 - **Scalar UI** `/scalar` — `app.MapScalarApiReference()`
 
-Use this as the default API documentation surface for Regira projects. Do not add `Swashbuckle.AspNetCore` and do not call `app.UseSwaggerUI()` unless the user explicitly asks to deviate from the standard template.
+Use this as the default API documentation surface for Regira projects. Do not add `Swashbuckle.AspNetCore` and do not call `app.UseSwaggerUI()` unless the user explicitly asks to deviate from the standard template. When the user asks for Swagger UI, use `Regira.Web.Swagger` instead of the Scalar pair (`web.instructions` → *Web.Swagger*): `AddSwaggerGen(o => JwtAuthenticationExtensions.AddJwtAuthentication(o))` (`using Regira.Web.Swagger.Security;`), then `app.UseSwagger(); app.UseSwaggerUI();` inside the Development block.
+
+Map both inside `if (app.Environment.IsDevelopment())`. The document lists every endpoint and its schemas, the guarded ones included. `.AllowAnonymous()` only exempts the two endpoints from a fallback policy: it does not guard them, and `MapControllers().RequireAuthorization()` never covers them.
 
 ⚠️ **Adding authentication to any template? The plain `AddOpenApi()` / `MapScalarApiReference()` pair above is then incomplete** — Scalar renders every endpoint but offers no way to authenticate, so `/scalar` cannot exercise a guarded API. This applies to Templates 2–4 alike; it is not specific to `SelfHostingApiWithAuth`. Declare the schemes, and mark the operations that require one — a declared scheme only produces the auth prompt; without the operation transformer the document says nothing about which endpoints are guarded, and a generated client cannot tell:
 
 <!-- no-compile -->
 ```csharp
+using Microsoft.AspNetCore.Authentication.JwtBearer;            // JwtBearerDefaults
+using Regira.Security.Authentication.ApiKey.Models;             // ApiKeyDefaults
 using Regira.Security.Authentication.Web.OpenApi.Transformers;
+using Scalar.AspNetCore;                                        // ScalarAuthenticationOptions
 
 builder.Services.AddOpenApi(options =>
 {
@@ -201,23 +209,26 @@ builder.Services.AddOpenApi(options =>
     options.AddOperationTransformer<SecurityRequirementOperationTransformer>();
 });
 
-app.MapOpenApi().AllowAnonymous();
-app.MapScalarApiReference(options =>
+if (app.Environment.IsDevelopment())
 {
-    options.Authentication = new ScalarAuthenticationOptions
+    app.MapOpenApi().AllowAnonymous();
+    app.MapScalarApiReference(options =>
     {
-        PreferredSecuritySchemes = [ApiKeyDefaults.AuthenticationScheme, JwtBearerDefaults.AuthenticationScheme]
-    };
-}).AllowAnonymous();
+        options.Authentication = new ScalarAuthenticationOptions
+        {
+            PreferredSecuritySchemes = [ApiKeyDefaults.AuthenticationScheme, JwtBearerDefaults.AuthenticationScheme]
+        };
+    }).AllowAnonymous();
+}
 ```
 
 **Nuget packages — Web API**
-```xml
-<PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="*" />
-<PackageReference Include="Scalar.AspNetCore" Version="*" />
+```bash
+dotnet add package Microsoft.AspNetCore.OpenApi
+dotnet add package Scalar.AspNetCore
 ```
 
-> **⚠️ On the native `Microsoft.AspNetCore.OpenApi`/Scalar path, `Microsoft.OpenApi` must stay on 2.x** _(while on .NET 10 — remove once the OpenAPI source generator supports 3.x)_. (This does **not** apply to a Swashbuckle setup, which supports 3.x.)
+> **⚠️ On the native `Microsoft.AspNetCore.OpenApi`/Scalar path, `Microsoft.OpenApi` must stay on 2.x** _(while on .NET 10 — remove once the OpenAPI source generator supports 3.x)_. (A `Regira.Web.Swagger` setup stays on 2.x too: it and `Regira.Security.Authentication.Web` reference `Microsoft.OpenApi` 2.12.2.)
 > Leave it **transitive**: from **10.0.11** on, `Microsoft.AspNetCore.OpenApi` declares the 2.x range its generator
 > is compatible with, already past the 2.x security advisory (10.0.12 → `[2.12.0, 3.0.0)`), so no direct reference
 > is needed; 10.0.10 and earlier pull the vulnerable 2.0.0 — raise that pin instead. Never
@@ -260,11 +271,8 @@ All API templates include this launch profile, opening the Scalar UI on start.
 Enrich console apps with appsettings, user secrets and environment variables.
 (Not applicable to APIs since they implement user secrets by default.)
 
-**.csproj file — Console App**
+**.csproj file — Console App** — add the package with `dotnet add package Microsoft.Extensions.Configuration.UserSecrets`, then:
 ```xml
-  <!-- NuGet package -->
-  <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="*" />
-
   <!-- include appsettings.json in output for console apps -->
   <ItemGroup>
     <Content Include="appsettings.json">
@@ -309,14 +317,14 @@ public static IHostBuilder AddConfiguration(this IHostBuilder builder)
   `[Authorize]` uses, and the symptom is a 401 for a caller holding a perfectly good credential of the other kind.
   It also removes the need for an `AddAuthorization` default policy naming the schemes.
 - Authorization is **enforced globally** via `.RequireAuthorization()` on `MapControllers()`.
-- OpenAPI / Scalar endpoints are explicitly marked `.AllowAnonymous()`.
+- OpenAPI / Scalar endpoints are mapped in Development only and marked `.AllowAnonymous()` (*OpenAPI & Scalar UI*).
 - Controllers that must be public use `[AllowAnonymous]` per action.
 
 **Picking a scheme**
 
 | The app needs | Use |
 |---|---|
-| A SPA or mobile client against your own user table | `AddJwtAuthentication` (+ `AddRefreshTokens` so sessions survive token expiry) |
+| A SPA or mobile client against your own user table | `AddJwtAuthentication` (+ `AddRefreshTokens` for a client that renews with a refresh token; `@regira/modules` does not) |
 | Machine-to-machine callers | `AddApiKeyAuthentication` |
 | A server-rendered app, Blazor Server, or same-site SPA | `AddCookieAuthentication` |
 | Staff signing in with their work Microsoft account | `AddEntraIdSignIn` (browser) |
@@ -331,13 +339,13 @@ reverse proxy the OIDC callback fails with "Correlation failed" unless `UseForwa
 authentication middleware.
 
 **Nuget packages**
-```xml
-<PackageReference Include="Regira.Security.Authentication" Version="*" />
-<PackageReference Include="Regira.Security.Authentication.Web" Version="*" />
+```bash
+dotnet add package Regira.Security.Authentication
+dotnet add package Regira.Security.Authentication.Web
 ```
 
 > `Regira.Security.Authentication.Web` references `Microsoft.AspNetCore.OpenApi` and thereby **floors** it
-> (and, through it, `Microsoft.OpenApi`) — 6.3.1 floors them at `10.0.12` and `2.12.2`. Pinning either
+> (and, through it, `Microsoft.OpenApi`) — 6.6.0 floors them at `10.0.13` and `2.12.2`. Pinning either
 > lower than the resolved version fails restore with **NU1605 (package downgrade)** — resolve
 > `Microsoft.AspNetCore.OpenApi` to the latest stable patch and leave `Microsoft.OpenApi` transitive.
 >
@@ -351,16 +359,29 @@ authentication middleware.
 {
   "Authentication": {
     "ApiKeys": [
-      { "OwnerId": "MyUser", "Key": "REPLACE-WITH-GUID", "Roles": ["read"] }
+      { "OwnerId": "MyUser", "Roles": ["read"] }
     ],
     "Jwt": {
-      "Secret": "REPLACE-WITH-RANDOM-SECRET-OF-AT-LEAST-64-CHARS-TO-FIT-HS512-SIGNING-KEYS!!",
       "Audience": "my-spa",
       "LifeSpan": 7200
     }
   }
 }
 ```
+
+The JWT secret and the API keys never go in `appsettings.json`: a placeholder left there is a signing key or an API
+key anyone can read, and a long one even passes the length check. Leave them out of the file, so startup fails until
+they are set — a missing `Secret` throws from `AddJwtAuthentication`, a missing `Key` from `ToApiKeyOwners()` — and
+set them per environment. Configuration merges arrays by index, so `ApiKeys:0:Key` completes the first entry:
+
+```bash
+dotnet user-secrets init
+dotnet user-secrets set "Authentication:Jwt:Secret" "<64 or more random characters>"
+dotnet user-secrets set "Authentication:ApiKeys:0:Key" "<a new GUID>"
+```
+
+In production, set them from a key vault or the environment (`Authentication__Jwt__Secret`,
+`Authentication__ApiKeys__0__Key`). A seeded account's password is a secret too.
 
 Section names are constants on `AuthenticationSections` (`using Regira.Security.Authentication.Core.Models;`)
 holding the full configuration path — `AuthenticationSections.Jwt` is `"Authentication:Jwt"`:
@@ -389,7 +410,7 @@ Only add the blocks the app registers a scheme for:
 ```
 
 `ClientSecret` is required for interactive sign-in (`AddEntraIdSignIn`) and unused for API protection
-(`AddEntraIdBearer`). Keep it out of `appsettings.json` — use user-secrets or a key vault.
+(`AddEntraIdBearer`). Keep it out of `appsettings.json` like the JWT secret: user-secrets or a key vault.
 
 > **⚠️ JWT secret length must match the signing algorithm.** The default algorithm is **HS512**, which
 > requires a key of **≥ 64 bytes (512 bits)**; a shorter secret throws from `AddJwtAuthentication` at
@@ -430,8 +451,8 @@ using Regira.Security.Authentication.OpenIdConnect.Models; // OidcAuthOptions, E
 - Kestrel is always configured from `appsettings.json` via `options.Configure(context.Configuration.GetSection("Kestrel"))`.
 
 **Nuget packages**
-```xml
-<PackageReference Include="Regira.System.Hosting" Version="*" />
+```bash
+dotnet add package Regira.System.Hosting
 ```
 
 **appsettings.json — Kestrel block**
@@ -521,7 +542,7 @@ try
     Console.WriteLine();
     logger.LogInformation("Finished");
 }
-catch (Exception ex)
+catch (Exception ex) when (ex is not HostAbortedException) // dotnet ef stops the host on purpose
 {
     Log.Error(ex, "Host failed");
 }
@@ -585,6 +606,7 @@ Standard ASP.NET Core API hosted on IIS, Azure, or Docker. No authentication. Su
 
 <!-- no-compile -->
 ```csharp
+using System.Text.Json.Serialization;
 using Scalar.AspNetCore;
 using Serilog;
 
@@ -606,9 +628,12 @@ try
 
     var app = builder.Build();
 
-    app.MapOpenApi();
-    app.MapScalarApiReference();
-    
+    if (app.Environment.IsDevelopment())
+    {
+        app.MapOpenApi();
+        app.MapScalarApiReference();
+    }
+
     app.UseHttpsRedirection();
 
     // app.UseAuthentication();
@@ -619,7 +644,7 @@ try
 
     app.Run();
 }
-catch (Exception ex)
+catch (Exception ex) when (ex is not HostAbortedException) // dotnet ef stops the host on purpose
 {
     Log.Fatal(ex, "Application start-up failed");
 }
@@ -633,6 +658,9 @@ finally
 > `Http.Json.JsonOptions`, so on a `Regira.Entities` API swap this block for `ConfigureDefaultJsonOptions()`
 > (`Regira.Entities.Web.DependencyInjection`) — it applies cycles/nulls/enum-names (and a UTC read of request-body `DateTime`s) to **both** sets so the
 > generated schema matches the wire format (`get_package(id: "Regira.Entities", section: "entities.setup")` → P3).
+> An Entities API on mapped entity endpoints alone (`MapEntityEndpoints()`, no controllers) drops `AddControllers()`
+> and `MapControllers()` too, and calls `builder.Services.AddAuthorization()` instead: `AddControllers()` registered
+> the authorization services, and `app.UseAuthorization()` throws at start-up without them.
 
 > A browser SPA on `http://` is 307-redirected by `UseHttpsRedirection()`; see *Calling the API in dev*
 > (front-end `regira_modules.vue.entities` → `entities.setup`) to wire the dev SPA to this API.
@@ -672,8 +700,11 @@ try
 
     var app = builder.Build();
 
-    app.MapOpenApi();
-    app.MapScalarApiReference();
+    if (app.Environment.IsDevelopment())
+    {
+        app.MapOpenApi();
+        app.MapScalarApiReference();
+    }
 
     app
         .UseRouting()
@@ -689,7 +720,7 @@ try
 
     app.Run();
 }
-catch (Exception ex)
+catch (Exception ex) when (ex is not HostAbortedException) // dotnet ef stops the host on purpose
 {
     Log.Fatal(ex, "Application start-up failed");
 }
@@ -764,18 +795,21 @@ try
 
     var app = builder.Build();
 
-    app.MapOpenApi()
-        .AllowAnonymous();
-    app.MapScalarApiReference(options =>
+    if (app.Environment.IsDevelopment())
     {
-        options.Authentication = new ScalarAuthenticationOptions
+        app.MapOpenApi()
+            .AllowAnonymous();
+        app.MapScalarApiReference(options =>
         {
-            PreferredSecuritySchemes = [
-                ApiKeyDefaults.AuthenticationScheme,
-                JwtBearerDefaults.AuthenticationScheme
-            ]
-        };
-    }).AllowAnonymous();
+            options.Authentication = new ScalarAuthenticationOptions
+            {
+                PreferredSecuritySchemes = [
+                    ApiKeyDefaults.AuthenticationScheme,
+                    JwtBearerDefaults.AuthenticationScheme
+                ]
+            };
+        }).AllowAnonymous();
+    }
 
     app
         .UseRouting()
@@ -792,7 +826,7 @@ try
 
     app.Run();
 }
-catch (Exception ex)
+catch (Exception ex) when (ex is not HostAbortedException) // dotnet ef stops the host on purpose
 {
     Log.Fatal(ex, "Application start-up failed");
 }

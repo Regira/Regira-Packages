@@ -4,6 +4,7 @@ public class GitHubOptions
 {
     /// <summary>
     /// The URI of the GitHub repository where content will be stored, in the format "https://api.github.com/repos/{owner}/{repo}". This is required and must be a valid GitHub API endpoint for repository contents.
+    /// Owner and repo are cased as GitHub spells them: another casing turns the identifiers <c>List</c> returns into full URLs that <c>Contained</c> refuses.
     /// </summary>
     public string Uri { get; set; } = null!;
     /// <summary>
@@ -26,4 +27,9 @@ public class GitHubOptions
     /// Optional path within the repository where the content will be stored. If not specified, content will be stored at the root of the repository.
     /// </summary>
     public string? ContentPath { get; set; }
+    /// <summary>
+    /// Refuses an identifier that addresses a path outside <see cref="ContentPath"/>, through <c>../</c>, say (default).
+    /// Without the check a request follows the identifier's dot segments, out of the content path and up to the API's root.
+    /// </summary>
+    public bool Contained { get; set; } = true;
 }

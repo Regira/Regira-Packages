@@ -26,6 +26,40 @@ public class InMemoryApiKeyOwnerServiceTests
         owner.ShouldBeNull();
     }
 
+    [Theory]
+    [InlineData("TES")]
+    [InlineData("TEST_")]
+    [InlineData("test")]
+    [InlineData("")]
+    public async Task FindByKey_MatchesTheWholeKeyCaseSensitively(string apiKey)
+    {
+        var owner = await _service.FindByKey(apiKey);
+
+        owner.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task FindByKey_SkipsAnOwnerWithoutKey()
+    {
+        var service = new InMemoryApiKeyOwnerService([new() { OwnerId = "NoKey", Key = null! }, ApiKeyOwners.Default]);
+
+        var owner = await service.FindByKey(ApiKeyOwners.Default.Key);
+
+        owner.ShouldNotBeNull();
+        owner.OwnerId.ShouldBe(ApiKeyOwners.Default.OwnerId);
+    }
+
+    [Fact]
+    public async Task FindByKey_WithDuplicateKeys_ReturnsTheFirstOwner()
+    {
+        var service = new InMemoryApiKeyOwnerService([ApiKeyOwners.Default, new() { OwnerId = "Second", Key = ApiKeyOwners.Default.Key }]);
+
+        var owner = await service.FindByKey(ApiKeyOwners.Default.Key);
+
+        owner.ShouldNotBeNull();
+        owner.OwnerId.ShouldBe(ApiKeyOwners.Default.OwnerId);
+    }
+
     [Fact]
     public async Task FindByOwner_WithValidId_ReturnsOwner()
     {
@@ -64,6 +98,14 @@ public class InMemoryApiKeyOwnerServiceTests
     public async Task Validate_WithWrongKey_ReturnsFalse()
     {
         var result = await _service.Validate(ApiKeyOwners.Default.OwnerId, "WRONG_KEY");
+
+        result.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task Validate_WithKeyInOtherCase_ReturnsFalse()
+    {
+        var result = await _service.Validate(ApiKeyOwners.Default.OwnerId, ApiKeyOwners.Default.Key.ToLower());
 
         result.ShouldBeFalse();
     }

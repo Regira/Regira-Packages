@@ -5,10 +5,11 @@ using Regira.Web.Analytics.Config;
 namespace Regira.Web.Analytics.Services;
 
 /// <summary>
-/// Cheap substring matching over two independent questions: does the agent claim to be a person
-/// (<see cref="IsBot"/>), and could a person have asked for this target (<see cref="IsProbe"/>). The
-/// second is what survives a scanner copying a real browser's user agent. Built-in rules merge with
-/// Analytics:BotDetection and reload when that configuration changes.
+/// Cheap substring matching over three independent questions: does the agent claim to be a person
+/// (<see cref="IsBot"/>), could a person have asked for this target (<see cref="IsProbe"/>), and could a
+/// browser have sent this referrer (<see cref="IsForgedReferrer"/>). The last two are what survive a
+/// crawler copying a real browser's user agent. Built-in rules merge with Analytics:BotDetection and
+/// reload when that configuration changes.
 /// </summary>
 public sealed class BotDetector : IDisposable
 {
@@ -27,6 +28,9 @@ public sealed class BotDetector : IDisposable
             ProbePaths = DetectProbes
                 ? Merge(config.ProbePaths, BotDetectorDefaults.ProbePaths, config.IncludeDefaultMarkers)
                 : [];
+            DetectForgedReferrers = config.DetectForgedReferrers;
+            // no built-in defaults: a spam domain is the host's evidence, not a universal rule
+            ReferrerMarkers = RuleList.Normalize(config.ReferrerMarkers);
         }
 
         private static string[] Merge(string[] configured, string[] defaults, bool includeDefaults)
@@ -44,9 +48,14 @@ public sealed class BotDetector : IDisposable
         /// <summary>Gates the shape checks too, which hold no list of their own.</summary>
         public bool DetectProbes { get; }
 
-        public int Count => Markers.Length + Exceptions.Length + BrowserTokens.Length + ProbePaths.Length;
+        public bool DetectForgedReferrers { get; }
+        public string[] ReferrerMarkers { get; }
+
+        public int Count => Markers.Length + Exceptions.Length + BrowserTokens.Length + ProbePaths.Length
+                            + ReferrerMarkers.Length;
         public bool IsEmpty => Markers.Length == 0 && BrowserTokens.Length == 0
-                               && MinUserAgentLength <= 0 && !DetectProbes;
+                               && MinUserAgentLength <= 0 && !DetectProbes
+                               && ReferrerMarkers.Length == 0 && !DetectForgedReferrers;
     }
 
     private readonly IDisposable? _reloadSubscription;
@@ -110,6 +119,66 @@ public sealed class BotDetector : IDisposable
 
         // The dot check reads the path only: a query legitimately carries dots, a path segment does not.
         return ContainsAny(target, rules.ProbePaths) || HasDotSegment(lowerPath);
+    }
+
+    /// <summary>
+    /// Whether the Referer is one no browser sends (with <c>DetectForgedReferrers</c>), or names a source in
+    /// <c>ReferrerMarkers</c>. Reads the header alone, so like <see cref="IsProbe"/> it survives a crawler
+    /// copying a real browser's user agent.
+    /// </summary>
+    /// <param name="referrer">The raw Referer header, or null when the request sent none.</param>
+    public bool IsForgedReferrer(string? referrer)
+    {
+        var rules = _rules;
+
+        if (string.IsNullOrWhiteSpace(referrer))
+            return false;
+
+        if (rules.ReferrerMarkers.Length > 0 && ContainsAny(referrer.ToLowerInvariant(), rules.ReferrerMarkers))
+            return true;
+
+        return rules.DetectForgedReferrers && !IsBrowserShaped(referrer);
+    }
+
+    /// <summary>
+    /// The shape every browser gives a Referer: an absolute URL and, for http(s), a path of at least "/" and no
+    /// #fragment. Reads the raw string on purpose: <see cref="Uri"/> normalises "https://host" to the path "/"
+    /// this looks for. Other schemes are not judged: Chrome on Android sends android-app://com.google.android.gm/.
+    /// </summary>
+    private static bool IsBrowserShaped(string referrer)
+    {
+        var schemeEnd = referrer.IndexOf("://", StringComparison.Ordinal);
+        if (schemeEnd <= 0)
+            return false;
+
+        var scheme = referrer.AsSpan(0, schemeEnd);
+        if (!IsScheme(scheme))
+            return false;
+        if (!scheme.Equals("http", StringComparison.OrdinalIgnoreCase)
+            && !scheme.Equals("https", StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        var afterHost = referrer.AsSpan(schemeEnd + 3);
+        var end = afterHost.IndexOfAny('/', '?', '#');
+        return end >= 0 && afterHost[end] == '/' && afterHost.IndexOf('#') < 0;
+    }
+
+    /// <summary>
+    /// A scheme as RFC 3986 spells it: a letter, then letters, digits, "+", "-" or ".". Without it a referrer
+    /// with no scheme but a "://" in its query (<c>example.com/?r=https://x</c>) would pass as another scheme.
+    /// </summary>
+    private static bool IsScheme(ReadOnlySpan<char> scheme)
+    {
+        if (!char.IsAsciiLetter(scheme[0]))
+            return false;
+
+        foreach (var c in scheme[1..])
+        {
+            if (!char.IsAsciiLetterOrDigit(c) && c is not ('+' or '-' or '.'))
+                return false;
+        }
+
+        return true;
     }
 
     /// <summary>

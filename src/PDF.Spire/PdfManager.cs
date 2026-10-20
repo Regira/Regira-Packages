@@ -4,18 +4,21 @@ using Regira.IO.Extensions;
 using Regira.Media.Drawing.Models.Abstractions;
 using Regira.Office.MimeTypes;
 using Regira.Office.PDF.Abstractions;
+using Regira.Office.PDF.Defaults;
+using Regira.Office.PDF.Internal;
 using Regira.Office.PDF.Models;
 using Spire.Pdf;
 using Spire.Pdf.Graphics;
 using Spire.Pdf.Texts;
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.Text;
 
 namespace Regira.Office.PDF.Spire;
 
 public class PdfManager : IPdfMerger, IPdfSplitter, IPdfToImageService, IPdfTextExtractor
 {
+    private const float PdfPointsPerInch = 72f;
+
     public Task<int> GetPageCount(IMemoryFile pdfStream, CancellationToken cancellationToken = default)
     {
         using var doc = new PdfDocument(pdfStream.GetStream());
@@ -26,10 +29,10 @@ public class PdfManager : IPdfMerger, IPdfSplitter, IPdfToImageService, IPdfText
     {
         var result = new List<IMemoryFile>();
         using var doc = new PdfDocument(pdf.GetStream());
-        foreach (var range in ranges)
+        foreach (var (start, end) in PdfSplitRanges.Resolve(ranges, doc.Pages.Count))
         {
             using var split = new PdfDocument();
-            for (var i = range.Start - 1; i < (range.End ?? doc.Pages.Count); i++)
+            for (var i = start - 1; i < end; i++)
             {
                 var page = split.Pages.Add(doc.Pages[i].Size, new PdfMargins(0));
                 doc.Pages[i].CreateTemplate().Draw(page, new PointF(0, 0));
@@ -51,12 +54,18 @@ public class PdfManager : IPdfMerger, IPdfSplitter, IPdfToImageService, IPdfText
     }
     public Task<IMemoryFile?> Merge(IEnumerable<IMemoryFile> items, CancellationToken cancellationToken = default)
     {
+        var pdfs = items.ToList();
+        if (pdfs.Count == 0)
+        {
+            return Task.FromResult<IMemoryFile?>(null);
+        }
+
         using var merged = new PdfDocument();
         // inserted pages draw from their source document, so every source stays open until the save in ToMemoryFile
         var docs = new List<PdfDocument>();
         try
         {
-            foreach (var pdfStream in items)
+            foreach (var pdfStream in pdfs)
             {
                 var doc = new PdfDocument(pdfStream.GetStream());
                 docs.Add(doc);
@@ -92,21 +101,24 @@ public class PdfManager : IPdfMerger, IPdfSplitter, IPdfToImageService, IPdfText
     }
     public Task<IList<IImageFile>> ToImages(IMemoryFile pdf, PdfToImagesOptions? options = null, CancellationToken cancellationToken = default)
     {
+        var format = (options?.Format ?? PdfDefaults.ImageFormat).ToGdiImageFormat();
+        var size = options?.Size ?? PdfDefaults.ImageSize;
+        var shortSide = Math.Min(size.Width, size.Height);
+        var longSide = Math.Max(size.Width, size.Height);
         var images = new List<IImageFile>();
         using var doc = new PdfDocument(pdf.GetStream());
         var pageCount = doc.Pages.Count;
         for (var i = 0; i < pageCount; i++)
         {
-            using var image = doc.SaveAsImage(i);
-            if (options?.Size.HasValue == true)
-            {
-                using var resized = GdiUtility.Resize(image, options.Size.Value.ToGdiSize());
-                images.Add(resized.ToImageFile(ImageFormat.Jpeg));
-            }
-            else
-            {
-                images.Add(image.ToImageFile(ImageFormat.Jpeg));
-            }
+            // the size fits either way round: the page's shorter side to the smaller dimension, its longer side to the larger.
+            // The page renders at the resolution that fills that box, rounded up, so the resize only ever shrinks it
+            var page = doc.Pages[i].Size;
+            var fit = Math.Min(shortSide / Math.Min(page.Width, page.Height), longSide / Math.Max(page.Width, page.Height));
+            var dpi = Math.Max(1, (int)Math.Ceiling(PdfPointsPerInch * fit));
+            using var image = doc.SaveAsImage(i, dpi, dpi);
+            var box = image.Width <= image.Height ? new Size(shortSide, longSide) : new Size(longSide, shortSide);
+            using var resized = GdiUtility.Resize(image, box);
+            images.Add(resized.ToImageFile(format));
         }
         return Task.FromResult<IList<IImageFile>>(images);
     }

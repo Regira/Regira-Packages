@@ -116,6 +116,7 @@ public static class EnumUtility
     /// <exception cref="ArgumentException">
     /// Thrown if <typeparamref name="T"/> is not an enumeration type.
     /// </exception>
+    [Obsolete("Use Enum.HasFlag. Will be removed in v7.")]
     public static bool HasFlag<T>(T enumValue, T bitfield)
         where T : struct, Enum, IConvertible
     {

@@ -30,6 +30,25 @@ public class PgToolArgumentsTests
     }
 
     [Test]
+    public void The_manager_starts_pg_dump_as_the_service_does()
+    {
+        var processHelper = new CapturingProcessHelper();
+        var settings = new PgSettings("db.internal", "sales", "ops", "s3cr%t", "5433");
+        var manager = new BackupRestoreManager(processHelper, new PgOptions { ToolsDirectory = Path.GetTempPath() });
+
+        manager.Backup(settings, "sales", Path.Combine(Path.GetTempPath(), "sales.backup"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Path.GetFileNameWithoutExtension(processHelper.FileName), Is.EqualTo("pg_dump"));
+            Assert.That(processHelper.Arguments, Does.StartWith("--host \"db.internal\" --port \"5433\" --username \"ops\""));
+            Assert.That(processHelper.Arguments, Does.EndWith(" \"sales\""));
+            Assert.That(processHelper.Arguments, Does.Not.Contain("s3cr%t"));
+            Assert.That(processHelper.EnvironmentVariables!["PGPASSWORD"], Is.EqualTo("s3cr%t"));
+        });
+    }
+
+    [Test]
     public async Task Backup_escapes_quotes_and_the_backslashes_before_them()
     {
         var processHelper = new CapturingProcessHelper();

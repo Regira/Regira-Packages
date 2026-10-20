@@ -15,4 +15,7 @@ public record MailRecipient : MailAddress, IMailRecipient
     {
         return new() { Email = email };
     }
+
+    // the address format, where a record would synthesize one that lists its members
+    public override string ToString() => base.ToString();
 }

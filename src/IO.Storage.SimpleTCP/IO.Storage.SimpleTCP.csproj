@@ -11,9 +11,9 @@
     <AssemblyName>Regira.IO.Storage.SimpleTCP</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.5.0</Version>
-    <Description>SimpleTCP-based file transfer and storage for Regira IO.</Description>
-    <PackageTags>regira;io;storage;tcp;simpletcp</PackageTags>
+    <Version>6.6.0</Version>
+    <Description>Writes bytes or text to a raw TCP port through ITextFileService, such as a ZPL label to a network label printer on port 9100, or a message to a socket listener.</Description>
+    <PackageTags>regira;io;storage;tcp;simpletcp;socket;raw;printer;label;zpl</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.IO.Storage\Common.IO.Storage.csproj" />

@@ -8,10 +8,12 @@ using Regira.Entities.Web.Attachments.Services;
 
 namespace Regira.Entities.Mapping.AutoMapper;
 
+[Obsolete("HasAttachments() sets the attachment Uri after mapping, for every mapper, through IAttachmentUriResolver (UseAttachmentUris()); a value resolver adds nothing. Will be removed in v7.")]
 public class AttachmentUriResolver<TEntity, TDto>(LinkGenerator linkGenerator, IHttpContextAccessor httpContextAccessor)
     : AttachmentUriResolver<TEntity, int, int, int, Attachment, TDto>(linkGenerator, httpContextAccessor)
     where TEntity : IEntity<int>, IEntityAttachment<int, int, int, Attachment>;
 
+[Obsolete("HasAttachments() sets the attachment Uri after mapping, for every mapper, through IAttachmentUriResolver (UseAttachmentUris()); a value resolver adds nothing. Will be removed in v7.")]
 public class AttachmentUriResolver<TEntity, TEntityAttachmentKey, TObjectKey, TAttachmentKey, TAttachment, TDto>(LinkGenerator linkGenerator, IHttpContextAccessor httpContextAccessor)
     : AttachmentUriResolver<TEntity, TEntityAttachmentKey, TObjectKey, TAttachmentKey, TAttachment>(linkGenerator, httpContextAccessor), IValueResolver<TEntity, TDto, string?>
     where TEntity : IEntity<TEntityAttachmentKey>, IEntityAttachment<TEntityAttachmentKey, TObjectKey, TAttachmentKey, TAttachment>

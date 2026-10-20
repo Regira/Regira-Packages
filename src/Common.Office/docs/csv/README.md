@@ -54,7 +54,7 @@ Task<IMemoryFile> WriteFile(IEnumerable<T> items, CsvOptions? options = null, Ca
 
 | Member | Type | Default | Description |
 |--------|------|---------|-------------|
-| `IgnoreBadData` | `bool` (public field) | `false` | Skip malformed rows instead of throwing |
+| `IgnoreBadData` | `bool` (public field) | `false` | Read a field with a stray quote as it stands instead of throwing `BadDataException` |
 | `PreserveWhitespace` | `bool` (public field) | `false` | Keep leading/trailing whitespace in cell values |
 
 > `IgnoreBadData` and `PreserveWhitespace` are only honored when the `CsvHelperOptions` instance is

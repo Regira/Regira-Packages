@@ -3,6 +3,7 @@ using System.Collections;
 
 namespace Regira.Web.DependencyInjection;
 
+[Obsolete("Nothing in the Regira packages uses it. Will be removed in v7.")]
 public abstract class ServiceCollectionWrapper(IServiceCollection? services = null) : IServiceCollection
 {
     public IServiceCollection Services { get; } = services ?? new ServiceCollection();

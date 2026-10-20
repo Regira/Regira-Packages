@@ -11,7 +11,8 @@
 | Namespace | Types |
 |---|---|
 | `Regira.Entities.Web.Controllers.Abstractions` | `EntityControllerBase<>` (all overloads) |
-| `Regira.Entities.Web.Controllers` | `ControllerExtensions` *(`Details()`/`Save()`/`Patch()`/`Delete()` — on `ControllerBase`)*, `EntityExceptionFilter`, `EntityConstraintConflictAttribute` |
+| `Regira.Entities.Web.Controllers` | `ControllerExtensions` *(`Details()`/`Save()`/`Patch()`/`Delete()` — on `ControllerBase`; each sends the matching request through `IEntitySender`)*, `EntityExceptionFilter`, `EntityConstraintConflictAttribute` |
+| `Regira.Entities.Web.Endpoints` | `MapEntityEndpoints()` *(on `IEndpointRouteBuilder`)*, `Endpoints()` *(on the `For<>()` builders)*, `EntityEndpointOptions`, `EntityEndpointsOptions`, `EntityEndpoint`, `EntityEndpointMetadata`, `EntityExceptionEndpointFilter` — the mapped endpoints, no controller (`entities.patterns` → *Mapped entity endpoints*) |
 
 > ⚠️ **The `.Abstractions` suffix is required.** `using Regira.Entities.Web.Controllers;` is NOT enough — the class lives one level deeper in `...Controllers.Abstractions`.
 
@@ -37,7 +38,8 @@ EntityControllerBase<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto, TIn
 
 See the `For<>` → controller pairing table in `entities.instructions.md` for which overload matches each `.For<>()` registration.
 
-Simple and complex controller bases expose different endpoint sets:
+Simple and complex controller bases expose different endpoint sets — and `MapEntityEndpoints()` maps the same sets for a
+simple and a complex registration:
 
 | Method | Route | Action | Availability |
 |---|---|---|---|
@@ -54,7 +56,7 @@ Simple and complex controller bases expose different endpoint sets:
 
 *Complex* = bases with `TSortBy` + `TIncludes`. The single-object `GET /search` (with `count`) and basic `GET /?q=…` text search are on **every** base, so a simple entity can page. Complexity adds only the batch body overloads (`POST /list`, `POST /search`) and typed `?includes=`/`?sortBy=`.
 
-> **PATCH notes:** Sends only the fields to change. Omitted fields are preserved; `null` clears a field. The merge base is the current entity projected through `TInputDto`, so audit/computed fields outside the input model cannot be patched. Related collections absent from the patch body are left untouched.
+> **PATCH notes:** Sends only the fields to change. Omitted fields are preserved; `null` clears a field. The merge base is the current entity projected through `TInputDto`, so audit/computed fields outside the input model cannot be patched. Related collections absent from the patch body are left untouched while the entity declares them without an initializer (no `= []`) and `Includes()` loads them only behind a flag; one it loads on every read is saved again through the child input DTO (`entities.instructions` → Step 13, *PATCH vs PUT*).
 
 ---
 
@@ -62,7 +64,7 @@ Simple and complex controller bases expose different endpoint sets:
 
 | Namespace | Types |
 |---|---|
-| `Regira.Entities.Web.Attachments.Abstractions` | `EntityAttachmentControllerBase<>`, `AttachmentControllerBase<>` |
+| `Regira.Entities.Web.Attachments.Abstractions` | `EntityAttachmentControllerBase<>`, `AttachmentControllerBase` |
 | `Regira.Entities.Web.Attachments.Services` | `AttachmentUriResolver<>` (ASP.NET Core `IAttachmentUriResolver<>` impl) |
 | `Regira.Entities.Web.Attachments.DependencyInjection` | `AspNetAttachmentUriResolverRegistrar`, `UseAttachmentUris()` *(on `EntityServiceCollectionOptions`)* |
 
@@ -87,5 +89,9 @@ Simple and complex controller bases expose different endpoint sets:
 | Namespace | Types |
 |---|---|
 | `Regira.Entities.Web.Models` | `ListResult<>`, `DetailsResult<>`, `CountResult`, `SaveResult<>`, `DeleteResult<>`, `SearchResult<>` |
-| `Regira.Entities.Web.Models.Abstractions` | `IEntityResult<>` |
+| `Regira.Entities.Web.Models.Abstractions` | `IEntityResult` |
 | `Regira.Entities.Web` | `EntityConstraintProblem`, `EntityConcurrencyProblem` — the two 409 `ProblemDetails` bodies, titled "Conflict" and "Concurrency conflict" |
+
+> The envelopes ship in `Regira.Entities.Mediator`, which this package brings, under these namespaces: the requests
+> the endpoints send build them. Those requests — `IEntitySender`, `DetailsQuery<,,>` and the rest — are listed in
+> `entities.namespaces` (package `Regira.Entities`) → *Entity Operations*.

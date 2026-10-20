@@ -1,7 +1,8 @@
 ﻿namespace Regira.Invoicing.UblSharp.Core;
 
+[Obsolete("Use Regira.Invoicing.Peppol.PeppolNamespaces from Regira.Invoicing. Will be removed in v7.")]
 public static class PeppolNamespaces
 {
-    public const string CAC = "urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2";
-    public const string CBC = "urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2";
+    public const string CAC = Peppol.PeppolNamespaces.CAC;
+    public const string CBC = Peppol.PeppolNamespaces.CBC;
 }

@@ -3,6 +3,7 @@ using System.Drawing.Imaging;
 
 namespace Regira.Drawing.GDI.Utilities;
 
+[Obsolete("Use GdiUtility.GetEncoderInfo. Will be removed in v7.")]
 public class ImageEncoders
 {
     //http://stackoverflow.com/questions/249587/high-quality-image-scaling-library#353222

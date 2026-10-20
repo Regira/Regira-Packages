@@ -27,7 +27,8 @@
         "src/Entities.EFcore/Entities.EFcore.csproj",
         "src/Entities.DependencyInjection/Entities.DependencyInjection.csproj",
         "src/Entities.Web/Entities.Web.csproj",
-        "src/Entities.Validation.FluentValidation/Entities.Validation.FluentValidation.csproj"
+        "src/Entities.Validation.FluentValidation/Entities.Validation.FluentValidation.csproj",
+        "src/Entities.Mediator/Entities.Mediator.csproj"
       ],
       "guideDirs": [
         "src/Common.Entities/ai",
@@ -72,7 +73,8 @@
         "src/Entities.EFcore/Entities.EFcore.csproj",
         "src/Entities.DependencyInjection/Entities.DependencyInjection.csproj",
         "src/Entities.Web/Entities.Web.csproj",
-        "src/Entities.Validation.FluentValidation/Entities.Validation.FluentValidation.csproj"
+        "src/Entities.Validation.FluentValidation/Entities.Validation.FluentValidation.csproj",
+        "src/Entities.Mediator/Entities.Mediator.csproj"
       ],
       "guideFiles": [
         "src/Common.Entities/docs/examples.md"
@@ -160,6 +162,7 @@
         "System.Xml.Linq",
         "Microsoft.AspNetCore.Builder",
         "Microsoft.Extensions.DependencyInjection",
+        "Microsoft.Extensions.Hosting",
         "Regira.System",
         "Regira.System.Abstractions",
         "Regira.IO.Abstractions",
@@ -180,6 +183,7 @@
         "src/Web.Swagger/Web.Swagger.csproj",
         "src/Web.HTML.RazorLight/Web.HTML.RazorLight.csproj",
         "src/Web.HTML.RazorEngineCore/Web.HTML.RazorEngineCore.csproj",
+        "src/Web.HTML.RazorComponents/Web.HTML.RazorComponents.csproj",
         "src/System.Hosting/System.Hosting.csproj",
         "src/Serializing.Newtonsoft/Serializing.Newtonsoft.csproj"
       ],
@@ -198,9 +202,6 @@
         "Regira.Serializing.Newtonsoft.Json",
         "Regira.Web.HTML",
         "Regira.Web.HTML.Abstractions",
-        "Regira.Web.ExceptionHandling",
-        "Regira.Web.ExceptionHandling.DependencyInjection",
-        "Regira.Web.Middleware",
         "Regira.Web.Routing",
         "Regira.Web.Formatters",
         "Regira.Web.Swagger.Extensions",
@@ -365,7 +366,7 @@
         "Regira.Security.Authentication.OpenIdConnect.Extensions"
       ],
       "frameworkReferences": ["Microsoft.AspNetCore.App"],
-      "packages": { "Microsoft.AspNetCore.OpenApi": "10.0.12" }
+      "packages": { "Microsoft.AspNetCore.OpenApi": "10.0.13" }
     },
     {
       "name": "storage",
@@ -508,10 +509,13 @@
       "projects": [
         "src/Common.Office/Common.Office.csproj",
         "src/PDF.SelectPdf/PDF.SelectPdf.csproj",
+        "src/PDF.MiniPdf/PDF.MiniPdf.csproj",
         "src/PDF.DocNET/PDF.DocNET.csproj",
+        "src/PDF.PdfPig/PDF.PdfPig.csproj",
         "src/PDF.Spire/PDF.Spire.csproj",
         "src/PDF.Puppeteer/PDF.Puppeteer.csproj",
         "src/PDF.Playwright/PDF.Playwright.csproj",
+        "src/PDF.Gotenberg/PDF.Gotenberg.csproj",
         "src/PDF.PDFtoPrinter/PDF.PDFtoPrinter.csproj",
         "src/Drawing.SkiaSharp/Drawing.SkiaSharp.csproj"
       ],
@@ -565,7 +569,7 @@
         "src/Word.Mini/Word.Mini.csproj",
         "src/Word.Spire/Word.Spire.csproj",
         "src/Word.Syncfusion/Word.Syncfusion.csproj",
-        "src/PDF.DocNET/PDF.DocNET.csproj",
+        "src/PDF.PdfPig/PDF.PdfPig.csproj",
         "src/Drawing.SkiaSharp/Drawing.SkiaSharp.csproj"
       ],
       "guideFiles": [
@@ -593,6 +597,7 @@
         "src/Common.Office/Common.Office.csproj",
         "src/Mail.SendGrid/Mail.SendGrid.csproj",
         "src/Mail.MailGun/Mail.MailGun.csproj",
+        "src/Mail.MailKit/Mail.MailKit.csproj",
         "src/Mail.MSGReader/Mail.MSGReader.csproj",
         "src/Mail.Web/Mail.Web.csproj",
         "src/Security.Authentication.Web/Security.Authentication.Web.csproj"
@@ -604,15 +609,8 @@
         "src/Common.Office/docs/mail/examples.md"
       ],
       "usings": [
-        "Microsoft.AspNetCore.Identity.UI.Services",
         "Microsoft.Extensions.Configuration",
-        "Microsoft.Extensions.DependencyInjection",
-        "Regira.Office.Mail.Abstractions",
-        "Regira.Office.Mail.Models",
-        "Regira.Office.Mail.Services",
-        "Regira.Office.Mail.SendGrid.DependencyInjection",
-        "Regira.Office.Mail.MailGun.DependencyInjection",
-        "Regira.Security.Authentication.Web.Mail"
+        "Microsoft.Extensions.DependencyInjection"
       ],
       "frameworkReferences": ["Microsoft.AspNetCore.App"]
     },

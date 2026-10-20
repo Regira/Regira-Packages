@@ -11,31 +11,12 @@ namespace Regira.Entities.Web.Controllers;
 /// <see cref="EntityConcurrencyProblem"/>. Registered application-wide by
 /// <c>ConfigureDefaultJsonOptions()</c> (see <c>MapEntityExceptions()</c>).
 /// <para>
-/// Without it the mapping reaches only <see cref="ControllerExtensions"/>' <c>Save</c>/<c>Delete</c> helpers,
-/// leaving a hand-written domain action on an <c>EntityControllerBase</c> — <c>POST {id}/approve</c> and its
-/// kind, which write through <c>IEntityService</c> and therefore run the same preppers — to answer 500 with a
-/// stack trace for a rule breach the generated <c>PUT</c> answers 400 for. Those helpers still catch first,
-/// so this filter only ever sees what escapes them.
+/// The entity controller bases carry the same mapping as <see cref="EntityConstraintConflictAttribute"/>, so their
+/// actions, hand-written ones included, answer the same without it. It is what maps a <see cref="ControllerExtensions"/>
+/// helper called from any other controller.
 /// </para>
 /// </summary>
 public class EntityExceptionFilter : IExceptionFilter
 {
-    public void OnException(ExceptionContext context)
-    {
-        switch (context.Exception)
-        {
-            case EntityInputException input:
-                context.Result = input.ToBadRequest(context.HttpContext);
-                context.ExceptionHandled = true;
-                break;
-            case EntityConstraintException:
-                context.Result = new ConflictObjectResult(EntityConstraintProblem.Create());
-                context.ExceptionHandled = true;
-                break;
-            case EntityConcurrencyException:
-                context.Result = new ConflictObjectResult(EntityConcurrencyProblem.Create());
-                context.ExceptionHandled = true;
-                break;
-        }
-    }
+    public void OnException(ExceptionContext context) => EntityExceptionMapping.Handle(context);
 }

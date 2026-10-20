@@ -11,11 +11,18 @@ using Testing.Library.Data;
 
 namespace Entities.Web.Testing;
 
-public class CourseControllerTests : IClassFixture<ContosoApiFactory>, IDisposable
+/// <summary>The course routes, served by the course controller.</summary>
+public class CourseControllerTests(ContosoApiFactory factory) : CourseTests<ContosoApiFactory>(factory);
+
+/// <summary>The same routes and cases, served by <c>MapEntityEndpoints()</c>.</summary>
+public class CourseEndpointTests(ContosoEndpointsApiFactory factory) : CourseTests<ContosoEndpointsApiFactory>(factory);
+
+public abstract class CourseTests<TFactory> : IClassFixture<TFactory>, IDisposable
+    where TFactory : ContosoApiFactory
 {
     private readonly ContosoContext _dbContext;
-    private readonly ContosoApiFactory _factory;
-    public CourseControllerTests(ContosoApiFactory factory)
+    private readonly TFactory _factory;
+    protected CourseTests(TFactory factory)
     {
         _factory = factory;
         _dbContext = factory.CreateDbContext();
@@ -57,6 +64,39 @@ public class CourseControllerTests : IClassFixture<ContosoApiFactory>, IDisposab
         Assert.Equal(HttpStatusCode.NotFound, response2.StatusCode);
         var response3 = await client.GetAsync("/courses/new");
         Assert.Equal(HttpStatusCode.BadRequest, response3.StatusCode);
+    }
+    [Theory]
+    [InlineData("{ not json")]
+    [InlineData("[1]")]
+    [InlineData("\"title\"")]
+    public async Task A_Patch_That_Is_No_Json_Object_Answers_400(string body)
+    {
+        using var client = _factory.CreateClient();
+        var inputResponse = await client.PostAsJsonAsync("/courses", new CourseInputDto { Title = "Course (patched)", DepartmentId = 1, Credits = 2 });
+        inputResponse.EnsureSuccessStatusCode();
+        var id = (await inputResponse.Content.ReadFromJsonAsync<SaveResult<CourseDto>>())!.Item.Id;
+
+        using var response = await client.PatchAsync($"/courses/{id}", new StringContent(body, System.Text.Encoding.UTF8, "application/merge-patch+json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("Course (patched)", (await client.GetFromJsonAsync<DetailsResult<CourseDto>>($"/courses/{id}"))!.Item.Title);
+    }
+    // Id 0 names no row. The list behind PATCH and DELETE skips an id filter of 0: the patch would merge into the first row
+    // in scope, and the delete would load every row.
+    [Fact]
+    public async Task Patch_And_Delete_Of_Id_0_Answer_404()
+    {
+        using var client = _factory.CreateClient();
+        var inputResponse = await client.PostAsJsonAsync("/courses", new CourseInputDto { Title = "Course (untouched)", DepartmentId = 1, Credits = 2 });
+        inputResponse.EnsureSuccessStatusCode();
+        var id = (await inputResponse.Content.ReadFromJsonAsync<SaveResult<CourseDto>>())!.Item.Id;
+
+        using var patch = await client.PatchAsync("/courses/0", new StringContent("""{ "title": "Patched" }""", System.Text.Encoding.UTF8, "application/merge-patch+json"));
+        using var delete = await client.DeleteAsync("/courses/0");
+
+        Assert.Equal(HttpStatusCode.NotFound, patch.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, delete.StatusCode);
+        Assert.Equal("Course (untouched)", (await client.GetFromJsonAsync<DetailsResult<CourseDto>>($"/courses/{id}"))!.Item.Title);
     }
     [Fact]
     public async Task Insert_And_Get_Details()

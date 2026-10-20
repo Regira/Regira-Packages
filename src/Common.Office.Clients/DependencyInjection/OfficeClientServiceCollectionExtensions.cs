@@ -15,6 +15,10 @@ namespace Regira.Office.Clients.DependencyInjection;
 
 public static class OfficeClientServiceCollectionExtensions
 {
+    /// <summary>
+    /// Registers a client for every Office service the API offers. Each <see cref="HttpClient"/> is named after its interface
+    /// (<c>nameof(IWordConverter)</c>), for adding handlers or resilience to it with <c>services.AddHttpClient(name)</c>.
+    /// </summary>
     public static IServiceCollection AddOfficeClients(this IServiceCollection services, Action<OfficeClientOptions> configure)
     {
         var options = new OfficeClientOptions();
@@ -22,6 +26,10 @@ public static class OfficeClientServiceCollectionExtensions
 
         void ConfigureClient(IServiceProvider sp, HttpClient c)
         {
+            if (string.IsNullOrWhiteSpace(options.BaseUrl))
+            {
+                throw new InvalidOperationException($"{nameof(OfficeClientOptions)}.{nameof(OfficeClientOptions.BaseUrl)} is required.");
+            }
             c.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
             var licenseKey = LicenseUtility.Resolve(sp.GetServices<License>(), LicenseDefaults.Products.Services)?.RawKey;
             if (!string.IsNullOrEmpty(licenseKey))

@@ -1,0 +1,12 @@
+@typeparam TItem
+<ul>
+    @foreach (var item in Items)
+    {
+        @ItemTemplate(item)
+    }
+</ul>
+
+@code {
+    [Parameter, EditorRequired] public IEnumerable<TItem> Items { get; set; } = null!;
+    [Parameter, EditorRequired] public RenderFragment<TItem> ItemTemplate { get; set; } = null!;
+}

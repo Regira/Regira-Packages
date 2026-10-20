@@ -6,14 +6,18 @@ public static class ApiExceptionExtensions
 {
     extension(HttpResponseMessage response)
     {
+        [Obsolete("Nothing in Regira.Invoicing.Billit reads or writes it. Will be removed in v7.")]
         public T ToApiResult<T>()
             where T : IApiResult, new()
             => new() { StatusCode = (int)response.StatusCode };
+        [Obsolete("Nothing in Regira.Invoicing.Billit reads or writes it. Will be removed in v7.")]
         public DefaultApiResult ToApiResult() => response.ToApiResult<DefaultApiResult>();
 
+        [Obsolete("Nothing in Regira.Invoicing.Billit reads or writes it. Will be removed in v7.")]
         public async Task<T> ToFailedApiResult<T>(Exception ex)
             where T : IFailedApiResult, new()
             => new() { StatusCode = (int)response.StatusCode, Error = ex, ErrorResponse = await response.Content.ReadAsStringAsync() };
+        [Obsolete("Nothing in Regira.Invoicing.Billit reads or writes it. Will be removed in v7.")]
         public async Task<FailedApiResult> ToFailedApiResult(Exception ex) => await response.ToFailedApiResult<FailedApiResult>(ex);
     }
 

@@ -121,12 +121,7 @@ public class MongoSettings(
     /// </param>
     /// <param name="extraOptions">Appended to the URI's query string after <see cref="UriOptions"/>, escaped</param>
     public string BuildConnectionString(bool includePassword, params KeyValuePair<string, string>[] extraOptions)
-        => Build(includePassword, false, extraOptions);
-
-    /// <summary>
-    /// The URI for a log: without the password, and with the value of every option that can carry a secret masked.
-    /// </summary>
-    internal string BuildRedactedConnectionString() => Build(false, true);
+        => Build(includePassword, extraOptions);
 
     /// <summary>
     /// The value of the first <see cref="UriOptions"/> entry named <paramref name="name"/>, ignoring case.
@@ -134,16 +129,7 @@ public class MongoSettings(
     internal string? GetUriOption(string name)
         => UriOptions.Where(option => option.Key.Equals(name, StringComparison.OrdinalIgnoreCase)).Select(option => option.Value).FirstOrDefault();
 
-    /// <summary>
-    /// Options whose value can be a secret: a key file's password, and the mechanism properties that carry an
-    /// <c>AWS_SESSION_TOKEN</c>.
-    /// </summary>
-    private static readonly HashSet<string> SecretOptions = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "tlsCertificateKeyFilePassword", "sslPEMKeyPassword", "authMechanismProperties"
-    };
-
-    private string Build(bool includePassword, bool redactSecrets, params KeyValuePair<string, string>[] extraOptions)
+    private string Build(bool includePassword, params KeyValuePair<string, string>[] extraOptions)
     {
         // mongodb://[username[:password]@]host[:port]/[database][?options]
         var connectionString = UseSrv ? "mongodb+srv://" : "mongodb://";
@@ -176,7 +162,7 @@ public class MongoSettings(
         options.AddRange(extraOptions);
         if (options.Any())
         {
-            connectionString += $"?{string.Join("&", options.Select(x => $"{Uri.EscapeDataString(x.Key)}={(redactSecrets && SecretOptions.Contains(x.Key) ? "***" : Uri.EscapeDataString(x.Value))}"))}";
+            connectionString += $"?{string.Join("&", options.Select(x => $"{Uri.EscapeDataString(x.Key)}={Uri.EscapeDataString(x.Value)}"))}";
         }
 
         return connectionString;

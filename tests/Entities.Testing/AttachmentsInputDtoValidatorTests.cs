@@ -101,23 +101,6 @@ public class AttachmentsInputDtoValidatorTests
         }
     }
 
-    private sealed class CaptureLoggerProvider : ILoggerProvider
-    {
-        public List<string> Warnings { get; } = [];
-        public ILogger CreateLogger(string categoryName) => new CaptureLogger(this);
-        public void Dispose() { }
-
-        private sealed class CaptureLogger(CaptureLoggerProvider provider) : ILogger
-        {
-            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-            public bool IsEnabled(LogLevel logLevel) => true;
-            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-            {
-                if (logLevel == LogLevel.Warning) provider.Warnings.Add(formatter(state, exception));
-            }
-        }
-    }
-
     private SqliteConnection _connection = null!;
 
     [SetUp]
@@ -132,7 +115,7 @@ public class AttachmentsInputDtoValidatorTests
 
     private async Task<List<string>> Warnings(Action<IServiceCollection> configure)
     {
-        var capture = new CaptureLoggerProvider();
+        var capture = new StartupValidationHarness();
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddProvider(capture));
         configure(services);

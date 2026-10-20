@@ -1058,7 +1058,7 @@ public class ValidatorTests
 
     private async Task<List<string>> StartupWarnings(Action<EntityServiceCollection<ShopContext>> configure, Action<EntityServiceCollectionOptions>? options = null)
     {
-        var capture = new StartupValidationTests.CaptureLoggerProvider();
+        var capture = new StartupValidationHarness();
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddProvider(capture));
         services.AddSingleton(_log);
@@ -1071,7 +1071,7 @@ public class ValidatorTests
         }));
 
         await using var sp = services.BuildServiceProvider();
-        await StartupValidationTests.RunHostedServices(sp);
+        await StartupValidationHarness.RunHostedServices(sp);
         return capture.Warnings;
     }
 

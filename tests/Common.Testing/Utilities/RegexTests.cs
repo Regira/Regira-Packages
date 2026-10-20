@@ -103,6 +103,8 @@ Vivamus tempus enim lacinia nisi molestie vulputate. Praesent 1:2:3:4:5:6:7:8 tu
     [TestCase("446688", true)]
     [TestCase("xxxx", false)]
     [TestCase("44xx", false)]
+    [TestCase("anything 1234", false)]
+    [TestCase("1234 anything", false)]
     public void TestValidPhone_AllowShortNumbers(string input, bool expected)
     {
         var isValid = RegexUtility.IsValidPhoneNumber(input, true);
@@ -153,6 +155,13 @@ Vivamus tempus enim lacinia nisi molestie vulputate. Praesent 1:2:3:4:5:6:7:8 tu
         Assert.That(matches, Has.Member("+32 3 384 30"));
         Assert.That(matches, Has.Member("0032 (0)3 384 30 44"));
         Assert.That(matches, Has.Member("0475 99 99"));
+    }
+    [Test]
+    public void TestExtractPhoneNumbers_AllowShortNumbers()
+    {
+        var matches = RegexUtility.ExtractPhoneNumbers(TestInput + " Extension 4711.", allowShortNumbers: true);
+        Assert.That(matches, Is.SupersetOf(RegexUtility.ExtractPhoneNumbers(TestInput)), "a short number allowed loses none of the full ones");
+        Assert.That(matches, Has.Member("4711"));
     }
     [Test]
     public void TestExtractIPs()

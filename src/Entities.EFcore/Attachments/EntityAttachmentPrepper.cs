@@ -11,31 +11,26 @@ public class EntityAttachmentPrepper<TContext, TEntityAttachment, TEntityAttachm
     where TAttachment : class, IAttachment<TAttachmentKey>, new()
     where TEntityAttachment : class, IEntityAttachment<TEntityAttachmentKey, TObjectKey, TAttachmentKey, TAttachment>
 {
-    public override Task Prepare(TEntityAttachment item, TEntityAttachment? original, CancellationToken token = default)
+    public override async Task Prepare(TEntityAttachment item, TEntityAttachment? original, CancellationToken token = default)
     {
         item.Attachment ??= original?.Attachment;
+        var replaced = EntityAttachmentContent.PrepareLink(item, original);
 
         if (item.Attachment?.IsNew() == true)
         {
             // a new file, typed now as the save types it, so the validators judge its type
             EntityAttachmentContent.TypeByName(item.Attachment);
-            if (original?.Attachment != null)
+            // the attachment it replaces goes, unless another link still names it
+            if (replaced != null
+                && !await EntityAttachmentContent.IsLinkedElsewhere<TEntityAttachment, TEntityAttachmentKey, TObjectKey, TAttachmentKey, TAttachment>(
+                    dbContext, replaced.Id, [item.Id], token))
             {
-                dbContext.Entry(original.Attachment).State = EntityState.Deleted;
+                dbContext.Entry(replaced).State = EntityState.Deleted;
             }
         }
-        else
+        else if (item.Attachment != null)
         {
-            if (original != null)
-            {
-                EntityAttachmentContent.KeepAttachment(item, original);
-            }
-            if (item.Attachment != null)
-            {
-                EntityAttachmentContent.ApplyBeforeSave(dbContext, item, original?.Attachment);
-            }
+            EntityAttachmentContent.ApplyBeforeSave(dbContext, item, original?.Attachment);
         }
-
-        return Task.CompletedTask;
     }
 }

@@ -9,7 +9,7 @@ using System.Text.Json;
 
 namespace Office.Excel.Testing;
 
-public static class ExcelTestExtensions
+public static partial class ExcelTestExtensions
 {
     // "PK\3\4" - xlsx is a zip container, so created files must start with the zip local-file header
     private static readonly byte[] ZipHeader = [0x50, 0x4B, 0x03, 0x04];

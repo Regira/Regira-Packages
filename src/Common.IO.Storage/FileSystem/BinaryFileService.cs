@@ -62,6 +62,7 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
 
         var searchOptions = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
         var absoluteFolderUri = ResolveUri(folderUri);
+        var root = ResolvedRoot;
 
         IEnumerable<string> result = Array.Empty<string>();
 
@@ -69,7 +70,7 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
         {
             // files
             var files = Directory.EnumerateFiles(absoluteFolderUri, extensions, searchOptions)
-                .Select(fileUri => FileNameUtility.GetRelativeUri(fileUri, Root))
+                .Select(fileUri => ToIdentifier(FileNameUtility.GetRelativeUri(fileUri, root)))
                 .Where(f => so.Extensions == null || so.Extensions.Any(e => e.TrimStart('*') == Path.GetExtension(f)));
             string[]? fileList = null;
             if (listDirectories && so.Extensions != null)
@@ -84,10 +85,11 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
             if (listDirectories)
             {
                 var folders = Directory.EnumerateDirectories(absoluteFolderUri, "", searchOptions)
-                    .Select(dirUri => FileNameUtility.GetRelativeUri(dirUri, Root));
+                    .Select(dirUri => ToIdentifier(FileNameUtility.GetRelativeUri(dirUri, root)));
                 if (so.Extensions != null)
                 {
-                    folders = folders.Where(d => fileList?.Any(f => f.StartsWith(d)) == true);
+                    // a folder holds a file below it: dir2.1 holds nothing of dir2.10
+                    folders = folders.Where(d => fileList?.Any(f => f.StartsWith(d + '/')) == true);
                 }
                 result = result.Concat(folders);
             }
@@ -101,46 +103,9 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
 #if NET10_0_OR_GREATER
     public async IAsyncEnumerable<string> ListAsync(FileSearchObject? so = null)
     {
-        // iterator body is deferred — connects (and surfaces failures) on first MoveNextAsync, not at the call
-        _communicator?.EnsureConnected();
-        so ??= new FileSearchObject();
-
-        var folderUri = so.FolderUri ?? "";
-        var recursive = so.Recursive;
-        var extensions = "*";
-
-        var listFiles = so.Type == FileEntryTypes.All || so.Type == FileEntryTypes.Files;
-        var listDirectories = so.Type == FileEntryTypes.All || so.Type == FileEntryTypes.Directories;
-
-        var searchOptions = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-        var absoluteFolderUri = ResolveUri(folderUri);
-
-        if (Directory.Exists(absoluteFolderUri))
+        foreach (var identifier in await List(so))
         {
-            // Enumerate files
-            if (listFiles)
-            {
-                var files = Directory.EnumerateFiles(absoluteFolderUri, extensions, searchOptions)
-                    .Select(fileUri => FileNameUtility.GetRelativeUri(fileUri, Root))
-                    .Where(f => so.Extensions == null || so.Extensions.Any(e => e.TrimStart('*') == Path.GetExtension(f)));
-
-                foreach (var file in files)
-                {
-                    yield return file;
-                }
-            }
-
-            // Enumerate directories
-            if (listDirectories)
-            {
-                var directories = Directory.EnumerateDirectories(absoluteFolderUri, "*", searchOptions)
-                    .Select(dirUri => FileNameUtility.GetRelativeUri(dirUri, Root));
-
-                foreach (var directory in directories)
-                {
-                    yield return directory;
-                }
-            }
+            yield return identifier;
         }
     }
 #endif
@@ -174,10 +139,16 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
 
         return Task.FromResult(GetIdentifier(uri));
     }
+    /// <exception cref="ArgumentException">The identifier resolves to the root (<c>""</c>, <c>"."</c>, <c>"x/.."</c>)</exception>
     public Task Delete(string identifier)
     {
         _communicator?.EnsureConnected();
         var uri = ResolveUri(identifier);
+        // the root is within itself, so containment lets it through: refused, as the SFTP backend refuses it
+        if (IsRoot(uri))
+        {
+            throw new ArgumentException("The identifier resolves to the root, which is not deleted.", nameof(identifier));
+        }
         if (File.Exists(uri))
         {
             File.Delete(uri);
@@ -195,9 +166,12 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
         => ResolveUri(identifier);
     public string GetIdentifier(string uri)
         // use forward slashes to keep identifier uniform with other IFileService implementations (e.g. Azure)
-        => FileNameUtility.GetRelativeUri(uri, Root).Replace('\\', '/');
+        => FileNameUtility.GetRelativeUri(Locate(uri), ResolvedRoot).Replace('\\', '/');
+    // the OS separator becomes '/', as Save answers on every platform; a '\' in a Linux file name stays part of the name
+    private static string ToIdentifier(string relativeUri)
+        => Path.DirectorySeparatorChar == '/' ? relativeUri : relativeUri.Replace(Path.DirectorySeparatorChar, '/');
     public string? GetRelativeFolder(string identifier)
-        => FileNameUtility.GetRelativeFolder(identifier, Root);
+        => FileNameUtility.GetRelativeFolder(Locate(identifier), ResolvedRoot);
 
 
     public void CreateDirectory(string uri)
@@ -206,11 +180,29 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
         var dirPath = Path.GetDirectoryName(uri);
         Directory.CreateDirectory(dirPath ?? throw new InvalidOperationException());
     }
-    private string ResolveUri(string identifier)
+    private protected string ResolveUri(string identifier)
     {
         var uri = FileNameUtility.GetAbsoluteUri(identifier, Root);
-        return options.Contained && !string.IsNullOrWhiteSpace(Root)
-            ? FileNameUtility.EnsureContained(uri, Root)
+        return IsContained
+            ? FileNameUtility.EnsureContained(uri, FileNameUtility.ConvertForwardSlashes(Root))
             : uri;
+    }
+
+    // EnsureContained answers Path.GetFullPath, so a contained service strips its root written out in full, from a path
+    // written out the same way: as configured, a root with a '/' on Windows, dot segments or relative to the working
+    // directory did not match, and the absolute path passed for the identifier. Both separators are separators in the
+    // root, as in an identifier: on Linux a '\' would otherwise be part of a folder's name.
+    private bool IsContained => options.Contained && !string.IsNullOrWhiteSpace(Root);
+    private bool IsRoot(string path)
+        => !string.IsNullOrWhiteSpace(Root) && string.Equals(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(path)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(FileNameUtility.ConvertForwardSlashes(Root))),
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
+    private string ResolvedRoot => IsContained ? Path.GetFullPath(FileNameUtility.ConvertForwardSlashes(Root)) : Root;
+    /// <summary>Where <paramref name="uri"/> lands, as <see cref="ResolveUri"/> spells it, without refusing a path outside the root.</summary>
+    private string Locate(string uri)
+    {
+        var path = FileNameUtility.GetAbsoluteUri(uri, Root);
+        return IsContained ? Path.GetFullPath(path) : path;
     }
 }

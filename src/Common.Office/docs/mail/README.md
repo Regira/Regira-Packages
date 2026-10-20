@@ -9,6 +9,7 @@ Regira Office.Mail provides a **unified abstraction** for sending email through 
 | `Common.Office` | *(transitive)* | Shared abstractions, models, and `DummyMailer` |
 | `Mail.SendGrid` | `Regira.Office.Mail.SendGrid` | SendGrid API |
 | `Mail.MailGun` | `Regira.Office.Mail.MailGun` | Mailgun REST API |
+| `Mail.MailKit` | `Regira.Office.Mail.MailKit` | Any SMTP server, through MailKit |
 | `Mail.Web` | `Regira.Office.Mail.Web` | HTTP request DTOs for mail endpoints |
 | `Mail.MSGReader` | `Regira.Office.Mail.MSGReader` | Read existing `.msg` and `.eml` files |
 | `Security.Authentication.Web` | `Regira.Security.Authentication.Web` | `IdentityMailer` bridge to ASP.NET Identity's `IEmailSender` |
@@ -21,6 +22,9 @@ Regira Office.Mail provides a **unified abstraction** for sending email through 
 
 <!-- Mailgun -->
 <PackageReference Include="Regira.Office.Mail.MailGun" Version="6.*" />
+
+<!-- MailKit (SMTP) -->
+<PackageReference Include="Regira.Office.Mail.MailKit" Version="6.*" />
 
 <!-- Mail.Web -->
 <PackageReference Include="Regira.Office.Mail.Web" Version="6.*" />
@@ -35,6 +39,14 @@ Regira Office.Mail provides a **unified abstraction** for sending email through 
 ## Quick Start
 
 ```csharp
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Regira.Office.Mail.SendGrid.DependencyInjection;   // AddSendGrid
+using Regira.Office.Mail.MailGun.DependencyInjection;    // AddMailGun
+using Regira.Office.Mail.MailKit.DependencyInjection;    // AddMailKit
+using Regira.Office.Mail.Abstractions;                   // IMailService
+using Regira.Office.Mail.Models;                         // MailAddress, MailRecipient
+
 IServiceCollection services  = new ServiceCollection();
 IConfiguration configuration = new ConfigurationBuilder().Build();
 
@@ -46,6 +58,13 @@ services.AddMailGun(cfg =>
     cfg.Api    = configuration["Mail:MailGun:Api"]!;
     cfg.Key    = configuration["Mail:MailGun:Key"]!;
     cfg.Domain = configuration["Mail:MailGun:Domain"]!;
+});
+// or
+services.AddMailKit(cfg =>
+{
+    cfg.Host     = configuration["Mail:Smtp:Host"]!;
+    cfg.UserName = configuration["Mail:Smtp:UserName"];
+    cfg.Password = configuration["Mail:Smtp:Password"];
 });
 
 // Use — the parameters are interface-typed, so construct the concrete models
@@ -61,7 +80,7 @@ await mailer.Send(
 
 ## IMailService
 
-Both backends implement this interface.
+Every sending backend implements this interface.
 
 <!-- no-compile -->
 ```csharp
@@ -83,10 +102,10 @@ Task<IMailResponse> Send(IMessageObject message, CancellationToken cancellationT
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `Success` | `bool` | `true` when the provider accepted the message |
-| `Status` | `string?` | HTTP status code or provider status text |
-| `Content` | `string?` | Raw response body |
-| `Exception` | `Exception?` | Set when sending fails |
+| `Success` | `bool` | `true` whenever a sending backend's `Send` returns: SendGrid, Mailgun and MailKit throw `MailException` on a refusal instead. `DummyMailer` returns `false` |
+| `Status` | `string?` | HTTP status code or provider status text; `OK` for SMTP |
+| `Content` | `string?` | Raw response body; for SMTP the server's reply, with its queue id (`2.0.0 Ok: queued as …`) |
+| `Exception` | `Exception?` | Not set by the shipped backends, which throw instead |
 
 ## Core Models
 
@@ -118,6 +137,8 @@ are implemented explicitly and convert to/from the concrete types.
 `MailAddress` supports implicit conversion from `string`:
 
 ```csharp
+using Regira.Office.Mail.Models;                        // MailAddress, MailRecipient
+
 MailAddress addr  = "alice@example.com";
 MailAddress named = new() { Email = "alice@example.com", DisplayName = "Alice" };
 ```
@@ -133,6 +154,8 @@ public enum RecipientTypes { To, Cc, Bcc }
 ```
 
 ```csharp
+using Regira.Office.Mail.Models;                        // MailAddress, MailRecipient, RecipientTypes
+
 MailRecipient to  = "alice@example.com";   // implicit — defaults to RecipientTypes.To
 var cc = new MailRecipient { Email = "bob@example.com",   RecipientType = RecipientTypes.Cc };
 var bcc = new MailRecipient { Email = "carol@example.com", RecipientType = RecipientTypes.Bcc };
@@ -160,9 +183,36 @@ never delivers it to the recipient. The response is a normal success, so code an
 `response.Success` are unaffected. Note that it suppresses **delivery, not billing** — message counts and
 charges may still apply.
 
+### MailKitConfig
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `Host` | `string` | — | SMTP server host name |
+| `Port` | `int` | `587` | SMTP port |
+| `Security` | `SecureSocketOptions` | `StartTls` | MailKit's TLS mode (`MailKit.Security`); binds from configuration by name |
+| `UserName` | `string?` | `null` | SMTP AUTH user — leave empty for a server that takes mail without AUTH |
+| `Password` | `string?` | `null` | SMTP AUTH password |
+| `Timeout` | `int` | `120000` | Per SMTP command, in milliseconds |
+
+| Server | `Port` | `Security` |
+|--------|--------|------------|
+| Submission with STARTTLS — Microsoft 365, Gmail (app password), Amazon SES, most providers | `587` | `StartTls` |
+| Implicit TLS | `465` | `SslOnConnect` |
+| Local test server without TLS — Mailpit, smtp4dev | `1025` / `25` | `None` |
+
+The `StartTls` default fails the send when a server offers no TLS. MailKit's `Auto` would fall back to an
+unencrypted connection and send the password in clear text, so keep `StartTls` or `SslOnConnect` for any remote
+server. Each send opens its own connection — connect, authenticate, send, quit — which suits transactional
+mail; a bulk send pays one TCP, TLS and AUTH handshake per message. OAuth2 sign-in is not supported.
+
 ## DI Registration
 
 ```csharp
+using Regira.Office.Mail.SendGrid.DependencyInjection;  // AddSendGrid
+using Regira.Office.Mail.MailGun.DependencyInjection;   // AddMailGun
+using Regira.Office.Mail.MailKit.DependencyInjection;   // AddMailKit
+using MailKit.Security;                                 // SecureSocketOptions
+
 IServiceCollection services = new ServiceCollection();
 
 // SendGrid
@@ -185,18 +235,61 @@ services.AddMailGun(cfg =>
     cfg.Domain   = "mail.example.com";
     cfg.TestMode = true;
 });
+
+// MailKit — SMTP submission on port 587 with STARTTLS
+services.AddMailKit(cfg =>
+{
+    cfg.Host     = "smtp.example.com";
+    cfg.UserName = "mailer@example.com";
+    cfg.Password = "app-password";
+});
+
+// MailKit — implicit TLS on port 465
+services.AddMailKit(cfg =>
+{
+    cfg.Host     = "smtp.example.com";
+    cfg.Port     = 465;
+    cfg.Security = SecureSocketOptions.SslOnConnect;
+    cfg.UserName = "mailer@example.com";
+    cfg.Password = "app-password";
+});
+
+// MailKit — a local Mailpit without TLS or AUTH, for development
+services.AddMailKit(cfg =>
+{
+    cfg.Host     = "localhost";
+    cfg.Port     = 1025;
+    cfg.Security = SecureSocketOptions.None;
+});
 ```
 
-Both extension methods register `IMailService` as a transient service.
+Each extension method registers `IMailService` as a transient service that resolves from the root provider too, in a singleton say; its config is built from the configure action on every resolve. SendGrid and Mailgun send through a connection pool their package shares. Neither provider takes an idempotency key, so never retry a send that may have reached it.
+
+A missing key fails only when a mailer is resolved or sends. To fail at start-up instead, validate the config:
+
+```csharp
+services.AddOptions<Regira.Office.Mail.SendGrid.SendGridConfig>()
+    .Validate(c => !string.IsNullOrEmpty(c.Key), "Mail:SendGrid:Key is missing")
+    .ValidateOnStart();
+```
 
 ## Exceptions
 
 ### MailException
 
 Thrown by the shared `MailerBase` for invalid attachments (missing file name or empty content), and by the
-**SendGrid** and **Mailgun** backends when the provider returns a non-success response. The provider's own
-error body is on `ResponseContent` — the status code alone rarely says why a send was refused. An
-unauthorized response is the exception: both backends throw a plain `Exception("Not authorized")` for it.
+**SendGrid** and **Mailgun** backends when the provider returns a non-success response, an unauthorized
+one included. The provider's own error body is on `ResponseContent` — the status code alone rarely says why
+a send was refused.
+
+The **MailKit** backend throws it when the SMTP server refuses the credentials, the sender, a recipient or the
+message, with the server's reply on `ResponseContent`, and before connecting when the message has no sender or no
+recipients, or an address or attachment content type MimeKit cannot parse. One refused recipient aborts the whole message: nothing is delivered, not even to the accepted
+recipients, and `ResponseContent` names the refused address. A connection fault is not a refusal and passes
+through unwrapped — `SocketException`, `SslHandshakeException`, `NotSupportedException` (`StartTls` against a
+server without STARTTLS, or a `UserName` for a server that offers no AUTH), `TimeoutException` or
+`OperationCanceledException`. A server that drops the session mid-exchange throws `MailException`, with the
+`SmtpProtocolException` inside.
 
 | Property | Type | Description |
 |----------|------|-------------|
@@ -216,6 +309,9 @@ Thrown when an invalid email address is assigned to `MailAddress.Email`.
 `DummyMailer` implements `IMailService` (via `MailerBase`) and sends nothing — it returns an empty `MailResponse`, so `Success` is `false`. Register it in tests to suppress actual sending:
 
 ```csharp
+using Regira.Office.Mail.Abstractions;                  // IMailService
+using Regira.Office.Mail.Services;                      // DummyMailer
+
 IServiceCollection services = new ServiceCollection();
 services.AddSingleton<IMailService, DummyMailer>();
 ```
@@ -226,20 +322,31 @@ services.AddSingleton<IMailService, DummyMailer>();
 
 <!-- no-compile -->
 ```csharp
+[Authorize]
 [HttpPost]
 public async Task<IActionResult> Send([FromBody] MailInput input, IMailService mailer)
 {
     var message = input.ToMessageObject();
-    var result  = await mailer.Send(message);
-    return result.Success ? Ok() : StatusCode(502);
+    message.From = new MailAddress { Email = "no-reply@example.com" };   // the app's sender, not the caller's
+    try
+    {
+        await mailer.Send(message);
+        return Ok();
+    }
+    catch (MailException)   // Regira.Office.Mail.Exceptions: the provider or SMTP server refused the message
+    {
+        return StatusCode(502);
+    }
 }
 ```
+
+The caller chooses the recipients, the body and the attachments, so an anonymous endpoint relays spam or phishing through the app's mail account. Never expose one without authorization, set `From` on the server rather than taking `input.From`, and limit the recipients to the ones the app allows.
 
 ### MailInput structure
 
 | Property | Type | Validation | Description |
 |----------|------|------------|-------------|
-| `From` | `Address?` | — | Optional sender override |
+| `From` | `Address?` | — | The sender the caller names; an endpoint sets its own |
 | `To` | `ICollection<Recipient>?` | `[Required]` | Recipients |
 | `ReplyTo` | `Address?` | — | Reply-To address |
 | `Subject` | `string?` | `[Required]` | Email subject |
@@ -255,6 +362,10 @@ public async Task<IActionResult> Send([FromBody] MailInput input, IMailService m
 `Regira.Security.Authentication.Web.Mail`) bridges `IMailService` to the ASP.NET Identity `IEmailSender` interface.
 
 ```csharp
+using Microsoft.AspNetCore.Identity.UI.Services;        // IEmailSender
+using Regira.Office.Mail.Abstractions;                  // IMailService
+using Regira.Security.Authentication.Web.Mail;          // IdentityMailer, IdentityMailerOptions
+
 IServiceCollection services = new ServiceCollection();
 services.AddSingleton<IEmailSender>(provider =>
     new IdentityMailer(

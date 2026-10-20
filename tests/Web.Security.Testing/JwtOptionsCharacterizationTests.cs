@@ -128,15 +128,15 @@ public class JwtOptionsCharacterizationTests
         options.TokenValidationParameters.ValidAudiences.ShouldBe(["spa", "mobile"]);
     }
 
-    /// <summary>A missing secret fails at registration, naming the property and the options type.</summary>
+    /// <summary>A missing secret fails at registration, naming the property and the configuration key.</summary>
     [Fact]
     public void Test_Missing_Secret_Throws_At_Registration()
     {
-        var exception = Should.Throw<NullReferenceException>(() =>
+        var exception = Should.Throw<InvalidOperationException>(() =>
             new ServiceCollection().AddJwtAuthentication(_ => { }));
 
-        exception.Message.ShouldContain(nameof(JwtTokenOptions.Secret));
-        exception.Message.ShouldContain(typeof(JwtTokenOptions).FullName!);
+        exception.Message.ShouldContain($"{nameof(JwtTokenOptions)}.{nameof(JwtTokenOptions.Secret)}");
+        exception.Message.ShouldContain("Authentication:Jwt:Secret");
     }
 
     /// <summary>

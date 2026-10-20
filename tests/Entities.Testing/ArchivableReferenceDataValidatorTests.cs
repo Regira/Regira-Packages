@@ -141,21 +141,6 @@ public class ArchivableReferenceDataValidatorTests
         public string? FileName { get; set; }
     }
 
-    public class NavigationlessDependentContext(DbContextOptions<NavigationlessDependentContext> options) : DbContext(options)
-    {
-        public DbSet<Ticket> Tickets => Set<Ticket>();
-        public DbSet<TicketFile> TicketFiles => Set<TicketFile>();
-
-        protected override void OnModelCreating(ModelBuilder modelBuilder)
-        {
-            base.OnModelCreating(modelBuilder);
-            // WithOne() with no argument — exactly what the attachments model configuration prescribes
-            modelBuilder.Entity<Ticket>().HasMany(x => x.Files).WithOne()
-                .HasForeignKey(x => x.ObjectId).HasPrincipalKey(x => x.Id).IsRequired();
-            modelBuilder.SetArchivedQueryFilter();
-        }
-    }
-
     /// <summary>A second dependent of <see cref="Ticket"/> that <b>does</b> carry a navigation.</summary>
     public class TicketNote : IEntity<int>
     {
@@ -164,7 +149,7 @@ public class ArchivableReferenceDataValidatorTests
         public Ticket? Ticket { get; set; }
     }
 
-    /// <summary>One principal, two dependents of different shape — only one of the two remedies compiles for both.</summary>
+    /// <summary>One principal, two dependents of different shape.</summary>
     public class MixedDependentsContext(DbContextOptions<MixedDependentsContext> options) : DbContext(options)
     {
         public DbSet<Ticket> Tickets => Set<Ticket>();
@@ -182,23 +167,6 @@ public class ArchivableReferenceDataValidatorTests
         }
     }
 
-    private sealed class CaptureLoggerProvider : ILoggerProvider
-    {
-        public List<string> Warnings { get; } = [];
-        public ILogger CreateLogger(string categoryName) => new CaptureLogger(this);
-        public void Dispose() { }
-
-        private sealed class CaptureLogger(CaptureLoggerProvider provider) : ILogger
-        {
-            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-            public bool IsEnabled(LogLevel logLevel) => true;
-            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-            {
-                if (logLevel == LogLevel.Warning) provider.Warnings.Add(formatter(state, exception));
-            }
-        }
-    }
-
     private SqliteConnection _connection = null!;
 
     [SetUp]
@@ -213,7 +181,7 @@ public class ArchivableReferenceDataValidatorTests
 
     private async Task<List<string>> Warnings(Action<IServiceCollection> configure)
     {
-        var capture = new CaptureLoggerProvider();
+        var capture = new StartupValidationHarness();
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddProvider(capture));
         configure(services);
@@ -250,7 +218,7 @@ public class ArchivableReferenceDataValidatorTests
         Assert.Multiple(() =>
         {
             Assert.That(warnings, Has.Some.Contains(Hazard).And.Some.Contains(nameof(Category)).And.Some.Contains(nameof(Asset)));
-            Assert.That(warnings, Has.Some.Contains("HasQueryFilter"), "the message must carry the mirrored-filter remedy");
+            Assert.That(warnings, Has.Some.Contains("Soft Delete"), "the message must point at the remedies");
             Assert.That(warnings, Has.Some.Contains("count"), "the items/count divergence is the reason it matters");
         });
 #else
@@ -260,58 +228,7 @@ public class ArchivableReferenceDataValidatorTests
     }
 
     [Test]
-    public async Task A_Dependent_Without_A_Navigation_Gets_The_Remedy_That_Compiles()
-    {
-        var warnings = await Warnings(services =>
-        {
-            services.AddDbContext<NavigationlessDependentContext>(db => db.UseSqlite(_connection));
-            services.UseEntities<NavigationlessDependentContext>(o => { o.UseDefaults(); Logging()(o); })
-                .For<Ticket>()
-                .For<TicketFile>();
-        });
-
-#if NET10_0_OR_GREATER
-        // The mirrored filter is a predicate over a navigation. Told to write it against a dependent that has
-        // none, a reader gets CS1061 — so the message has to ask for the navigation first.
-        Assert.Multiple(() =>
-        {
-            Assert.That(warnings, Has.Some.Contains(Hazard).And.Some.Contains(nameof(Ticket)).And.Some.Contains(nameof(TicketFile)));
-            Assert.That(warnings, Has.Some.Contains("has no navigation back to"),
-                "the message must say why the filter cannot be written as-is");
-            Assert.That(warnings, Has.Some.Contains(".WithOne(x => x.Ticket!)"),
-                "the message must name the re-pointing step, not just the filter");
-        });
-#else
-        Assert.That(warnings, Has.None.Contains(Hazard),
-            "EF Core 9 installs no propagating archived filter, so the divergence cannot occur");
-#endif
-    }
-
-    [Test]
-    public async Task A_Dependent_With_A_Navigation_Keeps_The_Direct_Remedy()
-    {
-        var warnings = await Warnings(services =>
-        {
-            services.AddDbContext<ReferenceDataContext>(db => db.UseSqlite(_connection));
-            services.UseEntities<ReferenceDataContext>(o => { o.UseDefaults(); Logging()(o); })
-                .For<Category>()
-                .For<Asset>();
-        });
-
-#if NET10_0_OR_GREATER
-        Assert.Multiple(() =>
-        {
-            // Asset.Category exists, so the filter is written against the real navigation name and nothing else
-            Assert.That(warnings, Has.Some.Contains("modelBuilder.Entity<Asset>().HasQueryFilter(x => !x.Category!.IsArchived)"));
-            Assert.That(warnings, Has.None.Contains("has no navigation back to"));
-        });
-#else
-        Assert.That(warnings, Has.None.Contains(Hazard));
-#endif
-    }
-
-    [Test]
-    public async Task Mixed_Dependents_Get_The_Remedy_That_Serves_Both()
+    public async Task Every_Dependent_Is_Named_In_One_Line()
     {
         var warnings = await Warnings(services =>
         {
@@ -323,16 +240,7 @@ public class ArchivableReferenceDataValidatorTests
         });
 
 #if NET10_0_OR_GREATER
-        // One message names both dependents but can only work one remedy. Showing the filter-only fix would
-        // leave TicketFile broken; the longer fix is merely verbose for TicketNote, so it is the safe one.
-        Assert.Multiple(() =>
-        {
-            Assert.That(warnings, Has.Some.Contains(nameof(TicketFile)).And.Some.Contains(nameof(TicketNote)));
-            Assert.That(warnings, Has.Some.Contains("has no navigation back to"),
-                "the navigationless dependent must drive the remedy");
-            Assert.That(warnings, Has.Some.Contains($"Each of").And.Some.Contains("needs its own"),
-                "a multi-dependent warning is not fixed by one filter");
-        });
+        Assert.That(warnings.Where(w => w.Contains(Hazard)).ToArray(), Has.Exactly(1).Contains(nameof(TicketFile)).And.Contains(nameof(TicketNote)));
 #else
         Assert.That(warnings, Has.None.Contains(Hazard));
 #endif

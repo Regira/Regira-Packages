@@ -192,6 +192,39 @@ public class OidcOptionsTests
         handler.Scope.ShouldBe(["openid", "offline_access"], ignoreOrder: true);
     }
 
+    /// <summary>
+    /// The cookie options given with the OIDC options are the cookie scheme's, its claim types included, and a claim type
+    /// the app adds goes ahead of the defaults, so it wins the first-match search.
+    /// </summary>
+    [Fact]
+    public void Test_The_Cookie_Options_Reach_The_Cookie_Scheme()
+    {
+        var services = new ServiceCollection().AddLogging();
+        services.AddOidcAuthentication(o =>
+        {
+            o.Authority = "https://login.example.com";
+            o.ClientId = FakeAuthority.ClientId;
+            o.Cookie.CookieName = "app.session";
+            o.Cookie.ExpireTimeSpan = TimeSpan.FromMinutes(42);
+            o.Cookie.SlidingExpiration = false;
+            o.Cookie.LoginPath = "/sign-in";
+            o.Cookie.Claims.RoleClaimTypes.Add("app_role");
+            o.Cookie.Claims.SubjectClaimTypes.Add("employee_id");
+        });
+        using var provider = services.BuildServiceProvider();
+
+        var cookie = provider.GetRequiredService<Microsoft.Extensions.Options.IOptionsMonitor<CookieAuthenticationOptions>>()
+            .Get(CookieAuthDefaults.AuthenticationScheme);
+        var registered = provider.GetRequiredKeyedService<CookieAuthOptions>(CookieAuthDefaults.AuthenticationScheme);
+
+        cookie.Cookie.Name.ShouldBe("app.session");
+        cookie.ExpireTimeSpan.ShouldBe(TimeSpan.FromMinutes(42));
+        cookie.SlidingExpiration.ShouldBeFalse();
+        cookie.LoginPath.Value.ShouldBe("/sign-in");
+        registered.Claims.RoleClaimTypes.ShouldContain("app_role");
+        registered.Claims.SubjectClaimTypes[0].ShouldBe("employee_id");
+    }
+
     private static OidcAuthOptions Expand(Action<EntraIdSignInOptions> configure)
     {
         var entra = new EntraIdSignInOptions();

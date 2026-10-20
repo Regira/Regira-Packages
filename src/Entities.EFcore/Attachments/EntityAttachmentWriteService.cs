@@ -29,13 +29,18 @@ public class EntityAttachmentWriteService<TContext, TEntityAttachment, TEntityAt
     {
     }
 
-    protected override Task RemoveItem(TEntityAttachment item, CancellationToken token = default)
+    protected override async Task RemoveItem(TEntityAttachment item, CancellationToken token = default)
     {
         // Cannot move this logic to the EntityAttachmentPrimer, since it's using an interface and not the typed Attachment class.
         // Guarded like the link row itself: removing the Attachment principal cascades to the still-tracked
         // link, whose AttachmentId is required, so under DeleteBehavior.Restrict this is the throw site.
         // Marked here rather than in Remove, which validates first: a rejected delete leaves the principal untouched.
-        RemoveGuarded(() => DbContext.Remove(item.Attachment!), item.Id);
-        return base.RemoveItem(item, token);
+        // The attachment goes with its link, unless another link still names it.
+        if (!await EntityAttachmentContent.IsLinkedElsewhere<TEntityAttachment, TEntityAttachmentKey, TObjectKey, TAttachmentKey, TAttachment>(
+                DbContext, item.AttachmentId, [item.Id], token))
+        {
+            RemoveGuarded(() => DbContext.Remove(item.Attachment!), item.Id);
+        }
+        await base.RemoveItem(item, token);
     }
 }

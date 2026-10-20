@@ -26,6 +26,32 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
     /// </summary>
     private IRefreshTokenService? RefreshTokenService => HttpContext.RequestServices.GetService<IRefreshTokenService>();
 
+    /// <summary>
+    /// Whether <see cref="SignInOptions"/> let the user sign in, as <c>SignInManager.CanSignInAsync</c> decides: a
+    /// confirmed email, phone number or account, where the options require one. The account is confirmed when the
+    /// registered <see cref="IUserConfirmation{TUser}"/> says so — resolved per request, like
+    /// <see cref="RefreshTokenService"/>, so the constructor stays unchanged — and by its address otherwise. A sign-in
+    /// action of a subclass (a second credential) checks it before it issues a token, as the actions here do.
+    /// </summary>
+    protected async Task<bool> CanSignIn(TUser user)
+    {
+        var options = userManager.Options.SignIn;
+        if (options.RequireConfirmedEmail && !await userManager.IsEmailConfirmedAsync(user))
+        {
+            return false;
+        }
+        if (options.RequireConfirmedPhoneNumber && !await userManager.IsPhoneNumberConfirmedAsync(user))
+        {
+            return false;
+        }
+        if (options.RequireConfirmedAccount)
+        {
+            var confirmation = HttpContext.RequestServices.GetService<IUserConfirmation<TUser>>() ?? new DefaultUserConfirmation<TUser>();
+            return await confirmation.IsConfirmedAsync(userManager, user);
+        }
+        return true;
+    }
+
     [AllowAnonymous]
     [HttpPost]
     [Route("", Name = RouteNames.Authenticate)]
@@ -41,6 +67,11 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
             if (isLockedOut == false)
             {
                 bool isAuthenticated = await userManager.CheckPasswordAsync(user, model.Password);
+                // checked after the password: only a caller who knows it learns why the account is refused
+                if (isAuthenticated && !await CanSignIn(user))
+                {
+                    return StatusCode(StatusCodes.Status401Unauthorized, CreateFailedResponse(false) with { IsNotAllowed = true });
+                }
                 if (isAuthenticated)
                 {
                     // clear any previously accumulated failed-attempt count (no-op when already 0)
@@ -58,7 +89,8 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
             }
         }
 
-        return StatusCode(StatusCodes.Status401Unauthorized, CreateFailedResponse(isLockedOut, lockedOutEnd));
+        // false for an unknown name too, so the body does not tell it apart from a wrong password
+        return StatusCode(StatusCodes.Status401Unauthorized, CreateFailedResponse(isLockedOut ?? false, lockedOutEnd));
     }
 
     [HttpPost("validate")]
@@ -85,7 +117,8 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
             });
         }
         var user = await userManager.FindByIdAsync(userId);
-        if (user == null)
+        // a locked-out account, or one the sign-in options refuse, renews nothing: Authenticate would refuse it a token
+        if (user == null || await userManager.IsLockedOutAsync(user) || !await CanSignIn(user))
         {
             return Unauthorized(new
             {
@@ -120,11 +153,11 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
         }
 
         // Re-read the user on every refresh: a role removed an hour ago must not still be in force, and a disabled
-        // account must not keep working until its refresh token happens to expire.
+        // account, or one the sign-in options now refuse, must not keep working until its refresh token happens to expire.
         var pair = await refreshTokenService.Refresh(model.RefreshToken, async userId =>
         {
             var user = await userManager.FindByIdAsync(userId);
-            if (user == null || await userManager.IsLockedOutAsync(user))
+            if (user == null || await userManager.IsLockedOutAsync(user) || !await CanSignIn(user))
             {
                 return null;
             }

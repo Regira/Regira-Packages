@@ -25,11 +25,11 @@ Regira Payments provides payment processing via Mollie and POM, built on the sha
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `Api` | `string` | Mollie API base URL — currently not consumed (the underlying `PaymentClient` is constructed from `Key` only) |
-| `Key` | `string` | Mollie API key (`test_...` or `live_...`) |
+| `Api` | `string` | Not read: the underlying `PaymentClient` is constructed from `Key` only |
+| `Key` | `string` | Mollie API key. A `test_…` key is test mode — there is no separate switch; a `live_…` key takes real payments |
 | `MaxPageSize` | `int` | Default `250` |
-| `RedirectFactory` | `Func<IPayment, string>?` | Builds redirect URL per payment |
-| `WebhookFactory` | `Func<IPayment, string>?` | Builds webhook URL per payment |
+| `RedirectFactory` | `Func<IPayment, string>?` | Builds redirect URL per payment. It runs before Mollie assigns the payment's `Id`, so build it from the app's own reference in `Metadata` |
+| `WebhookFactory` | `Func<IPayment, string>?` | Builds webhook URL per payment, before its `Id` is set too. Mollie posts the payment id to it as the form field `id` |
 
 ### PaymentService
 
@@ -37,26 +37,29 @@ Regira Payments provides payment processing via Mollie and POM, built on the sha
 ```csharp
 var svc = new Regira.Payments.Mollie.Services.PaymentService(new MollieConfig
 {
-    Api             = "https://api.mollie.com/v2",
     Key             = configuration["Mollie:Key"]!,
-    RedirectFactory = p => $"https://myapp.com/payment/return/{p.Id}",
-    WebhookFactory  = p => $"https://myapp.com/payment/webhook/{p.Id}"
+    RedirectFactory = p => $"https://myapp.com/payment/return/{p.Metadata!["orderId"]}",
+    WebhookFactory  = _ => "https://myapp.com/payment/webhook"
 });
 
 // CRUD
 IPayment?             payment  = await svc.Details(paymentId);
 IEnumerable<IPayment> list     = await svc.List();
+newPayment.Metadata = new Dictionary<string, object?> { ["orderId"] = orderId }; // the factories above read it
 var response = await svc.Save(newPayment); // creates payment, sets newPayment.Id
 var checkoutUrl = response.CheckoutUrl;    // redirect the customer here
+// or Save(newPayment, orderId): a repeat with the same idempotency key returns the first payment
 await svc.Delete(payment!);                // cancels the payment
 
-// Handle webhook
+// Handle webhook: paymentId is the form field "id" Mollie posts; WebHook reads the payment back from Mollie
 await svc.WebHook(paymentId, async p =>
 {
     if (p?.Status == PaymentStatus.Paid)
-        await orderService.MarkPaid(p.Id);
+        await orderService.MarkPaid(p.Metadata!["orderId"]!.ToString()!);
 });
 ```
+
+Every instance sends through a connection pool the package shares, so it can be registered with any lifetime. Never repeat a `Save` without an idempotency key: the second creates a second payment.
 
 ---
 
@@ -67,15 +70,20 @@ await svc.WebHook(paymentId, async p =>
 | Property | Type | Description |
 |----------|------|-------------|
 | `SenderId` | `string?` | POM sender ID |
-| `SenderContractNumber` | `string?` | Contract number |
+| `SenderContractNumber` | `string?` | Contract number, sent with every payment |
 | `Username` | `string?` | API username |
 | `Password` | `string?` | API password |
-| `ExpiresIn` | `int` | Payment link expiry (seconds) |
+| `AppName` | `string?` | Sent when authenticating |
+| `Platform` | `string?` | Sent when authenticating |
+| `EnvironmentId` | `string?` | Sent when authenticating |
+| `ExpiresIn` | `int` | Sent with the authentication request. It does not set a link's expiry: `Payment.ExpiresAt` does |
 | `Mode` | `string?` | `"live"` or `"test"` |
 | `AuthApi` | `string?` | Authentication endpoint |
 | `CreatePaylinkApi` | `string` | Create payment link endpoint |
-| `PaylinkStatusApi` | `string` | Payment status endpoint |
-| `WebhookKey` | `string?` | Webhook HMAC key |
+| `PaylinkStatusApi` | `string` | Payment status endpoint, with a `{paymentId}` placeholder |
+| `WebhookKey` | `string?` | Not read by `PaymentService`: there is no POM webhook handling, so poll `Details(id)` |
+
+There is no `Add…` extension, configuration section or default endpoint: take the three endpoints from POM and bind a section yourself.
 
 ### PaymentService
 
@@ -90,13 +98,16 @@ IPayment? existing = await svc.Details("pom-payment-id");
 // Create a payment link
 var payment = new Payment // Regira.Invoicing.Payments.Models
 {
-    Amount   = 49.99m,
-    Currency = "EUR"
+    Amount    = 49.99m,
+    Currency  = "EUR",
+    ExpiresAt = DateTime.Now.AddDays(30)   // the link's expiry; one day after it is created when unset
 };
-await svc.Save(payment);
+var response = await svc.CreatePaylink(payment); // sets payment.Id
+var paylink = response.Paylink;                  // send the payer here
 ```
 
-`Save` sends `Amount` and `Currency`; the sender contract number comes from `PomSettings`.
+`CreatePaylink` sends `Amount`, `Currency` and `ExpiresAt` (one day after creation when unset), the sender contract number coming from `PomSettings`, sets the payment's `Id` to POM's document id and returns POM's `PomPaymentResponse`. `Save`, the `IPaymentService` method, does the same without returning the link. Neither sends `Description` or `Metadata`, so a POM payment carries no reference of yours: keep POM's id on your own record.
+Every instance sends through a connection pool the package shares. An instance keeps its POM token and, when POM refuses it (`401`), authenticates again and sends the request once more, so it can be registered as a singleton.
 `PomException` is thrown on API errors; check `StatusCode` and `PomResponse` for details.
 
 ---

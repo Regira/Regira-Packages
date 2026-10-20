@@ -56,14 +56,20 @@ dbContext.AutoNormalizeStringsForEntries();
 dbContext.AutoNormalizeStringsForEntries(new NormalizingOptions { … });
 ```
 
-### `AddRegisteredInterceptors`
+### `AddRegisteredInterceptors` (obsolete)
 
 Discovers all `IInterceptor` registrations from an `IServiceCollection` and adds them to the `DbContextOptionsBuilder`.
+Obsolete (`REGIRA0001`, removed at 7.0): without a provider it builds a second one, which duplicates singletons and
+scoped services. Add the interceptors from the application's provider instead:
 
 <!-- no-compile -->
 ```csharp
-optionsBuilder.AddRegisteredInterceptors(services);
+services.AddDbContext<AppDbContext>((sp, options) => options
+    .UseSqlServer(connectionString)
+    .AddInterceptors(sp.GetServices<IInterceptor>()));
 ```
+
+`GetServices<IInterceptor>()` finds only the registrations made as `IInterceptor`, where `AddRegisteredInterceptors` also took one registered as `ISaveChangesInterceptor` or as its own class: add such an interceptor by its registered type, `sp.GetRequiredService<AuditInterceptor>()`.
 
 ---
 
@@ -90,12 +96,7 @@ Register as an interceptor for automatic truncation on every save without touchi
 
 <!-- no-compile -->
 ```csharp
-// Manual registration
 optionsBuilder.AddAutoTruncateInterceptors();
-
-// Or register in DI and auto-discover with AddRegisteredInterceptors
-services.AddSingleton<IInterceptor, AutoTruncateDbContextInterceptor>();
-optionsBuilder.AddRegisteredInterceptors(services);
 ```
 
 ---
@@ -160,7 +161,7 @@ var attributes = entry.GetPropertyAttributes();
 
 ### `CollectDescriptors<TService>`
 
-Finds all service descriptors in an `IServiceCollection` that implement the given interface — used internally by `AddRegisteredInterceptors`.
+Finds all service descriptors in an `IServiceCollection` that implement the given interface.
 
 <!-- no-compile -->
 ```csharp

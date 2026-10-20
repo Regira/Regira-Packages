@@ -1,3 +1,4 @@
+using System.Text.Encodings.Web;
 using System.Text.RegularExpressions;
 using Regira.Serializing.Abstractions;
 using Regira.Utilities;
@@ -9,6 +10,12 @@ public class HtmlTemplateParser : IHtmlParser
 {
     private readonly ISerializer _serializer;
     public Func<string, object?, string> ValueConverter { get; set; }
+    /// <summary>
+    /// HTML-encodes every text value inserted into a <c>{key}</c> token, at the top level and in blocks;
+    /// <c>{key:raw}</c> writes a value unencoded. Numbers stay as they are, so a format such as <c>{price:0.00}</c> still applies.
+    /// Off by default: values are inserted as they are.
+    /// </summary>
+    public bool HtmlEncode { get; set; }
 
     public HtmlTemplateParser(ISerializer serializer, Func<string, object?, string>? valueConverter = null)
     {
@@ -39,6 +46,7 @@ public class HtmlTemplateParser : IHtmlParser
     {
         var blockMatches = Regex.Matches(htmlContent, @"<!--{{([a-z][a-z|A-Z]*)}}-->[\s\S]+?<!--{{\/([a-z][a-z|A-Z]*)}}-->");
         var parameters = paramObj?.ToList() ?? [];
+        var rawValues = new List<string>();
 
         foreach (var blockMatch in blockMatches)
         {
@@ -59,7 +67,7 @@ public class HtmlTemplateParser : IHtmlParser
                 {
                     item["rowNr"] = i + 1;
                 }
-                var parameterContent = blockContent.Inject(item);
+                var parameterContent = Inject(blockContent, item, rawValues);
                 result += parameterContent;
             }
             htmlContent = htmlContent.Replace(blockMatch.ToString()!, result);
@@ -67,6 +75,39 @@ public class HtmlTemplateParser : IHtmlParser
         }
         var paramsDic = parameters.ToDictionary(k => k.Key, v => ValueConverter(v.Key, v.Value));
 
-        return htmlContent.Inject(paramsDic)!;
+        var content = Inject(htmlContent, paramsDic, rawValues);
+
+        // the raw values go in last, in one pass, so no token is ever read from a value's own text
+        return rawValues.Count == 0
+            ? content
+            : RawPlaceholder.Replace(content, m => int.TryParse(m.Groups[1].Value, out var i) && i < rawValues.Count ? rawValues[i] : m.Value);
     }
+
+    private string Inject<TValue>(string content, IDictionary<string, TValue> values, List<string> rawValues)
+    {
+        if (!HtmlEncode)
+        {
+            return content.Inject(values)!;
+        }
+
+        // {key:raw} takes the value as it is, through a placeholder that ProcessInput fills last; every other token takes it encoded
+        foreach (var (key, value) in values)
+        {
+            var token = "{" + key + ":raw}";
+            if (content.Contains(token))
+            {
+                content = content.Replace(token, $"\uE000{rawValues.Count}\uE001");
+                rawValues.Add(value?.ToString() ?? string.Empty);
+            }
+        }
+        var encodedValues = values.ToDictionary(x => x.Key, x => x.Value is IFormattable ? x.Value : (object)Encode(x.Value?.ToString() ?? string.Empty));
+        return content.Inject(encodedValues)!;
+    }
+
+    // braces too, which HtmlEncoder leaves: an encoded block value must not spell a token that the top-level pass fills
+    // again. HtmlEncoder writes U+E000 as &#xE000;, so an encoded value cannot spell a raw placeholder either
+    private static string Encode(string value)
+        => HtmlEncoder.Default.Encode(value).Replace("{", "&#123;").Replace("}", "&#125;");
+
+    private static readonly Regex RawPlaceholder = new(@"\uE000(\d+)\uE001");
 }

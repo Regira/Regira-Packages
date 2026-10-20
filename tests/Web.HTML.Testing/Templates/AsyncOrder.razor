@@ -1,0 +1,11 @@
+<p>@_status</p>
+
+@code {
+    private string _status = "Loading";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Task.Delay(100);
+        _status = "Loaded";
+    }
+}

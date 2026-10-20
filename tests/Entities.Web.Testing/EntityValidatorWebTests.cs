@@ -11,6 +11,7 @@ using Regira.Entities.DependencyInjection.Extensions;
 using Regira.Entities.DependencyInjection.Validators;
 using Regira.Entities.Mapping.Abstractions;
 using Regira.Entities.Models.Abstractions;
+using Regira.Entities.Services.Abstractions;
 using Regira.Entities.Validators.Abstractions;
 using Regira.Entities.Web.Attachments.Abstractions;
 using Regira.Entities.Web.Controllers.Abstractions;
@@ -57,7 +58,24 @@ public class ValidatedOrderContext(DbContextOptions<ValidatedOrderContext> optio
 
 /// <summary>Top-level and public because MVC only discovers controllers that are (see IsController).</summary>
 [Route("validated-orders")]
-public class ValidatedOrdersController : EntityControllerBase<ValidatedOrder>;
+public class ValidatedOrdersController : EntityControllerBase<ValidatedOrder>
+{
+    /// <summary>A hand-written action writing through the entity service, as a domain action does.</summary>
+    [HttpPost("{id}/code")]
+    public async Task<IActionResult> ChangeCode([FromRoute] int id, [FromQuery] string code)
+    {
+        var service = HttpContext.RequestServices.GetRequiredService<IEntityService<ValidatedOrder>>();
+        var order = await service.Details(id);
+        if (order == null)
+        {
+            return NotFound();
+        }
+        order.Code = code;
+        await service.Save(order);
+        await service.SaveChanges();
+        return Ok();
+    }
+}
 
 [Route("validated-orders")]
 public class ValidatedOrderAttachmentsController : EntityAttachmentControllerBase<ValidatedOrderAttachment>;
@@ -249,6 +267,16 @@ public class EntityValidatorWebTests
         Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
         var list = await host.Client.GetFromJsonAsync<ListResult<ValidatedOrder>>("/validated-orders");
         Assert.Equal([host.LockedId], list!.Items!.Select(x => x.Id));
+    }
+
+    [Fact]
+    public async Task A_Hand_Written_Action_Answers_400_Without_An_Exception_Filter()
+    {
+        await using var host = await Host.CreateAsync();
+
+        var response = await host.Client.PostAsync($"/validated-orders/{host.OrderId}/code?code=toolong", null);
+
+        Assert.Equal(["TooLong", "Upper case only."], (await ErrorsOf(response))["Code"]);
     }
 
     [Fact]

@@ -10,12 +10,14 @@ Part of **Regira Office**. For routing and full module overview, see [`office.in
 |---|---|
 | `Regira.Office.VCards` | vCard contact file reading and writing (.vcf) |
 
+Exact usings: `office.namespaces.md`.
+
 ---
 
 ## Installation
 
-```xml
-<PackageReference Include="Regira.Office.VCards.FolkerKinzel" Version="6.*" />
+```bash
+dotnet add package Regira.Office.VCards.FolkerKinzel
 ```
 
 ---

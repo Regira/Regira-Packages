@@ -1,6 +1,6 @@
 # Regira.DAL.MySQL.MySqlBackup
 
-Backup and restore for [Regira DAL.MySQL](https://regira.github.io/Regira-Packages/src/DAL.MySQL/), built on [MySqlBackup.NET](https://www.nuget.org/packages/MySqlBackup.NET.MySqlConnector). `MySqlBackupService` implements `IDbBackupService` and exports a database to an `IMemoryFile`; `MySqlRestoreService` implements `IDbRestoreService` and imports one. Both work in memory, without temporary files, and take a `MySqlBackupOptions` holding a connection string or `MySqlSettings`.
+Backup and restore for [Regira DAL.MySQL](https://regira.github.io/Regira-Packages/src/DAL.MySQL/), built on [MySqlBackup.NET](https://www.nuget.org/packages/MySqlBackup.NET.MySqlConnector). `MySqlBackupService` implements `IDbBackupService` and exports a database to an `IMemoryFile`; `MySqlRestoreService` implements `IDbRestoreService` and imports one. Both work in memory, without temporary files, and take a `MySqlBackupOptions` holding a connection string or `MySqlSettings`; `ConnectionString` wins when both are set. A backup is MySqlBackup.NET's default export as SQL text: per table `DROP TABLE IF EXISTS`, `CREATE TABLE` and its `INSERT`s, so a restore replaces every table the dump holds and leaves other tables alone. The returned file has no `ContentType`: store it as `application/sql`.
 
 ## Installation
 

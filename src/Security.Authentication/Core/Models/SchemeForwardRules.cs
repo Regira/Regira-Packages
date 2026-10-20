@@ -18,6 +18,7 @@ public static class SchemeForwardRules
             context => HasAuthorizationScheme(context, "Bearer"));
 
     /// <summary>An <c>Authorization: Basic …</c> header.</summary>
+    [Obsolete("No Basic authentication handler ships; a host that has one adds new SchemeForwardRule(order, scheme, predicate). Will be removed in v7.")]
     public static SchemeForwardRule Basic(string authenticationScheme)
         => new(SchemeSelectorDefaults.BasicOrder, authenticationScheme,
             context => HasAuthorizationScheme(context, "Basic"));

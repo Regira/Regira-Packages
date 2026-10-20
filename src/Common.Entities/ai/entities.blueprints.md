@@ -122,7 +122,7 @@ services.For<Supplier, SupplierSearchObject, EntitySortBy, SupplierIncludes>(e =
 });
 ```
 
-(`Prepare()` is the two-line app helper shown under Stakeholders § Registration — id reset + sort order.)
+(`Prepare()` is the one-line app helper shown under Stakeholders § Registration — sort order.)
 
 Contact values and address text become searchable by folding them into the **owner's** `NormalizedContent`,
 so the one global `Q` filter finds a supplier by phone number or city:
@@ -151,8 +151,17 @@ public class SupplierNormalizer(INormalizer normalizer, ContactDataNormalizer co
 }
 ```
 
-Normalize phone numbers with `Regira.Globalization.LibPhoneNumber`'s `PhoneNumberFormatter` inside the
-contact-data normalizer, so `0475…` and `+32 475…` match the same search.
+`ContactDataNormalizer` and `AddressNormalizer` are app classes too: an `EntityNormalizerBase<IContactDetails>` that
+fills `NormalizedValue` and an `EntityNormalizerBase<AddressBase>` that fills `NormalizedContent`, each registered with
+`services.AddTransient<…>()`. Normalize phone numbers with `Regira.Globalization.LibPhoneNumber`'s
+`PhoneNumberFormatter` inside the contact-data normalizer, so `+32 475…` and `32475…` find the row. `?q=` itself is not
+phone-normalized: a national-format query (`0475…`) matches only when the national form is stored too, so append it to
+`NormalizedValue`.
+
+- **Re-normalization timing** is as for EntityLabels (*Gotchas*): a save that leaves `ContactData` or `Addresses` out (a
+  PATCH, a PUT without them) hands the normalizer `null`, and `NormalizedContent` loses their text. Keep that text in a
+  column of its own that a prepper sets only when the collection is not `null`, listed in
+  `[Normalized(SourceProperties = …)]`.
 
 ### DTOs
 
@@ -194,6 +203,8 @@ first — pick by what the app actually queries, and mix freely:
        public int Id { get; set; }
        [Required, MaxLength(256)] public string Name { get; set; } = null!;    // person or organization — one field
        [MaxLength(128)] public string? Organization { get; set; }              // optional affiliation, plain text
+       public PartyRole Role { get; set; }                                      // an enum (Supplier, Employee, …) when one table
+                                                                                // holds several roles: filter on it in the SearchObject
        public string Title => Name;
        [MaxLength(256), Normalized(SourceProperty = nameof(Name))] public string? NormalizedTitle { get; set; }
        [MaxLength(2048)] public string? NormalizedContent { get; set; }
@@ -388,13 +399,12 @@ public static IEntityServiceCollection<AppDbContext> AddParties(this IEntityServ
 > added). Deeper graphs nest the same way (`configure` again). No hand-written prepper is needed for
 > grandchild collections — write one only for logic *beyond* collection syncing.
 
-`Prepare()` is a two-line app helper reused by every owned collection — it resets client-generated ids and applies sort order using framework extensions (`Regira.Entities.Extensions`):
+`Prepare()` is a one-line app helper reused by every owned collection — it applies sort order using a framework extension (`Regira.Entities.Extensions`); the sync itself clears a client's negative temp ids, at every depth:
 
 <!-- no-compile -->
 ```csharp
 public static ICollection<T> Prepare<T>(this ICollection<T> items) where T : IEntity<int>
 {
-    items.Cast<IEntity<int>>().AdjustIdForEfCore();                       // new rows: negative/temp ids -> 0
     (items as IEnumerable<ISortable>)?.SetSortOrder();                    // ISortable children: index -> SortOrder
     return items;
 }
@@ -434,6 +444,10 @@ options.UseMapsterMapping(cfg =>
 });
 ```
 
+System.Text.Json reads `partyType` only as the first property of a request body; a client that sends `id` first gets
+400 *must specify a type discriminator*. To accept it anywhere (.NET 9+):
+`services.ConfigureDefaultJsonOptions(mvc => mvc.JsonSerializerOptions.AllowOutOfOrderMetadataProperties = true, http => http.SerializerOptions.AllowOutOfOrderMetadataProperties = true);`
+
 Relationship DTOs come in a parent and a child flavor so each side embeds only the *other* party (`PartyParentDto { Parent }`, `PartyChildDto { Child }` — both extending a shared `PartyRelationshipDto` with ids, type, dates, contact data). Use a flat, non-polymorphic `PartySimpleDto` (with a plain `PartyType` string) inside them to stop the nesting from recursing.
 
 ### Controller
@@ -470,10 +484,14 @@ public class PartyUser : IEntityWithSerial
 
 (For entities that carry the user key directly, the framework offers the `IHasUserId` marker — `Regira.Entities.Models.Abstractions` — as a convention; no built-in services attach to it.)
 
+Enforce the 1:1 with unique indexes — `modelBuilder.Entity<PartyUser>().HasIndex(x => x.UserId).IsUnique();`, and the
+same on `PartyId` — and scope a signed-in user's rows by the claim with a global filter, as *Multi-tenancy* →
+*Global filter + primer* does.
+
 ### Gotchas
 
 - **Filtered includes trip an EF warning.** A filtered include chained into a `ThenInclude` (`.Include(x => x.ParentRelationships!.Where(r => r.TypeId == typeId)).ThenInclude(...)`) triggers `CoreEventId.NavigationBaseIncludeIgnored`; suppress it in `AddDbContext`: `options.ConfigureWarnings(w => w.Ignore(CoreEventId.NavigationBaseIncludeIgnored))`. Archived counterparts need no such predicate — the archived query filter reaches into `Include()` on its own.
-- **Normalize children before composing the parent.** The party normalizer first runs the contact-data/address normalizers, then joins their normalized output into the party's `NormalizedContent` — so one global `Q` filter finds parties by phone number or city (see §Filtering with Normalized Content in the instructions). Normalize phone numbers with `Regira.Globalization.LibPhoneNumber`'s `PhoneNumberFormatter` so `0475…` and `+32 475…` match.
+- **Normalize children before composing the parent.** The party normalizer first runs the contact-data/address normalizers, then joins their normalized output into the party's `NormalizedContent` — so one global `Q` filter finds parties by phone number or city (see §Filtering with Normalized Content in the instructions). Normalize phone numbers with `Regira.Globalization.LibPhoneNumber`'s `PhoneNumberFormatter` so `+32 475…` and `32475…` match; `?q=` is not phone-normalized, so store the national form (`0475…`) too when users search by it.
 - **Sorting builder:** implement `ISortedQueryBuilder<Party, int, PartySortBy>` directly (there is no `SortedQueryBuilderBase`) and continue existing ordering with `OrderOrThenBy(...)`/`OrderOrThenByDescending(...)` — never a hand-rolled `is IOrderedQueryable<T>` check.
 - **TPH costs one budget slot**, not one per subtype — a strong reason to prefer TPH over a table per party type.
 
@@ -586,7 +604,7 @@ services.UseEntities<AppDbContext>(options =>
 .For<Vehicle, VehicleSearchObject, EntitySortBy, VehicleIncludes>(e =>
 {
     e.AddNormalizer<VehicleNormalizer>();
-    e.Related(item => item.Labels, item => item.Labels?.Prepare()); // owned: no For<>, no controller, no slot
+    e.Related(item => item.Labels, item => item.Labels?.SetSortOrder()); // owned: no For<>, no controller, no slot
     // gate eager-loading behind an includes flag, ordered for display:
     e.Includes((query, includes) => includes?.HasFlag(VehicleIncludes.Labels) == true
         ? query.Include(x => x.Labels!.OrderBy(l => l.SortOrder))
@@ -628,10 +646,10 @@ public class VehicleNormalizer(INormalizer normalizer, IEntityNormalizer<IEntity
 ### Gotchas
 
 - **Labels are searchable, not filterable.** `?q=` matches label text through the owner's `NormalizedContent`; there is no `LabelType`/`Value` filter unless you add one (a `Where(x => x.Labels!.Any(...))` in the owner's query filter).
-- **Re-normalization timing:** the owner's `NormalizedContent` embeds label text at save time — labels edited *through the owner's form* (the normal path with `Related()`) keep it fresh automatically.
+- **Re-normalization timing:** the owner's `NormalizedContent` embeds label text at save time — labels edited *through the owner's form* (the normal path with `Related()`) keep it fresh automatically. A save that leaves `Labels` out (a PATCH, a PUT without them) hands the normalizer `null`, and `NormalizedContent` loses the label text: keep the text in a column of its own that a prepper sets only when `Labels` is not `null`, listed in `[Normalized(SourceProperties = …)]`.
 - **Duplicates are allowed by design** (no unique constraint) — the same `Title` can appear twice with different values.
 - **`LabelType` is a display hint set by the client** (detect email/phone/url/date from the value shape in the SPA); the backend only stores it.
-- Owner deletion removes its labels via cascade (required FK). `SortOrder` is maintained by the `Prepare()` helper (see Stakeholders) + a draggable list in the SPA.
+- Owner deletion removes its labels via cascade (required FK). `SortOrder` is maintained by `SetSortOrder()` (`Regira.Entities.Extensions`) + a draggable list in the SPA.
 
 ---
 
@@ -718,7 +736,7 @@ services.AddSingleton<ITenantContext>(p => p.GetRequiredService<WritableTenantCo
 The active tenant travels **inside the caller's credential** as a `tenant` claim — no header or route parameter on ordinary requests:
 
 - At sign-in, a claims step reads the requested tenant (e.g. `?tenantId=`), verifies membership, and adds `new Claim("tenant", tenantId)` plus that tenant's permission claims (`permissions=can_read`, …) from a `TenantUserClaim` store (user × tenant × claim rows).
-- **Switching tenants = re-issuing the credential.** With a JWT that means re-minting the token; with a cookie session it means signing in again with the new claim set. Either way `TenantContext` picks the new claim up automatically — it reads `HttpContext.User`, so it does not care which scheme put the claim there.
+- **Switching tenants = re-issuing the credential.** With a JWT that means re-minting the token; with a cookie session it means signing in again with the new claim set. `AccountControllerBase.Refresh()` rebuilds the claims through the same `IUserClaimsPrincipalFactory`, so a claims step that reads `?tenantId=` (and verifies membership) also serves the SPA's `authStore.refresh({ tenantId })`: no `Refresh()` override is needed. Either way `TenantContext` picks the new claim up automatically — it reads `HttpContext.User`, so it does not care which scheme put the claim there.
   - ⚠️ If you drive this off a refresh endpoint, note that `auth/refresh` and `auth/refresh-token` are different: the first needs a **still-valid** bearer token, the second takes the refresh token and works after expiry. See `security.instructions` → *Refresh Tokens*.
 - Per-tenant permissions are enforced with a global authorization filter checking the claim (e.g. forbid unless `permissions=can_read`).
 - **On Microsoft Entra ID the tenant is already there** as `tid`, and the stable per-user key is **`oid`, not `sub`** — Entra's `sub` is pairwise per application, so keying tenant or owner rows on it fragments one person across apps.
@@ -877,6 +895,23 @@ public static class CategoryDbFunctions
 
 Semantics: **Offspring** walks parent→child from the seed ids (`Level` 0-based, `RootId` = the seed); **Ancestors** walks child→parent; **Family** = both directions with signed levels (negative = ancestors). `@ids = NULL` seeds from *every* edge. Archived nodes are pruned at every step — the global archived filter can't reach inside a TVF, so the SQL must re-apply it.
 
+**A single `ParentId` column** (a plain tree) needs no join table: seed and recurse on the entity table itself, with
+the same columns, so §1 and §3 apply unchanged (add the archived pruning as above):
+
+```sql
+WITH offspring (ParentId, ChildId, Level, RootId) AS (
+    SELECT     c.ParentId, c.Id, 0, c.ParentId
+    FROM       Categories c
+    WHERE      @ids IS NULL OR @ids = '' OR c.ParentId IN (SELECT CAST(value AS INT) FROM OPENJSON(@ids))
+    UNION ALL
+    SELECT     c.ParentId, c.Id, offspring.Level + 1, offspring.RootId
+    FROM       Categories c
+    INNER JOIN offspring ON offspring.ChildId = c.ParentId
+    WHERE      @max_level IS NULL OR offspring.Level < @max_level
+)
+SELECT * FROM offspring;
+```
+
 **Creating the functions.** With migrations: `migrationBuilder.Sql(CategoryDbFunctions.CREATE_GetCategoryOffspring)` (one per statement). With `EnsureCreated()`: execute after schema creation, provider-gated —
 
 <!-- no-compile -->
@@ -962,9 +997,21 @@ public async Task<IActionResult> GetOffspring([FromQuery] IList<int> ids, [FromQ
 
 Expose ASP.NET Core Identity users with the same List/Search/Details/Save surface, DTO mapping and SearchObject filtering as any entity — one custom `IEntityRepository` implementation wrapping `UserManager<TUser>`, then a plain thin controller. Password hashing, validation and claim storage stay Identity's job.
 
-**Budget:** 1 complex slot.
+**Budget:** 1 complex slot as shown. A simple slot works when the users need no `SortBy` and no `Includes`:
+`For<AppUserEntity, string, AppUserSearchObject>`, an `IEntityRepository<AppUserEntity, string, AppUserSearchObject>`
+and the five-type `EntityControllerBase<AppUserEntity, string, AppUserSearchObject, AppUserDto, AppUserInputDto>`;
+claims are then loaded always or never. Need users only as names to pick or assign? Leave them unexposed and link a
+party of the domain to the account instead (*Stakeholders* → *Linking a party to a user account*).
 
 ### Exposed model + repository over UserManager
+
+`AppIdentityUser` (your `IdentityUser` subclass, with a `UserClaims` navigation), `AccountsDbContext` (its
+`IdentityDbContext`), `UserClaimModel` (a claim DTO: `Id`, `ClaimType`, `ClaimValue`), `AppUserSearchObject` and
+`AppUserIncludes` are app code. Implement every `List`, `Count` and `Details` overload of `IEntityRepository<…>`; the
+untyped ones delegate to the typed through `SearchObjectCoercion.Coerce<AppUserSearchObject>(so)`
+(`Regira.Entities.Services`). The framework's own delete, patch and save lookups pass an anonymous
+`new { id, Archived }`: a cast does not bind it, so the lookup would match every user. Roles, when the model carries
+them, reconcile as claims do: `GetRolesAsync`, then `AddToRolesAsync` and `RemoveFromRolesAsync` for the difference.
 
 <!-- no-compile -->
 ```csharp
@@ -993,15 +1040,30 @@ public class AppUserRepository(AccountsDbContext dbContext, UserManager<AppIdent
         return mapper.Map<List<AppUserEntity>>(items);             // inner IdentityUser -> exposed entity model
     }
 
+    public Task<long> Count(IList<AppUserSearchObject?> searchObjects, CancellationToken token = default)
+        => Filter(dbContext.Users, searchObjects).LongCountAsync(token);
+
+    public async Task<AppUserEntity?> Details(string id, CancellationToken token = default)
+    {
+        var item = await dbContext.Users.Include(x => x.UserClaims).AsNoTracking().FirstOrDefaultAsync(x => x.Id == id, token);
+        return item == null ? null : mapper.Map<AppUserEntity>(item);
+    }
+
+    // each search object filters on its own and the results are united, as the framework's query builder does
+    private IQueryable<AppIdentityUser> Filter(IQueryable<AppIdentityUser> query, IList<AppUserSearchObject?> searchObjects)
+        => searchObjects.Count == 0 ? query
+            : searchObjects.Select(so => queryFilters.Aggregate(query, (q, f) => f.Build(q, so))).Aggregate((a, b) => a.Union(b));
+
     public async Task Add(AppUserEntity model, CancellationToken token = default)
     {
         var item = mapper.Map<AppIdentityUser>(model);
         var result = string.IsNullOrWhiteSpace(model.NewPassword)
             ? await userManager.CreateAsync(item)                  // Identity owns hashing + validation
             : await userManager.CreateAsync(item, model.NewPassword);
-        // …then reconcile claims (diff original vs incoming: RemoveRange / AddRange / update changed values)
+        // …then reconcile claims unless model.UserClaims is null (not sent: untouched; [] removes them all, as Related() does)
     }
-    // Details/Count/Modify/Save/Remove follow the same shape; Save = upsert on existence.
+    // Modify/Save/Remove follow Add's shape through UserManager (UpdateAsync, DeleteAsync); Save = upsert on existence.
+    // UserManager has already saved the user: this flushes only the claim diff, so "affected" is 0 for a save without claim changes.
     public Task<int> SaveChanges(CancellationToken token = default) => dbContext.SaveChangesAsync(token);
 }
 ```
@@ -1019,6 +1081,7 @@ services.For<AppUserEntity, string, AppUserSearchObject, EntitySortBy, AppUserIn
 });
 
 // Controller — the standard thin base:
+[Route("user-accounts")]
 public class AppUserController : EntityControllerBase<AppUserEntity, string, AppUserSearchObject, EntitySortBy, AppUserIncludes, AppUserDto, AppUserInputDto>;
 ```
 
@@ -1026,7 +1089,10 @@ public class AppUserController : EntityControllerBase<AppUserEntity, string, App
 
 - The repository, not the framework, applies filters/sorting/paging/includes — you implement `IEntityRepository` from scratch, so inject the registered `IFilteredQueryBuilder<...>` set and run them in `List`/`Count` (that keeps SearchObject filters in their own classes).
 - The query-builder generics are typed on the **inner** `IdentityUser` type, while the `For<>()` generics use the **exposed** model — the mapper bridges the two.
-- Exclude `NewPassword` from the read DTO; hash only via `userManager.PasswordHasher` on update. Deleting goes through `userManager.DeleteAsync`.
+- Exclude `NewPassword` from the read DTO, and set a new password through `UserManager` so its password validators run: `await userManager.ResetPasswordAsync(user, await userManager.GeneratePasswordResetTokenAsync(user), model.NewPassword)` (token providers: `AddDefaultTokenProviders()`). Never store `PasswordHasher.HashPassword(...)` yourself: it skips the validators. Deleting goes through `userManager.DeleteAsync`.
+- `UserControllerBase` (`Regira.Security.Authentication.Web`) already owns the `users` route: route this controller elsewhere, as `user-accounts` above.
+- Startup warns that `?q=` is ignored for `AppUserEntity`: the check looks for a filter registered on the exposed type, and this one is registered on the inner type. The warning stands by design when that filter reads `so.Q`; without such a filter, `?q=` really is ignored.
+- `POST` and `PUT` answer `affected: 0` unless claims changed: read `isNew` and `item`.
 
 ---
 
@@ -1062,7 +1128,8 @@ public class CountryRepository(ICultureContext cultureContext) : IEntityService<
             ? query.Select(x => new { country = x, weight = CalculateWeight(x, so) })   // relevance: exact > initials > prefix > contains
                    .Where(x => x.weight > 0).OrderByDescending(x => x.weight).Select(x => x.country)
             : query.OrderBy(x => x.Iso2Code == cultureContext.CountryCode ? 0 : 1).ThenBy(x => x.Title);
-        // apply pagingInfo manually (PageItems), map to Country, return
+        var page = query.AsQueryable().PageQuery(pagingInfo);   // PagingInfo.Page is 1-based; PageItems takes a 0-based index
+        return Task.FromResult<IList<Country>>(page.Select(x => Convert(x)!).ToList());
     }
 
     // untyped overloads delegate via ObjectUtility.Create<SearchObject<string>>(so);
@@ -1080,7 +1147,8 @@ public class CountryController : EntityControllerBase<Country, string, SearchObj
 
 ### Gotchas
 
-- You own everything the pipeline normally does: apply `Q`, ordering and `PagingInfo` yourself (`PageQuery`/`PageItems` from `Regira.DAL.Paging`); registered query builders/processors don't run against in-memory data.
+- Startup warns that `?q=` is ignored for the virtual entity: no filter is registered for it. The warning stands by design when the service applies `Q` itself, as above.
+- You own everything the pipeline normally does: apply `Q`, ordering and `PagingInfo` yourself (`PageQuery(pagingInfo)` from `Regira.DAL.Paging`, or `PageItems(pageSize, page - 1)` from `Regira.Utilities`, which takes a zero-based index); registered query builders/processors don't run against in-memory data.
 - Ranked matching beats plain `Contains` for picker UX — weight exact code/name matches above prefix above substring, and boost the caller's own country (`IHasDefault`).
 - Write endpoints exist on the controller but return 500 from the `NotImplementedException` — add `[ApiExplorerSettings(IgnoreApi = true)]` overrides or authorization if that surface bothers you; the reference apps simply never call them.
 
@@ -1094,7 +1162,8 @@ Task-oriented entries served by the MCP `how_to` tool (same marker convention as
 <!-- how_to: key=addresses aliases=address,contact,contactdata,contact-data,phone,email,website -->
 Copy the **Contact data & addresses blueprint**: an interface + abstract base per child shape
 (`ContactDetailsBase`, `AddressBase`), a thin subclass and table per owner, wired as owned collections —
-`e.Related(x => x.ContactData, x => x.ContactData?.Prepare())` — and folded into the owner's
+`e.Related(x => x.ContactData, x => x.ContactData?.Prepare())` (`Prepare()` is the app helper under
+Stakeholders § Registration) — and folded into the owner's
 `NormalizedContent` so the global `Q` filter finds owners by phone number or city. No party model
 required, one shared DTO pair per shape (Mapster convention mapping), 0 budget slots. For a full
 person/organization model on top, see the `stakeholders` recipe; for a lighter single contacts table,
@@ -1118,7 +1187,7 @@ existing entity, or one flat contacts table — are covered by the `addresses` r
 <!-- how_to: key=entity-labels aliases=label,labels,tag,tags,entitylabel,keyvalue,metadata -->
 Copy the **EntityLabels blueprint**: an abstract `EntityLabelBase` (`Title`/`Value`/`LabelType`/
 `SortOrder`) with one empty subclass **per owner** (own table, FK `ObjectId`, cascade). Wire as an owned
-collection — `e.Related(x => x.Labels, x => x.Labels?.Prepare())` — behind an includes flag ordered by
+collection — `e.Related(x => x.Labels, x => x.Labels?.SetSortOrder())` — behind an includes flag ordered by
 `SortOrder`. Search works by folding label text into the owner's `NormalizedContent` via one global
 `options.AddNormalizer<IEntityLabel, EntityLabelNormalizer>()` + the owner's normalizer. Costs no
 budget slots.
@@ -1126,7 +1195,7 @@ budget slots.
 **See:** `get_package(id: "Regira.Entities", section: "blueprints", heading: "EntityLabels")`.
 
 ### Make an app multi-tenant (row-level isolation)
-<!-- how_to: key=multi-tenancy aliases=tenant,tenants,tenancy,multitenant,tenantid,isolation -->
+<!-- how_to: key=multi-tenancy aliases=tenant,tenants,tenancy,multitenant,tenantid,isolation,company,companies,per-company,organisation,organization -->
 Copy the **Multi-tenancy blueprint**: an `IHasTenantId { string TenantId }` marker on tenant-owned
 entities, plus two registrations inside `UseEntities`:
 

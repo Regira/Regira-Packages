@@ -29,16 +29,24 @@ holding a perfectly good credential of the other kind.
 {
   "Authentication": {
     "ApiKeys": [
-      { "OwnerId": "ci-pipeline", "Key": "ci-secret-key", "Roles": ["read"] }
+      { "OwnerId": "ci-pipeline", "Roles": ["read"] }
     ],
     "Jwt": {
-      "Secret": "at-least-64-characters-for-the-HS512-default-or-startup-throws-0123",
       "Authority": "https://portal.example",
       "Audience": "staff-spa",
       "LifeSpan": 3600
     }
   }
 }
+```
+
+The secrets stay out of the file — user-secrets in development, a key vault or the environment in production —
+so startup fails until they are set:
+
+```bash
+dotnet user-secrets init
+dotnet user-secrets set "Authentication:Jwt:Secret" "<64 or more random characters>"
+dotnet user-secrets set "Authentication:ApiKeys:0:Key" "<a new GUID>"
 ```
 
 `Authentication:Jwt:Secret` must be ≥ 64 bytes for the `HS512` default (≥ 48 for `HS384`, ≥ 32 for `HS256`) — a
@@ -109,9 +117,51 @@ services.AddCookieAuthentication(o =>
     o.ExpireTimeSpan = TimeSpan.FromHours(8);
 });
 
-// in the login endpoint
-await HttpContext.SignInWithClaimsAsync(claims);
-await HttpContext.SignOutCookieAsync();
+// sign-in and sign-out: the session controller below
+```
+
+A complete session controller: sign-in, the current user, sign-out, and the antiforgery token the SPA sends back
+(gotcha 3 in `security.instructions.md`):
+
+<!-- no-compile -->
+```csharp
+// services.AddIdentityCore<AppUser>(…).AddSignInManager();
+// services.AddAntiforgery(o => o.HeaderName = "X-XSRF-TOKEN");
+// services.AddControllersWithViews();   // [AutoValidateAntiforgeryToken] needs the view services
+[ApiController, Route("session"), Authorize, AutoValidateAntiforgeryToken]
+public class SessionController(UserManager<AppUser> users, SignInManager<AppUser> signIn,
+    IUserClaimsPrincipalFactory<AppUser> claimsFactory, IAntiforgery antiforgery) : ControllerBase
+{
+    // the token for X-XSRF-TOKEN; fetch it again after Start and End, since it is bound to the user
+    [AllowAnonymous, HttpGet("antiforgery")]
+    public IActionResult Token() => Ok(new { token = antiforgery.GetAndStoreTokens(HttpContext).RequestToken });
+
+    [AllowAnonymous, HttpPost]
+    public async Task<IActionResult> Start([FromBody] AuthenticateInput input)   // Regira.Security.Authentication.Web.Models
+    {
+        var user = await users.FindByNameAsync(input.Username);
+        var result = user == null
+            ? Microsoft.AspNetCore.Identity.SignInResult.Failed
+            : await signIn.CheckPasswordSignInAsync(user, input.Password, lockoutOnFailure: true);
+        if (!result.Succeeded)
+        {
+            return Unauthorized(new { isAuthenticated = false, isLockedOut = result.IsLockedOut, isNotAllowed = result.IsNotAllowed });
+        }
+        var principal = await claimsFactory.CreateAsync(user!);
+        await HttpContext.SignInWithClaimsAsync(principal.Claims, isPersistent: true);
+        return Ok(new { isAuthenticated = true });
+    }
+
+    [HttpGet]
+    public IActionResult Current() => Ok(new { isAuthenticated = true, name = User.Identity?.Name });
+
+    [AllowAnonymous, HttpDelete]
+    public async Task<IActionResult> End()
+    {
+        await HttpContext.SignOutCookieAsync();
+        return NoContent();
+    }
+}
 ```
 
 Two things a library cannot do for you: serve over **HTTPS** (the cookie is `Secure` by default, so over plain HTTP

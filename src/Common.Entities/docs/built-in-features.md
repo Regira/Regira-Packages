@@ -22,6 +22,10 @@ Samples:
 })
 ```
 
+The wrapper takes the entity's repository, `IEntityRepository<…>`, as its inner service — see
+[Services → Replacing the repository for one entity](services.md#replacing-the-repository-for-one-entity), which
+also covers a repository of its own with `HasRepository`.
+
 Possible overrides:
 
 <!-- no-compile -->
@@ -90,10 +94,10 @@ public class EntityInputException<T>(string message, Exception? innerException =
 }
 ```
 
-Throw the generic form; **catch the non-generic base**. The generated write actions catch their own closed
-`EntityInputException<TEntity>`, so one a prepper threw for a *related* entity
-(`EntityInputException<Product>` during an `Order` write) is not theirs to handle. The base is what
-`EntityExceptionFilter` matches, and what a hand-written `catch` should match too.
+Throw the generic form; **catch the non-generic base**. A `catch` on the closed `EntityInputException<TEntity>`
+misses one a prepper threw for a *related* entity (`EntityInputException<Product>` during an `Order` write).
+The base is what `EntityExceptionFilter` and `[EntityConstraintConflict]` match, and what a hand-written
+`catch` should match too.
 
 
 ### Constraint Exceptions
@@ -115,10 +119,9 @@ public class EntityConstraintException(string message, Exception? innerException
 ```
 
 - **Every web write surface returns 409 Conflict** with `ClientMessage` as the `ProblemDetails` detail —
-  hand-written actions included, through the application-wide `EntityExceptionFilter` that
-  `ConfigureDefaultJsonOptions()` registers. The controller helpers (`ControllerExtensions.Save`/`Delete`)
-  and the `[EntityConstraintConflict]` attribute on the attachment controller bases catch it first and emit
-  the same body. The provider's constraint message is logged server-side (warning) by the write service.
+  hand-written actions included: the entity and attachment controller bases carry `[EntityConstraintConflict]`,
+  and the application-wide `EntityExceptionFilter` that `ConfigureDefaultJsonOptions()` registers covers every
+  other controller with the same body. The provider's constraint message is logged server-side (warning) by the write service.
 - **Direct callers** (seeding, jobs, custom services): `IEntityService.SaveChanges()` throws
   `EntityConstraintException` for a constraint failure and lets only transient faults through as
   `DbUpdateException`; `DbContext.SaveChanges()` throws EF's `DbUpdateException` for both. `Message` is the same
@@ -147,15 +150,14 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
 ```
 
 - **The client's token is what gets compared.** Every version stamp — a concurrency token the server moves on the
-  write, declared with `[Timestamp]` / `IsRowVersion()`, `[ConcurrencyCheck]` or `IsConcurrencyToken()` — is
-  checked against the value that arrived with the write, not against the row the update reloads. The token travels
-  as an ordinary DTO field: put it on both the read and the input DTO, without an initializer.
-- **A token nothing moves is a data column** (`[ConcurrencyCheck] public string? LastName`). The client's value is
-  the edit itself, so it is written as sent — a change or a clear — and the check compares the stored row: only a
-  write racing the save is caught. A token is a version stamp when the database generates it on update, when it is
-  `IHasConcurrencyToken.ConcurrencyToken`, or when it carries `[VersionStamp]` (`Regira.Entities.Attributes`) —
-  declare an application-owned token so. An undeclared token counts as one only on a write where a prepper or primer
-  changes it, which misses a primer that reproduces the client's value (a content hash).
+  write — is checked against the value that arrived with the write, not against the row the update reloads. The
+  token travels as an ordinary DTO field: put it on both the read and the input DTO, without an initializer.
+- **A token is a version stamp only when it is declared one:** the database generates it on update (`[Timestamp]` /
+  `IsRowVersion()`), it is `IHasConcurrencyToken.ConcurrencyToken`, or it carries `[VersionStamp]`
+  (`Regira.Entities.Attributes`) — declare an application-owned token so. **Any other `[ConcurrencyCheck]` /
+  `IsConcurrencyToken()` token is a data column** (`[ConcurrencyCheck] public string? LastName`), whatever moves it:
+  the value on the entity is written — a change or a clear, or what a primer made of it — and the check compares the
+  stored row, so only a write racing the save is caught.
 - **A token the client leaves out is not compared** (`null`, empty, or the CLR default): the write goes through,
   only a write racing it is caught, and the empty value never overwrites the token — with `IHasConcurrencyToken`
   the primer still mints a new one. `PATCH` carries the stored value unless its body sets the token; `DELETE`
@@ -170,20 +172,20 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
   application-owned token you declare yourself needs a primer of your own, or two clients holding the same value
   both pass.
 - **Every web write surface returns 409 Conflict** with a `ProblemDetails` titled "Concurrency conflict" —
-  distinct from the constraint 409 — through the same `EntityExceptionFilter`, controller helpers and
-  `[EntityConstraintConflict]` attribute.
+  distinct from the constraint 409 — through the same `[EntityConstraintConflict]` attribute and
+  `EntityExceptionFilter`.
 - **Direct callers** (seeding, jobs, custom services): `IEntityService.SaveChanges()` throws
   `EntityConcurrencyException`, with EF's exception inside; `DbContext.SaveChanges()` throws EF's
   `DbUpdateConcurrencyException` itself. A failed save keeps the change tracker; reload and retry in a fresh scope.
 - **A write through the raw `DbContext` is checked against the token the entity was loaded with.** Copying a
   client's token onto a tracked entity changes only its current value, so a stale client still wins; set
   `db.Entry(entity).Property(x => x.ConcurrencyToken).OriginalValue` to the client's token for the check to apply.
-- Startup validation warns when a DTO has no property for a version stamp, and when the input DTO — or an entity
-  that is its own input DTO — initializes it, so a client that omits the stamp gets a 409 instead of an unchecked
-  write. It reports an error when the entity initializes its stamp while the input DTO has no property to overwrite
-  it — every write would answer 409 — or when the input DTO has no property for a required stamp — every update
-  would answer 400 — and warns about `[VersionStamp]` on a property the model does not treat as a concurrency
-  token. A data column needs none of this, so an undeclared token gets these findings only as Info.
+- Startup validation warns when a DTO has no property for a version stamp — every write would be last-write-wins —
+  and reports an error when the input DTO has no property for a required stamp — every update would answer 400. It
+  warns about `[VersionStamp]` on a property the model does not treat as a concurrency token, and about a `Guid`, an
+  integer, `byte[]`, `DateTime` or `DateTimeOffset` token not declared a version stamp — of a registered entity or a
+  `Related()` child — which is compared as a data column. A data column needs no DTO property. An initializer on the
+  token answers 409 to every write, loudly, so it is not checked.
 
 
 ## DbContext
@@ -360,10 +362,15 @@ services.UseEntities<AppDbContext>(o =>
 generic-arity mismatches (the controller check activates automatically when `Regira.Entities.Web` is
 referenced, or explicitly via `ValidateEntityControllers()`), warns when primers/normalizers/reactors are registered
 without their SaveChanges interceptor (an informational note instead when the `RegisterPrimerContainer` +
-`ApplyPrimers()` pattern is detected), warns when `?q=` would be silently ignored for an entity and when an
+`ApplyPrimers()` pattern is detected), warns when `?q=` would be silently ignored for an entity (one with no normalized
+content and no custom filter — any custom filter counts as handling `q`) and when an
 attachments owner's collection is not mapped to the link's `ObjectId`, when an entity validator applies to no
 registered entity or an entity's write path cannot run the validators in its scope, and when `UseRepository()` has no
-repository type for a `For<>()` shape, and fails on a `[ServerOwned]` declaration nothing can enforce.
+repository type for a `For<>()` shape, and fails on a `[ServerOwned]` declaration nothing can enforce. With
+[mapped endpoints](web-endpoints.md#mapped-endpoints) it also warns about mapped attachment downloads without
+`UseAttachmentUris()`, whose DTOs would carry a null `Uri`. It checks what fails silently; a failure that is loud at
+the first request is left to it. A check that cannot complete is skipped with a warning naming it, and a context the
+checks cannot resolve is reported once.
 Configure via `UseEntities(o => o.ConfigureValidation(v => { v.Enabled = true; /* Production opt-in */ }))`.
 
 
@@ -445,7 +452,10 @@ public class OrderValidator : AbstractValidator<Order>
 {
     public OrderValidator(AppDbContext db)
     {
-        RuleFor(x => x.Code).NotEmpty().MaximumLength(20);
+        // Code's shape (required, length) is the input DTO's DataAnnotations; the rule here needs the other rows
+        RuleFor(x => x.Code)
+            .MustAsync(async (order, code, ct) => !await db.Orders.AnyAsync(o => o.Code == code && o.Id != order.Id, ct))
+            .WithMessage("Code is taken");
         // db sees every row: with scoped reads, check through the filtered read service (services.md → Entity Validators)
         RuleFor(x => x.CustomerId)
             .MustAsync((id, ct) => db.Customers.AnyAsync(c => c.Id == id, ct))
@@ -468,6 +478,9 @@ translation key. The values the message was formatted with — `{ComparisonValue
 all but the attempted `{PropertyValue}`.
 
 ### Primers
+
+The primers run in registration order, on `SaveChanges()` and on an explicit `ApplyPrimers()` alike, each over every
+pending entry it matches.
 
 **ArchivablePrimer**:
 *Sets IsArchived to true instead of deleting entities implementing `IArchivable`.
@@ -614,7 +627,7 @@ public static class QueryExtensions
 }
 ```
 
-**Default & maximum page size** — configure these so List/Search endpoints page automatically instead of returning the full set. Enforced at the HTTP boundary only (by the MVC controllers, via the shared `ApplyPagingDefaults` clamp); direct `IEntityService` calls keep full control.
+**Default & maximum page size** — configure these so List/Search endpoints page automatically instead of returning the full set. Enforced by the list and search requests the endpoints send (their handlers apply the shared `ApplyPagingDefaults` clamp); direct `IEntityService` calls keep full control.
 
 <!-- no-compile -->
 ```csharp

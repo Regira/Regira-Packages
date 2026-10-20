@@ -7,8 +7,9 @@
             environment variables so the setup travels with the repo.
 
             REGIRA_PROVIDER_TESTS=containers enables the Testcontainers-backed fixtures:
-            tests\DAL.PostgreSQL.Testing and the larger tests\Entities.Providers.Testing suite.
-            Both skip themselves when Docker is unavailable.
+            tests\DAL.PostgreSQL.Testing, the larger tests\Entities.Providers.Testing suite, the Mailpit
+            fixture in tests\Office.Mail.Testing, and the Gotenberg fixtures in tests\Office.Word.testing and
+            tests\Office.PDF.Testing. Each skips itself when Docker is unavailable.
 
             REGIRA_SQLSERVER_CONNECTION points tests\DAL.SqlServer.Testing at a server whose login may
             create databases; it creates and drops RegiraBackupTest_* databases. LocalDB is the default

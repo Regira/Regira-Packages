@@ -37,9 +37,14 @@ var message = new MessageObject
     IsHtml  = true
 };
 
-var result = await mailer.Send(message);
-if (!result.Success)
-    logger.LogError("Mail failed: {Status} — {Content}", result.Status, result.Content);
+try
+{
+    await mailer.Send(message);   // a returned response is a success
+}
+catch (MailException ex)          // Regira.Office.Mail.Exceptions: the provider refused it
+{
+    logger.LogError(ex, "Mail failed: {Content}", ex.ResponseContent);
+}
 ```
 
 ---
@@ -75,6 +80,11 @@ public async Task SendInvoice(IMailService mailer, string recipientEmail, byte[]
 Drive the backend choice from configuration — consuming code only sees `IMailService`.
 
 ```csharp
+using Regira.Office.Mail.SendGrid.DependencyInjection;  // AddSendGrid
+using Regira.Office.Mail.MailGun.DependencyInjection;   // AddMailGun
+using Regira.Office.Mail.MailKit.DependencyInjection;   // AddMailKit
+using MailKit.Security;                                 // SecureSocketOptions
+
 var backend = configuration["Mail:Backend"];
 
 if (backend == "mailgun")
@@ -84,6 +94,17 @@ if (backend == "mailgun")
         cfg.Api    = configuration["Mail:MailGun:Api"]!;
         cfg.Key    = configuration["Mail:MailGun:Key"]!;
         cfg.Domain = configuration["Mail:MailGun:Domain"]!;
+    });
+}
+else if (backend == "smtp")
+{
+    services.AddMailKit(cfg =>
+    {
+        cfg.Host     = configuration["Mail:Smtp:Host"]!;
+        cfg.Port     = int.Parse(configuration["Mail:Smtp:Port"] ?? "587");
+        cfg.Security = Enum.Parse<SecureSocketOptions>(configuration["Mail:Smtp:Security"] ?? "StartTls");
+        cfg.UserName = configuration["Mail:Smtp:UserName"];
+        cfg.Password = configuration["Mail:Smtp:Password"];
     });
 }
 else
@@ -97,25 +118,37 @@ else
 
 ## Example 5: Accept email requests via a JSON API endpoint
 
-Use `MailInput` from `Mail.Web` to receive and validate a send request over HTTP.
+Use `MailInput` from `Mail.Web` to receive and validate a send request over HTTP. The caller chooses the recipients, the body and the attachments, so the endpoint requires a signed-in user and sends from the app's own address; limit the recipients to the ones the app allows as well.
 
 ```csharp
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
+using Regira.Office.Mail.Abstractions;   // IMailService
+using Regira.Office.Mail.Exceptions;     // MailException
+using Regira.Office.Mail.Models;         // MailAddress
 using Regira.Office.Mail.Web;
 
 [ApiController]
+[Authorize]
 [Route("mail")]
-public class MailController(IMailService mailer) : ControllerBase
+public class MailController(IMailService mailer, ILogger<MailController> logger) : ControllerBase
 {
     [HttpPost("send")]
     public async Task<IActionResult> Send([FromBody] MailInput input)
     {
         var message = input.ToMessageObject();
-        var result  = await mailer.Send(message);
-
-        return result.Success
-            ? Ok(new { result.Status })
-            : StatusCode(502, new { result.Status, result.Content });
+        message.From = new MailAddress { Email = "no-reply@example.com" };   // the app's sender, not the caller's
+        try
+        {
+            var result = await mailer.Send(message);
+            return Ok(new { result.Status });
+        }
+        catch (MailException ex)   // the provider refused the message: log its reply, don't return it
+        {
+            logger.LogWarning(ex, "Mail refused: {Response}", ex.ResponseContent);
+            return StatusCode(502);
+        }
     }
 }
 ```
@@ -124,7 +157,6 @@ A JSON body accepted by this endpoint:
 
 ```json
 {
-  "from":    { "email": "sender@example.com", "displayName": "Sender" },
   "to":      [{ "email": "alice@example.com" }],
   "subject": "Hello",
   "body":    "<p>Hi Alice!</p>",
@@ -139,6 +171,12 @@ A JSON body accepted by this endpoint:
 Plug `IMailService` into the Identity email confirmation flow using `IdentityMailer`.
 
 ```csharp
+using Microsoft.AspNetCore.Identity.UI.Services;        // IEmailSender
+using Regira.Office.Mail.SendGrid.DependencyInjection;  // AddSendGrid
+using Regira.Office.Mail.Abstractions;                  // IMailService
+using Regira.Office.Mail.Models;                        // MailAddress
+using Regira.Security.Authentication.Web.Mail;          // IdentityMailer, IdentityMailerOptions
+
 services.AddSendGrid(cfg => cfg.Key = configuration["Mail:SendGrid:Key"]!);
 
 services.AddSingleton<IEmailSender>(provider =>

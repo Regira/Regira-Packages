@@ -16,6 +16,9 @@ public interface ICacheProvider : IEnumerable
     object? this[string key] { get; set; }
 
     T? Get<T>(string key);
+    /// <param name="key">The entry's key</param>
+    /// <param name="value">The value to cache</param>
+    /// <param name="duration">How long the entry lives, in seconds; <c>null</c> takes the provider's default. A provider without expiry ignores it</param>
     void Set<T>(string key, T? value, int? duration = null);
     void Remove(string key);
     void RemoveAll();

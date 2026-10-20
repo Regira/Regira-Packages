@@ -10,6 +10,7 @@
 /// <typeparam name="TService">
 /// The type of the service that this provider supplies.
 /// </typeparam>
+[Obsolete("Nothing in the Regira packages uses the typed service providers; register keyed services instead (AddKeyedSingleton, AddKeyedScoped, AddKeyedTransient). Will be removed in v7.")]
 public interface ITypedServiceProvider<T, out TService>
 {
     TService Provide();

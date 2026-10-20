@@ -31,6 +31,7 @@ public static class TypeUtility
     /// <typeparam name="TBaseType"></typeparam>
     /// <param name="type"></param>
     /// <returns></returns>
+    [Obsolete("Use ImplementsType<T>. Will be removed in v7.")]
     public static bool ImplementsBaseType<TBaseType>(Type type)
         => GetBaseTypes(type).Any(baseType => baseType == typeof(TBaseType));
     public static bool ImplementsType<TType>(Type type)

@@ -18,7 +18,7 @@ public class PrintService : IPrintService
     {
         // Load image
         using var imgStream = input.Image.GetStream()!;
-        var image = Image.FromStream(imgStream);
+        using var image = Image.FromStream(imgStream);
 
         // Configure printer settings
         var printerSettings = new PrinterSettings
@@ -46,10 +46,7 @@ public class PrintService : IPrintService
             .FirstOrDefault(ps => string.Equals(ps.PaperName, input.PaperSizeName ?? "A4", StringComparison.OrdinalIgnoreCase))
                         ?? printerSettings.DefaultPageSettings.PaperSize;
 
-        // Match paper source
-        var paperSource = printerSettings.PaperSources.Cast<PaperSource>()
-            .FirstOrDefault(ps => ps.Kind == input.PaperSourceKind.Convert())
-                          ?? printerSettings.DefaultPageSettings.PaperSource;
+        var paperSource = SelectPaperSource(printerSettings.PaperSources.Cast<PaperSource>(), input.PaperSourceKind, printerSettings.DefaultPageSettings.PaperSource);
 
         // Configure page settings
         var pageSettings = new PageSettings(printerSettings)
@@ -86,5 +83,13 @@ public class PrintService : IPrintService
         // Fire off the print job
         printDoc.Print();
     }
+
+    /// <summary>
+    /// The printer's tray of the requested kind; without one, or when the printer lacks it, <paramref name="defaultSource"/>.
+    /// </summary>
+    internal static PaperSource SelectPaperSource(IEnumerable<PaperSource> sources, Office.Printing.Models.PaperSourceKind? kind, PaperSource defaultSource)
+        => kind == null
+            ? defaultSource
+            : sources.FirstOrDefault(ps => ps.Kind == kind.Convert()) ?? defaultSource;
 
 }

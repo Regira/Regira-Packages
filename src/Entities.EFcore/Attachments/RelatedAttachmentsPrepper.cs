@@ -1,4 +1,5 @@
 ﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Query;
 using Regira.Entities.Attachments.Abstractions;
 using Regira.Entities.Attachments.Extensions;
 using Regira.Entities.EFcore.Extensions;
@@ -38,32 +39,34 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
         // A new link may point only at an attachment the owner already links. On an insert of the owner every link is
         // new, whatever id it carries; on an update, one without an id or one the stored links do not hold — and
         // without the stored links, only one without an id is known to be new.
-        var storedItems = original != null ? selectorFunc(original) : null;
-        var ownedAttachmentIds = storedItems?.Select(x => x.AttachmentId).ToArray() ?? [];
-        foreach (var link in modifiedItems.Where(m => original == null || IsNew(m) || (storedItems != null && storedItems.All(o => m.Id!.Equals(o.Id) != true))))
+        if (original == null)
         {
-            EntityAttachmentContent.KeepToOwner(link, ownedAttachmentIds);
+            // an owner inserted with its links: they are tracked with it, and new bytes need an attachment to hold them
+            foreach (var link in modifiedItems)
+            {
+                EntityAttachmentContent.PrepareLink(link, null, ownedAttachmentIds: []);
+            }
         }
-
-        if (original != null)
+        else
         {
-            var originalItems = storedItems;
+            // the owner's read did not load its links: diff against the stored ones all the same
+            var originalItems = selectorFunc(original) ?? await LoadStoredLinks(original.Id, selectorFunc, token);
 
             if (originalItems == null)
             {
+                foreach (var link in modifiedItems.Where(IsNew))
+                {
+                    EntityAttachmentContent.KeepToOwner(link, []);
+                }
                 return;
             }
 
+            var ownedAttachmentIds = originalItems.Select(x => x.AttachmentId).ToArray();
             var relatedItemsToAdd = modifiedItems.Where(m => IsNew(m) || originalItems.All(o => m.Id!.Equals(o.Id) != true)).ToArray();
             var relatedItemsToDelete = originalItems.Where(o => modifiedItems.All(m => m.Id != null && m.Id.Equals(o.Id) != true)).ToArray();
             foreach (var entity in relatedItemsToAdd)
             {
-                if (entity.Attachment == null && entity.NewBytes?.Any() == true)
-                {
-                    entity.Attachment = new TAttachment();
-                    entity.Attachment.Bytes = entity.NewBytes;
-                    entity.Attachment.FileName = entity.NewFileName.ToVirtualPath();
-                }
+                EntityAttachmentContent.PrepareLink(entity, null, ownedAttachmentIds);
                 // Only add when attachment has content
                 if (entity.Attachment?.HasContent() == true)
                 {
@@ -75,19 +78,11 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
             }
             // Materialized before the loop: tracking a link runs EF's fixup, which may change the collection it came from
             var relatedItemsToModify = modifiedItems.Except(relatedItemsToAdd).Where(m => m.Id != null && !m.Id.Equals(default(TEntityAttachmentKey))).ToArray();
+            var replacedLinks = new List<(TEntityAttachment Link, TAttachment Attachment)>();
             foreach (var entity in relatedItemsToModify)
             {
                 var originalEntity = originalItems.Single(p => p.Id!.Equals(entity.Id));
-
-                if (entity.Attachment?.IsNew() != true)
-                {
-                    // a kept link keeps its attachment, as on the link's own route
-                    EntityAttachmentContent.KeepAttachment(entity, originalEntity);
-                }
-                if (!string.IsNullOrWhiteSpace(entity.NewFileName) || entity.NewBytes?.Any() == true)
-                {
-                    entity.Attachment ??= originalEntity.Attachment;
-                }
+                var replaced = EntityAttachmentContent.PrepareLink(entity, originalEntity);
 
                 if (entity.Attachment != null)
                 {
@@ -95,14 +90,9 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
                     {
                         EntityAttachmentContent.TypeByName(entity.Attachment);
                         dbContext.Entry(entity.Attachment).State = EntityState.Added;
-                        if (_options.IsStrictRelation && entity.AttachmentId?.Equals(originalEntity.AttachmentId) != true)
+                        if (replaced != null)
                         {
-                            var originalAttachment = originalEntity.Attachment;
-                            if (originalAttachment != null)
-                            {
-                                // mark original Attachment entity as deleted
-                                dbContext.Entry(originalAttachment).State = EntityState.Deleted;
-                            }
+                            replacedLinks.Add((entity, replaced));
                         }
                     }
                     else
@@ -118,49 +108,65 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
             foreach (var entity in relatedItemsToDelete)
             {
                 dbContext.Entry(entity).State = EntityState.Deleted;
-                // also delete Attachment entity in DB
-                if (_options.IsStrictRelation)
-                {
-                    var attachment = entity.Attachment ?? await ResolveAttachment(entity.AttachmentId, token);
-                    if (attachment != null)
-                    {
-                        dbContext.Entry(attachment).State = EntityState.Deleted;
-                    }
-                }
+            }
+            if (_options.IsStrictRelation)
+            {
+                await DeleteLeftAttachments(modifiedItems, relatedItemsToDelete, replacedLinks, token);
             }
         }
     }
 
-    private static bool IsNew(TEntityAttachment link) => link.Id == null || link.Id.Equals(default(TEntityAttachmentKey));
+    /// <summary>
+    /// Deletes the attachments the removed and the replaced links leave, once every link is prepared — unless another
+    /// link still names one: one of the owner's links (a new link may name an attachment its owner links already), or
+    /// a stored link of another owner. Deleting it would take those links with it.
+    /// </summary>
+    private async Task DeleteLeftAttachments(ICollection<TEntityAttachment> links, TEntityAttachment[] removedLinks,
+        List<(TEntityAttachment Link, TAttachment Attachment)> replacedLinks, CancellationToken token)
+    {
+        var comparer = EqualityComparer<TAttachmentKey>.Default;
+        var leavingLinkIds = removedLinks.Concat(replacedLinks.Select(x => x.Link)).Select(x => x.Id).ToArray();
+        var left = replacedLinks.Select(x => (Id: x.Attachment.Id, Attachment: (TAttachment?)x.Attachment))
+            .Concat(removedLinks.Select(x => (Id: x.AttachmentId, x.Attachment)))
+            .Where(x => x.Id != null && !comparer.Equals(x.Id, default!))
+            .GroupBy(x => x.Id, comparer)
+            .Where(group => !links.Any(link => link.Attachment?.IsNew() != true && comparer.Equals(link.AttachmentId, group.Key)))
+            .ToList();
+        if (left.Count == 0)
+        {
+            return;
+        }
+        // one query for every attachment left, rather than one each
+        var linkedElsewhere = await EntityAttachmentContent.LinkedElsewhere<TEntityAttachment, TEntityAttachmentKey, TEntityKey, TAttachmentKey, TAttachment>(
+            dbContext, left.Select(group => group.Key).ToArray(), leavingLinkIds, token);
+        foreach (var group in left.Where(group => !linkedElsewhere.Contains(group.Key)))
+        {
+            // a stub when the owner's read did not load it: a key is enough to delete a row, and the token primer points
+            // the stub of an IHasConcurrencyToken attachment at the stored token
+            var attachment = group.Select(x => x.Attachment).FirstOrDefault(x => x != null) ?? new TAttachment { Id = group.Key };
+            dbContext.Entry(attachment).State = EntityState.Deleted;
+        }
+    }
 
     /// <summary>
-    /// The attachment to mark deleted when the entity being removed never loaded it.
+    /// The owner's stored links with their attachments, through the owner's navigation as the include loads them, and
+    /// for an archived owner too, as the write service reads it. A default id has none, and <c>FilterId</c> would not
+    /// filter on it.
     /// </summary>
-    /// <remarks>
-    /// A stub (<c>new TAttachment { Id = ... }</c>) is enough to delete a row by key, but it carries no concurrency
-    /// token: once the attachment type implements <see cref="IHasConcurrencyToken"/>, EF compares the stored row
-    /// against <see cref="Guid.Empty"/>, matches nothing, and every such delete fails as a conflict, for good.
-    /// <c>HasConcurrencyTokenDbPrimer</c> is the general answer — it points any stub delete at the stored token during
-    /// the save — and this prepper keeps a read of its own for two reasons that primer cannot give: it holds without
-    /// the primer registered, and an attachment row that is already gone is skipped rather than reported as a
-    /// conflict, since the join row being removed is the point and the file it pointed at is simply no longer there.
-    /// Same cost either way — one query, or none when the attachment is already tracked. Types without the marker
-    /// keep the stub and its saved round trip.
-    /// </remarks>
-    private async Task<TAttachment?> ResolveAttachment(TAttachmentKey? attachmentId, CancellationToken token)
+    private async Task<ICollection<TEntityAttachment>?> LoadStoredLinks(TEntityKey id, Func<TEntity, ICollection<TEntityAttachment>?> selectorFunc,
+        CancellationToken token)
     {
-        if (attachmentId == null)
+        if (id is null || id.Equals(default(TEntityKey)))
         {
             return null;
         }
 
-        if (!typeof(IHasConcurrencyToken).IsAssignableFrom(typeof(TAttachment)))
-        {
-            return new TAttachment { Id = attachmentId };
-        }
-
-        // Find returns the tracked instance when there is one, so this costs a query only for an attachment
-        // nothing has loaded yet
-        return await dbContext.Set<TAttachment>().FindAsync([attachmentId], token);
+        IIncludableQueryable<TEntity, IEnumerable<TEntityAttachment>> links = dbContext.Set<TEntity>().AsNoTracking().IncludingArchived().Include(navigationExpression)!;
+        var stored = await links.ThenInclude(x => x.Attachment)
+            .FilterId<TEntity, TEntityKey>(id)
+            .FirstOrDefaultAsync(token);
+        return stored != null ? selectorFunc(stored) : null;
     }
+
+    private static bool IsNew(TEntityAttachment link) => link.Id == null || link.Id.Equals(default(TEntityAttachmentKey));
 }

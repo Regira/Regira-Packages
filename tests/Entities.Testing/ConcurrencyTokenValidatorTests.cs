@@ -7,6 +7,7 @@ using Regira.Entities.Attributes;
 using Regira.Entities.DependencyInjection.Extensions;
 using Regira.Entities.DependencyInjection.Mapping;
 using Regira.Entities.DependencyInjection.Primers;
+using Regira.Entities.DependencyInjection.ServiceBuilders;
 using Regira.Entities.DependencyInjection.ServiceCollections.Models;
 using Regira.Entities.DependencyInjection.Validation;
 using Regira.Entities.EFcore.Primers;
@@ -19,9 +20,8 @@ namespace Entities.Testing;
 
 /// <summary>
 /// The startup check for a concurrency token that is never checked, never moves, or cannot make the round trip to
-/// the client. The write path compares a token with the value the client sent, so a DTO without the property
-/// silently turns every write into last-write-wins — and an initializer the mapper leaves in place turns every write
-/// into a 409.
+/// the client. The write path compares a version stamp with the value the client sent, so a DTO without the property
+/// silently turns every write into last-write-wins.
 /// </summary>
 [TestFixture]
 public class ConcurrencyTokenValidatorTests
@@ -43,24 +43,38 @@ public class ConcurrencyTokenValidatorTests
         [ConcurrencyCheck, VersionStamp(Required = true)] public Guid Version { get; set; }
     }
 
-    /// The trap: a token initializer, which a fresh mapped entity keeps when no DTO property overwrites it.
-    public class Invoice : IEntity<int>
-    {
-        public int Id { get; set; }
-        [ConcurrencyCheck, VersionStamp] public Guid Version { get; set; } = Guid.NewGuid();
-    }
-
-    /// A token on a data column: initialized, and edited by clients — never a stamp.
+    /// A token on a data column, edited by clients — never a stamp.
     public class Shipment : IEntity<int>
     {
         public int Id { get; set; }
         [ConcurrencyCheck] public string Status { get; set; } = "New";
     }
 
-    /// A token nobody declared a stamp: judged as one only if a primer moves it, which startup cannot see.
+    /// A token shaped like a stamp that nobody declared one: compared as a data column.
     public class Voucher : IEntity<int>
     {
         public int Id { get; set; }
+        [ConcurrencyCheck] public Guid Version { get; set; }
+    }
+
+    /// A timestamp token the LastModified primer moves, undeclared.
+    public class Ledger : IEntity<int>, IHasLastModified
+    {
+        public int Id { get; set; }
+        [ConcurrencyCheck] public DateTime? LastModified { get; set; }
+    }
+
+    /// An owner whose Related() children carry an undeclared token of their own.
+    public class Tour : IEntity<int>
+    {
+        public int Id { get; set; }
+        public ICollection<Stop>? Stops { get; set; }
+    }
+
+    public class Stop : IEntity<int>
+    {
+        public int Id { get; set; }
+        public int TourId { get; set; }
         [ConcurrencyCheck] public Guid Version { get; set; }
     }
 
@@ -118,12 +132,6 @@ public class ConcurrencyTokenValidatorTests
         public int Id { get; set; }
     }
 
-    public record InitializingInputDto
-    {
-        public int Id { get; set; }
-        public Guid Version { get; set; } = Guid.NewGuid();
-    }
-
     /// A consumer's own variant of the built-in primer — it mints, so it must count.
     public class RotatingTokenPrimer : HasConcurrencyTokenDbPrimer;
 
@@ -131,30 +139,15 @@ public class ConcurrencyTokenValidatorTests
     {
         public DbSet<Order> Orders => Set<Order>();
         public DbSet<Booking> Bookings => Set<Booking>();
-        public DbSet<Invoice> Invoices => Set<Invoice>();
         public DbSet<Basket> Baskets => Set<Basket>();
         public DbSet<Note> Notes => Set<Note>();
         public DbSet<Ticket> Tickets => Set<Ticket>();
         public DbSet<Shipment> Shipments => Set<Shipment>();
         public DbSet<Voucher> Vouchers => Set<Voucher>();
         public DbSet<Parcel> Parcels => Set<Parcel>();
-    }
-
-    private sealed class CaptureLoggerProvider : ILoggerProvider
-    {
-        public List<(LogLevel Level, string Message)> Entries { get; } = [];
-        public ILogger CreateLogger(string categoryName) => new CaptureLogger(this);
-        public void Dispose() { }
-
-        private sealed class CaptureLogger(CaptureLoggerProvider provider) : ILogger
-        {
-            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-            public bool IsEnabled(LogLevel logLevel) => true;
-            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
-            {
-                if (logLevel >= LogLevel.Information) provider.Entries.Add((logLevel, formatter(state, exception)));
-            }
-        }
+        public DbSet<Ledger> Ledgers => Set<Ledger>();
+        public DbSet<Tour> Tours => Set<Tour>();
+        public DbSet<Stop> Stops => Set<Stop>();
     }
 
     private SqliteConnection _connection = null!;
@@ -171,15 +164,16 @@ public class ConcurrencyTokenValidatorTests
 
     /// <summary>
     /// The startup issues about concurrency tokens, for one entity registered with the given mapping — warnings and
-    /// errors, or from <paramref name="minimum"/> up. The defaults are <c>UseDefaults()</c>; <paramref name="configure"/>
-    /// replaces them, and <paramref name="register"/> adds services of its own.
+    /// errors, or from <paramref name="minimum"/> up, whose message contains <paramref name="about"/>. The defaults are
+    /// <c>UseDefaults()</c>; <paramref name="configure"/> replaces them, and <paramref name="register"/> adds services
+    /// of its own.
     /// </summary>
     private async Task<List<(LogLevel Level, string Message)>> Issues<TEntity>(EntityMappingRegistration? mapping,
         Action<EntityServiceCollectionOptions>? configure = null, Action<IServiceCollection>? register = null,
-        LogLevel minimum = LogLevel.Warning)
+        LogLevel minimum = LogLevel.Warning, string about = Hazard, Action<EntityIntServiceBuilder<ShopContext, TEntity>>? entity = null)
         where TEntity : class, IEntity<int>
     {
-        var capture = new CaptureLoggerProvider();
+        var capture = new StartupValidationHarness();
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddProvider(capture));
         services.AddDbContext<ShopContext>(db => db.UseSqlite(_connection));
@@ -192,7 +186,7 @@ public class ConcurrencyTokenValidatorTests
                     v.ThrowOnError = false;
                 });
             })
-            .For<TEntity>();
+            .For<TEntity>(e => entity?.Invoke(e));
         if (mapping != null)
         {
             // what UseMapping<TDto, TInputDto>() records — registered directly to keep the fixture mapper-agnostic;
@@ -206,7 +200,7 @@ public class ConcurrencyTokenValidatorTests
         {
             await hostedService.StartAsync(CancellationToken.None);
         }
-        return capture.Entries.Where(e => e.Level >= minimum && e.Message.Contains(Hazard)).ToList();
+        return capture.Entries.Where(e => e.Level >= minimum && e.Message.Contains(about)).ToList();
     }
 
     // ── the hazards ────────────────────────────────────────────────────────────
@@ -240,11 +234,12 @@ public class ConcurrencyTokenValidatorTests
     [Test]
     public async Task A_Shape_Source_That_Throws_Is_Reported_Not_Swallowed()
     {
-        // the DTO checks then judge UseMapping registrations only — that has to be said, not left for a silent pass
-        var issues = await Issues<Order>(null, register: s => s.AddSingleton<IEntityDtoShapeSource>(new ThrowingShapes()), minimum: LogLevel.Information);
+        // the check cannot judge the DTOs, and the validation run says so rather than passing silently
+        var issues = await Issues<Order>(null, register: s => s.AddSingleton<IEntityDtoShapeSource>(new ThrowingShapes()),
+            about: "ConcurrencyTokenValidator");
 
         Assert.That(issues, Has.Some.Matches<(LogLevel Level, string Message)>(i =>
-            i.Level == LogLevel.Information && i.Message.Contains("broken application part") && i.Message.Contains(nameof(ThrowingShapes))));
+            i.Level == LogLevel.Warning && i.Message.Contains("could not complete and was skipped") && i.Message.Contains("broken application part")));
     }
 
     [Test]
@@ -291,51 +286,6 @@ public class ConcurrencyTokenValidatorTests
 
         Assert.That(issues, Has.Exactly(1).Matches<(LogLevel Level, string Message)>(i =>
             i.Level == LogLevel.Warning && i.Message.Contains(nameof(BareDto))));
-    }
-
-    [Test]
-    public async Task An_Initialized_Token_The_Input_Dto_Cannot_Overwrite_Is_An_Error()
-    {
-        var issues = await Issues<Invoice>(new EntityMappingRegistration(typeof(Invoice), typeof(BareDto), typeof(BareDto)));
-
-        Assert.That(issues, Has.Count.EqualTo(1));
-        Assert.Multiple(() =>
-        {
-            Assert.That(issues[0].Level, Is.EqualTo(LogLevel.Error));
-            Assert.That(issues[0].Message, Does.Contain("Invoice.Version").And.Contain("answers 409"));
-        });
-    }
-
-    [Test]
-    public async Task An_Input_Dto_That_Initializes_The_Token_Is_Reported()
-    {
-        var issues = await Issues<Order>(new EntityMappingRegistration(typeof(Order), typeof(OrderDto), typeof(InitializingInputDto)));
-
-        Assert.That(issues, Has.Exactly(1).Matches<(LogLevel Level, string Message)>(i =>
-            i.Level == LogLevel.Warning && i.Message.Contains($"{nameof(InitializingInputDto)}.Version has an initializer")));
-    }
-
-    [Test]
-    public async Task An_Unmapped_Entity_That_Initializes_Its_Token_Is_Reported()
-    {
-        // entity-as-DTO: the token travels with the entity, but a request that omits it carries the initializer's value
-        var issues = await Issues<Invoice>(null);
-
-        Assert.That(issues, Has.Count.EqualTo(1));
-        Assert.Multiple(() =>
-        {
-            Assert.That(issues[0].Level, Is.EqualTo(LogLevel.Warning));
-            Assert.That(issues[0].Message, Does.Contain("Invoice.Version").And.Contain("is its own input DTO"));
-        });
-    }
-
-    [Test]
-    public async Task An_Entity_Mapped_Onto_Itself_Is_Judged_Like_An_Unmapped_One()
-    {
-        var issues = await Issues<Invoice>(new EntityMappingRegistration(typeof(Invoice), typeof(Invoice), typeof(Invoice)));
-
-        Assert.That(issues, Has.Exactly(1).Matches<(LogLevel Level, string Message)>(i =>
-            i.Level == LogLevel.Warning && i.Message.Contains("is its own input DTO")));
     }
 
     [Test]
@@ -388,9 +338,9 @@ public class ConcurrencyTokenValidatorTests
     // ── a token that is not declared a stamp ───────────────────────────────────
 
     [Test]
-    public async Task An_Initialized_Data_Column_The_Input_Dto_Lacks_Does_Not_Stop_The_App()
+    public async Task A_Data_Column_The_Dtos_Lack_Is_Not_Reported()
     {
-        // the runtime never compares a data column with the client's value, so it cannot answer 409 for it
+        // the runtime never compares a data column with the client's value, so the DTOs need not carry it
         var mapped = await Issues<Shipment>(new EntityMappingRegistration(typeof(Shipment), typeof(IdOnlyDto), typeof(IdOnlyDto)));
         var selfBound = await Issues<Shipment>(null);
 
@@ -402,17 +352,36 @@ public class ConcurrencyTokenValidatorTests
     }
 
     [Test]
-    public async Task An_Undeclared_Token_Gets_Its_Findings_As_Info()
+    public async Task An_Undeclared_Token_Shaped_Like_A_Stamp_Is_Reported()
     {
-        // a primer may still make it a stamp, which only the application knows
+        // compared as a data column, so a stale client is not refused; the DTOs need not carry it
         var issues = await Issues<Voucher>(new EntityMappingRegistration(typeof(Voucher), typeof(IdOnlyDto), typeof(IdOnlyDto)), minimum: LogLevel.Information);
 
         Assert.That(issues, Has.Count.EqualTo(1));
         Assert.Multiple(() =>
         {
-            Assert.That(issues[0].Level, Is.EqualTo(LogLevel.Information));
+            Assert.That(issues[0].Level, Is.EqualTo(LogLevel.Warning));
             Assert.That(issues[0].Message, Does.Contain("Voucher.Version").And.Contain("[VersionStamp]").And.Contain("data column"));
         });
+    }
+
+    [Test]
+    public async Task An_Undeclared_Timestamp_Token_Is_Reported()
+    {
+        var issues = await Issues<Ledger>(null);
+
+        Assert.That(issues, Has.Exactly(1).Matches<(LogLevel Level, string Message)>(i =>
+            i.Level == LogLevel.Warning && i.Message.Contains("Ledger.LastModified") && i.Message.Contains("[VersionStamp]")));
+    }
+
+    [Test]
+    public async Task An_Undeclared_Token_Of_A_Related_Child_Is_Reported()
+    {
+        // the child is written through its parent's sync, which compares the same way
+        var issues = await Issues<Tour>(null, entity: e => e.Related(x => x.Stops));
+
+        Assert.That(issues, Has.Exactly(1).Matches<(LogLevel Level, string Message)>(i =>
+            i.Level == LogLevel.Warning && i.Message.Contains("Stop.Version") && i.Message.Contains("[VersionStamp]")));
     }
 
     // ── false-positive guards ──────────────────────────────────────────────────
@@ -421,15 +390,6 @@ public class ConcurrencyTokenValidatorTests
     public async Task A_Token_Both_Dtos_Carry_Is_Not_Reported()
     {
         var issues = await Issues<Order>(new EntityMappingRegistration(typeof(Order), typeof(OrderDto), typeof(OrderInputDto)));
-
-        Assert.That(issues, Is.Empty);
-    }
-
-    [Test]
-    public async Task An_Initialized_Token_The_Input_Dto_Overwrites_Is_Not_An_Error()
-    {
-        // the DTO's own value replaces the initializer on every request, so the initializer never reaches the row
-        var issues = await Issues<Invoice>(new EntityMappingRegistration(typeof(Invoice), typeof(OrderDto), typeof(OrderInputDto)));
 
         Assert.That(issues, Is.Empty);
     }
@@ -465,7 +425,7 @@ public class ConcurrencyTokenValidatorTests
     }
 
     [Test]
-    public async Task An_Unmapped_Entity_Without_An_Initializer_Is_Not_Reported()
+    public async Task An_Unmapped_Entity_Is_Not_Reported()
     {
         var issues = await Issues<Order>(null);
 

@@ -11,7 +11,7 @@ Hosting extensions for [Regira System](https://regira.github.io/Regira-Packages/
 ## Documentation
 
 - [Hosting](https://regira.github.io/Regira-Packages/src/Common.System/docs/hosting.html) — the `WebHostOptions` settings, background task queues and the Windows Service installer
-- [Background export queue](https://regira.github.io/Regira-Packages/src/Common.Web/docs/examples.html#example-5-background-export-queue) — enqueuing a typed task from a controller and polling its status
+- [Background export queue](https://regira.github.io/Regira-Packages/src/Common.Web/docs/examples.html#example-4-background-export-queue) — enqueuing a typed task from a controller and polling its status
 
 ## License
 

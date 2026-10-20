@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Regira.Security.Authentication.Core.Models;
+using Regira.Security.Authentication.Core.Services;
 using Regira.Security.Authentication.Jwt.Models;
 using Regira.Security.Authentication.Jwt.Services;
 using Regira.Security.Authentication.OpenIdConnect.Models;
@@ -32,9 +33,10 @@ public static class EntraIdSignInExtensions
 
     internal static void ToOidcOptions(EntraIdSignInOptions entra, OidcAuthOptions options)
     {
-        Require(entra.TenantId, nameof(entra.TenantId));
-        Require(entra.ClientId, nameof(entra.ClientId));
-        Require(entra.ClientSecret, nameof(entra.ClientSecret));
+        const string source = "the app registration";
+        RequiredOptions.Require(entra.TenantId, $"{nameof(EntraIdSignInOptions)}.{nameof(entra.TenantId)}", source);
+        RequiredOptions.Require(entra.ClientId, $"{nameof(EntraIdSignInOptions)}.{nameof(entra.ClientId)}", source);
+        RequiredOptions.Require(entra.ClientSecret, $"{nameof(EntraIdSignInOptions)}.{nameof(entra.ClientSecret)}", source);
 
         options.Authority = entra.Authority;
         options.ClientId = entra.ClientId;
@@ -55,31 +57,13 @@ public static class EntraIdSignInExtensions
 
         entra.Configure?.Invoke(options);
 
-        if (!entra.IsSingleTenant)
+        // the same hole as on the API side: accepting the discovery document's templated issuer would let any
+        // directory sign in
+        var configured = options.Configure;
+        options.Configure = oidc =>
         {
-            // The same hole as on the API side: a wildcard tenant has no fixed issuer, and accepting the discovery
-            // document's templated placeholder would let any directory sign in.
-            //
-            // Chained *after* whatever the consumer's delegate left behind, and deliberately so: a security control
-            // that customization can overwrite is a security control that will eventually be overwritten, and the
-            // resulting hole is silent — every token it then accepts is genuinely valid, just from a tenant nobody
-            // agreed to trust.
-            var configured = options.Configure;
-            options.Configure = oidc =>
-            {
-                configured?.Invoke(oidc);
-                oidc.TokenValidationParameters.ValidateIssuer = true;
-                oidc.TokenValidationParameters.IssuerValidator =
-                    EntraIssuerValidation.ForMultiTenant(entra.Instance, entra.TenantId);
-            };
-        }
-    }
-
-    private static void Require(string value, string name)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            throw new InvalidOperationException($"{nameof(EntraIdSignInOptions)}.{name} is required — it comes from the app registration.");
-        }
+            configured?.Invoke(oidc);
+            entra.ValidateWildcardIssuer(oidc.TokenValidationParameters);
+        };
     }
 }

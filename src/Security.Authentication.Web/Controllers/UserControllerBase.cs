@@ -14,36 +14,48 @@ namespace Regira.Security.Authentication.Web.Controllers;
 public abstract class UserControllerBase<TUser>(UserManager<TUser> userManager) : ControllerBase
   where TUser : IdentityUser<string>, new()
 {
+    /// <summary>
+    /// Creates the user, and with <see cref="UserInput.ConfirmEmailUrl"/> mails it a confirmation link: that page with
+    /// its query string set to <c>?token=…</c>. A name that is taken, like any refusal of Identity's, answers <c>400</c> with
+    /// Identity's error code (<c>DuplicateUserName</c>) as the key, and the existing user is left alone.
+    /// <para>
+    /// The page must be on one of <see cref="AccountEmailOptions.AllowedOrigins"/>, or the answer is <c>400</c> and
+    /// nothing is created or sent. Throws <see cref="InvalidOperationException"/> when a page is given and no origin is
+    /// configured.
+    /// </para>
+    /// </summary>
     [HttpPost]
     public virtual async Task<IActionResult> Create(UserInput model, [FromServices] IEmailSender mailer)
     {
-        var user = await userManager.FindByNameAsync(model.Username);
-        if (user == null)
+        Uri? confirmPage = null;
+        if (!string.IsNullOrWhiteSpace(model.ConfirmEmailUrl))
         {
-            user = new TUser { UserName = model.Username, Email = model.Username };
-            var response = await userManager.CreateAsync(user, model.Password);
-            if (!response.Succeeded)
+            confirmPage = HttpContext.GetAccountEmailOptions().FindAllowedPage(model.ConfirmEmailUrl);
+            if (confirmPage == null)
             {
-                // error
-                ModelState.AddIdentityErrors(response.Errors);
+                ModelState.AddModelError(nameof(model.ConfirmEmailUrl), AccountLinks.NotAllowed);
                 return BadRequest(ModelState);
             }
-            if (!string.IsNullOrWhiteSpace(model.ConfirmEmailUrl))
-            {
-                var confirmToken = await userManager.GenerateEmailConfirmationTokenAsync(user);
-                var token = System.Text.Json.JsonSerializer.Serialize(new UserTokenModel { Token = confirmToken, Username = user.UserName! }).Base64Encode();
-                var confirmationLink = new UriBuilder(model.ConfirmEmailUrl)
-                {
-                    Query = $"?token={token}"
-                };
-                var body = $@"Welcome {model.Username},
+        }
+
+        var user = new TUser { UserName = model.Username, Email = model.Username };
+        var response = await userManager.CreateAsync(user, model.Password);
+        if (!response.Succeeded)
+        {
+            ModelState.AddIdentityErrors(response.Errors);
+            return BadRequest(ModelState);
+        }
+        if (confirmPage != null)
+        {
+            var confirmToken = await userManager.GenerateEmailConfirmationTokenAsync(user);
+            var token = System.Text.Json.JsonSerializer.Serialize(new UserTokenModel { Token = confirmToken, Username = user.UserName! }).Base64Encode();
+            var body = $@"Welcome {model.Username},
 Please follow link below to confirm email
-{confirmationLink}
+{confirmPage.WithToken(token)}
 
 Token: {token}
 ";
-                await mailer.SendEmailAsync(user.Email, "Welcome", body);
-            }
+            await mailer.SendEmailAsync(user.Email, "Welcome", body);
         }
 
         return Ok();
@@ -63,7 +75,8 @@ Token: {token}
             // malformed token (invalid Base64 or unparseable payload)
             tokenModel = null;
         }
-        if (tokenModel == null)
+        // a payload without a user name or a token is malformed too
+        if (tokenModel?.Username == null || tokenModel.Token == null)
         {
             return BadRequest();
         }

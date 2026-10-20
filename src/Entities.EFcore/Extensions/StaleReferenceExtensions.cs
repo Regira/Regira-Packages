@@ -83,21 +83,21 @@ internal static class StaleReferenceExtensions
         {
             var key = navigation.TargetEntityType.FindPrimaryKey();
             if (key == null
-                || ReadClrValue(navigation, incoming) is not IEnumerable<object> incomingItems
-                || ReadClrValue(navigation, stored) is not IEnumerable<object> storedItems)
+                || EntityValues.Read(navigation, incoming) is not IEnumerable<object> incomingItems
+                || EntityValues.Read(navigation, stored) is not IEnumerable<object> storedItems)
             {
                 continue;
             }
             synced.Add((incoming, navigation));
 
-            var storedByKey = new Dictionary<object?[], object>(new KeyComparer(key.Properties));
+            var storedByKey = new Dictionary<object?[], object>(new EntityValues.KeyComparer(key.Properties));
             foreach (var storedItem in storedItems)
             {
-                storedByKey.TryAdd(KeyOf(key.Properties, storedItem), storedItem);
+                storedByKey.TryAdd(EntityValues.KeyOf(key.Properties, storedItem), storedItem);
             }
             foreach (var item in incomingItems.ToList())
             {
-                var itemKey = KeyOf(key.Properties, item);
+                var itemKey = EntityValues.KeyOf(key.Properties, item);
                 if (!IsAbsent(key.Properties, itemKey) && storedByKey.TryGetValue(itemKey, out var original))
                 {
                     Pair(dbContext, item, original, pairs, synced, visited);
@@ -129,23 +129,23 @@ internal static class StaleReferenceExtensions
                 continue;
             }
 
-            var storedKey = KeyOf(foreignKey.Properties, stored);
+            var storedKey = EntityValues.KeyOf(foreignKey.Properties, stored);
             if (IsAbsent(foreignKey.Properties, storedKey))
             {
                 continue; // the stored row had no principal to hold on to
             }
 
-            var incomingKey = KeyOf(foreignKey.Properties, incoming);
+            var incomingKey = EntityValues.KeyOf(foreignKey.Properties, incoming);
             // an absent key beside a navigation is a body that sent only the nested object: the navigation decides
             var keyAbsent = IsAbsent(foreignKey.Properties, incomingKey);
-            var principal = ReadClrValue(navigation, incoming);
+            var principal = EntityValues.Read(navigation, incoming);
 
             if (principal != null
                 && !keyAbsent
-                && !SameKey(foreignKey.Properties, incomingKey, storedKey)
-                && SameKey(foreignKey.PrincipalKey.Properties, KeyOf(foreignKey.PrincipalKey.Properties, principal), storedKey))
+                && !EntityValues.SameKey(foreignKey.Properties, incomingKey, storedKey)
+                && EntityValues.SameKey(foreignKey.PrincipalKey.Properties, EntityValues.KeyOf(foreignKey.PrincipalKey.Properties, principal), storedKey))
             {
-                WriteClrValue(navigation, incoming, null);
+                EntityValues.Write(navigation, incoming, null);
                 principal = null;
             }
 
@@ -154,15 +154,15 @@ internal static class StaleReferenceExtensions
                 continue;
             }
 
-            var current = principal != null ? KeyOf(foreignKey.PrincipalKey.Properties, principal) : keyAbsent ? null : incomingKey;
-            if (current != null && SameKey(foreignKey.PrincipalKey.Properties, current, storedKey))
+            var current = principal != null ? EntityValues.KeyOf(foreignKey.PrincipalKey.Properties, principal) : keyAbsent ? null : incomingKey;
+            if (current != null && EntityValues.SameKey(foreignKey.PrincipalKey.Properties, current, storedKey))
             {
                 continue; // still related to the stored principal
             }
 
             var oldPrincipals = graph.Where(e => foreignKey.PrincipalEntityType.ClrType.IsInstanceOfType(e)
                                                  && !ReferenceEquals(e, principal)
-                                                 && SameKey(foreignKey.PrincipalKey.Properties, KeyOf(foreignKey.PrincipalKey.Properties, e), storedKey));
+                                                 && EntityValues.SameKey(foreignKey.PrincipalKey.Properties, EntityValues.KeyOf(foreignKey.PrincipalKey.Properties, e), storedKey));
             foreach (var oldPrincipal in oldPrincipals.ToList())
             {
                 DetachFromInverse(navigation, oldPrincipal, incoming, synced);
@@ -186,15 +186,15 @@ internal static class StaleReferenceExtensions
 
         if (!inverse.IsCollection)
         {
-            if (ReferenceEquals(ReadClrValue(inverse, principal), dependent))
+            if (ReferenceEquals(EntityValues.Read(inverse, principal), dependent))
             {
-                WriteClrValue(inverse, principal, null);
+                EntityValues.Write(inverse, principal, null);
             }
             return;
         }
 
         if (!synced.Contains((principal, inverse))
-            && ReadClrValue(inverse, principal) is IEnumerable<object> items
+            && EntityValues.Read(inverse, principal) is IEnumerable<object> items
             && items.Any(i => ReferenceEquals(i, dependent)))
         {
             inverse.GetCollectionAccessor()?.Remove(principal, dependent);
@@ -219,7 +219,7 @@ internal static class StaleReferenceExtensions
             var navigations = entityType.GetNavigations().Cast<INavigationBase>().Concat(entityType.GetSkipNavigations());
             foreach (var navigation in navigations)
             {
-                var value = ReadClrValue(navigation, entity);
+                var value = EntityValues.Read(navigation, entity);
                 if (!navigation.IsCollection)
                 {
                     if (value != null) pending.Push(value);
@@ -233,49 +233,9 @@ internal static class StaleReferenceExtensions
         return seen.ToList();
     }
 
-    private static object?[] KeyOf(IReadOnlyList<IProperty> properties, object entity)
-        => properties.Select(p => ReadClrValue(p, entity)).ToArray();
-
-    private static bool SameKey(IReadOnlyList<IProperty> properties, object?[] left, object?[] right)
-        => properties.Select((p, i) => p.GetKeyValueComparer().Equals(left[i], right[i])).All(same => same);
-
     /// <summary>A key with any part <c>null</c> or at its property's sentinel identifies no row.</summary>
     private static bool IsAbsent(IReadOnlyList<IProperty> properties, object?[] values)
         => properties.Select((p, i) => values[i] == null || p.GetKeyValueComparer().Equals(values[i], p.Sentinel)).Any(absent => absent);
-
-    private static object? ReadClrValue(IPropertyBase property, object entity)
-        => property.PropertyInfo?.GetMethod != null
-            ? property.PropertyInfo.GetValue(entity)
-            : property.FieldInfo?.GetValue(entity);
-
-    private static void WriteClrValue(IPropertyBase property, object entity, object? value)
-    {
-        if (property.PropertyInfo?.SetMethod != null)
-        {
-            property.PropertyInfo.SetValue(entity, value);
-        }
-        else
-        {
-            property.FieldInfo?.SetValue(entity, value);
-        }
-    }
-
-    /// <summary>Key values compared the way EF compares them, so a dictionary finds a stored row in one lookup.</summary>
-    private sealed class KeyComparer(IReadOnlyList<IProperty> properties) : IEqualityComparer<object?[]>
-    {
-        public bool Equals(object?[]? x, object?[]? y)
-            => x != null && y != null && SameKey(properties, x, y);
-
-        public int GetHashCode(object?[] values)
-        {
-            var hash = new HashCode();
-            for (var i = 0; i < properties.Count; i++)
-            {
-                hash.Add(values[i] == null ? 0 : properties[i].GetKeyValueComparer().GetHashCode(values[i]!));
-            }
-            return hash.ToHashCode();
-        }
-    }
 
     /// <summary>An entity instance (by reference) with one of its navigations.</summary>
     private sealed class OwnerNavigationComparer : IEqualityComparer<(object Owner, INavigation Navigation)>

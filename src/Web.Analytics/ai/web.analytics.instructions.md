@@ -7,8 +7,8 @@
 
 ## Installation
 
-```xml
-<PackageReference Include="Regira.Web.Analytics" Version="6.*" />
+```bash
+dotnet add package Regira.Web.Analytics
 ```
 
 ## Registration
@@ -73,11 +73,12 @@ plus `IGeoPageView` on the entity; see its own guide. Never hand-write a geo enr
 store; 0 = keep) · `ApiKey` (empty = stats route not mapped; header `X-Analytics-Key`) · `IgnorePaths`
 ([]) · `QueueCapacity`/`BatchSize`/`FlushIntervalSeconds` (10000/200/5) ·
 `BotDetection:{MinUserAgentLength (12), RequireBrowserToken (true), DetectProbeRequests (true),
-IncludeDefaultMarkers (true), Markers, Exceptions, BrowserTokens, ProbePaths}`.
+IncludeDefaultMarkers (true), Markers, Exceptions, BrowserTokens, ProbePaths, DetectForgedReferrers (false),
+ReferrerMarkers}`.
 
 ## Bot detection
 
-`BotDetector` exposes two independent predicates and the middleware flags a visit when either says
+`BotDetector` exposes three independent predicates and the middleware flags a visit when any says
 yes; a custom filter or contributor can call them separately.
 
 `IsBot(userAgent)` — *does the agent claim to be a person?* User agent shorter than
@@ -96,7 +97,15 @@ page. This is the only signal that survives a scanner copying a real browser's u
 stay unambiguous on purpose — scanners also sweep `/admin` and `/login`, but those are somebody's real
 page, so flagging them is the host's call via `ProbePaths`.
 
-Every list merges on top of the defaults unless `IncludeDefaultMarkers` is false;
+`IsForgedReferrer(referrer)` — *could a browser have sent this referrer?* Opt-in: with
+`DetectForgedReferrers`, a Referer that is not an absolute URL, an http(s) URL with nothing after the host
+(`https://example.com` — browsers write at least `/`), or one with a `#fragment` (browsers strip it); other
+schemes (`android-app://…`) are not judged. Switch it on when the log shows crawler traffic arriving with
+origin-only referrers. `ReferrerMarkers` (lower-cased substrings, no built-in list, matched with the switch
+off too) flags referrer spam. Like `IsProbe`, it survives a copied browser user agent. The row still
+stores the Referer as sent.
+
+Every list but `ReferrerMarkers` merges on top of the defaults unless `IncludeDefaultMarkers` is false;
 `AddAnalyticsConfiguration()` layers an optional watched `botdetector.json` (content root) for
 restart-free additions.
 
@@ -120,8 +129,9 @@ a fallback authorization policy applies on top of the key check.
 - **Timing of hooks**: request-bound data must be taken in a contributor (in-request); by the time an
   enricher runs, the HttpContext is gone. Body reads need `EnableBuffering()` in `OnCapturing` — after
   the endpoint consumed the body it cannot be re-read otherwise.
-- **One flag for two kinds of non-human traffic**: `IPageView.IsBot` covers both an announced crawler
-  and a probe request, so `RecordBots=false` drops scanner sweeps along with Googlebot. A host that
+- **One flag for three kinds of non-human traffic**: `IPageView.IsBot` covers an announced crawler, a
+  probe request and a forged referrer, so `RecordBots=false` drops scanner sweeps and referrer spam along
+  with Googlebot. A host that
   needs to tell them apart adds its own column and sets it from an `IVisitContributor`, which still
   has the `HttpContext`.
 - **Privacy stance**: no cookie, no session id; the full IP exists in memory only (enrichers), the

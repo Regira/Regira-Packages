@@ -1,5 +1,6 @@
 ﻿using Normalizing.Testing.Models;
 using Regira.Normalizing;
+using Regira.Normalizing.Models;
 
 namespace Normalizing.Testing;
 
@@ -10,6 +11,16 @@ public class NormalizeTests
     private readonly DefaultNormalizer _normalizer = new();
     private readonly ObjectNormalizer _objectNormalizer = new();
 
+    [Test]
+    [SetCulture("tr-TR")]
+    public void Changing_Case_Ignores_The_Current_Culture()
+    {
+        // under a Turkish culture, "I".ToLower() is a dotless ı that no query normalized elsewhere matches
+        var lower = new DefaultNormalizer(new NormalizeOptions { Transform = TextTransform.ToLowerCase });
+        var upper = new DefaultNormalizer(new NormalizeOptions { Transform = TextTransform.ToUpperCase });
+        Assert.That(lower.Normalize("TITLE"), Is.EqualTo("title"));
+        Assert.That(upper.Normalize("title"), Is.EqualTo("TITLE"));
+    }
     [Test]
     public void Test_Without_Attribute()
     {

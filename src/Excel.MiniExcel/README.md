@@ -1,6 +1,6 @@
 # Regira.Office.Excel.MiniExcel
 
-Excel backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/), built on [MiniExcel](https://www.nuget.org/packages/MiniExcel). `ExcelManager` implements `IExcelService` and `ExcelManager<T>` implements the typed `IExcelService<T>`. Of the four Excel backends it is one of two with typed sheets, and the only one that streams.
+Excel backend for [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/), built on [MiniExcel](https://www.nuget.org/packages/MiniExcel). `ExcelManager` implements `IExcelService` and `ExcelManager<T>` implements the typed `IExcelService<T>`. Of the four Excel backends it is one of two with typed sheets, and the one with the lowest memory use: it reads and writes the sheet XML directly, without a workbook object model.
 
 ## Installation
 

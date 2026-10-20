@@ -1,6 +1,6 @@
 # Regira.Printing.GDI
 
-Image printing for [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/) through GDI+ (`System.Drawing.Printing`). `PrintService` implements `IPrintService`: `List()` returns the installed printers, and `Print(ImagePrintInputModel)` sends one image to the named printer, scaled to fit within the margins. The model also sets copies, collation, page range, duplex, paper size (by name), paper source, orientation, colour and margins. To print PDF files, use an `IPdfPrinter` backend instead.
+Image printing for [Regira Office](https://regira.github.io/Regira-Packages/src/Common.Office/) through GDI+ (`System.Drawing.Printing`). `PrintService` implements `IPrintService`: `List()` returns the installed printers, and `Print(ImagePrintInputModel)` sends one image to the named printer, scaled to fit within the margins. The model also sets copies, collation, page range, duplex, paper size (by name), paper source (the printer's default tray when none is set or the printer lacks it), orientation, colour and margins, which it reads in hundredths of an inch (half an inch on every side when none are set). To print PDF files, use an `IPdfPrinter` backend instead.
 
 ## Installation
 

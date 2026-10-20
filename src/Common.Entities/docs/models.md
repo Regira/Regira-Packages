@@ -20,7 +20,7 @@ public interface IEntity<TKey> : IEntity
 
 An owner with an optional foreign key to one of its own child rows — while the child's foreign key back is
 required, and therefore cascades — makes the two tables reference each other. Prefer marking the child instead:
-a flag or a rank column identifies the same row with no foreign key. Startup validation warns about the shape.
+a flag or a rank column identifies the same row with no foreign key.
 
 Where the reference has to stay, two things need handling:
 

@@ -115,10 +115,17 @@ public class SftpService(SftpCommunicator communicator) : IFileService
             await client.CreateDirectoryAsync(dirUri);
         }
     }
+    /// <summary>Deletes a file, or a folder with everything in it.</summary>
+    /// <exception cref="ArgumentException">The identifier resolves to the root (<c>""</c>, <c>"."</c>, <c>"x/.."</c>)</exception>
     public async Task Delete(string identifier)
     {
-        var client = await communicator.Open();
         var fileUri = ResolveUri(identifier);
+        // the root is within itself, so containment lets it through, and a folder's delete takes everything below it
+        if (FileNameUtility.NormalizePath(fileUri).TrimEnd('/') == Root.TrimEnd('/'))
+        {
+            throw new ArgumentException("The identifier resolves to the root, which is not deleted.", nameof(identifier));
+        }
+        var client = await communicator.Open();
 
         if (!await client.ExistsAsync(fileUri))
         {

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Regira.Entities.Attachments.Abstractions;
 using Regira.Entities.Attachments.Extensions;
+using Regira.Entities.EFcore.Extensions;
 using Regira.Entities.Extensions;
 using Regira.IO.Utilities;
 
@@ -9,10 +10,92 @@ namespace Regira.Entities.EFcore.Attachments;
 internal static class EntityAttachmentContent
 {
     /// <summary>
+    /// The rules for one link on both routes, the link's own and its owner's, before the route tracks it. A new link loses
+    /// the temp key a client minted and, given <paramref name="ownedAttachmentIds"/>, an attachment its owner does not
+    /// link already (<see cref="KeepToOwner{TKey, TObjectKey, TAttachmentKey, TAttachment}"/>). A stored link keeps the
+    /// attachment it links (<see cref="KeepAttachment{TKey, TObjectKey, TAttachmentKey, TAttachment}"/>), unless a new
+    /// attachment replaces it, and its new name and bytes are for that attachment. New bytes without an attachment become
+    /// a new one (<see cref="CreateFromNewContent{TKey, TObjectKey, TAttachmentKey, TAttachment}"/>).
+    /// </summary>
+    /// <returns>The stored attachment a new one replaces, for the route to delete; <c>null</c> when none does.</returns>
+    public static TAttachment? PrepareLink<TKey, TObjectKey, TAttachmentKey, TAttachment>(IEntityAttachment<TKey, TObjectKey, TAttachmentKey, TAttachment> link,
+        IEntityAttachment<TKey, TObjectKey, TAttachmentKey, TAttachment>? original, ICollection<TAttachmentKey>? ownedAttachmentIds = null)
+        where TAttachment : class, IAttachment<TAttachmentKey>, new()
+    {
+        if (original == null)
+        {
+            // a negative temp id from the client is cleared, so the store assigns the key
+            DbContextExtensions.ResetTempKey<IEntityAttachment<TKey, TObjectKey, TAttachmentKey, TAttachment>, TKey>(link);
+            if (ownedAttachmentIds != null)
+            {
+                KeepToOwner(link, ownedAttachmentIds);
+            }
+        }
+        else
+        {
+            if (link.Attachment?.IsNew() != true)
+            {
+                KeepAttachment(link, original);
+            }
+            if (HasNewContent(link))
+            {
+                link.Attachment ??= original.Attachment;
+            }
+        }
+        CreateFromNewContent(link);
+
+        return link.Attachment?.IsNew() == true ? original?.Attachment : null;
+    }
+
+    /// <summary>
+    /// Whether a stored link of <typeparamref name="TEntityAttachment"/> other than <paramref name="exceptLinkIds"/> names
+    /// the attachment, past query filters. A link's attachment goes with the link, or with its replacement, only when
+    /// none does: links can share an attachment — a new link may name one its owner links already — and deleting it
+    /// would take the other links with it.
+    /// </summary>
+    public static Task<bool> IsLinkedElsewhere<TEntityAttachment, TKey, TObjectKey, TAttachmentKey, TAttachment>(DbContext dbContext,
+        TAttachmentKey attachmentId, TKey[] exceptLinkIds, CancellationToken token)
+        where TEntityAttachment : class, IEntityAttachment<TKey, TObjectKey, TAttachmentKey, TAttachment>
+        where TAttachment : class, IAttachment<TAttachmentKey>, new()
+        => dbContext.Set<TEntityAttachment>().IgnoreQueryFilters().AsNoTracking()
+            .AnyAsync(x => x.AttachmentId!.Equals(attachmentId) && !exceptLinkIds.Contains(x.Id), token);
+    /// <summary>
+    /// Which of <paramref name="attachmentIds"/> a stored link other than <paramref name="exceptLinkIds"/> names, past query
+    /// filters: <see cref="IsLinkedElsewhere{TEntityAttachment, TKey, TObjectKey, TAttachmentKey, TAttachment}"/> for many
+    /// attachments in one query.
+    /// </summary>
+    public static async Task<HashSet<TAttachmentKey>> LinkedElsewhere<TEntityAttachment, TKey, TObjectKey, TAttachmentKey, TAttachment>(DbContext dbContext,
+        TAttachmentKey[] attachmentIds, TKey[] exceptLinkIds, CancellationToken token)
+        where TEntityAttachment : class, IEntityAttachment<TKey, TObjectKey, TAttachmentKey, TAttachment>
+        where TAttachment : class, IAttachment<TAttachmentKey>, new()
+        => (await dbContext.Set<TEntityAttachment>().IgnoreQueryFilters().AsNoTracking()
+            .Where(x => attachmentIds.Contains(x.AttachmentId) && !exceptLinkIds.Contains(x.Id))
+            .Select(x => x.AttachmentId)
+            .Distinct()
+            .ToListAsync(token)).ToHashSet();
+
+    /// <summary>
     /// Whether a link carries a <c>NewFileName</c> or <c>NewBytes</c> for the attachment it links.
     /// </summary>
     public static bool HasNewContent(IEntityAttachment entity)
         => !string.IsNullOrWhiteSpace(entity.NewFileName) || entity.NewBytes?.Any() == true;
+
+    /// <summary>
+    /// Gives a link that carries <c>NewBytes</c> and no attachment a new one holding them under its <c>NewFileName</c>,
+    /// typed by that name as the save types it — on every path that adds a link: an owner created or updated with it, and
+    /// the link's own service.
+    /// </summary>
+    public static void CreateFromNewContent<TKey, TObjectKey, TAttachmentKey, TAttachment>(IEntityAttachment<TKey, TObjectKey, TAttachmentKey, TAttachment> link)
+        where TAttachment : class, IAttachment<TAttachmentKey>, new()
+    {
+        if (link.Attachment != null || link.NewBytes?.Any() != true)
+        {
+            return;
+        }
+
+        link.Attachment = new TAttachment { Bytes = link.NewBytes, FileName = link.NewFileName.ToVirtualPath() };
+        TypeByName(link.Attachment);
+    }
 
     /// <summary>
     /// Applies a link's <c>NewFileName</c> and <c>NewBytes</c> to the attachment it links.

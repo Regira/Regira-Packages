@@ -53,7 +53,8 @@ public class MongoBackupService(MongoOptions options, IProcessHelper processHelp
                 ConfigPath = configFile.FilePath
             })!;
 
-        logger?.LogDebug("Creating backup of {Uri} with {ProcessPath} {Arguments}", settings.BuildRedactedConnectionString(), _backupProcessPath, args);
+        // the host and the database only: any option of the URI can carry a secret
+        logger?.LogDebug("Creating backup of {Database} on {Host} with {ProcessPath} {Arguments}", settings.DatabaseName, settings.Host, _backupProcessPath, args);
 
         // execute backup process, capturing what the tool has to say: without it a failure reports an exit code and nothing else
         var output = processHelper.ExecuteFile(_backupProcessPath, waitForOutput: true, arguments: args);

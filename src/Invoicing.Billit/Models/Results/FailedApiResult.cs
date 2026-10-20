@@ -2,6 +2,7 @@
 
 namespace Regira.Invoicing.Billit.Models.Results;
 
+[Obsolete("Nothing in Regira.Invoicing.Billit reads or writes it. Will be removed in v7.")]
 public record FailedApiResult : IFailedApiResult
 {
     public bool IsSuccess => false;

@@ -87,6 +87,38 @@ public class AttachmentFileNameTests
         }
     }
 
+    // --- Path is relative to the root, so the root can move ---
+
+    // Path.Combine(ContentRootPath, "App_Data/uploads") leaves a '/' in the root on Windows, where the service resolves
+    // paths with '\': the stored Path was the absolute one, and no download worked once the content root moved
+    [Test]
+    public async Task The_Stored_Path_Survives_Moving_A_Root_Written_With_Both_Separators()
+    {
+        var temp = Path.Combine(Path.GetTempPath(), $"regira-savefile-{Guid.NewGuid():N}");
+        var moved = temp + "-moved";
+        try
+        {
+            var service = new AttachmentFileService<Attachment, int>(new BinaryFileService(new FileSystemOptions { RootFolder = Path.Combine(temp, "App_Data/uploads") }));
+            var attachment = new Attachment { FileName = "photo.jpg", Identifier = "Unit/Attachments/1/photo.jpg", Bytes = [1, 2, 3] };
+            await service.SaveFile(attachment);
+
+            Assert.That(attachment.Path, Is.EqualTo("Unit/Attachments/1/photo.jpg"));
+
+            Directory.Move(temp, moved);
+            var movedService = new AttachmentFileService<Attachment, int>(new BinaryFileService(new FileSystemOptions { RootFolder = Path.Combine(moved, "App_Data/uploads") }));
+            var stored = new Attachment { Id = 1, FileName = attachment.FileName, Path = attachment.Path };
+
+            Assert.That(await movedService.GetBytes(stored), Is.EqualTo(new byte[] { 1, 2, 3 }));
+        }
+        finally
+        {
+            foreach (var folder in new[] { temp, moved }.Where(Directory.Exists))
+            {
+                Directory.Delete(folder, true);
+            }
+        }
+    }
+
     // --- The identifier is internal and carries none of it ---
 
     [Test]

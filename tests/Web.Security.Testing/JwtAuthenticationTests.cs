@@ -49,8 +49,9 @@ public class JwtAuthenticationTests : IClassFixture<TestingWebApplicationFactory
     [Fact]
     public async Task Test_Protected_With_Invalid_Token_Returns_Unauthorized()
     {
-        var httpClient = _factory.CreateClient();
-        var token = await CreateToken();
+        var expiring = _factory.WithTokenLifeSpan(2);
+        var httpClient = expiring.CreateClient();
+        var token = await CreateToken(factory: expiring);
         httpClient.SetBearerToken(token);
 
         // wait 2.5 sec to invalidate the token
@@ -132,9 +133,9 @@ public class JwtAuthenticationTests : IClassFixture<TestingWebApplicationFactory
         report.FoundEmail.ShouldBe(user.Email);
     }
 
-    async Task<string> CreateToken(JwtUser? user = null)
+    async Task<string> CreateToken(JwtUser? user = null, WebApplicationFactory<JwtStartup>? factory = null)
     {
-        var httpClient = _factory.CreateClient();
+        var httpClient = (factory ?? _factory).CreateClient();
         user ??= JwtUsers.Admin;
         var response = await httpClient.PostAsJsonAsync("auth", new { username = user.Name });
         var tokenResult = await response.Content.ReadFromJsonAsync<TokenResult>();

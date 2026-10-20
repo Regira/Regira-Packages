@@ -4,7 +4,7 @@ public class TextFileService(FileSystemOptions options) : BinaryFileService(opti
 {
     public Task<string?> GetContents(string identifier)
     {
-        var uri = FileNameUtility.GetAbsoluteUri(identifier, Root);
+        var uri = ResolveUri(identifier);
         if (!File.Exists(uri))
         {
             return Task.FromResult((string?)null);
@@ -14,8 +14,8 @@ public class TextFileService(FileSystemOptions options) : BinaryFileService(opti
     }
     public Task<string> Save(string identifier, string contents, string? contentType = null)
     {
-        var uri = FileNameUtility.GetAbsoluteUri(identifier, Root);
+        var uri = ResolveUri(identifier);
         File.WriteAllText(uri, contents);
-        return Task.FromResult(uri);
+        return Task.FromResult(GetIdentifier(uri));
     }
 }

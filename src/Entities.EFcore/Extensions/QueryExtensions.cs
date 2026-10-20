@@ -133,14 +133,19 @@ public static class QueryExtensions
             .FilterLastModified(minModified, maxModified);
 
     /// <summary>
-    /// Filters on <see cref="IHasStartEndDate"/>. With <see cref="DateTimeDefaults.UseUtc"/> enabled (default),
-    /// the input date is normalized to UTC, matching the stored values.<br />
+    /// Filters on <see cref="IHasStartEndDate"/>: the rows active on <paramref name="date"/>, every row without one. With
+    /// <see cref="DateTimeDefaults.UseUtc"/> enabled (default), the input date is normalized to UTC, matching the stored values.<br />
     /// For pure calendar semantics (no time component) prefer <see cref="DateOnly"/> properties over <see cref="IHasStartEndDate"/>.
     /// </summary>
     public static IQueryable<TEntity> FilterIsActiveOn<TEntity>(this IQueryable<TEntity> query, DateTime? date)
         where TEntity : IHasStartEndDate
     {
-        DateTime? value = date.HasValue ? NormalizeDate(date.Value) : null;
+        if (!date.HasValue)
+        {
+            return query;
+        }
+
+        DateTime? value = NormalizeDate(date.Value);
         return query.Where(x => (x.StartDate == null || x.StartDate <= value) && (x.EndDate == null || x.EndDate >= value));
     }
 
@@ -244,6 +249,19 @@ public static class QueryExtensions
             _ => query.Where(x => !x.IsArchived)
 #endif
         };
+
+    /// <summary>
+    /// The query with the archived filter suspended, for a read of the rows an owner's save syncs: the write path reads
+    /// that owner archived-inclusive (<see cref="ArchivedFilter.Included"/>), on any entity type. On <c>net8.0</c> no
+    /// archived query filter is installed, so there is nothing to suspend (see <see cref="FilterArchivable{TEntity}"/>).
+    /// </summary>
+    internal static IQueryable<TEntity> IncludingArchived<TEntity>(this IQueryable<TEntity> query)
+        where TEntity : class
+#if NET10_0_OR_GREATER
+        => query.IgnoreQueryFilters([ModelBuilderExtensions.ArchivedQueryFilterName]);
+#else
+        => query;
+#endif
 
     public static IQueryable<TEntity> FilterHasAttachment<TEntity>(this IQueryable<TEntity> query, bool? hasAttachment)
         where TEntity : IHasAttachments

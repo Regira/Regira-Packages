@@ -4,7 +4,9 @@ using Microsoft.Extensions.Hosting;
 using Regira.Security.Authentication.ApiKey.Extensions;
 using Regira.Security.Authentication.Core.Extensions;
 using Regira.Security.Authentication.Jwt.Extensions;
+#if NET10_0_OR_GREATER
 using Regira.Security.Authentication.Web.OpenApi.Transformers;
+#endif
 using Web.Security.Testing.Infrastructure.ApiKey;
 using Web.Security.Testing.Infrastructure.Jwt;
 
@@ -33,13 +35,16 @@ public class SchemeSelectorStartup
 
         services.AddControllersFor(typeof(AuthController), typeof(TestController));
 
+#if NET10_0_OR_GREATER
         // One document transformer for every scheme, from the descriptors they contributed at registration —
-        // in place of BearerSecuritySchemeTransformer + ApiKeySecurityDocumentTransformer.
+        // in place of BearerSecuritySchemeTransformer + ApiKeySecurityDocumentTransformer. .NET 10 only, like
+        // AddOpenApi; the selector itself is tested on .NET 8 too.
         services.AddOpenApi(options =>
         {
             options.AddDocumentTransformer<AuthenticationSchemeDocumentTransformer>();
             options.AddOperationTransformer<SecurityRequirementOperationTransformer>();
         });
+#endif
     }
 
     public void Configure(IApplicationBuilder app, IHostEnvironment env)
@@ -58,7 +63,9 @@ public class SchemeSelectorStartup
             endpoints
                 .MapControllers()
                 .RequireAuthorization();
+#if NET10_0_OR_GREATER
             endpoints.MapOpenApi().AllowAnonymous();
+#endif
         });
     }
 }

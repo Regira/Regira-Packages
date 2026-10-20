@@ -81,7 +81,8 @@ public class RelatedCollectionPrepper<TContext, TEntity, TRelated, TEntityKey, T
     /// <summary>
     /// Loads the entity's related collection directly from the store. Used as a fallback when the
     /// reloaded <c>original</c> did not eager-load the navigation, guaranteeing the diff in
-    /// <see cref="Prepare"/> always sees the rows that currently exist.
+    /// <see cref="Prepare"/> always sees the rows that currently exist — for an archived entity too, as the write
+    /// service reads it.
     /// </summary>
     private Task<ICollection<TRelated>?> LoadRelatedCollection(TEntityKey id, CancellationToken token)
         // A default id has no persisted rows to load; guard against FilterId no-op'ing on it
@@ -90,6 +91,7 @@ public class RelatedCollectionPrepper<TContext, TEntity, TRelated, TEntityKey, T
             ? Task.FromResult<ICollection<TRelated>?>(null)
             : dbContext.Set<TEntity>()
                 .AsNoTracking()
+                .IncludingArchived()
                 .FilterId<TEntity, TEntityKey>(id)
                 .Select(navigationExpression)
                 .FirstOrDefaultAsync(token);

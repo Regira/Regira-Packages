@@ -6,9 +6,8 @@ namespace Regira.Entities.Models;
 /// <c>errorDetails</c> listing each error with its args.
 /// <para>
 /// Throw the generic <see cref="EntityInputException{T}"/>; this base exists so a handler can catch every
-/// input rejection whatever entity it was parameterized with. A <c>catch</c> on one closed generic (what the
-/// generated write actions do for their own <c>TEntity</c>) misses the one a prepper threw for a related
-/// entity — the reason the ASP.NET exception filter matches this type instead.
+/// input rejection whatever entity it was parameterized with. A <c>catch</c> on one closed generic misses the one a
+/// prepper threw for a related entity — the reason the ASP.NET exception filter matches this type instead.
 /// </para>
 /// </summary>
 public abstract class EntityInputException(string message, Exception? innerException = null)
