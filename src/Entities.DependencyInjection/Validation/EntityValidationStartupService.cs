@@ -33,11 +33,18 @@ internal sealed class EntityValidationStartupService(
         // provider refuses to resolve. Validating from the root left exactly those filters unchecked.
         using var scope = provider.CreateScope();
         var context = new EntityValidationContext(scope.ServiceProvider, services, registrations ?? new EntityRegistrationLog());
-        var checks = validators.SelectMany(v => Run(v, context, logger)).ToArray();
+        var runs = validators.Select(v => Run(v, context, logger)).ToArray();
         // a context the model checks could not resolve, said once rather than once per check
-        var issues = checks
+        var issues = runs.SelectMany(r => r.Issues)
             .Concat(context.UnresolvedDbContexts.Select(message => new EntityValidationIssue(EntityValidationSeverity.Warning, message)))
             .ToArray();
+
+        // one line that says the checks ran, so a clean start is told apart from validation that is off
+        if (issues.Length == 0 && runs.All(r => r.Completed))
+        {
+            logger.LogInformation("Entity registration validation found no issues ({Count} registered entities).",
+                context.Registrations.Entities.Select(r => r.EntityType).Distinct().Count());
+        }
 
         foreach (var issue in issues)
         {
@@ -77,7 +84,7 @@ internal sealed class EntityValidationStartupService(
     /// broken off by one registration still reports what it found for the others. Deliberate failures still travel
     /// as <see cref="EntityValidationSeverity.Error"/> issues and throw below.
     /// </summary>
-    private static IEnumerable<EntityValidationIssue> Run(IEntityRegistrationValidator validator, EntityValidationContext context, ILogger logger)
+    private static (List<EntityValidationIssue> Issues, bool Completed) Run(IEntityRegistrationValidator validator, EntityValidationContext context, ILogger logger)
     {
         var issues = new List<EntityValidationIssue>();
         try
@@ -90,8 +97,9 @@ internal sealed class EntityValidationStartupService(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "{Validator} could not complete and was skipped.", validator.GetType().Name);
+            return (issues, false);
         }
-        return issues;
+        return (issues, true);
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;

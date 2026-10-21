@@ -11,8 +11,8 @@
     <AssemblyName>Regira.Office.PDF.SelectPdf</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.6.0</Version>
-    <Description>HTML-to-PDF conversion using SelectPdf for Regira Office.</Description>
+    <Version>6.6.1</Version>
+    <Description>HTML-to-PDF conversion using SelectPdf for Regira Office. Windows only; the free edition drops everything past page five — prefer the Playwright backend: use Regira.Office.PDF.MsPlaywright.</Description>
     <PackageTags>regira;office;pdf;selectpdf;html-to-pdf</PackageTags>
   </PropertyGroup>
   <ItemGroup>

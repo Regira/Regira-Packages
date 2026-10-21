@@ -30,6 +30,20 @@ public class BinaryBlobService(AzureCommunicator communicator) : IFileService
         var response = await Download(identifier);
         return response?.Value.Content.ToStream();
     }
+    public async Task<StoredFileInfo?> GetInfo(string identifier)
+    {
+        await communicator.Open();
+        var blob = GetBlobReference(identifier);
+        try
+        {
+            var properties = (await blob.GetPropertiesAsync()).Value;
+            return new StoredFileInfo(properties.ContentLength, properties.LastModified.UtcDateTime);
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+            return null;
+        }
+    }
     public async Task<IEnumerable<string>> List(FileSearchObject? so = null)
     {
         so ??= new FileSearchObject();

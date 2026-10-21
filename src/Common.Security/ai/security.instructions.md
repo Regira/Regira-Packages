@@ -757,7 +757,7 @@ validate an id_token it does not have, or redirects to the provider on every sin
 | `RequireHttpsMetadata` | `bool` | `true` | |
 | `NameClaimType` / `RoleClaimType` | `string` | `"name"` / `"role"` | |
 | `ValidIssuers` | `ICollection<string>?` | `null` | Null ⇒ the discovery document's issuer |
-| `Cookie` | `CookieAuthOptions` | *(defaults)* | The session half |
+| `Cookie` | `CookieAuthOptions` | *(defaults)* | The session half. Its `SecurePolicy` is `Always`, so over plain http the session cookie never comes back: *⚠️ Cookie gotchas* 1 |
 | `Claims` | `ClaimNormalizationOptions` | *(defaults)* | |
 | `Configure` | `Action<OpenIdConnectOptions>?` | `null` | Applied before the normalization hook is chained on |
 
@@ -993,7 +993,7 @@ public class AppClaimsPrincipalFactory(UserManager<AppUser> userManager, RoleMan
 Register it with `.AddClaimsPrincipalFactory<AppClaimsPrincipalFactory>()` **after** `.AddRoles<IdentityRole>()` in
 the step 1 chain: `AddRoles` replaces any claims factory registered before it with the plain role-aware one. The
 claim keeps its name in the token, and the SPA reads it with `useAuthStore().getClaimValue("department_id")`
-(`string | string[] | undefined`). Like a role, a changed value reaches the SPA on the next refresh.
+(`string | string[] | undefined`). Like a role, a changed value reaches the SPA on the next refresh. Two claim names fill `authData` directly: `displayName` (or `display_name`) fills `displayName`, the account label, and `culture` (a BCP-47 tag such as `nl-BE`) fills `culture`. Add them here when the SPA shows the name or follows the account's language.
 
 A value of the account's own, like `DepartmentId`, can live on `AppUser`. The domain record the account belongs to
 (its party) is linked from the domain instead: `Regira.Entities` → `entities.blueprints` → *Linking a party to a user

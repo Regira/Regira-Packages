@@ -45,6 +45,21 @@ public class GitHubService(GitHubCommunicator communicator, ISerializer serializ
         var bytes = await GetBytes(identifier);
         return bytes != null ? new MemoryStream(bytes) : null;
     }
+    /// <inheritdoc />
+    /// <remarks>The contents API gives a file's size but no time, so <see cref="StoredFileInfo.LastModified"/> is <c>null</c>.</remarks>
+    public async Task<StoredFileInfo?> GetInfo(string identifier)
+    {
+        var uri = GetAbsoluteUri(identifier);
+        var response = await communicator.GetAsync(uri);
+        if (!response.IsSuccessStatusCode)
+            return null;
+        var json = await response.Content.ReadAsStringAsync();
+        // a folder answers with the list of its items
+        if (json.TrimStart().StartsWith('['))
+            return null;
+        var item = serializer.Deserialize<GitHubItem>(json);
+        return item?.Type == GitHubItemType.File ? new StoredFileInfo(item.Size, null) : null;
+    }
     public async Task<IEnumerable<string>> List(FileSearchObject? so = null)
     {
         var listUri = GetAbsoluteUri(so?.FolderUri ?? string.Empty);

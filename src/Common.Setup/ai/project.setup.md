@@ -23,7 +23,7 @@ The nearest default per app shape; mix elements from several templates, or devia
 | Self-hosted API protected by API key and/or JWT Bearer | `SelfHostingApiWithAuth` |
 | Must be deployable as a Windows Service | `SelfHostingApi`; with API key or JWT, `SelfHostingApiWithAuth` |
 | Self-hosted, controller-based routing with enforced authorization | `SelfHostingApiWithAuth` |
-| Minimal API endpoints with authentication | `SelfHostingApiWithAuth` |
+| Minimal API endpoints with authentication | `BasicApi` (self-hosted: `SelfHostingApi`) plus the auth registrations from `SelfHostingApiWithAuth`, with `AddAuthorization()` and `.RequireAuthorization()` on the mapped endpoints instead of `AddControllers()` and `MapControllers()` (note under Template 2) |
 | Users sign in with a work Microsoft account (Entra ID), or any OpenID Connect provider | `SelfHostingApiWithAuth` + `AddEntraIdSignIn` / `AddOidcAuthentication` |
 | API called with tokens Entra ID (or Auth0 / Keycloak / Okta) issued | `SelfHostingApiWithAuth` + `AddEntraIdBearer` / `AddBearerAuthentication` |
 | Browser session rather than a bearer token (server-rendered, Blazor Server, same-site SPA) | `SelfHostingApiWithAuth` + `AddCookieAuthentication` |

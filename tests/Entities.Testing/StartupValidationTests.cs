@@ -4,10 +4,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Regira.Entities.DependencyInjection.Attachments;
 using Regira.Entities.DependencyInjection.Extensions;
 using Regira.Entities.DependencyInjection.QueryBuilders;
 using Regira.Entities.DependencyInjection.ServiceCollections.Models;
 using Regira.Entities.DependencyInjection.Validators;
+using Regira.Entities.Models;
 using Regira.Entities.Models.Abstractions;
 using Regira.Entities.QueryBuilders.Abstractions;
 using Regira.Entities.EFcore.Primers;
@@ -16,6 +18,7 @@ using Regira.Entities.EFcore.QueryBuilders.GlobalFilterBuilders;
 using Regira.Entities.EFcore.Services;
 using Regira.Entities.Preppers.Abstractions;
 using Regira.Entities.Services.Abstractions;
+using Regira.IO.Storage.FileSystem;
 
 namespace Entities.Testing;
 
@@ -139,6 +142,97 @@ public class StartupValidationTests
         await StartupValidationHarness.RunHostedServices(sp);
 
         Assert.That(capture.Warnings, Has.Some.Contains("?q=").And.Some.Contains(nameof(Product)));
+    }
+
+    // A custom filter makes ?q= work only when it reads Q; one that never does returns every row whatever q holds.
+    // Shared by the positive and negative cases so a reworded warning fails the positive one instead of passing the others.
+    private const string QIgnoredByFilterWarning = "?q= text search is ignored by the custom filters of";
+
+    private async Task<StartupValidationHarness> ValidateProductFilter(Func<IQueryable<Product>, SearchObject<int>?, IQueryable<Product>> filter)
+    {
+        var capture = new StartupValidationHarness();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(capture));
+        services.AddDbContext<ProductContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<ProductContext>(o => o.ConfigureValidation(v => v.Enabled = true))
+            .For<Product>(e => e.Filter(filter));
+
+        await using var sp = services.BuildServiceProvider();
+        await StartupValidationHarness.RunHostedServices(sp);
+        return capture;
+    }
+
+    [Test]
+    public async Task QSearch_Warning_For_A_Custom_Filter_That_Never_Reads_Q()
+    {
+        var capture = await ValidateProductFilter((query, so) => so?.MinCreated == null ? query : query.Where(x => x.Created >= so.MinCreated));
+
+        Assert.That(capture.Warnings, Has.Some.Contains(QIgnoredByFilterWarning).And.Some.Contains(nameof(Product)));
+    }
+
+    [Test]
+    public async Task A_Custom_Filter_That_Reads_Q_Is_Not_Flagged()
+    {
+        var capture = await ValidateProductFilter((query, so) => string.IsNullOrWhiteSpace(so?.Q) ? query : query.Where(x => x.Title!.Contains(so.Q)));
+
+        Assert.That(capture.Warnings, Has.None.Contains("?q="));
+    }
+
+    [Test]
+    public async Task A_Custom_Filter_That_Reads_Q_Inside_The_Query_Is_Not_Flagged()
+    {
+        // no branch on Q: the query is the same shape either way, and only the captured search object holds the difference
+        var capture = await ValidateProductFilter((query, so) => query.Where(x => so == null || so.Q == null || x.Title!.Contains(so.Q)));
+
+        Assert.That(capture.Warnings, Has.None.Contains("?q="));
+    }
+
+    [Test]
+    public async Task A_Custom_Filter_That_Captures_A_Collection_Taken_From_Q_Is_Not_Flagged()
+    {
+        var capture = await ValidateProductFilter((query, so) =>
+        {
+            var words = so?.Q?.Split(' ') ?? [];
+            return query.Where(x => words.All(w => x.Title!.Contains(w)));
+        });
+
+        Assert.That(capture.Warnings, Has.None.Contains("?q="));
+    }
+
+    [Test]
+    public async Task Regiras_Own_Attachment_Filters_Are_Not_Flagged()
+    {
+        // the attachment and link filters search by file name and leave Q alone by design; the app cannot change them
+        var capture = new StartupValidationHarness();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(capture));
+        services.AddDbContext<ArchivedQueryFilterValidatorTests.AttachmentContext>(db => db.UseSqlite(_connection));
+        services.UseEntities<ArchivedQueryFilterValidatorTests.AttachmentContext>(o =>
+            {
+                o.UseDefaults();
+                o.ConfigureValidation(v => v.Enabled = true);
+            })
+            .WithAttachments(_ => new BinaryFileService(new FileSystemOptions { RootFolder = Path.GetTempPath() }))
+            .For<ArchivedQueryFilterValidatorTests.Folder>(e => e.HasAttachments(x => x.Attachments));
+
+        await using var sp = services.BuildServiceProvider();
+        await StartupValidationHarness.RunHostedServices(sp);
+
+        Assert.That(capture.Warnings, Has.None.Contains(QIgnoredByFilterWarning));
+    }
+
+    [Test]
+    public async Task A_Clean_Validation_Says_So_Once()
+    {
+        var clean = await ValidateProductFilter((query, so) => string.IsNullOrWhiteSpace(so?.Q) ? query : query.Where(x => x.Title!.Contains(so.Q)));
+        var flagged = await ValidateProductFilter((query, _) => query);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(clean.Warnings.Concat(clean.Errors), Is.Empty);
+            Assert.That(clean.Infos.Count(i => i.Contains("found no issues")), Is.EqualTo(1));
+            Assert.That(flagged.Infos, Has.None.Contains("found no issues"));
+        });
     }
 
     // Shared by the positive and negative cases below so a reworded warning fails the positive test loudly

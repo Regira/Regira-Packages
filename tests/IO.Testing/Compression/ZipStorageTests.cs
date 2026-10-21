@@ -33,6 +33,8 @@ public class ZipStorageTests
     [Test]
     public async Task GetBytes() => await StorageTestContext.Test_GetBytes();
     [Test]
+    public async Task GetInfo() => await StorageTestContext.Test_GetInfo();
+    [Test]
     public async Task Filter_By_Folder() => await StorageTestContext.Test_Filter_By_Folder();
     [Test]
     public async Task Filter_By_Extension() => await StorageTestContext.Test_Filter_By_Extension();

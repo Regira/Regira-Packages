@@ -173,9 +173,16 @@ All backends implement this single interface.
 Task<bool>                Exists(string identifier)
 Task<byte[]?>             GetBytes(string identifier)
 Task<Stream?>             GetStream(string identifier)
+Task<StoredFileInfo?>     GetInfo(string identifier)               // size and last-modified time, without the content
 Task<IEnumerable<string>> List(FileSearchObject? so = null)
 IAsyncEnumerable<string>  ListAsync(FileSearchObject? so = null)  // NET10+; what List returns, once List has read it all
 ```
+
+> `GetInfo` reads the store's own metadata into a `StoredFileInfo(long Length, DateTime? LastModified)`
+> (`Regira.IO.Storage`, `LastModified` in UTC), and answers `null` for a missing file or a folder. `List` answers
+> identifiers only, so a listing that shows sizes or dates calls `GetInfo` per identifier. GitHub leaves
+> `LastModified` `null`: its contents API carries no time. An `IFileService` of your own that does not implement
+> `GetInfo` reads the content to measure it.
 
 ### Write
 
@@ -382,7 +389,7 @@ Every communicator sends through a connection pool the package shares, and every
 | `ContentPath` | `string?` | repo root | Sub-path within the repository used as `Root` |
 | `Contained` | `bool` | `true` | Reject identifiers that escape `Root` (path traversal) |
 
-Fully implements `IFileService`: reads via the contents API; `Save`/`Move`/`Delete` create commits on `Branch`. Not suited for high-frequency writes (every write is a commit). An identifier ending in `?ref={branch}` reads and writes that branch instead, so a file name cannot hold a `?`; a `#` is part of the name.
+Fully implements `IFileService`: reads via the contents API, whose answer carries no time, so `GetInfo` leaves `LastModified` `null`; `Save`/`Move`/`Delete` create commits on `Branch`. Not suited for high-frequency writes (every write is a commit). An identifier ending in `?ref={branch}` reads and writes that branch instead, so a file name cannot hold a `?`; a `#` is part of the name.
 
 ---
 

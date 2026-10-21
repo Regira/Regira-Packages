@@ -29,6 +29,18 @@ public class SftpService(SftpCommunicator communicator) : IFileService
 
         return client.OpenRead(fileUri);
     }
+    public async Task<StoredFileInfo?> GetInfo(string identifier)
+    {
+        var client = await communicator.Open();
+        var fileUri = ResolveUri(identifier);
+        if (!await client.ExistsAsync(fileUri))
+        {
+            return null;
+        }
+
+        var attributes = client.GetAttributes(fileUri);
+        return attributes.IsRegularFile ? new StoredFileInfo(attributes.Size, attributes.LastWriteTimeUtc) : null;
+    }
     public async Task<IEnumerable<string>> List(FileSearchObject? so = null)
     {
         so ??= new FileSearchObject();

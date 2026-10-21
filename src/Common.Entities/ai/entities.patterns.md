@@ -477,8 +477,10 @@ Two silent shapes, one fix. **Every `?q=` request returns an empty list** — 20
 entity implements `IHasNormalizedContent` but nothing fills `NormalizedContent` (`[Normalized]` on the
 class instead of the property, or no attribute at all), so the global `Q` filter ANDs a match against
 `null`. **`?q=` returns everything, unfiltered**: the entity does not implement the interface and has no
-custom filter — startup logs *"?q= text search is silently ignored for: X"*. Either way the attribute goes
-on the **property**, naming its sources:
+custom filter — startup logs *"?q= text search is silently ignored for: X"*. A custom `Filter(...)` that never reads
+`so.Q` returns everything too — startup logs *"?q= text search is ignored by the custom filters of: X"*
+(§Startup validation): read `so.Q` there, or name the columns with `FilterQ` (`entities.instructions` → *Searching a
+few explicit columns*). Otherwise the attribute goes on the **property**, naming its sources:
 
 <!-- no-compile -->
 ```csharp

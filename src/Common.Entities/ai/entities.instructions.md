@@ -830,7 +830,9 @@ options.AddReactor<AuditReactor>();    // global — an EntityReactorBase<IHasTi
   (a fresh one after a reactor throws), with a fresh `DbContext`: a reactor that writes calls `SaveChanges()` itself, and that save triggers the reactors of what it wrote. Nesting stops at 8
   levels with a logged error — guard `CanReact` so a chain ends. Within a request, `IHttpContextAccessor.HttpContext`
   and its `User` still reach the reactor's scope, since they run before the call that commits returns; a save from a
-  job or seeder has none.
+  job or seeder has none. So the request user's global filters scope the reactor's reads and its `Modify` too: a
+  reactor that must reach rows that user cannot see (a waiting list, a cascade) sets an explicit identity in its own
+  scope first (§Security & Authorization → *Scope before any early return*).
 - **A reactor that throws is logged and skipped** — the data is committed, so the save still succeeds and the
   other reactors still run. The save's `CancellationToken` does not cancel them.
 - **At most once** — a crash between the commit and the reaction loses it, the enqueue to a job system included,
@@ -845,7 +847,7 @@ options.AddReactor<AuditReactor>();    // global — an EntityReactorBase<IHasTi
 
 ### Step 10: Mapping & AfterMappers (Optional extra configuration)
 
-**Mapping configuration is optional.** With Mapster (the default), `TEntity ↔ TDto`/`TInputDto` mapping — **including nested objects and child collections** — works by convention whenever the DTO shape resembles the entity. Most entities need no mapping statements at all (the Category, Product and Order examples register none and still round-trip their nested collections). Add configuration only for the specific cases below.
+**Mapping configuration is optional.** With Mapster (the default), `TEntity ↔ TDto`/`TInputDto` mapping — **including nested objects and child collections** — works by convention whenever the DTO shape resembles the entity. Most entities need no mapping statements at all (the Category, Product and Order examples register none and still round-trip their nested collections). A back-navigation (`Child.Parent`) is safe as well: `UseMapsterMapping()` turns on Mapster's `PreserveReference(true)`, so a cycle maps to the same DTO instance, and the default JSON options' `IgnoreCycles` drops the repeat. Add configuration only for the specific cases below.
 
 - **`UseMapping<TDto, TInputDto>()`** — call it when you need to attach an **after-mapper** or customise the top-level mapping. It registers `TEntity→TDto` + `TInputDto→TEntity` and returns a builder you chain the after-mapper onto:
   - `.After(...)` — enrich the output DTO after `Entity→DTO` mapping (computed properties, URLs)
@@ -1404,8 +1406,11 @@ in the Development environment by default. It catches, with actionable messages:
   the matching interceptor (they would silently never run). Only applies to setups without `UseDefaults()`
   (which auto-wires the interceptors) that also skipped `e.WireDbContext(...)`. Without the reactor interceptor,
   no replaced or deleted attachment file is removed (§Attachments step 6).
-- **Ignored `?q=`** (warning) — entities without `IHasNormalizedContent` and without a custom filter. Any custom
-  filter counts as handling `q`, so one that never reads `so.Q` gets no warning: handle it there (`FilterQ`).
+- **Ignored `?q=`** (warning) — entities without `IHasNormalizedContent` and either without a custom filter, or
+  whose custom filters never read `so.Q`: the check builds their query on an empty in-memory source with and without
+  `Q`, and warns when both read the same. Handle `Q` there (`FilterQ`). A filter it cannot build that way (a search
+  object without a parameterless constructor, a filter that throws) counts as reading `Q`, and the attachment entities
+  Regira's own filters serve are not checked.
 - **Two write paths** (warning) — an entity synced by a parent's `Related()` that also has its own `.For<>()`.
   Supported when the parent's input DTO omits the collection; the validator can't see DTO shapes, so it always
   reports the pairing. Detects top-level `Related()` calls, not ones nested inside a `configure` builder.
@@ -1456,7 +1461,9 @@ in the Development environment by default. It catches, with actionable messages:
 
 The checks report what is silent; a failure that is loud at the first request — a 500, a 409 on every update —
 is a row in §Troubleshooting instead. A check that cannot complete (a registration that throws when resolved) is
-skipped with a warning naming it, and a `DbContext` the checks cannot resolve is reported once.
+skipped with a warning naming it, and a `DbContext` the checks cannot resolve is reported once. A run that finds
+nothing logs one Information line, *"Entity registration validation found no issues"*, so a clean start reads apart
+from validation that is off.
 
 Configure via `UseEntities(o => o.ConfigureValidation(v => { v.Enabled = true; v.ThrowOnError = false; }))`:
 `Enabled` — `null` (default) = Development only, `true` = always (Production opt-in), `false` = never.
@@ -2128,7 +2135,7 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 | Filter not applied | Query builder not registered or wrong `SearchObject` property name | Verify `e.AddFilter<>()` or `e.Filter(...)` and check property names |
 | A list page comes back **short** (`items` < `pageSize`) while `/search` still **counts** the rows; the shortfall looks like an off-by-one in paging | An `IArchivable` principal behind a **required** FK. On `net10.0` the archived filter propagates into the `Include` as an inner join, so a dependent whose parent is archived drops out of `items`; the count query has no join. A sort that interleaves parents (`SortOrder`, `Title`) loses about one row per page, which is why it reads as a paging bug. Startup validation warns on the shape | Reference data: don't make it `IArchivable` — real `DELETE` + `OnDelete(Restrict)`, or an optional FK. An aggregate parent whose dependent you also query directly: mirror the filter on the dependent ([`entities.patterns.md`](./entities.patterns.md) → Soft Delete → *Before you make reference data `IArchivable`*) |
 | `?q=` matches **nothing** — every search empty, 200, no error, no warning | The entity implements `IHasNormalizedContent` but nothing fills `NormalizedContent`: `[Normalized]` sits on the class instead of the property, or there is no attribute at all. The global `Q` filter then ANDs a match against `null` | Put `[Normalized(SourceProperties = [...])]` on the `NormalizedContent` **property** (§Step 1 — all-or-nothing note, §Normalizing). Rows saved before the attribute existed stay empty until re-saved |
-| `?q=` returns **everything**, unfiltered | The entity doesn't implement `IHasNormalizedContent` and has no custom filter — startup logs *"?q= text search is silently ignored for: X"* | Implement `IHasNormalizedContent` with a `[Normalized]` source (§Step 1) |
+| `?q=` returns **everything**, unfiltered | The entity doesn't implement `IHasNormalizedContent` and has no custom filter — startup logs *"?q= text search is silently ignored for: X"* — or its custom filter never reads `so.Q` — *"?q= text search is ignored by the custom filters of: X"* | Implement `IHasNormalizedContent` with a `[Normalized]` source (§Step 1), or read `so.Q` in the filter (`FilterQ`) |
 | `?q=` finds fewer rows than it should, or none once a domain filter is on | A per-entity `Q` filter in your query builder ANDs on top of the global one | Delete it — keyword search is already global for `IHasNormalizedContent` entities (§Step 6 — *Don't write a `Q` filter*) |
 | `?q=` returns nothing although the text is clearly in the row | `NormalizedContent` holds raw text while the query term is normalized — punctuation the normalizer deletes never matches | Write `NormalizedContent` through `[Normalized]` or `INormalizer.Normalize(...)` (§Normalizing — the normalize contract) |
 | A computed / `[NotMapped]` field is `null` on a row nested inside another entity's response, but filled on the entity's own endpoint | Processors and after-mappers run only in their **own** entity's read pipeline — never inside another entity's projection | Expected. Render `null` as empty (not `0`), or fetch the child list from its own endpoint (§Step 7) |

@@ -35,6 +35,19 @@ public class ZipFileService(ZipFileCommunicator communicator) : IFileService, ID
 #endif
         return stream.GetBytes();
     }
+    public Task<StoredFileInfo?> GetInfo(string identifier)
+    {
+        var entry = ZipArchive.Find(identifier);
+        // a folder's entry has no name of its own
+        if (entry == null || entry.Name.Length == 0)
+        {
+            return Task.FromResult<StoredFileInfo?>(null);
+        }
+
+        // an entry of an archive open for update has no Length once opened; its stream, held in memory, has one
+        using var stream = entry.Open();
+        return Task.FromResult<StoredFileInfo?>(new StoredFileInfo(stream.Length, entry.LastWriteTime.UtcDateTime));
+    }
     public Task<IEnumerable<string>> List(FileSearchObject? so = null)
     {
         // as Unzip names them: an archive another tool wrote may separate its folders with '\'

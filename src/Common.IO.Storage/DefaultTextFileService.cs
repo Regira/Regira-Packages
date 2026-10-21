@@ -28,6 +28,8 @@ public class DefaultTextFileService(IFileService binaryFileService, Encoding? en
         => binaryFileService.GetBytes(identifier);
     public Task<Stream?> GetStream(string identifier)
         => binaryFileService.GetStream(identifier);
+    public Task<StoredFileInfo?> GetInfo(string identifier)
+        => binaryFileService.GetInfo(identifier);
     public Task<IEnumerable<string>> List(FileSearchObject? so = null)
         => binaryFileService.List(so);
 #if NET10_0_OR_GREATER

@@ -93,6 +93,32 @@ public static class StorageTestHelper
             Assert.That(bytes.Length, Is.EqualTo(sourceFile.Length));
         }
     }
+    public static async Task Test_GetInfo(this IStorageTestContext ctx, bool hasLastModified = true)
+    {
+        var fso = new FileSearchObject
+        {
+            Type = FileEntryTypes.Files,
+            FolderUri = "dir2",
+            Recursive = true
+        };
+        var file = (await ctx.FileService.List(fso)).First();
+        var info = await ctx.FileService.GetInfo(file);
+
+        var sourceFileName = Path.GetFileName(file.Split('?').First());
+        var sourceFile = ctx.SourceFiles.Single(x => sourceFileName.Equals(x.FileName, StringComparison.InvariantCultureIgnoreCase));
+        Assert.That(info, Is.Not.Null);
+        Assert.That(info!.Length, Is.EqualTo(sourceFile.Length));
+        if (hasLastModified)
+        {
+            Assert.That(info.LastModified, Is.Not.Null.And.LessThanOrEqualTo(DateTime.UtcNow.AddMinutes(5)));
+        }
+        else
+        {
+            Assert.That(info.LastModified, Is.Null);
+        }
+        Assert.That(await ctx.FileService.GetInfo($"dir2/{Guid.NewGuid():N}.txt"), Is.Null);
+        Assert.That(await ctx.FileService.GetInfo("dir2"), Is.Null);
+    }
     public static async Task Test_Filter_By_Folder(this IStorageTestContext ctx)
     {
         var folder = "dir2";

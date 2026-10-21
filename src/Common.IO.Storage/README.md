@@ -52,8 +52,12 @@ All backends implement this interface. **Identifiers** are relative paths within
 Task<bool>                Exists(string identifier)
 Task<byte[]?>             GetBytes(string identifier)
 Task<Stream?>             GetStream(string identifier)
+Task<StoredFileInfo?>     GetInfo(string identifier)
 Task<IEnumerable<string>> List(FileSearchObject? so = null)
 ```
+
+`GetInfo` answers a file's size and last-modified time (UTC) from the store's metadata, without reading the content,
+and `null` for a missing file or a folder. GitHub leaves `LastModified` `null`.
 
 ### Write
 
