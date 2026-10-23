@@ -204,12 +204,15 @@ Delete(id) -> DeleteResult
 - Responsible for mapping to/from DTO models using `IEntityMapper`
 - **Error status codes:** `EntityInputException` → **400** with the field errors as a `ValidationProblemDetails`; a database
   constraint violation (`EntityConstraintException`) → **409 Conflict** with a generic `ProblemDetails`
-  detail (the provider message is logged server-side); a write built on a stale read
+  detail (the provider message is logged server-side, and the response's `traceId` finds it); a write built on a stale read
   (`EntityConcurrencyException`) → **409 Conflict** with a `ProblemDetails` titled "Concurrency conflict"; a
   missing entity → **404**. The first three are not endpoint-scoped: the controller bases carry
   `[EntityConstraintConflict]`, so a hand-written action added beside the generated ones answers a rule breach the
   same way, and `ConfigureDefaultJsonOptions()` registers `EntityExceptionFilter` for every other controller. See [Built-in Features → Constraint Exceptions](built-in-features.md#constraint-exceptions)
   and [Concurrency Exceptions](built-in-features.md#concurrency-exceptions)
+- **Cancellation:** a read's query (details, list, search, the lookup behind a download) is cancelled when its client
+  disconnects; the downloaded file itself is read to its end. A write runs to its end, so a client never has to guess
+  whether a save it walked away from committed
 
 ---
 

@@ -65,7 +65,7 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
     [HttpGet("files/{id}")]
     public virtual async Task<IActionResult> GetFile([FromRoute] int id, bool inline = true)
     {
-        var attachment = await Sender.Send(new AttachmentFileQuery<TEntity>(id));
+        var attachment = await Sender.Send(new AttachmentFileQuery<TEntity>(id), HttpContext.RequestAborted);
         return attachment == null ? NotFound() : this.File(attachment, inline);
     }
     /// <summary>
@@ -77,7 +77,7 @@ public abstract class EntityAttachmentControllerBase<TEntity, TDto, TInputDto> :
     [HttpGet("{objectId}/files/{*fileName}")]
     public virtual async Task<IActionResult> GetFile([FromRoute] int objectId, [FromRoute] string fileName, bool inline = true)
     {
-        var id = await AttachmentRouteValues.FindLinkId<TEntity>(HttpContext.RequestServices, objectId, fileName);
+        var id = await AttachmentRouteValues.FindLinkId<TEntity>(HttpContext.RequestServices, objectId, fileName, HttpContext.RequestAborted);
         return id == null ? NotFound() : await GetFile(id.Value, inline);
     }
     // Upload

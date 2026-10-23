@@ -662,7 +662,7 @@ read as the rule (`ValueTooLarge`, `order.notOpen`). The 400 body is in §Respon
 
 - **The runtime type decides** — unlike preppers, which match the service's declared entity: a `Person` saved
   through the `Party` service gets its `Person` validators too. The exception is still the service's own
-  `EntityInputException<Party>`, so the generated endpoint's typed `catch` matches.
+  `EntityInputException<Party>`.
 - ⚠️ **The place of registration never narrows the scope.** Every registration joins the one list every write
   service imports: an `EntityValidatorBase<IHasCode>` added inside `For<Order>()` checks every entity that has a
   code. Register an interface- or base-scoped validator once, with `options.AddValidator<T>()` in `UseEntities()`;
@@ -999,7 +999,7 @@ IEntityService<Order, int, OrderSearchObject, OrderSortBy, OrderIncludes>       
 
 > **Response envelope.** Responses are wrapped, not bare DTOs: Details → `{ "item": {…} }`; List → `{ "items": [...] }`; Search → `{ "items": [...], "count": N }` (each also carries `duration` in ms). Unwrap `item`/`items` client-side.
 
-> **PATCH vs PUT:** Use `PUT` when the client has the full entity. Use `PATCH` when only a subset of fields should change. The PATCH implementation deserializes the incoming JSON Merge Patch into `TInputDto`, so only fields declared on the input model can be modified. `TInputDto` property names must match `TEntity` property names (camelCase in JSON, PascalCase in C#, which is the STJ default). Related collections absent from the body are left intact while the entity declares them uninitialized (Step 1) and the merge base leaves them out: the entity is read with no includes flag, so a collection `Includes()` loads on every read is part of the merge base, and a PATCH saves it again through the child input DTO — a child column that DTO leaves out, and not `[ServerOwned]`, is cleared. Gate such an include behind a flag (`includes?.HasFlag(…) == true`), or keep every child column on the child input DTO or `[ServerOwned]`. A scalar field **declared on `TInputDto`** but omitted from a PATCH body is preserved too — Merge Patch writes only the keys you send. The merge is one level deep: a nested object in the body replaces the stored one whole, so a field it leaves out is cleared, not kept — send the whole object. The merged input is validated against `TInputDto`'s DataAnnotations first: a failure answers the 400 of a validator's refusal, `errorDetails` included (§Error Handling). The trap is the opposite case: a field the DTO **never declares** maps as `null`/default on every PATCH *and* PUT — see ⚠️ below.
+> **PATCH vs PUT:** Use `PUT` when the client has the full entity. Use `PATCH` when only a subset of fields should change. The PATCH implementation deserializes the incoming JSON Merge Patch into `TInputDto`, so only fields declared on the input model can be modified. `TInputDto` property names must match `TEntity` property names (camelCase in JSON, PascalCase in C#, which is the STJ default). Related collections absent from the body are left intact while the entity declares them uninitialized (Step 1) and the merge base leaves them out: the entity is read with no includes flag, so a collection `Includes()` loads on every read is part of the merge base, and a PATCH saves it again through the child input DTO — a child column that DTO leaves out, and not `[ServerOwned]`, is cleared. Gate such an include behind a flag (`includes?.HasFlag(…) == true`), or keep every child column on the child input DTO or `[ServerOwned]`. A scalar field **declared on `TInputDto`** but omitted from a PATCH body is preserved too — Merge Patch writes only the keys you send. The merge is one level deep: a nested object in the body replaces the stored one whole, so a field it leaves out is cleared, not kept — send the whole object. The merged input is validated against `TInputDto`'s DataAnnotations first: a failure answers the 400 of a validator's refusal, `errorDetails` included (§Error Handling). A body that is no JSON object answers that 400 too, under the empty key — on a controller also a body that is not JSON at all. The trap is the opposite case: a field the DTO **never declares** maps as `null`/default on every PATCH *and* PUT — see ⚠️ below.
 
 > **⚠️ A field absent from `TInputDto` maps as `null`/default on PATCH *and* PUT.** Server-owned/immutable
 > values (`OwnerId` FKs, generated codes, computed totals) silently reset — a `[Required]` column 500s, a
@@ -1889,7 +1889,8 @@ detected per provider: SQLSTATE class 23, SQLite error 19, SQL Server 547/515/26
 attachment controllers, and any hand-written action, through the same filter
 `ConfigureDefaultJsonOptions()` registers, and the mapped endpoints through `EntityExceptionEndpointFilter`. The response detail is generic — the provider's
 constraint message can leak index names and other users' values, so it is logged server-side (warning) by
-the write service instead. Transient faults (deadlocks, timeouts) are **not** wrapped and keep surfacing as
+the write service instead; the 409 is built by the app's `ProblemDetailsFactory`, so its `traceId` finds that warning.
+Transient faults (deadlocks, timeouts) are **not** wrapped and keep surfacing as
 500s for alerting. When the client can fix the input, prefer an explicit check in a validator — a
 field-level 400 beats a generic 409.
 
@@ -1903,6 +1904,14 @@ always `EntityConcurrencyException.ClientMessage`: the message you pass is not s
 `EntityInputException` (400) instead. Tokens,
 the DTO rules and what each route checks: [`entities.patterns.md`](./entities.patterns.md) → Optimistic
 concurrency.
+
+### A client that disconnects
+
+A read — details, list, search, the lookup behind a download — is sent with the request's `RequestAborted`, so its
+query stops when its client leaves; the file a download reads is read to its end, since `IFileService` takes no token.
+A write runs to its end, so a client never has to guess whether a save it walked away from committed. The cancelled
+query throws `OperationCanceledException`, which ASP.NET Core logs at debug level, not as an error — except on SQL
+Server, where a query cancelled mid-flight surfaces as a `SqlException` and is logged as an unhandled error.
 
 ---
 
@@ -1940,7 +1949,7 @@ Load that file when implementing one of these:
 - **Entity operations outside a controller** — opt-in: the request an endpoint sends (`IEntitySender`), from a job, an import or the app's own endpoint, with the endpoint's paging, re-read and DTO mapping; replacing one operation for one entity with a handler, or one endpoint (a controller override, or an excluded mapped endpoint and the app's own); behaviours around every operation; dispatching through MediatR.
 - **Aggregates over a non-owned child collection** — a parent total rolled up from children that own their own FK. Eventually consistent, seeding needs a second pass, and a child query filter can zero it on restore.
 - **Role-gated write authorization filter** — one global authorization filter mapping controller type → required role, failing closed for a controller it has no entry for, keyed on the generated write actions because the controllers serve reads over `POST` too; on mapped endpoints, a policy keyed on `EntityEndpointMetadata`.
-- **Writing to a related entity from a prepper** — the typed `e.Prepare(entity, dbContext)` overload; `EntityInputException<T>` must name the *serviced* entity or it escapes as a 500.
+- **Writing to a related entity from a prepper** — the typed `e.Prepare(entity, dbContext)` overload; a rule breach throws `EntityInputException<T>` of the *serviced* entity, and any type argument answers 400.
 - **Renamed DTO property** — wire both directions on the typed `UseMapping` chain when a DTO name differs from the entity's (Mapster maps by name only).
 - **Public (anonymous) attachment downloads** — serve images to `<img>` on a secured API (`[AllowAnonymous]` override of `GetFile`, or on mapped endpoints `o.AllowAnonymous(…)`, which opens chosen endpoints: public reads, the downloads an `<img>` loads).
 - **An entity that references one of its own children** — an owner FK pointing at one of its own child rows: the SQL Server migration and every owner `DELETE` both fail. What to do instead, and the two-phase save when the reference has to stay.
@@ -2160,7 +2169,8 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 | A user's edit silently overwrites another user's change — no 409 | No concurrency token, or it never round-trips: missing from the read or input DTO (the client then sends the default, which is not checked), an application-owned token nothing re-mints, or a token not declared a version stamp — a `[ConcurrencyCheck]` token without `[VersionStamp]` is a data column, compared with the stored row however a primer moves it | Implement `IHasConcurrencyToken`, or declare a token of your own `[VersionStamp]` and mint it in a primer, and put it on both DTOs ([`entities.patterns.md`](./entities.patterns.md) → Optimistic concurrency). Startup validation warns about a DTO without the property and about an undeclared token shaped like a stamp |
 | Every PUT/PATCH answers **409 "Concurrency conflict"**, even with a single user | The entity initializes its token (`= Guid.NewGuid()`) and the input DTO has no property for it, so each mapped entity carries a token the row never held; or an input DTO initializes it, so a client that leaves it out sends that value; or the client resends the token it read before its own last save | Remove the initializers and add the property to both DTOs; take the new token from the `SaveResult` after each save |
 | An owner `DELETE` answers **500** *"a circular dependency was detected in the data to be saved"*, or SQL Server refuses the migration with **Msg 1785** (*may cause cycles or multiple cascade paths*) | The owner holds a foreign key to one of its own child rows (a cover image among its images), so the two tables reference each other | [`entities.patterns.md`](./entities.patterns.md) → *An entity that references one of its own children* |
-| A dashboard/report endpoint answers **500 with an empty body** on a green build; the log says *"The LINQ expression … could not be translated"* or *"Translating this query requires the SQL APPLY operation"*, or a `NotSupportedException` | An untranslatable construct in the query: a record constructor in the projection, a correlated `SelectMany` (`CROSS APPLY` — absent on SQLite), **a method of your own called on the row**, date arithmetic between two columns on SQLite (`x.End - x.Start`), a decimal `Min`, `Max` or `OrderBy` on SQLite under EF Core 9 (`net8.0`), or a provider-specific `EF.Functions` member (`DateDiff*` is SQL Server only) | The full list with the translating alternative for each is in [`entities.patterns.md`](./entities.patterns.md) § Cross-entity aggregates & report endpoints |
+| Any endpoint answers **500 with an empty body** | The host registers no problem details: an unhandled exception goes out bare, with no `traceId` to find it in the log by | `builder.Services.AddProblemDetails()` and `app.UseExceptionHandler()` right after `builder.Build()`, as the project templates have them; the response then carries a `traceId` to find the request's log lines by |
+| A dashboard/report endpoint answers **500** on a green build; the log says *"The LINQ expression … could not be translated"* or *"Translating this query requires the SQL APPLY operation"*, or a `NotSupportedException` | An untranslatable construct in the query: a record constructor in the projection, a correlated `SelectMany` (`CROSS APPLY` — absent on SQLite), **a method of your own called on the row**, date arithmetic between two columns on SQLite (`x.End - x.Start`), a decimal `Min`, `Max` or `OrderBy` on SQLite under EF Core 9 (`net8.0`), or a provider-specific `EF.Functions` member (`DateDiff*` is SQL Server only) | The full list with the translating alternative for each is in [`entities.patterns.md`](./entities.patterns.md) § Cross-entity aggregates & report endpoints |
 
 ### Troubleshooting — compiler errors
 

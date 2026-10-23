@@ -1,5 +1,8 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Microsoft.Extensions.DependencyInjection;
 using Regira.Entities.Models;
 
 namespace Regira.Entities.Web.Controllers;
@@ -18,8 +21,8 @@ internal static class EntityExceptionMapping
         IActionResult? result = context.Exception switch
         {
             EntityInputException input => input.ToBadRequest(context.HttpContext),
-            EntityConstraintException => new ConflictObjectResult(EntityConstraintProblem.Create()),
-            EntityConcurrencyException => new ConflictObjectResult(EntityConcurrencyProblem.Create()),
+            EntityConstraintException => Conflict(context.HttpContext, EntityConstraintProblem.Create()),
+            EntityConcurrencyException => Conflict(context.HttpContext, EntityConcurrencyProblem.Create()),
             _ => null
         };
         if (result != null)
@@ -27,5 +30,14 @@ internal static class EntityExceptionMapping
             context.Result = result;
             context.ExceptionHandled = true;
         }
+    }
+
+    // MVC writes a ProblemDetails an ObjectResult carries as it is, so the app's factory builds it — as it builds the 400 —
+    // for the traceId that ties the 409 to the write service's warning, its type, and the app's CustomizeProblemDetails
+    private static ConflictObjectResult Conflict(HttpContext httpContext, ProblemDetails problem)
+    {
+        var factory = httpContext.RequestServices?.GetService<ProblemDetailsFactory>();
+        return new ConflictObjectResult(
+            factory?.CreateProblemDetails(httpContext, problem.Status, problem.Title, detail: problem.Detail) ?? problem);
     }
 }

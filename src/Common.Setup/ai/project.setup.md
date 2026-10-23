@@ -625,8 +625,11 @@ try
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()); // recommended — enums as names, a stable SPA contract
         });
     builder.Services.AddOpenApi();
+    builder.Services.AddProblemDetails(); // an error the app raises answers application/problem+json with a traceId
 
     var app = builder.Build();
+
+    app.UseExceptionHandler(); // an unhandled exception answers a 500 problem; its detail stays in the log
 
     if (app.Environment.IsDevelopment())
     {
@@ -697,8 +700,11 @@ try
     builder.Services.AddControllers();
 
     builder.Services.AddOpenApi();
+    builder.Services.AddProblemDetails(); // an error the app raises answers application/problem+json with a traceId
 
     var app = builder.Build();
+
+    app.UseExceptionHandler(); // an unhandled exception answers a 500 problem; its detail stays in the log
 
     if (app.Environment.IsDevelopment())
     {
@@ -792,8 +798,11 @@ try
         options.AddDocumentTransformer<AuthenticationSchemeDocumentTransformer>();
         options.AddOperationTransformer<SecurityRequirementOperationTransformer>();
     });
+    builder.Services.AddProblemDetails(); // an error the app raises answers application/problem+json with a traceId
 
     var app = builder.Build();
+
+    app.UseExceptionHandler(); // an unhandled exception answers a 500 problem; its detail stays in the log
 
     if (app.Environment.IsDevelopment())
     {

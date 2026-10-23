@@ -18,6 +18,9 @@ namespace Regira.Entities.Web.Controllers;
 /// the entity does not exist, so the caller picks the 404. A write helper throws what the write pipeline refuses:
 /// <see cref="EntityConstraintConflictAttribute"/> on the entity controller bases, or <see cref="EntityExceptionFilter"/>
 /// application-wide, answers a refused write with 400 and a constraint or concurrency conflict with 409.
+/// A read helper sends with the request's <c>RequestAborted</c>, so a client that leaves cancels its query; a write runs
+/// to its end whatever the client does, since one cancelled around its commit leaves the client unable to tell whether it
+/// was saved.
 /// </summary>
 public static class ControllerExtensions
 {
@@ -35,7 +38,7 @@ public static class ControllerExtensions
     /// </summary>
     public static async Task<ActionResult<DetailsResult<TDto>>?> Details<TEntity, TKey, TDto>(this ControllerBase ctrl, TKey id, ArchivedFilter? archived = null)
         where TEntity : class, IEntity<TKey>
-        => Ok(await ctrl.Sender().Send(new DetailsQuery<TEntity, TKey, TDto>(id, archived)));
+        => Ok(await ctrl.Sender().Send(new DetailsQuery<TEntity, TKey, TDto>(id, archived), ctrl.HttpContext.RequestAborted));
 
     // List
     public static OkObjectResult ListResult<TDto>(this ControllerBase _, IList<TDto> items, long? duration = null) =>
@@ -44,7 +47,7 @@ public static class ControllerExtensions
     public static async Task<ActionResult<ListResult<TDto>>> List<TEntity, TKey, TSearchObject, TDto>(this ControllerBase ctrl, TSearchObject? so = null, PagingInfo? pagingInfo = null)
         where TEntity : class, IEntity<TKey>
         where TSearchObject : class, ISearchObject<TKey>
-        => Ok(await ctrl.Sender().Send(new ListQuery<TEntity, TKey, TSearchObject, TDto>(so, pagingInfo)))!;
+        => Ok(await ctrl.Sender().Send(new ListQuery<TEntity, TKey, TSearchObject, TDto>(so, pagingInfo), ctrl.HttpContext.RequestAborted))!;
     // complex
     public static async Task<ActionResult<ListResult<TDto>>> List<TEntity, TKey, TSo, TSortBy, TIncludes, TDto>(this ControllerBase ctrl,
         TSo[] so, PagingInfo pagingInfo, TIncludes[] includes, TSortBy[] sortBy)
@@ -52,7 +55,7 @@ public static class ControllerExtensions
         where TSo : class, ISearchObject<TKey>, new()
         where TSortBy : struct, Enum
         where TIncludes : struct, Enum
-        => Ok(await ctrl.Sender().Send(new ListQuery<TEntity, TKey, TSo, TSortBy, TIncludes, TDto>(so, pagingInfo, includes, sortBy)))!;
+        => Ok(await ctrl.Sender().Send(new ListQuery<TEntity, TKey, TSo, TSortBy, TIncludes, TDto>(so, pagingInfo, includes, sortBy), ctrl.HttpContext.RequestAborted))!;
 
     // Search
     public static OkObjectResult SearchResult<TDto>(this ControllerBase _, IList<TDto> items, long count, long? duration = null) =>
@@ -65,7 +68,7 @@ public static class ControllerExtensions
     public static async Task<ActionResult<SearchResult<TDto>>> Search<TEntity, TKey, TSearchObject, TDto>(this ControllerBase ctrl, TSearchObject? so = null, PagingInfo? pagingInfo = null)
         where TEntity : class, IEntity<TKey>
         where TSearchObject : class, ISearchObject<TKey>
-        => Ok(await ctrl.Sender().Send(new SearchQuery<TEntity, TKey, TSearchObject, TDto>(so, pagingInfo)))!;
+        => Ok(await ctrl.Sender().Send(new SearchQuery<TEntity, TKey, TSearchObject, TDto>(so, pagingInfo), ctrl.HttpContext.RequestAborted))!;
     // complex
     public static async Task<ActionResult<SearchResult<TDto>>> Search<TEntity, TKey, TSo, TSortBy, TIncludes, TDto>(this ControllerBase ctrl,
         TSo[] so, PagingInfo pagingInfo, TIncludes[] includes, TSortBy[] sortBy)
@@ -73,7 +76,7 @@ public static class ControllerExtensions
         where TSo : class, ISearchObject<TKey>, new()
         where TSortBy : struct, Enum
         where TIncludes : struct, Enum
-        => Ok(await ctrl.Sender().Send(new SearchQuery<TEntity, TKey, TSo, TSortBy, TIncludes, TDto>(so, pagingInfo, includes, sortBy)))!;
+        => Ok(await ctrl.Sender().Send(new SearchQuery<TEntity, TKey, TSo, TSortBy, TIncludes, TDto>(so, pagingInfo, includes, sortBy), ctrl.HttpContext.RequestAborted))!;
 
     // Save
     public static OkObjectResult SaveResult<TDto>(this ControllerBase _, TDto item, int affected, bool isNew, long? duration = null) =>
@@ -87,7 +90,8 @@ public static class ControllerExtensions
         => ctrl.Write<TEntity, SaveResult<TDto>>(new SaveCommand<TEntity, TKey, TDto, TInputDto>(model, id, ValidateInput: false));
     /// <summary>
     /// Applies a JSON Merge Patch (RFC 7386) from the request body to an existing entity.<br />
-    /// Reads the body directly (independent of the configured MVC input formatter).
+    /// Reads the body directly (independent of the configured MVC input formatter); a body that is not JSON throws the
+    /// <see cref="EntityInputException{T}"/> of a body that is no JSON object, answered with the same 400.
     /// </summary>
     public static async Task<ActionResult<SaveResult<TDto>>?> Patch<TEntity, TKey, TDto, TInputDto>(this ControllerBase ctrl, TKey id)
         where TEntity : class, IEntity<TKey>
@@ -99,9 +103,13 @@ public static class ControllerExtensions
         {
             patchDoc = await JsonDocument.ParseAsync(ctrl.Request.Body);
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
-            return ctrl.BadRequest();
+            // refused as the patch handler refuses a body that is no JSON object: the 400 with errorDetails
+            throw new EntityInputException<TEntity>("A JSON merge patch is a JSON object.", ex)
+            {
+                Errors = [new EntityInputError(string.Empty, "A JSON merge patch is a JSON object.")]
+            };
         }
         using (patchDoc)
         {

@@ -333,7 +333,7 @@ dotnet add package Serilog.Settings.Configuration
 > separate choices; this combination is ordinary, not a deviation.
 > - **Via MCP:** call `get_package(id: "Regira.Setup", section: "project.setup")` to read the template.
 > - **Via local extraction:** read `.regira/instructions/project.setup.md` if it exists.
-> - **Fallback (if neither is available):** ASP.NET Core Web API project, thin `Program.cs`, DI via extension methods, `app.MapOpenApi()` (requires `Microsoft.AspNetCore.OpenApi`), `app.MapScalarApiReference()` (requires `Scalar.AspNetCore` + `using Scalar.AspNetCore;`), both mapped inside `if (app.Environment.IsDevelopment())`, and no `UseSwaggerUI()`.
+> - **Fallback (if neither is available):** ASP.NET Core Web API project, thin `Program.cs`, DI via extension methods, `app.MapOpenApi()` (requires `Microsoft.AspNetCore.OpenApi`), `app.MapScalarApiReference()` (requires `Scalar.AspNetCore` + `using Scalar.AspNetCore;`), both mapped inside `if (app.Environment.IsDevelopment())`, `builder.Services.AddProblemDetails()` with `app.UseExceptionHandler()` right after `builder.Build()` (an unhandled exception answers a problem with a `traceId`, not an empty 500), and no `UseSwaggerUI()`.
 
 > **⚠️ Source encoding — keep `.cs` files ASCII-only.** A `.cs` file saved as UTF-8 *without* a BOM that
 > contains non-ASCII characters (`→`, `×`, `é`, an em dash, smart quotes — in comments, seed data or string

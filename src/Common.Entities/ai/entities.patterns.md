@@ -2040,7 +2040,7 @@ e.Prepare(async (order, dbContext) =>
 });
 ```
 
-- Throw `EntityInputException<Order>` on a rule breach — parameterized by the **serviced** entity (`Order`, the one with the `.For<>()`/controller), **not** the related `Product`. Both still return 400 (the registered filter matches the non-generic base), but the generated action's own `catch` is on its closed `EntityInputException<TEntity>`, so only the matching type argument gets the action's own 400 — another reaches the filter, and a host without it answers 500 — and any `catch` you write should be on the base for the same reason.
+- Throw `EntityInputException<Order>` on a rule breach — parameterized by the **serviced** entity (`Order`, the one with the `.For<>()`/controller), **not** the related `Product`, so its `Item` can carry the entity being written. Either answers 400 on every surface, since the mapping matches the non-generic base, and a `catch` you write should be on that base too: a closed `EntityInputException<Order>` misses the `EntityInputException<Product>` another prepper throws.
 - On **update** the decrement would compound — diff against the original quantities (prepper-with-original, or a primer branching on `EntityState.Modified`) and apply only the delta.
 - ⚠️ Two concurrent orders can read the same stock and lose a decrement; where that matters, give `Product` `IHasConcurrencyToken` so the losing save answers 409 (§Optimistic concurrency (stale-write detection)).
 - To insert a related row on update, `dbContext.Add(row)` with its FK set; it is saved with the parent and taken back if a validator refuses the write.
