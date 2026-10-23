@@ -783,6 +783,9 @@ spellings are written into the ticket rather than recomputed per request.
    cookie considerably larger. Leave it off unless a downstream call needs it.
 5. **A multi-tenant sign-in has the same issuer hole as a multi-tenant API** — see the Entra notes above. It is
    closed automatically, and the check is chained *after* your `Configure` delegate so customization cannot drop it.
+6. **An `email` claim is not an identity.** Key a local account or record on the issuer and `sub` (`tid` + `oid` on
+   Entra ID), never on the address alone: a provider may send one it has not verified, and Entra ID sends no
+   `email_verified` by default (*Sign-up with profile fields*).
 
 **Not covered in-process:** the code exchange itself needs a live provider. The tests cover the challenge boundary
 (authorize URL, PKCE, state, correlation cookie) and the option shaping; verify the full round trip against a real
@@ -1204,7 +1207,12 @@ private async Task EnsureProfile(SignUpInput input)
 ```
 
 A domain row that is the account's party is linked as `Regira.Entities` → `entities.blueprints` → *Linking a party to
-a user account* describes.
+a user account* describes. ⚠️ Link a new account to an existing record (a customer, an employee, a speaker) only by an
+e-mail address the user has confirmed, or by a stored external login. Never link by an unconfirmed e-mail or an OIDC
+e-mail claim without `email_verified`, or anyone can take over that record. So not at sign-up, where the address is
+not yet confirmed: in a `ConfirmEmail` override (it is `virtual`), once `base.ConfirmEmail` answers `200` and the
+user's `EmailConfirmed` is `true` (it answers `200` for an unknown user too), or by the stored login's issuer and `sub`
+(`tid` + `oid` on Entra ID, which sends no `email_verified` by default).
 
 ### `AccountControllerBase<TUser>` — route `auth`
 
@@ -1237,7 +1245,7 @@ set (Identity's default confirmation checks the address). A user you seed, or cr
 | `POST auth/password/recover` | ✅ | `{ username, siteUrl }` | `200`, whether or not the user exists | `400` `siteUrl` not on an allowed origin |
 | `POST auth/password/reset` | ✅ | `{ token, password }` | `200`; the user's refresh tokens are revoked | `400` malformed token / identity errors |
 
-`recover` answers an unknown user alike; for a known one it emails a link — `siteUrl`, the reset **page**, with its query string set to `?token=<Base64 of the reset token and user name>` (a query `siteUrl` carried is dropped) — the Base64 of the UTF-8 JSON of a `UserTokenModel` (`{"Token":"…","Username":"…"}`, `System.Text.Json` defaults, so PascalCase keys; `reset` reads them case-sensitively), percent-encoded so any query parser (`URLSearchParams`, vue-router's `route.query`) reads it back intact. `reset` returns `400` on a malformed token. The body is plain English text, though `IEmailSender` calls it `htmlMessage`: `Follow link below to reset password`, the link, a blank line, `Token: <token>`. `POST users` sends `Welcome <username>,`, `Please follow link below to confirm email`, the link and the token, subject `Welcome`. `IdentityMailer` passes the body on unchanged as an HTML message (`MessageObject.IsHtml` defaults to `true`): it encodes nothing, and the line breaks collapse. The only user value in it is the welcome mail's user name, which Identity's default `UserOptions.AllowedUserNameCharacters` keeps free of `<`, `>`, `&` and `"`. With wider user-name characters, or to keep the line breaks, register an `IEmailSender` that wraps `IdentityMailer` and passes on `WebUtility.HtmlEncode(htmlMessage).ReplaceLineEndings("<br>")`.
+`recover` answers an unknown user alike; for a known one it emails a link — `siteUrl`, the reset **page**, with its query string set to `?token=<Base64 of the reset token and user name>` (a query `siteUrl` carried is dropped) — the Base64 of the UTF-8 JSON of a `UserTokenModel` (`{"Token":"…","Username":"…"}`, `System.Text.Json` defaults, so PascalCase keys; `reset` reads them case-sensitively), percent-encoded so any query parser (`URLSearchParams`, vue-router's `route.query`) reads it back intact. `reset` returns `400` on a malformed token. The body is plain English text, though `IEmailSender` calls it `htmlMessage`: `Follow link below to reset password`, the link, a blank line, `Token: <token>`. `POST users` sends `Welcome <username>,`, `Please follow link below to confirm email`, the link and the token, subject `Welcome`. `IdentityMailer` passes the body on unchanged as an HTML message (`MessageObject.IsHtml` defaults to `true`): it encodes nothing, and the line breaks collapse. The only user value in it is the welcome mail's user name, which Identity's default `UserOptions.AllowedUserNameCharacters` keeps free of `<`, `>`, `&` and `"`. Set `IdentityMailerOptions.FormatPlainText = true` to send the body as the plain text it is: `IdentityMailer` then HTML-encodes it, links the URL and keeps the line breaks, so a user name with wider characters writes no markup (`Regira.Office` → `office.mail.instructions` → *ASP.NET Identity Integration*).
 
 `recover` is anonymous and mails the named account on every call, so a caller can flood that inbox and spend the app's mail quota: rate-limit it like `refresh-token`. Limit by client, not by account, so a `429` reveals no more than the `200` does. The
 response time still tells a name exists, as `auth`'s does: a known user waits on the reset token and the mail send.

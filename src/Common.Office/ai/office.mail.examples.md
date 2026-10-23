@@ -78,6 +78,6 @@ using Regira.Security.Authentication.Web.Mail;            // IdentityMailer (pac
 services.AddSingleton<IEmailSender>(sp =>
     new IdentityMailer(
         sp.GetRequiredService<IMailService>(),
-        new IdentityMailerOptions { Sender = "no-reply@myshop.com" }
+        new IdentityMailerOptions { Sender = "no-reply@myshop.com", FormatPlainText = true }   // the account mails are plain text
     ));
 ```

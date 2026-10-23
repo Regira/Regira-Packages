@@ -188,7 +188,8 @@ services.AddSingleton<IEmailSender>(provider =>
             {
                 Email       = "no-reply@example.com",
                 DisplayName = "Example App"
-            }
+            },
+            FormatPlainText = true   // the Regira account mails are plain text: encode it, link the URL, keep the line breaks
         }
     ));
 ```
