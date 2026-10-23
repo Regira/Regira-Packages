@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using NUnit.Framework.Interfaces;
 using Regira.IO.Abstractions;
 using Regira.IO.Extensions;
 using Regira.Utilities;
@@ -13,6 +14,23 @@ namespace Office.PDF.Testing.Abstractions;
 public abstract class PdfAssetsTestsBase
 {
     private static readonly JsonSerializerOptions FactsJson = new() { WriteIndented = true, Converters = { new JsonStringEnumConverter() } };
+
+    // The running test's outputs, attached to its result only when it fails: a green run with a logger copies none of
+    // them into TestResults. The tests of one fixture run one at a time (see Properties/AssemblyInfo.cs).
+    private readonly List<string> _outputs = [];
+
+    [TearDown]
+    public void AttachOutputsOfAFailedTest()
+    {
+        if (TestContext.CurrentContext.Result.Outcome.Status == TestStatus.Failed)
+        {
+            foreach (var path in _outputs)
+            {
+                TestContext.AddTestAttachment(path);
+            }
+        }
+        _outputs.Clear();
+    }
 
     protected readonly string OutputDir;
 
@@ -55,11 +73,11 @@ public abstract class PdfAssetsTestsBase
     {
         var path = TestOutputPath(extension, suffix);
         await File.WriteAllBytesAsync(path, output.GetBytes()!);
-        TestContext.AddTestAttachment(path);
+        _outputs.Add(path);
         var facts = read(output);
         var factsPath = $"{path}.facts.json";
         await File.WriteAllTextAsync(factsPath, JsonSerializer.Serialize(facts, FactsJson));
-        TestContext.AddTestAttachment(factsPath);
+        _outputs.Add(factsPath);
         return facts;
     }
 

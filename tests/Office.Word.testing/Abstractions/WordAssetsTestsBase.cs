@@ -1,4 +1,5 @@
 using System.Text.Json;
+using NUnit.Framework.Interfaces;
 using Regira.IO.Abstractions;
 using Regira.IO.Extensions;
 using Regira.Office.Models;
@@ -14,6 +15,23 @@ namespace Office.Word.testing.Abstractions;
 public abstract class WordAssetsTestsBase
 {
     private static readonly JsonSerializerOptions FactsJson = new() { WriteIndented = true, IncludeFields = true };
+
+    // The running test's outputs, attached to its result only when it fails: a green run with a logger copies none of
+    // them into TestResults. The tests of one fixture run one at a time (see Properties/AssemblyInfo.cs).
+    private readonly List<string> _outputs = [];
+
+    [TearDown]
+    public void AttachOutputsOfAFailedTest()
+    {
+        if (TestContext.CurrentContext.Result.Outcome.Status == TestStatus.Failed)
+        {
+            foreach (var path in _outputs)
+            {
+                TestContext.AddTestAttachment(path);
+            }
+        }
+        _outputs.Clear();
+    }
 
     protected readonly string InputDir;
     protected readonly string OutputDir;
@@ -57,7 +75,7 @@ public abstract class WordAssetsTestsBase
     {
         var path = TestOutputPath(extension, suffix);
         await output.SaveAs(path);
-        TestContext.AddTestAttachment(path);
+        _outputs.Add(path);
         return path;
     }
 
@@ -69,7 +87,7 @@ public abstract class WordAssetsTestsBase
         var facts = read(output);
         var factsPath = $"{path}.facts.json";
         await File.WriteAllTextAsync(factsPath, JsonSerializer.Serialize(facts, FactsJson));
-        TestContext.AddTestAttachment(factsPath);
+        _outputs.Add(factsPath);
         return facts;
     }
 

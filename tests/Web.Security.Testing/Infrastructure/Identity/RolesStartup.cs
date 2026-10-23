@@ -40,6 +40,8 @@ public class RolesStartup
             .AddDefaultTokenProviders();
 
         services.AddDataProtection();
+        // hash strength is not under test: one PBKDF2 round instead of 100,000 per stored or checked password
+        services.Configure<PasswordHasherOptions>(o => o.IterationCount = 1);
 
         services.AddJwtAuthentication(o =>
         {

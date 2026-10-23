@@ -1,5 +1,4 @@
 ﻿using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Regira.Security.Authentication.Jwt.Extensions;
@@ -9,7 +8,7 @@ using Regira.Security.Authentication.Web.OpenApi.Transformers;
 
 namespace Web.Security.Testing.Infrastructure.Jwt;
 
-public class JwtStartup(IConfiguration configuration)
+public class JwtStartup
 {
     public void ConfigureServices(IServiceCollection services)
     {
@@ -17,7 +16,6 @@ public class JwtStartup(IConfiguration configuration)
             .AddJwtAuthentication(o =>
             {
                 o.Secret = string.Join(":", Enumerable.Range(0, 3).Select(_ => Guid.NewGuid().ToString("N")));
-                o.LifeSpan = configuration.GetValue(TokenLifeSpan.Setting, TokenLifeSpan.Default);
             });
 
         services.AddControllersFor(typeof(AuthController), typeof(TestController));

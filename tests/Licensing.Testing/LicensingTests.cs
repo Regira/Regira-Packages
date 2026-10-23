@@ -13,10 +13,22 @@ public class LicensingTests
 {
     private RSA _rsa = null!;
 
+    // one key for the fixture: generating a 2048-bit key took longer than the test using it
+    [OneTimeSetUp]
+    public void CreateKey()
+    {
+        _rsa = RSA.Create(2048);
+    }
+
+    [OneTimeTearDown]
+    public void DisposeKey()
+    {
+        _rsa.Dispose();
+    }
+
     [SetUp]
     public void Setup()
     {
-        _rsa = RSA.Create(2048);
         LicenseValidator.TestPublicKey = _rsa;
     }
 
@@ -24,7 +36,6 @@ public class LicensingTests
     public void Teardown()
     {
         LicenseValidator.TestPublicKey = null;
-        _rsa.Dispose();
     }
 
     // --- LicenseSigner ---

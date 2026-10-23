@@ -225,28 +225,29 @@ public abstract class WordTestsBase : WordAssetsTestsBase
     }
 
     /// <summary>
-    /// The self-inclusion guard is per call: one long-lived instance keeps inserting documents past the nesting limit
-    /// (100), summed over its calls — 51 calls of two nested documents each.
+    /// The self-inclusion guard bounds how deeply documents nest (100), not how many one service inserts: a template of
+    /// 101 nested documents side by side builds, and leaves the full depth to the next build in the same flow, so a
+    /// long-lived instance never wears out. <see cref="NestedDocumentGuardTests"/> covers the guard itself.
     /// </summary>
     [Test]
     [Needs(WordFeature.Creating | WordFeature.NestedDocuments)]
     public virtual async Task Nested_Documents_Do_Not_Wear_Out_The_Service()
     {
-        var creator = RequireCreator();
-        for (var i = 0; i < 51; i++)
+        var keys = Enumerable.Range(1, 101).Select(i => $"doc{i}").ToList();
+        var input = new WordTemplateInput
         {
-            var input = new WordTemplateInput
-            {
-                Template = Docx.Document("<{ doc1 }>", "<{ doc2 }>"),
-                DocumentParameters = new Dictionary<string, WordTemplateInput>
-                {
-                    ["doc1"] = new() { Template = Docx.Document("ONE") },
-                    ["doc2"] = new() { Template = Docx.Document("TWO") }
-                }
-            };
+            Template = Docx.Document(keys.Select(key => $"<{{ {key} }}>").ToArray()),
+            DocumentParameters = keys.ToDictionary(key => key, key => new WordTemplateInput { Template = Docx.Document(key.ToUpperInvariant()) })
+        };
 
-            using var output = await creator.Create(input);
-        }
+        using var output = await RequireCreator().Create(input);
+        var facts = await ReadDocx(output);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(facts.Leftovers, Is.Empty, "every nested document inserted");
+            Assert.That(NestedDocumentGuardTests.OpenUntilRefused(), Is.EqualTo(NestedDocumentGuardTests.FullDepth), "the full depth left for the next build");
+        });
     }
 
     [Test]
@@ -2179,7 +2180,7 @@ public abstract class WordTestsBase : WordAssetsTestsBase
 
     /// <summary>
     /// The output is in the format asked for, and its content type names that format, so a web app can serve
-    /// <c>output.ContentType</c> as it is.
+    /// <c>output.ContentType</c> as it is. HTML is checked by <see cref="Convert_To_Html_Is_Self_Contained"/>.
     /// </summary>
 #pragma warning disable NUnit1011 // the member is the fixture's: each backend declares its own OutputFormats
     [TestCaseSource("OutputFormats")]
@@ -2407,7 +2408,10 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         });
     }
 
-    /// <summary>Saving HTML to a stream has nowhere to put an images folder or a stylesheet.</summary>
+    /// <summary>
+    /// Saving HTML to a stream has nowhere to put an images folder or a stylesheet. The <see cref="Convert_To"/> case for
+    /// HTML: the output is HTML, and its content type says so.
+    /// </summary>
     [Test]
     [Needs(WordFeature.Converting | WordFeature.OtherFormats)]
     public virtual async Task Convert_To_Html_Is_Self_Contained()
@@ -2418,6 +2422,8 @@ public abstract class WordTestsBase : WordAssetsTestsBase
 
         Assert.Multiple(() =>
         {
+            Assert.That(Facts.Sniff(output.GetBytes()!), Is.EqualTo(FileFormat.Html));
+            Assert.That(output.ContentType, Is.EqualTo("text/html"));
             Assert.That(html, Does.Contain("<img"));
             Assert.That(html, Does.Contain("src=\"data:image"));
             Assert.That(html, Does.Not.Contain(".png\""));

@@ -80,15 +80,16 @@ public class RefreshTokenEndpointTests : IClassFixture<TestingWebApplicationFact
     [Fact]
     public async Task Test_Refresh_Works_After_The_Access_Token_Expired()
     {
-        var expiring = _withRefresh.WithTokenLifeSpan(2);
-        await CreateUser(expiring);
-        var signedIn = await SignIn(expiring);
+        await CreateUser(_withRefresh);
+        var signedIn = await SignIn();
 
-        // past the 2-second lifespan: the access token no longer authenticates
-        await Task.Delay(2500);
-        var bearer = expiring.CreateClient();
-        bearer.DefaultRequestHeaders.Authorization = new("Bearer", signedIn.Token);
-        (await bearer.PostAsync("auth/validate", null)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        // the access token past its lifespan no longer authenticates
+        var expired = ExpiredTokens.Of(signedIn.Token!, _withRefresh.Services);
+        var bearer = _withRefresh.CreateClient();
+        bearer.DefaultRequestHeaders.Authorization = new("Bearer", expired);
+        var validate = await bearer.PostAsync("auth/validate", null);
+        validate.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        validate.Headers.WwwAuthenticate.ToString().ShouldContain("The token expired");
 
         // the expired bearer comes along, as a client that attaches it to every call sends it
         var response = await bearer.PostAsJsonAsync("auth/refresh-token", new { refreshToken = signedIn.RefreshToken });
@@ -96,8 +97,11 @@ public class RefreshTokenEndpointTests : IClassFixture<TestingWebApplicationFact
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var refreshed = (await response.Content.ReadFromJsonAsync<AuthenticateResponseDto>())!;
         refreshed.Token.ShouldNotBeNullOrWhiteSpace();
-        refreshed.Token.ShouldNotBe(signedIn.Token);
+        refreshed.Token.ShouldNotBe(expired);
         refreshed.RefreshToken.ShouldNotBe(signedIn.RefreshToken);
+        var renewed = _withRefresh.CreateClient();
+        renewed.DefaultRequestHeaders.Authorization = new("Bearer", refreshed.Token);
+        (await renewed.PostAsync("auth/validate", null)).StatusCode.ShouldBe(HttpStatusCode.NoContent, "the renewed access token authenticates");
     }
 
     [Fact]
@@ -270,9 +274,9 @@ public class RefreshTokenEndpointTests : IClassFixture<TestingWebApplicationFact
         claims.TryGetProperty("sub", out _).ShouldBeTrue();
     }
 
-    private async Task<AuthenticateResponseDto> SignIn(WebApplicationFactory<RefreshTokenStartup>? factory = null)
+    private async Task<AuthenticateResponseDto> SignIn()
     {
-        var response = await (factory ?? _withRefresh).CreateClient()
+        var response = await _withRefresh.CreateClient()
             .PostAsJsonAsync("auth?clientApp=test", new { username = Username, password = Password });
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         return (await response.Content.ReadFromJsonAsync<AuthenticateResponseDto>())!;

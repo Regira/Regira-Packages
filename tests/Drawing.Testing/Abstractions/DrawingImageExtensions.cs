@@ -33,7 +33,8 @@ public static class DrawingImageExtensions
     {
         using var image = await service.ReadImage(filename);
         var original = image.Size;
-        var wantedSize = new ImageSize(1024, 1024);
+        // the inputs' long side is 480: a box smaller than the image on both sides, as 1024 is for a 1080p photo
+        var wantedSize = new ImageSize(256, 256);
         using var resized = await service.Resize(image, wantedSize, 60);
 
         await service.SaveImage(resized, $"{Path.GetFileNameWithoutExtension(filename)}-resized.jpg");
@@ -47,7 +48,7 @@ public static class DrawingImageExtensions
     {
         using var image = await service.ReadImage(filename);
         var original = image.Size;
-        var targetSize = new ImageSize(1024, 1024);
+        var targetSize = new ImageSize(256, 256);
         using var resized = await service.ResizeFixed(image, targetSize);
 
         await service.SaveImage(resized, $"{Path.GetFileNameWithoutExtension(filename)}-resized-fixed.jpg");
@@ -59,7 +60,7 @@ public static class DrawingImageExtensions
     }
     public static async Task Test_RotateImage90Right(this IImageService service)
     {
-        using var image = await service.ReadImage("img-1.jpg");
+        using var image = await service.ReadImage("img-1-480.jpg");
         using var rotatedR = await service.Rotate(image, 90);
         Assert.That(rotatedR.Size!.Value.Height, Is.EqualTo(image.Size!.Value.Width));
         Assert.That(rotatedR.Size!.Value.Width, Is.EqualTo(image.Size!.Value.Height));
@@ -70,7 +71,7 @@ public static class DrawingImageExtensions
     }
     public static async Task Test_RotateImage90Left(this IImageService service)
     {
-        using var image = await service.ReadImage("img-1.jpg");
+        using var image = await service.ReadImage("img-1-480.jpg");
         using var rotatedL = await service.Rotate(image, -90);
         Assert.That(rotatedL.Size!.Value.Height, Is.EqualTo(image.Size!.Value.Width));
         Assert.That(rotatedL.Size!.Value.Width, Is.EqualTo(image.Size!.Value.Height));
@@ -82,7 +83,7 @@ public static class DrawingImageExtensions
     /// <summary>At an angle that is not a right angle the canvas is the rotated image's bounding box, to the pixel.</summary>
     public static async Task Test_RotateImage45(this IImageService service)
     {
-        using var image = await service.ReadImage("img-1.jpg");
+        using var image = await service.ReadImage("img-1-480.jpg");
         using var rotated = await service.Rotate(image, 45);
         var side = (image.Size!.Value.Width + image.Size!.Value.Height) * Math.Sqrt(0.5);
 

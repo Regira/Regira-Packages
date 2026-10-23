@@ -1,7 +1,10 @@
 ﻿using Duende.IdentityModel.Client;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Regira.Security.Authentication.Jwt.Models;
 using Shouldly;
+using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Json;
 using Web.Security.Testing.Infrastructure;
@@ -46,20 +49,24 @@ public class JwtAuthenticationTests : IClassFixture<TestingWebApplicationFactory
         var response = await httpClient.GetAsync("protected");
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
-    /// <summary>The token works until its lifespan runs out, then stops: a token that never worked would 401 as well.</summary>
+    /// <summary>
+    /// The token lives as long as the options say and works until then; the same token, a second past its expiry,
+    /// stops. A token that never worked would 401 as well.
+    /// </summary>
     [Fact]
     public async Task Test_Protected_With_Expired_Token_Returns_Unauthorized()
     {
-        var expiring = _factory.WithTokenLifeSpan(2);
-        var httpClient = expiring.CreateClient();
-        var token = await CreateToken(factory: expiring);
+        var httpClient = _factory.CreateClient();
+        var token = await CreateToken();
+        var issued = new JwtSecurityTokenHandler().ReadJwtToken(token);
+        // the two instants are read one after the other, so they may fall either side of a second
+        (issued.ValidTo - issued.IssuedAt).TotalSeconds.ShouldBe(_factory.Services.GetRequiredService<JwtTokenOptions>().LifeSpan, 1d);
         httpClient.SetBearerToken(token);
         (await httpClient.GetAsync("protected")).StatusCode.ShouldBe(HttpStatusCode.OK);
 
-        // wait 2.5 sec to invalidate the token
-        await Task.Delay(2500);
-
+        httpClient.SetBearerToken(ExpiredTokens.Of(token, _factory.Services));
         var response = await httpClient.GetAsync("protected");
+
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
         response.Headers.WwwAuthenticate.ToString().ShouldContain("The token expired");
     }
@@ -136,9 +143,9 @@ public class JwtAuthenticationTests : IClassFixture<TestingWebApplicationFactory
         report.FoundEmail.ShouldBe(user.Email);
     }
 
-    async Task<string> CreateToken(JwtUser? user = null, WebApplicationFactory<JwtStartup>? factory = null)
+    async Task<string> CreateToken(JwtUser? user = null)
     {
-        var httpClient = (factory ?? _factory).CreateClient();
+        var httpClient = _factory.CreateClient();
         user ??= JwtUsers.Admin;
         var response = await httpClient.PostAsJsonAsync("auth", new { username = user.Name });
         var tokenResult = await response.Content.ReadFromJsonAsync<TokenResult>();

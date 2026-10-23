@@ -44,6 +44,9 @@ public sealed class ProviderHarness(DbProvider provider) : IAsyncDisposable
     // container carries its previous state into the next run. See CONTRIBUTING.md.
     private static bool ReuseContainers => Environment.GetEnvironmentVariable("REGIRA_CONTAINER_REUSE") == "1";
 
+    // pinned (SQL Server 16.0.4275.2): a moved 2022-latest tag would pull a new image in the middle of a run
+    private const string SqlServerImage = "mcr.microsoft.com/mssql/server:2022-latest@sha256:97b448857967be55e005424a660056fe6d51814435804dc07e8f79f028bab5fb";
+
     public static bool ContainersEnabled =>
         string.Equals(
             Environment.GetEnvironmentVariable(EnvVar),
@@ -84,7 +87,7 @@ public sealed class ProviderHarness(DbProvider provider) : IAsyncDisposable
                 AssertContainersEnabled();
                 try
                 {
-                    _mssqlContainer = new MsSqlBuilder("mcr.microsoft.com/mssql/server:2022-latest")
+                    _mssqlContainer = new MsSqlBuilder(SqlServerImage)
                         .WithReuse(ReuseContainers)
                         .Build();
                     await _mssqlContainer.StartAsync();

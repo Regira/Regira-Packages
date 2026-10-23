@@ -41,6 +41,8 @@ public class IdentityStartup
 
         // Password reset / email confirmation tokens are protected with data protection.
         services.AddDataProtection();
+        // hash strength is not under test: one PBKDF2 round instead of 100,000 per stored or checked password
+        services.Configure<PasswordHasherOptions>(o => o.IterationCount = 1);
 
         // JWT bearer is the only authentication scheme; /auth issues the tokens.
         services.AddJwtAuthentication(o =>

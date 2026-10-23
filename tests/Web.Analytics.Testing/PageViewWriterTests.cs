@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Regira.Web.Analytics.Config;
 using Regira.Web.Analytics.Models;
@@ -18,14 +19,33 @@ public class PageViewWriterTests
     private static (PageViewWriter<PageView> Writer, PageViewQueue<PageView> Queue) Create(
         AnalyticsConfig config, Action<IServiceCollection> register)
     {
+        var (writer, queue, _) = Build(config, register);
+        return (writer, queue);
+    }
+
+    /// <summary>
+    /// Starts a writer and waits until its loop runs, so that stopping it flushes what is queued: a stop that comes before
+    /// the loop starts skips it altogether. The loop's first act is to open a scope.
+    /// </summary>
+    private static async Task<(PageViewWriter<PageView> Writer, PageViewQueue<PageView> Queue)> StartLoop(
+        AnalyticsConfig config, Action<IServiceCollection> register, ILogger<PageViewWriter<PageView>>? logger = null)
+    {
+        var (writer, queue, scopes) = Build(config, register, logger);
+        await writer.StartAsync(CancellationToken.None);
+        await scopes.FirstScope.WaitAsync(TimeSpan.FromSeconds(10));
+        return (writer, queue);
+    }
+
+    private static (PageViewWriter<PageView> Writer, PageViewQueue<PageView> Queue, SignallingScopeFactory Scopes) Build(
+        AnalyticsConfig config, Action<IServiceCollection> register, ILogger<PageViewWriter<PageView>>? logger = null)
+    {
         var services = new ServiceCollection();
         register(services);
         var provider = services.BuildServiceProvider();
+        var scopes = new SignallingScopeFactory(provider.GetRequiredService<IServiceScopeFactory>());
         var queue = new PageViewQueue<PageView>(config, NullLogger<PageViewQueue<PageView>>.Instance);
-        var writer = new PageViewWriter<PageView>(queue, config,
-            provider.GetRequiredService<IServiceScopeFactory>(),
-            NullLogger<PageViewWriter<PageView>>.Instance);
-        return (writer, queue);
+        var writer = new PageViewWriter<PageView>(queue, config, scopes, logger ?? NullLogger<PageViewWriter<PageView>>.Instance);
+        return (writer, queue, scopes);
     }
 
     [Test]
@@ -73,15 +93,12 @@ public class PageViewWriterTests
     {
         var store = new InMemoryStore<PageView>();
         var config = new AnalyticsConfig { FlushIntervalSeconds = 1, Ipv4PrefixLength = 16, RetentionDays = 0 };
-        var (writer, queue) = Create(config, s => s.AddSingleton<IPageViewStore<PageView>>(store));
-
-        await writer.StartAsync(CancellationToken.None);
+        var (writer, queue) = await StartLoop(config, s => s.AddSingleton<IPageViewStore<PageView>>(store));
         queue.Enqueue(Pending());
-
-        await TestHostFactory.WaitUntilAsync(() => store.Views.Count == 1);
+        // the shutdown flush writes what is queued, through the same enrich-and-mask step as the timed flush
         await writer.StopAsync(CancellationToken.None);
 
-        Assert.That(store.Views[0].IpAddress, Is.EqualTo("203.0.0.0"));
+        Assert.That(store.Views.Select(v => v.IpAddress), Is.EqualTo(new[] { "203.0.0.0" }));
     }
 
     [Test]
@@ -90,22 +107,15 @@ public class PageViewWriterTests
         var store = new InMemoryStore<PageView>();
         // The obvious slip: the IPv6 value in the IPv4 slot. Must not fail open to full addresses.
         var config = new AnalyticsConfig { FlushIntervalSeconds = 1, Ipv4PrefixLength = 48, RetentionDays = 0 };
-        var services = new ServiceCollection();
-        services.AddSingleton<IPageViewStore<PageView>>(store);
-        var provider = services.BuildServiceProvider();
-        var queue = new PageViewQueue<PageView>(config, NullLogger<PageViewQueue<PageView>>.Instance);
         var logger = new CapturingLogger<PageViewWriter<PageView>>();
-        var writer = new PageViewWriter<PageView>(queue, config, provider.GetRequiredService<IServiceScopeFactory>(), logger);
-
-        await writer.StartAsync(CancellationToken.None);
+        var (writer, queue) = await StartLoop(config, s => s.AddSingleton<IPageViewStore<PageView>>(store), logger);
         queue.Enqueue(Pending());
-
-        await TestHostFactory.WaitUntilAsync(() => store.Views.Count == 1);
+        // the shutdown flush writes what is queued, through the same enrich-and-mask step as the timed flush
         await writer.StopAsync(CancellationToken.None);
 
         Assert.Multiple(() =>
         {
-            Assert.That(store.Views[0].IpAddress, Is.EqualTo("203.0.113.0"));
+            Assert.That(store.Views.Select(v => v.IpAddress), Is.EqualTo(new[] { "203.0.113.0" }));
             Assert.That(logger.Entries.Any(e => e.Level == Microsoft.Extensions.Logging.LogLevel.Warning
                 && e.Message.Contains("out of range")), Is.True);
         });
@@ -116,15 +126,12 @@ public class PageViewWriterTests
     {
         var store = new InMemoryStore<PageView>();
         var config = new AnalyticsConfig { FlushIntervalSeconds = 1, MaskIpAddress = false, RetentionDays = 0 };
-        var (writer, queue) = Create(config, s => s.AddSingleton<IPageViewStore<PageView>>(store));
-
-        await writer.StartAsync(CancellationToken.None);
+        var (writer, queue) = await StartLoop(config, s => s.AddSingleton<IPageViewStore<PageView>>(store));
         queue.Enqueue(Pending());
-
-        await TestHostFactory.WaitUntilAsync(() => store.Views.Count == 1);
+        // the shutdown flush writes what is queued, through the same enrich-and-mask step as the timed flush
         await writer.StopAsync(CancellationToken.None);
 
-        Assert.That(store.Views[0].IpAddress, Is.EqualTo("203.0.113.45"));
+        Assert.That(store.Views.Select(v => v.IpAddress), Is.EqualTo(new[] { "203.0.113.45" }));
     }
 
     [Test]
@@ -133,23 +140,20 @@ public class PageViewWriterTests
         var store = new InMemoryStore<PageView>();
         var enricher = new SpyEnricher();
         var config = new AnalyticsConfig { FlushIntervalSeconds = 1, RetentionDays = 0 };
-        var (writer, queue) = Create(config, s =>
+        var (writer, queue) = await StartLoop(config, s =>
         {
             s.AddSingleton<IPageViewStore<PageView>>(store);
             s.AddSingleton<IPageViewEnricher<PageView>>(enricher);
         });
-
-        await writer.StartAsync(CancellationToken.None);
         queue.Enqueue(Pending());
-
-        await TestHostFactory.WaitUntilAsync(() => store.Views.Count == 1);
+        // the shutdown flush writes what is queued, through the same enrich-and-mask step as the timed flush
         await writer.StopAsync(CancellationToken.None);
 
         Assert.Multiple(() =>
         {
             Assert.That(enricher.SeenClientIp, Is.EqualTo("203.0.113.45"), "full address at enrich time");
             Assert.That(enricher.IpAddressAtEnrichTime, Is.Null, "not yet masked at enrich time");
-            Assert.That(store.Views[0].IpAddress, Is.EqualTo("203.0.113.0"), "masked when stored");
+            Assert.That(store.Views.Select(v => v.IpAddress), Is.EqualTo(new[] { "203.0.113.0" }), "masked when stored");
         });
     }
 
@@ -158,17 +162,16 @@ public class PageViewWriterTests
     {
         var store = new InMemoryStore<PageView>();
         var config = new AnalyticsConfig { FlushIntervalSeconds = 1, RetentionDays = 0 };
-        var (writer, queue) = Create(config, s =>
+        var (writer, queue) = await StartLoop(config, s =>
         {
             s.AddSingleton<IPageViewStore<PageView>>(store);
             s.AddSingleton<IPageViewEnricher<PageView>>(new ThrowingEnricher());
         });
-
-        await writer.StartAsync(CancellationToken.None);
         queue.Enqueue(Pending());
-
-        await TestHostFactory.WaitUntilAsync(() => store.Views.Count == 1);
+        // the shutdown flush writes what is queued, through the same enrich-and-mask step as the timed flush
         await writer.StopAsync(CancellationToken.None);
+
+        Assert.That(store.Views, Has.Count.EqualTo(1));
     }
 
     [Test]
@@ -280,19 +283,17 @@ public class PageViewWriterTests
     {
         var withoutStore = new InMemoryStore<PageView>();
         var configWithDays = new AnalyticsConfig { FlushIntervalSeconds = 1, RetentionDays = 30 };
-        var (writer1, _) = Create(configWithDays, s => s.AddSingleton<IPageViewStore<PageView>>(withoutStore));
+        var (writer1, _) = await StartLoop(configWithDays, s => s.AddSingleton<IPageViewStore<PageView>>(withoutStore));
 
         var withoutDays = new InMemoryStore<PageView>();
         var configWithoutDays = new AnalyticsConfig { FlushIntervalSeconds = 1, RetentionDays = 0 };
-        var (writer2, _) = Create(configWithoutDays, s =>
+        var (writer2, _) = await StartLoop(configWithoutDays, s =>
         {
             s.AddSingleton<IPageViewStore<PageView>>(withoutDays);
             s.AddSingleton<IPageViewRetentionStore>(withoutDays);
         });
 
-        await writer1.StartAsync(CancellationToken.None);
-        await writer2.StartAsync(CancellationToken.None);
-        await Task.Delay(500);
+        // with the loops running, a purge would have run first thing, before either loop waits: stopping waits for it
         await writer1.StopAsync(CancellationToken.None);
         await writer2.StopAsync(CancellationToken.None);
 
@@ -312,6 +313,20 @@ public class PageViewWriterTests
         await writer.StartAsync(CancellationToken.None);
         await TestHostFactory.WaitUntilAsync(() => writer.ExecuteTask!.IsCompleted);
         await writer.StopAsync(CancellationToken.None);
+    }
+
+    /// <summary>Opens scopes as the inner factory does, and completes <see cref="FirstScope"/> on the first.</summary>
+    private sealed class SignallingScopeFactory(IServiceScopeFactory inner) : IServiceScopeFactory
+    {
+        private readonly TaskCompletionSource _firstScope = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task FirstScope => _firstScope.Task;
+
+        public IServiceScope CreateScope()
+        {
+            _firstScope.TrySetResult();
+            return inner.CreateScope();
+        }
     }
 
     private class SpyEnricher : IPageViewEnricher<PageView>

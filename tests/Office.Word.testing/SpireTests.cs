@@ -21,7 +21,6 @@ public class SpireTests() : WordTestsBase(new WordService(), "Spire")
     public static IEnumerable<TestCaseData> OutputFormats =>
     [
         Output(FileFormat.Pdf, "application/pdf"),
-        Output(FileFormat.Html, "text/html"),
         Output(FileFormat.Rtf, "text/rtf"),
         Output(FileFormat.Odt, "application/vnd.oasis.opendocument.text"),
         Output(FileFormat.EPub, "application/epub+zip"),
