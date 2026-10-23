@@ -2,6 +2,7 @@
 using Regira.IO.Abstractions;
 using Regira.IO.Extensions;
 using Regira.IO.Storage;
+using Regira.IO.Storage.Abstractions;
 using Regira.IO.Storage.Compression;
 
 namespace IO.Testing.Compression;
@@ -42,10 +43,8 @@ public class ZipStorageTests
     [Test]
     public async Task Filter_Recursive() => await StorageTestContext.Test_Filter_Recursive();
     [Test]
-    [Ignore("Library defect S6: ZipFileService.List ignores FileSearchObject.Recursive and Type, which BinaryFileService honours")]
     public async Task Filter_By_EntryType() => await StorageTestContext.Test_Filter_By_EntryType();
     [Test]
-    [Ignore("Library defect S6: ZipFileService.List ignores FileSearchObject.Recursive and Type, which BinaryFileService honours")]
     public async Task Filter_Non_Recursive() => await StorageTestContext.Test_Filter_Non_Recursive();
 
 #if NET10_0_OR_GREATER
@@ -92,13 +91,30 @@ public class ZipStorageTests
     [Test]
     public Task GetStream_With_Forward_Slashes() => GetStream_Of_A_Nested_File(identifier => identifier.Replace('\\', '/'));
 
+    // sorted by identifier, as the file system service lists: each folder before what lies in it
+    [Test]
+    public async Task List_Is_Sorted_By_Identifier()
+    {
+        var listed = await StorageTestContext.FileService.List(new FileSearchObject { Recursive = true });
+
+        Assert.That(listed, Is.EqualTo(new[]
+        {
+            "dir1", "dir1/file1.1.txt", "dir1/file1.2.txt",
+            "dir2", "dir2/dir2.1", "dir2/dir2.1/dir2.1.1", "dir2/dir2.1/dir2.1.1/file2.1.1.1.txt",
+            "dir2/dir2.1/file2.1.1.log", "dir2/dir2.1/file2.1.2.txt",
+            "dir2/dir2.2", "dir2/dir2.2/file2.2.1.log", "dir2/dir2.2/file2.2.2.text",
+            "dir3", "dir3/file3.1.txt",
+            "file1.txt", "file2.txt"
+        }));
+    }
+
     // either separator reaches the nested folder; Recursive takes its subfolder's file along (Filter_Non_Recursive
     // covers a folder's own files)
     [TestCase("dir2/dir2.1")]
     [TestCase(@"dir2\dir2.1")]
     public async Task List_Nested_Folder(string folderUri)
     {
-        var files = await StorageTestContext.FileService.List(new FileSearchObject { FolderUri = folderUri, Recursive = true });
+        var files = await StorageTestContext.FileService.List(new FileSearchObject { FolderUri = folderUri, Recursive = true, Type = FileEntryTypes.Files });
 
         var expected = StorageTestContext.SourceFiles.Count(x => x.Identifier!.StartsWith(@"dir2\dir2.1\"));
         Assert.That(files.Count(), Is.EqualTo(expected));

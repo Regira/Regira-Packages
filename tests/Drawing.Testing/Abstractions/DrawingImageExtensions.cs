@@ -168,6 +168,7 @@ public static class DrawingImageExtensions
         Assert.Multiple(() =>
         {
             Assert.That(decoded.GetPixel(16, 16).Alpha, Is.Zero, "the key colour");
+            Assert.That(decoded.GetPixel(16, ImageReadBack.NearKeyRow), Is.EqualTo(ImageReadBack.NearKey), "the key colour but for one channel");
             Assert.That(decoded.GetPixel(48, 16), Is.EqualTo(ImageReadBack.Lighter), "a lighter colour");
             Assert.That(decoded.GetPixel(16, 48), Is.EqualTo(ImageReadBack.Blue), "a darker colour");
         });

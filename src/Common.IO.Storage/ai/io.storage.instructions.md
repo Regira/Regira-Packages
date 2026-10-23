@@ -429,7 +429,7 @@ await new TCPService(communicator).Save("", Encoding.UTF8.GetBytes(zpl));   // t
 ```csharp
 // Open an existing zip
 using var zipService = new ZipFileService(new ZipFileCommunicator { SourceFile = existingZip });
-var entries = await zipService.List();
+var entries = await zipService.List(new FileSearchObject { Recursive = true, Type = FileEntryTypes.Files }); // every file, not only the top level
 var bytes   = await zipService.GetBytes("report.pdf");
 
 // Start a new empty archive
@@ -439,6 +439,9 @@ await newZip.Save("data.csv", csvBytes);
 
 `List` and `Save` answer identifiers with `/` between folders, and a `FolderUri` — written with either separator —
 matches that folder as a whole: `dir2/dir2.1` does not include `dir2/dir2.10`.
+`List` reads a `FileSearchObject` as `BinaryFileService` does: the folder's own entries unless `Recursive`, and files,
+folders or both as `Type` says. The folders are those the entries lie in, so an archive lists them whether or not it
+holds an entry of their own.
 
 | `ZipFileCommunicator` | Type | Description |
 |---|---|---|

@@ -11,8 +11,10 @@ public static class RegexUtility
     private static string EmailPattern => @"(?("")("".+?(?<!\\)""@)|(([0-9a-z]((\.(?!\.))|[-!#\$%&'\*\+/=\?\^`\{\}\|~\w])*)(?<=[0-9a-z])@))(?(\[)(\[(\d{1,3}\.){3}\d{1,3}\])|(([0-9a-z][-\w]*[0-9a-z]*\.)+[a-z0-9][\-a-z0-9]{0,22}[a-z0-9]))";
     // https://www.freecodecamp.org/news/how-to-validate-urls-in-javascript/
     private static string UrlPattern => @"([a-zA-Z]+:\/\/)?((([a-z\d]([a-z\d-]*[a-z\d])*)\.)+[a-z]{2,}|((\d{1,3}\.){3}\d{1,3}))(\:\d+)?(\/[-a-z\d%_.~+]*)*(\?[;&a-z\d%_.~+=-]*)?(\#[-a-z\d_]*)?";
-    // https://uibakery.io/regex-library/phone-number (added '/' to allowed chars and allowed (0) in second segment)
-    private static string PhoneNumberPattern => @"\+?\d{1,4}?[-./\s]?(\(0\))?\(?\d{1,3}?\)?[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}";
+    // https://uibakery.io/regex-library/phone-number (added '/' to allowed chars and allowed (0) in second segment).
+    // Greedy groups, so an extracted number is taken whole; a space separator between groups (\p{Zs}: a non-breaking
+    // space too), not \s, so a number never runs over a tab or a line break.
+    private static string PhoneNumberPattern => @"\+?\d{1,4}[-./\p{Zs}]?(\(0\))?\(?\d{1,3}\)?[-.\p{Zs}]?\d{1,4}[-.\p{Zs}]?\d{1,4}[-.\p{Zs}]?\d{1,9}";
     private static string IPv4AddressPattern => @"(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)";
     private static string IPv6AddressPattern => @"(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))";
 
@@ -105,7 +107,8 @@ public static class RegexUtility
     /// </returns>
     /// <remarks>
     /// This method uses a regular expression to validate phone number formats, including international formats.
-    /// It supports various delimiters such as spaces, dashes, dots, and slashes.
+    /// Digit groups are separated by a space (a non-breaking one too), a dash, a dot or a slash; a tab or a line break
+    /// is no separator.
     /// Additionally, it can validate short numbers if <paramref name="allowShortNumber"/> is set to <c>true</c>.
     /// </remarks>
     public static bool IsValidPhoneNumber(string? input, bool allowShortNumber = false)
@@ -240,7 +243,9 @@ public static class RegexUtility
     /// An array of unique phone numbers found in the input string. Returns an empty array if no phone numbers are found.
     /// </returns>
     /// <remarks>
-    /// This method uses regular expressions to identify phone numbers in the input string. 
+    /// This method uses regular expressions to identify phone numbers in the input string.
+    /// Each number is taken whole, with the separators <see cref="IsValidPhoneNumber"/> accepts, so numbers on separate
+    /// lines are extracted apart.
     /// The extraction process is case-insensitive and has a timeout of 250 milliseconds for regex matching.
     /// </remarks>
     public static string[] ExtractPhoneNumbers(string input, bool allowShortNumbers = false)

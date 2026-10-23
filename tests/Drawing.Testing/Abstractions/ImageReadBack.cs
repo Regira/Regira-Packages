@@ -22,6 +22,9 @@ internal static class ImageReadBack
     // colour channels that are not white, so a white pixel after MakeOpaque comes from the rule, not from the input
     public static readonly SKColor FullyTransparent = new(10, 20, 30, 0);
     public const int TransparentRow = 63;
+    // the key colour but for one level of blue, so a colour key that skips a channel shows
+    public static readonly SKColor NearKey = new(200, 200, 201, 255);
+    public const int NearKeyRow = 0;
 
     public static bool IsPng(IImageFile file) => file.GetBytes()!.Take(PngSignature.Length).SequenceEqual(PngSignature);
     public static bool IsJpeg(IImageFile file) => file.GetBytes()!.Take(JpegSignature.Length).SequenceEqual(JpegSignature);
@@ -37,8 +40,9 @@ internal static class ImageReadBack
 
     /// <summary>
     /// A 64×64 PNG of four 32×32 quadrants: <see cref="Key"/> top left, <see cref="Lighter"/> top right,
-    /// <see cref="Blue"/> bottom left and <see cref="HalfTransparent"/> bottom right, whose last row
-    /// (<see cref="TransparentRow"/>) is <see cref="FullyTransparent"/>.
+    /// <see cref="Blue"/> bottom left and <see cref="HalfTransparent"/> bottom right. The key quadrant's first row
+    /// (<see cref="NearKeyRow"/>) is <see cref="NearKey"/>; the last row on the right (<see cref="TransparentRow"/>) is
+    /// <see cref="FullyTransparent"/>.
     /// </summary>
     public static IImageFile KnownPixels()
     {
@@ -47,7 +51,10 @@ internal static class ImageReadBack
         {
             for (var x = 0; x < 64; x++)
             {
-                bitmap.SetPixel(x, y, x >= 32 && y == TransparentRow ? FullyTransparent : Quadrant(x, y));
+                var color = (x < 32 && y == NearKeyRow) ? NearKey
+                    : (x >= 32 && y == TransparentRow) ? FullyTransparent
+                    : Quadrant(x, y);
+                bitmap.SetPixel(x, y, color);
             }
         }
 

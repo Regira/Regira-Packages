@@ -221,7 +221,7 @@ public class ImageService : IImageService
 
         color ??= new Color(245, 245, 245);
         using var sourceBitmap = input.ToBitmap();
-        var transparentBitmap = SkiaUtility.MakeTransparent(sourceBitmap, color.Value.ToSkiaColor());
+        using var transparentBitmap = SkiaUtility.MakeTransparent(sourceBitmap, color.Value.ToSkiaColor());
         // return as PNG image
         return Task.FromResult<IImageFile>(transparentBitmap.ToImageFile());
     }

@@ -59,18 +59,20 @@ public sealed class SftpServer : IAsyncDisposable
             Assert.Ignore($"Skipped: set {EnvVar}={EnableValue} to run container-backed tests.");
         }
 
-        var container = new ContainerBuilder(Image)
-            .WithCommand($"{UserName}:{Password}:::{ContainerName}")
-            .WithPortBinding(SshPort, true)
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("Server listening on"))
-            .Build();
+        // Build is inside the try too: without a Docker endpoint it throws before anything starts
+        IContainer? container = null;
         try
         {
+            container = new ContainerBuilder(Image)
+                .WithCommand($"{UserName}:{Password}:::{ContainerName}")
+                .WithPortBinding(SshPort, true)
+                .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged("Server listening on"))
+                .Build();
             await container.StartAsync();
         }
         catch (Exception ex)
         {
-            await container.DisposeAsync();
+            if (container != null) await container.DisposeAsync();
             Assert.Ignore($"SFTP container could not start (Docker unavailable?): {ex.Message}");
         }
 

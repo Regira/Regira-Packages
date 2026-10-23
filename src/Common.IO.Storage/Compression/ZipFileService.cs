@@ -50,24 +50,54 @@ public class ZipFileService(ZipFileCommunicator communicator) : IFileService, ID
     }
     public Task<IEnumerable<string>> List(FileSearchObject? so = null)
     {
-        // as Unzip names them: an archive another tool wrote may separate its folders with '\'
-        IEnumerable<string> identifiers = ZipArchive.Entries.Select(e => ZipUtility.NormalizePath(e.FullName));
+        so ??= new FileSearchObject();
 
-        if (so != null)
+        // the folder itself, whole: dir2/dir2.1 does not reach into dir2/dir2.10
+        var folder = string.IsNullOrWhiteSpace(so.FolderUri) ? "" : ZipUtility.NormalizePath(so.FolderUri)!.TrimEnd('/');
+        var prefix = folder.Length > 0 ? folder + '/' : "";
+        // below the folder, and directly in it unless Recursive
+        bool IsListed(string path) => path.Length > prefix.Length
+            && path.StartsWith(prefix, StringComparison.InvariantCultureIgnoreCase)
+            && (so.Recursive || path.IndexOf('/', prefix.Length) < 0);
+        var hasExtensions = so.Extensions?.Any() == true;
+
+        var listFiles = so.Type == FileEntryTypes.All || so.Type == FileEntryTypes.Files;
+        var listDirectories = so.Type == FileEntryTypes.All || so.Type == FileEntryTypes.Directories;
+
+        // as Unzip names them: an archive another tool wrote may separate its folders with '\'
+        var paths = ZipArchive.Entries.Select(e => ZipUtility.NormalizePath(e.FullName)).ToArray();
+        // a folder's own entry ends in '/'
+        var files = paths
+            .Where(p => !p.EndsWith('/') && IsListed(p))
+            .Where(p => !hasExtensions || so.Extensions!.Any(p.EndsWith))
+            .ToArray();
+
+        IEnumerable<string> result = [];
+        if (listFiles)
         {
-            // the folder itself, whole: dir2/dir2.1 does not reach into dir2/dir2.10
-            var folder = string.IsNullOrWhiteSpace(so.FolderUri) ? "" : ZipUtility.NormalizePath(so.FolderUri)!.TrimEnd('/');
-            if (folder.Length > 0)
+            result = result.Concat(files);
+        }
+        if (listDirectories)
+        {
+            // an archive need not hold an entry per folder: the folders are those its entries lie in
+            var folders = paths.SelectMany(GetFolders).Distinct().Where(IsListed);
+            if (hasExtensions)
             {
-                identifiers = identifiers.Where(x => x.StartsWith(folder + '/', StringComparison.InvariantCultureIgnoreCase));
+                // a folder holds a listed file below it: dir2.1 holds nothing of dir2.10
+                folders = folders.Where(d => files.Any(f => f.StartsWith(d + '/', StringComparison.Ordinal)));
             }
-            if (so.Extensions?.Any() == true)
-            {
-                identifiers = identifiers.Where(x => so.Extensions.Any(x.EndsWith));
-            }
+            result = result.Concat(folders);
         }
 
-        return Task.FromResult(identifiers);
+        return Task.FromResult<IEnumerable<string>>(result.OrderBy(f => f).ToArray());
+    }
+    // every folder a path lies in, outermost first; a folder's own entry ("dir/") names that folder too
+    private static IEnumerable<string> GetFolders(string path)
+    {
+        for (var end = path.IndexOf('/'); end > 0; end = path.IndexOf('/', end + 1))
+        {
+            yield return path.Substring(0, end);
+        }
     }
 #if NET10_0_OR_GREATER
     public async IAsyncEnumerable<string> ListAsync(FileSearchObject? so = null)

@@ -74,6 +74,13 @@ Vivamus tempus enim lacinia nisi molestie vulputate. Praesent 1:2:3:4:5:6:7:8 tu
     [TestCase("xx xxx xx xx", false)]
     [TestCase("info@regira.com", false)]
     [TestCase("http://www.regira.com", false)]
+    // digit groups are separated by a space, a non-breaking one too, "-", "." or "/": a tab or a line break is no
+    // separator
+    [TestCase("+32\n3 384 30 44", false)]
+    [TestCase("0475\t99 99 99", false)]
+    [TestCase("+32\u2028" + "3 384 30 44", false)]
+    [TestCase("+32\u00a03\u00a0384\u00a030\u00a044", true)]
+    [TestCase("0475\u202f99\u202f99\u202f99", true)]
     // sms numbers
     [TestCase("4466", false)]
     [TestCase("44667", false)]
@@ -98,6 +105,13 @@ Vivamus tempus enim lacinia nisi molestie vulputate. Praesent 1:2:3:4:5:6:7:8 tu
     [TestCase("xx xxx xx xx", false)]
     [TestCase("info@regira.com", false)]
     [TestCase("http://www.regira.com", false)]
+    // digit groups are separated by a space, a non-breaking one too, "-", "." or "/": a tab or a line break is no
+    // separator
+    [TestCase("+32\n3 384 30 44", false)]
+    [TestCase("0475\t99 99 99", false)]
+    [TestCase("+32\u2028" + "3 384 30 44", false)]
+    [TestCase("+32\u00a03\u00a0384\u00a030\u00a044", true)]
+    [TestCase("0475\u202f99\u202f99\u202f99", true)]
     // sms numbers
     [TestCase("4466", true)]
     [TestCase("44667", true)]
@@ -181,10 +195,19 @@ Vivamus tempus enim lacinia nisi molestie vulputate. Praesent 1:2:3:4:5:6:7:8 tu
     [TestCase("Proin et lacinia lorem, +32 3 384 30 44 vitae", "+32 3 384 30 44")]
     [TestCase("rutrum risus efficitur turpis tempor 0475 99 99 99 vehicula", "0475 99 99 99")]
     [TestCase("+32 (0)899.99.99.99 (test)", "+32 (0)899.99.99.99")]
-    [Ignore("Library defect S7: the phone pattern takes at most four digit groups after the prefix, so ExtractPhoneNumbers cuts a longer number short")]
     public void ExtractPhoneNumbers_Takes_The_Whole_Number(string input, string expected)
     {
         Assert.That(RegexUtility.ExtractPhoneNumbers(input), Is.EqualTo(new[] { expected }));
+    }
+    // a number never runs over a tab or a line break into the next one
+    [TestCase("\n")]
+    [TestCase("\r\n")]
+    [TestCase("\t")]
+    public void ExtractPhoneNumbers_Keeps_Numbers_On_Separate_Lines_Apart(string between)
+    {
+        var input = $"03 384 30 44{between}0475 99 99 99";
+
+        Assert.That(RegexUtility.ExtractPhoneNumbers(input), Is.EqualTo(new[] { "03 384 30 44", "0475 99 99 99" }));
     }
     [Test]
     public void TestExtractPhoneNumbers_AllowShortNumbers()

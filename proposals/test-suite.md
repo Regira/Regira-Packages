@@ -498,13 +498,17 @@ Sections 2–6 were used in two places only. W35 builds the parts of M1 it needs
 | `Web.Security.Testing` `RefreshTokenTests.Test_Losing_A_Refresh_Race_Ends_The_Chain` | **S9 (new)**, below. Fixed after phase 1; the test runs |
 | `Entities.Web.Testing` `GetRequiredEntityServiceTests.Messages_Name_Generic_Types_As_Written` | S5. Fixed after phase 1: `EntityServiceDiagnostics` names types through `EntityRepositoryRegistry.FriendlyName`; the test runs and asserts the exact names |
 | `Drawing.Testing` `GdiImageTests.MakeOpaque_Leaves_No_Alpha` | S2: GDI leaves alpha 128 on the half-transparent quadrant. Fixed after phase 1; the test runs. The shared test also checks that a half-transparent pixel keeps its colour (within one level), on both backends |
-| `Drawing.Testing` `SkiaImageTests.MakeTransparent_Clears_The_Key_Colour_Only` | S3: Skia leaves the key colour opaque and clears the lighter grey |
+| `Drawing.Testing` `SkiaImageTests.MakeTransparent_Clears_The_Key_Colour_Only` | S3: Skia leaves the key colour opaque and clears the lighter grey. Fixed after phase 1: Skia clears the pixels of exactly the key's red, green and blue, as GDI does, in one pass over `SKBitmap.Pixels`; the test runs |
 | `Common.Testing` `RegexTests` IP cases `192.168.0.1.1` and `300.255.0.255` | S1. Fixed after phase 1. The cases run, plus every IPv6 notation (an embedded IPv4 part, a zone ID), brackets and trailing newlines. A review found the anchored IPv6 pattern refused valid notations the borrowed regex never covered, so `IsValidIPv6Address` reads the input with `IPAddress.TryParse` instead; the shared exact match ends in `\z` |
-| `Common.Testing` `RegexTests.ExtractPhoneNumbers_Takes_The_Whole_Number` (3 cases) | S7 |
-| `IO.Testing` `ZipStorageTests.Filter_By_EntryType` and `Filter_Non_Recursive` | S6 |
+| `Common.Testing` `RegexTests.ExtractPhoneNumbers_Takes_The_Whole_Number` (3 cases) | S7. Fixed after phase 1, with S10: the pattern's leading groups are greedy, so a number is extracted whole; the test runs |
+| `IO.Testing` `ZipStorageTests.Filter_By_EntryType` and `Filter_Non_Recursive` | S6. Fixed after phase 1: `ZipFileService.List` reads `Recursive` and `Type` as `BinaryFileService` does, and its folders are those the entries lie in. Both tests run; `List_Nested_Folder` asks for files, and `ZipFileService_Lists_Folders_Whether_Or_Not_They_Have_Entries` lists an archive with and without folder entries alike |
 | `Office.OCR.Testing` `PaddleOCRTests.Read_Dutch` | Library gap: for `nl`, `Read` picks LatinV5, which reads "wil ik" as "wilik"; EnglishV5 reads the poem exactly |
 
 S4 (no ignored test) was also fixed after phase 1. Skia `MakeOpaque` maps `SKBitmap.Pixels` in one pass into an explicit `Bgra8888` bitmap, which it disposes. `SkiaImageTests.Test_MakeOpaque` on `img-1..4.jpg` dropped from 8–9 s to 0.53–0.60 s each, and on `img-5.png` from 1 s to 49 ms, PNG encoding and file write included. Drawing.Testing as a whole went from 19 s to 7 s of test time. The rule is unchanged: the shared `MakeOpaque_Leaves_No_Alpha` passes on the old and the new code.
+
+S8 was checked after phase 1 and fixed. `UseMapping<,>()` and `AddMapping<,>()` registered a transient `TypeAdapterSetter<,>` factory per pair. A probe through `UseEntities(…).For<Order>(…)` found three such registrations and no rule for any pair in the `TypeAdapterConfig`, before and after mapping: nothing resolves them, and mapping worked by convention only. With `RequireExplicitMapping`, the first map threw `CompileException` ("Implicit mapping is not allowed … no configuration exists"). Resolving the factory would have been worse: its `NewConfig` dropped a rule the app had set for the pair. `EntityMapConfigurator` now calls `ForType`, which adds the pair and keeps such a rule. The new `ExplicitMappingTests` fails on the old code; an eager-`NewConfig` mutant fails three `SharedConfigTests`. Without `RequireExplicitMapping` the output is the same.
+
+S3, S6, S7 and S10 were shown the same way: each un-skipped or new test fails on the old source (`git stash` of the one file), and passes on the new. For S10 alone, an S7-only mutant (greedy groups, `\s` kept) fails the two validation cases and the `\n` and tab extraction cases.
 
 ### Found in phase 1
 
@@ -513,7 +517,7 @@ S4 (no ignored test) was also fixed after phase 1. Skia `MakeOpaque` maps `SKBit
   - With `RevokeFamilyOnReuse` off, the loser revokes the successor it stored.
   - The race test runs again, through an order-agnostic double that holds the winner just after its claim until the family is revoked. It fails on the old service. A second test pins that only the winner's token stays live without family revocation; it fails if the loser's successor is left live.
   - The CHANGELOG says 6.6.1. `Regira.Security.Authentication`'s `<Version>` is still the published 6.6.0.
-- **S10 (found by the library review, open):** `IsValidPhoneNumber` accepts a newline or tab between digit groups (`"+32\n3 384 30 44"`), because `PhoneNumberPattern`'s separators use `\s`. Present in 6.6.0. A space instead of `\s` fixes it, and also changes what `ExtractPhoneNumbers` returns.
+- **S10 (found by the library review):** `IsValidPhoneNumber` accepts a newline or tab between digit groups (`"+32\n3 384 30 44"`), because `PhoneNumberPattern`'s separators use `\s`. Present in 6.6.0. **Fixed after phase 1, with S7:** a Unicode space separator (`\p{Zs}`) instead of `\s` between groups. `TestValidPhone` takes both inputs and a U+2028 line separator as invalid, and numbers grouped with non-breaking spaces as valid, as 6.6.0 did. `ExtractPhoneNumbers_Keeps_Numbers_On_Separate_Lines_Apart` extracts two numbers split by `\n`, `\r\n` or a tab.
 - `SymmetricEncrypter.Encrypt/Decrypt(text, secret)` derive the key into the instance's default key arrays. A call with an explicit secret changes the key that later calls without one use. The class is obsolete, so this is not tested here.
 - PaddleOCR's `OcrResult.Language` is the detection model's type name for every language.
 - Syncfusion PDF writes its own trial banner, separate from the Word one. W44's control now covers both.
@@ -534,5 +538,5 @@ S4 (no ignored test) was also fixed after phase 1. Skia `MakeOpaque` maps `SKBit
   - Each test seeds its files. W48's non-recursive scenario and W50's exact paths are wired in.
   - The stale `[Ignore]` and the SSH user secrets are gone.
 - W5: the 2.5 s wait stays until P8.
-- S8 was not checked; no W fix needed it.
+- The guides call `AddMapping<TSource, TTarget>()` the fix for a pair "when Mapster's convention produces the wrong result", such as a child DTO whose shape diverges (`entities.instructions.md` §Step 10, the troubleshooting row, `entities.signatures.md`, `entities.examples.md`, `docs/mapping.md`). It takes no rule, so on Mapster it maps that pair by the same convention; a different result needs a rule in `UseMapsterMapping(cfg => …)`. Found while checking S8; not changed.
 <!-- {% endraw %} -->
