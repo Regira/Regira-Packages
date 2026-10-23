@@ -19,6 +19,6 @@
     <ProjectReference Include="..\Common.Office\Common.Office.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="MiniPdf" Version="0.43.0" />
+    <PackageReference Include="MiniPdf" Version="0.43.1" />
   </ItemGroup>
 </Project>

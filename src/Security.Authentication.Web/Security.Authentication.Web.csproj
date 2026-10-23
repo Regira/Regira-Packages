@@ -29,7 +29,7 @@
          the framework package expects.
          3.x is blocked: AspNetCore.OpenApi 10.0.10's XmlCommentGenerator emits assignments to
          IOpenApiMediaType.Example, which is read-only in Microsoft.OpenApi 3.x (CS0200). -->
-    <PackageReference Include="Microsoft.OpenApi" Version="2.12.2" />
+    <PackageReference Include="Microsoft.OpenApi" Version="2.13.0" />
   </ItemGroup>
   <ItemGroup>
     <None Include="ai\authentication.web.card.md" Pack="true" PackagePath="ai\" />
