@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using Regira.Entities.DependencyInjection.ServiceCollections;
 using Regira.Entities.Services.Abstractions;
 
 namespace Regira.Entities.DependencyInjection.Validation;
@@ -30,42 +31,45 @@ public static class EntityServiceDiagnostics
     /// <summary>
     /// Builds the explanatory message for a missing entity-service registration, listing the
     /// IEntityService arities that <em>are</em> registered for the entity so the mismatching
-    /// <c>For&lt;&gt;()</c> call is easy to spot.
+    /// <c>For&lt;&gt;()</c> call is easy to spot. Types read as written: <c>IEntityService&lt;Course, Int32&gt;</c>.
     /// </summary>
     public static string DescribeMissingService(Type requestedType, IServiceCollection? services)
     {
+        var requested = EntityRepositoryRegistry.FriendlyName(requestedType);
         if (requestedType.IsGenericType && services != null)
         {
             var entityType = requestedType.GetGenericArguments()[0];
+            var entity = EntityRepositoryRegistry.FriendlyName(entityType);
 
             var registered = services
                 .Where(d =>
                     d.ServiceType.IsGenericType
                     && EntityServiceOpenGenerics.Contains(d.ServiceType.GetGenericTypeDefinition())
                     && d.ServiceType.GetGenericArguments()[0] == entityType)
-                .Select(d => d.ServiceType.Name + FormatTypeArgs(d.ServiceType))
+                .Select(d => EntityRepositoryRegistry.FriendlyName(d.ServiceType))
                 .Distinct()
                 .ToList();
 
             if (registered.Count > 0)
             {
-                return $"No service of type '{requestedType.Name}{FormatTypeArgs(requestedType)}' was registered. " +
-                       $"The following IEntityService registrations exist for '{entityType.Name}': " +
+                return $"No service of type '{requested}' was registered. " +
+                       $"The following IEntityService registrations exist for '{entity}': " +
                        string.Join(", ", registered) + ". " +
                        "Make sure all generic parameters in .For<>() exactly match what is being requested.";
             }
 
-            return $"No service of type '{requestedType.Name}{FormatTypeArgs(requestedType)}' was registered, " +
-                   $"and no entity services for '{entityType.Name}' were found. " +
-                   $"Register it via .For<{entityType.Name}>() or an appropriate overload.";
+            return $"No service of type '{requested}' was registered, " +
+                   $"and no entity services for '{entity}' were found. " +
+                   $"Register it via .For<{entity}>() or an appropriate overload.";
         }
 
-        return $"No service of type '{requestedType.Name}' was registered. " +
+        return $"No service of type '{requested}' was registered. " +
                "Register entity services using .For<>() with matching generic type parameters.";
     }
 
+    /// <summary>A generic type's arguments as written, <c>&lt;Course, SearchObject&lt;Int32&gt;&gt;</c>; empty for a non-generic type.</summary>
     public static string FormatTypeArgs(Type type) =>
         type.IsGenericType
-            ? "<" + string.Join(", ", type.GetGenericArguments().Select(a => a.Name)) + ">"
+            ? "<" + string.Join(", ", type.GetGenericArguments().Select(EntityRepositoryRegistry.FriendlyName)) + ">"
             : string.Empty;
 }

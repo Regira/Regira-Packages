@@ -46,19 +46,22 @@ public class JwtAuthenticationTests : IClassFixture<TestingWebApplicationFactory
         var response = await httpClient.GetAsync("protected");
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
+    /// <summary>The token works until its lifespan runs out, then stops: a token that never worked would 401 as well.</summary>
     [Fact]
-    public async Task Test_Protected_With_Invalid_Token_Returns_Unauthorized()
+    public async Task Test_Protected_With_Expired_Token_Returns_Unauthorized()
     {
         var expiring = _factory.WithTokenLifeSpan(2);
         var httpClient = expiring.CreateClient();
         var token = await CreateToken(factory: expiring);
         httpClient.SetBearerToken(token);
+        (await httpClient.GetAsync("protected")).StatusCode.ShouldBe(HttpStatusCode.OK);
 
         // wait 2.5 sec to invalidate the token
         await Task.Delay(2500);
 
         var response = await httpClient.GetAsync("protected");
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        response.Headers.WwwAuthenticate.ToString().ShouldContain("The token expired");
     }
 
     /// <summary>

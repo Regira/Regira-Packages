@@ -1,4 +1,6 @@
 ﻿using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
 using System.Text.RegularExpressions;
 
 namespace Regira.Utilities;
@@ -143,7 +145,7 @@ public static class RegexUtility
         {
             return false;
         }
-        return Regex.IsMatch(input, IPv4AddressPattern);
+        return Regex.IsMatch(input, PatternToExactMatch(IPv4AddressPattern));
     }
     /// <summary>
     /// Validates whether the provided input string is in a valid IPv6 address format.
@@ -153,8 +155,9 @@ public static class RegexUtility
     /// <c>true</c> if the input string is a valid IPv6 address; otherwise, <c>false</c>.
     /// </returns>
     /// <remarks>
-    /// This method uses a regular expression to validate the IPv6 address format. 
-    /// It supports various IPv6 notations, including compressed and mixed IPv6/IPv4 formats.
+    /// This method reads the input with .NET's own address parser, so every IPv6 notation is accepted: compressed,
+    /// mixed IPv6/IPv4 and with a zone ID of letters, digits and <c>._~-</c> (<c>fe80::1%eth0</c>). A bracketed form,
+    /// with or without a port, is not an address and is refused.
     /// </remarks>
     public static bool IsValidIPv6Address(string? input)
     {
@@ -162,7 +165,10 @@ public static class RegexUtility
         {
             return false;
         }
-        return Regex.IsMatch(input, IPv6AddressPattern, RegexOptions.IgnoreCase);
+        // the parser also takes "[::1]:80" and any text after a '%': a zone ID is letters, digits and ._~- (RFC 6874)
+        return Regex.IsMatch(input, @"^[0-9a-fA-F:.]+(?:%[0-9a-zA-Z._~-]+)?\z")
+            && IPAddress.TryParse(input, out var address)
+            && address.AddressFamily == AddressFamily.InterNetworkV6;
     }
     /// <summary>
     /// Validates whether the provided input string is a valid IP address (either IPv4 or IPv6).
@@ -179,7 +185,8 @@ public static class RegexUtility
     public static bool IsValidIPAddress(string? input)
         => IsValidIPv4Address(input) || IsValidIPv6Address(input);
 
-    static string PatternToExactMatch(string input) => $"^{input}$";
+    // \z, not $: $ also matches before a final newline. The group keeps any top-level alternation inside the anchors.
+    static string PatternToExactMatch(string input) => $"^(?:{input})\\z";
     static string PatternToExtract(string input) => $@"\b{input}\b";
 
     /// <summary>

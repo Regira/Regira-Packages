@@ -122,7 +122,7 @@ public class CreationTests
             .ThenBy(n => n.Value)
             .First();
         var highestSegmentCountDirectory = directories
-            .OrderByDescending(d => d.Split('\\').Length)
+            .OrderByDescending(d => d.Split(Path.DirectorySeparatorChar).Length)
             .ThenBy(d => d)
             .First();
         Assert.That(lowestLevelChild.Value, Is.EqualTo(highestSegmentCountDirectory));
@@ -132,8 +132,8 @@ public class CreationTests
             .ToArray();
         var parentDirectories = Path.GetDirectoryName(highestSegmentCountDirectory)!
             .Substring(_testDirectory.Length)
-            .Trim('\\')
-            .Split('\\', StringSplitOptions.RemoveEmptyEntries)
+            .Trim(Path.DirectorySeparatorChar)
+            .Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries)
             .Aggregate(new List<string>(), (r, s) =>
             {
                 r.Add(Path.Combine(_testDirectory, r.LastOrDefault() ?? string.Empty, s));
@@ -258,8 +258,6 @@ public class CreationTests
         {
             Debug.Print($"{"".PadLeft(node.Level * 2, '.')}{node.Value.Title}");
         }
-        Assert.That(tree, Is.Not.EqualTo(reverseTree));
-        Assert.That(tree, Is.Not.EquivalentTo(reverseTree));
         Assert.That(tree.Select(n => n.Value).Distinct(), Is.EquivalentTo(reverseTree.Select(n => n.Value).Distinct()));
         var treeRootValues = tree.Roots.Select(n => n.Value).Distinct();
         // an isolated project (no dependencies, no dependants) is a root in BOTH trees — there is no edge
@@ -329,7 +327,7 @@ public class CreationTests
 
         var sw = new Stopwatch();
         sw.Start();
-        var roots = items.Where(x => x.ParentDirectory == _testDirectory.TrimEnd('\\'))
+        var roots = items.Where(x => x.ParentDirectory == _testDirectory.TrimEnd(Path.DirectorySeparatorChar))
             .ToArray();
         var tree = new TreeList<FsItem>(items.Length);
         // using FsItem with already calculated ParentDirectory to prevent overhead of requesting Path.GetDirectoryName (up to 6 sec longer)

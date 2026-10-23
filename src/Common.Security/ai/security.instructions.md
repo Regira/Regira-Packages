@@ -463,8 +463,8 @@ unusable in production, and neither shows up on one developer machine: it **lose
 is **per-process** — so behind a load balancer a refresh lands on an instance that has never heard of the token and
 users are signed out at random.
 
-Implement `IRefreshTokenStore` over your own `DbContext` — five methods, of which only `TryRevoke` needs care — and
-register it first:
+Implement `IRefreshTokenStore` over your own `DbContext` — five methods, of which `TryRevoke` and `Store` need care —
+and register it first:
 
 <!-- no-compile -->
 ```csharp
@@ -475,6 +475,10 @@ services.AddJwtAuthentication(…)
 
 `RevokeFamily` must reach tokens that are **already revoked** as well as active ones: it ends a chain, and a replayed
 token is by definition one that was already revoked.
+
+`Store` must have **written the record when it returns** — call `SaveChangesAsync` inside it, not in a later unit of
+work. The service stores a successor before it claims the rotation, so that a concurrent refresh's `RevokeFamily`
+reaches it; a successor still pending in a `DbContext` escapes that revocation and stays live.
 
 ### Abstractions
 

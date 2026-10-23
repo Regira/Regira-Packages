@@ -97,8 +97,8 @@ public class CountryUtilityTests
     {
         var regions = CountryUtility.GetCountries(new CultureSearchObject { LanguageCodes = [lang] }).ToArray();
         var codes = regions.Select(r => r.Iso2Code).ToArray();
-        foreach (var expected in expectedCodes)
-            Assert.That(codes, Does.Contain(expected), $"Expected region '{expected}' not found for language '{lang}'");
+        // an unknown language finds no country at all
+        Assert.That(codes, expectedCodes.Length == 0 ? Is.Empty : Is.SupersetOf(expectedCodes));
     }
 
     // GetName with a known language code returns the localized native name from Names dictionary

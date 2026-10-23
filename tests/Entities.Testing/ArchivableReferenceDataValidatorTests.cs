@@ -294,14 +294,24 @@ public class ArchivableReferenceDataValidatorTests
     [Test]
     public async Task A_Non_Archivable_Principal_Is_Not_Reported()
     {
-        // Status is reference data done the recommended way — a real DELETE plus OnDelete(Restrict).
+        // Status is reference data done the recommended way — a real DELETE plus OnDelete(Restrict). Asset is
+        // registered, so its required FK to Status is in reach; Category, behind the same kind of FK, is the control.
         var warnings = await Warnings(services =>
         {
             services.AddDbContext<ReferenceDataContext>(db => db.UseSqlite(_connection));
             services.UseEntities<ReferenceDataContext>(o => { o.UseDefaults(); Logging()(o); })
-                .For<Status>();
+                .For<Status>()
+                .For<Asset>();
         });
 
-        Assert.That(warnings, Has.None.Contains($"{nameof(Status)} is IArchivable"));
+#if NET10_0_OR_GREATER
+        Assert.Multiple(() =>
+        {
+            Assert.That(warnings, Has.Some.StartsWith($"{nameof(Category)} is IArchivable"));
+            Assert.That(warnings, Has.None.Contains($"{nameof(Status)} is IArchivable"));
+        });
+#else
+        Assert.That(warnings, Has.None.Contains(Hazard));
+#endif
     }
 }

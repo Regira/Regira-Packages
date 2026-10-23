@@ -224,16 +224,18 @@ public class JwtOptionsCharacterizationTests
     }
 
     /// <summary>
-    /// Length is counted in the encoding the key is derived from. An accented secret is shorter in bytes than in
-    /// characters under UTF-8 — but the key uses ASCII, where each accent still costs exactly one byte, so the
-    /// count must agree with <see cref="Test_Secret_Is_Read_As_Ascii_So_Non_Ascii_Characters_Collapse"/>.
+    /// Length is counted in the encoding the key is derived from. An accent costs two bytes in UTF-8 but one in the
+    /// ASCII the key uses, so the count must agree with
+    /// <see cref="Test_Secret_Is_Read_As_Ascii_So_Non_Ascii_Characters_Collapse"/>: 62 characters and one accent are
+    /// 64 bytes in UTF-8, yet make a 63-byte key, too short for HS512.
     /// </summary>
     [Fact]
     public void Test_Secret_Length_Is_Counted_In_The_Encoding_The_Key_Uses()
     {
-        Encoding.ASCII.GetByteCount(AccentedSecret).ShouldBe(AccentedSecret.Length);
+        var secret = new string('k', 62) + "é";
 
-        Should.NotThrow(() => new ServiceCollection().AddJwtAuthentication(o => o.Secret = AccentedSecret));
+        Should.Throw<InvalidOperationException>(() => new ServiceCollection().AddJwtAuthentication(o => o.Secret = secret))
+            .Message.ShouldContain("is 63 bytes");
     }
 
     /// <summary>

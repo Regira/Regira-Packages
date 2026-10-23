@@ -105,9 +105,10 @@ public abstract class PdfTestsBase<TBackend>(TBackend backend, string outputFold
     }
 
     [Test]
-    public async Task RemoveEmptyPages_Leaves_A_Pdf_Without_Them()
+    public async Task RemoveEmptyPages_Keeps_Every_Page_Of_A_Pdf_That_Has_None()
     {
         var input = InputFacts(NinePages);
+        Assert.That(input.PageTexts, Has.None.Empty, "the input has no empty pages");
 
         using var result = await Service<IPdfTextService>().RemoveEmptyPages(ReadAsset(NinePages));
 

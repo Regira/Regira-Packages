@@ -82,8 +82,39 @@ public class GetRequiredEntityServiceTests
         var ex = Assert.Throws<InvalidOperationException>(() =>
             CreateController(sp).GetRequiredEntityService<IEntityService<Course, int, CourseSearchObject>>());
 
-        // The registered SearchObject<int> variant must appear as an alternative
-        Assert.Contains("SearchObject", ex.Message);
+        // The registered SearchObject<int> variant must appear as an alternative. The requested CourseSearchObject is
+        // named in the message too, so only the list of registrations can show it.
+        const string listed = "registrations exist for 'Course': ";
+        Assert.Contains(listed, ex.Message);
+        var alternatives = ex.Message[(ex.Message.IndexOf(listed, StringComparison.Ordinal) + listed.Length)..];
+        Assert.Contains("SearchObject", alternatives);
+        Assert.DoesNotContain("CourseSearchObject", alternatives);
+    }
+
+    /// <summary>
+    /// Every path names the types as written in C#, nested arguments included, never with the CLR's arity suffix
+    /// (<c>IEntityService`3</c>) a user cannot paste back into a <c>For&lt;&gt;()</c> call.
+    /// </summary>
+    [Fact]
+    public void Messages_Name_Generic_Types_As_Written()
+    {
+        var services = new ServiceCollection().AddDbContext<ContosoContext>();
+        services.UseEntities<ContosoContext>().For<Course>();
+        using var sp = services.BuildServiceProvider();
+        using var bare = new ServiceCollection().AddDbContext<ContosoContext>().BuildServiceProvider();
+
+        var pathA = Assert.Throws<InvalidOperationException>(() =>
+            CreateController(sp).GetRequiredEntityService<IEntityService<Course, int, CourseSearchObject>>()).Message;
+        var pathB = Assert.Throws<InvalidOperationException>(() =>
+            CreateController(sp).GetRequiredEntityService<IEntityService<Department, int>>()).Message;
+        var pathC = Assert.Throws<InvalidOperationException>(() =>
+            CreateController(bare).GetRequiredEntityService<IEntityService<Course, int>>()).Message;
+
+        Assert.Contains("'IEntityService<Course, Int32, CourseSearchObject>'", pathA);
+        Assert.Contains("IEntityService<Course, Int32, SearchObject<Int32>>", pathA);
+        Assert.Contains("'IEntityService<Department, Int32>'", pathB);
+        Assert.Contains("'IEntityService<Course, Int32>'", pathC);
+        Assert.DoesNotContain("`", pathA + pathB + pathC);
     }
 
     [Fact]

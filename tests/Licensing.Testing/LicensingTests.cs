@@ -115,14 +115,19 @@ public class LicensingTests
         Assert.Throws<LicenseException>(() => LicenseValidator.Validate("one.two.three", "regira.entities"));
     }
 
+    // A key for one product, rewritten to grant another. The payload stays valid JSON, so only the signature check
+    // can refuse it.
     [Test]
     public void Validate_TamperedPayload_ThrowsLicenseException()
     {
-        var key = LicenseSigner.Sign(ValidLicense(), _rsa);
-        var parts = key.Split('.');
-        var payloadBytes = LicenseParser.Base64UrlDecode(parts[0]);
-        payloadBytes[0] ^= 0xFF;
-        var tampered = Convert.ToBase64String(payloadBytes).Replace('+', '-').Replace('/', '_').TrimEnd('=');
+        var license = ValidLicense();
+        license.Products = ["regira.services"];
+        var parts = LicenseSigner.Sign(license, _rsa).Split('.');
+        var payload = System.Text.Encoding.UTF8.GetString(LicenseParser.Base64UrlDecode(parts[0]));
+        var rewritten = payload.Replace("\"regira.services\"", "\"regira.entities\"");
+        Assert.That(rewritten, Is.Not.EqualTo(payload));
+
+        var tampered = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(rewritten)).Replace('+', '-').Replace('/', '_').TrimEnd('=');
         Assert.Throws<LicenseException>(() => LicenseValidator.Validate(tampered + "." + parts[1], "regira.entities"));
     }
 

@@ -1,4 +1,5 @@
-﻿using Regira.Media.Drawing.Dimensions;
+﻿using Drawing.Testing.Abstractions;
+using Regira.Media.Drawing.Dimensions;
 using Regira.Media.Drawing.Enums;
 using Regira.Media.Drawing.Models;
 using Regira.Media.Drawing.Models.Abstractions;
@@ -119,6 +120,8 @@ public static class ImageBuilderExtensions
         AssertColor("#FFFFFF", await service.GetPixelColor(resultImg, 150, 299));
         AssertColor("#00FF00", await service.GetPixelColor(resultImg, 390, 10));
         AssertColor("#00FF00", await service.GetPixelColor(resultImg, 360, 90));
+        // top 20, right 10: drawn after the green layer, so on top of it
+        AssertColor("#0000FF", await service.GetPixelColor(resultImg, 365, 45));
         AssertColor("#FFFF00", await service.GetPixelColor(resultImg, 45, 35));
         AssertColor("#FFFF00", await service.GetPixelColor(resultImg, 330, 35));
         AssertColor("#FFFF00", await service.GetPixelColor(resultImg, 45, 160));
@@ -186,6 +189,8 @@ public static class ImageBuilderExtensions
         AssertColor("#FFFFFF", await service.GetPixelColor(resultImg, 150, 299));
         AssertColor("#00FF00", await service.GetPixelColor(resultImg, 390, 10));
         AssertColor("#00FF00", await service.GetPixelColor(resultImg, 360, 90));
+        // top 20, right 10: drawn after the green layer, so on top of it
+        AssertColor("#0000FF", await service.GetPixelColor(resultImg, 365, 45));
         AssertColor("#FFFF00", await service.GetPixelColor(resultImg, 45, 35));
         AssertColor("#FFFF00", await service.GetPixelColor(resultImg, 330, 35));
         AssertColor("#FFFF00", await service.GetPixelColor(resultImg, 45, 160));
@@ -270,12 +275,20 @@ public static class ImageBuilderExtensions
         AssertColor("#FFFFFF", await service.GetPixelColor(resultImg, 150, 299));
         AssertColor("#00FF00", await service.GetPixelColor(resultImg, 390, 10));
         AssertColor("#00FF00", await service.GetPixelColor(resultImg, 360, 90));
+        // top 20, right 10: drawn after the green layer, so on top of it
+        AssertColor("#0000FF", await service.GetPixelColor(resultImg, 365, 45));
         AssertColor("#FFFF00", await service.GetPixelColor(resultImg, 45, 35));
         AssertColor("#FFFF00", await service.GetPixelColor(resultImg, 330, 35));
         AssertColor("#FFFF00", await service.GetPixelColor(resultImg, 45, 160));
         AssertColor("#FFFF00", await service.GetPixelColor(resultImg, 350, 260));
-        //AssertColor("#FFFF00", await service.GetPixelColor(resultImg, 200, 150));
         AssertColor("#FF0000", await service.GetPixelColor(resultImg, 20, 270));
         AssertColor("#FFFFFF", await service.GetPixelColor(resultImg, 399, 299));
+
+        // the label is the only dark layer: its text lies around the centre, over the yellow
+        using var decoded = ImageReadBack.Decode(resultImg);
+        var darkAtCentre = Enumerable.Range(120, 160)
+            .SelectMany(x => Enumerable.Range(135, 30).Select(y => decoded.GetPixel(x, y)))
+            .Count(pixel => pixel.Red < 100 && pixel.Green < 100 && pixel.Blue < 100);
+        Assert.That(darkAtCentre, Is.GreaterThan(50));
     }
 }

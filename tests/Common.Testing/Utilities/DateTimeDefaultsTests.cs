@@ -2,28 +2,14 @@ using Regira.Utilities;
 
 namespace Common.Testing.Utilities;
 
-// mutates the process-wide policy — keep out of the parallel test queue
+// Nothing in this assembly sets the process-wide policy, so this reads the default the property starts with. Turning
+// it off is covered where it is read: the Entities UTC tests.
 [TestFixture]
-[NonParallelizable]
 public class DateTimeDefaultsTests
 {
-    [TearDown]
-    public void TearDown()
-    {
-        DateTimeDefaults.UseUtc = true;
-    }
-
     [Test]
     public void Defaults_To_Utc()
     {
         Assert.That(DateTimeDefaults.UseUtc, Is.True);
-    }
-
-    [Test]
-    public void Can_Be_Disabled()
-    {
-        DateTimeDefaults.UseUtc = false;
-
-        Assert.That(DateTimeDefaults.UseUtc, Is.False);
     }
 }

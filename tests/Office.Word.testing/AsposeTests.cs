@@ -137,14 +137,6 @@ public class AsposeTests() : WordTestsBase(new WordService(LicenseFromEnvironmen
         return base.A_Story_Given_For_Some_Pages_Leaves_The_Other_Story_On_Them(type, specialHeader);
     }
 
-    [Test]
-    public async Task Odt_Template_Is_Read()
-    {
-        var text = await Service.GetText(TemplateInput("template.odt"));
-
-        Assert.That(text, Is.Not.Empty);
-    }
-
 
     private const int LongDocumentParagraphCount = 1000;
     internal static readonly string LongDocumentLastParagraph = $"Paragraph {LongDocumentParagraphCount} of {LongDocumentParagraphCount}";

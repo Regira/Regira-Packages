@@ -3,7 +3,9 @@ using Microsoft.AspNetCore.Mvc.ApplicationParts;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Regira.Entities.DependencyInjection.Extensions;
+using Regira.Entities.DependencyInjection.ServiceCollections.Models;
 using Regira.Entities.DependencyInjection.Validation;
 using Regira.Entities.Mapping.Abstractions;
 using Regira.Entities.Mapping.AutoMapper;
@@ -66,6 +68,27 @@ public class StartupValidationTests
         foreach (var hostedService in serviceProvider.GetServices<IHostedService>())
         {
             await hostedService.StartAsync(CancellationToken.None);
+        }
+    }
+
+    /// <summary>What the startup checks log, from information up.</summary>
+    private sealed class LogCapture : ILoggerProvider
+    {
+        public System.Collections.Concurrent.ConcurrentQueue<(LogLevel Level, string Message)> Entries { get; } = new();
+        public ILogger CreateLogger(string categoryName) => new Logger(this);
+        public void Dispose() { }
+
+        private sealed class Logger(LogCapture capture) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+            public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Information;
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            {
+                if (IsEnabled(logLevel))
+                {
+                    capture.Entries.Enqueue((logLevel, formatter(state, exception)));
+                }
+            }
         }
     }
 
@@ -258,38 +281,52 @@ public class StartupValidationTests
     [Fact]
     public async Task Startup_Boots_When_Primers_Lack_An_Interceptor()
     {
-        // UseDefaults registers primers/normalizers; the context has no interceptor. An overridden
-        // SaveChanges is undetectable, so this must WARN, not gate startup.
+        // A primer for Course, and wiring that leaves the primer interceptor out (UseDefaults alone wires it). An
+        // overridden SaveChanges is undetectable, so this must WARN, not gate startup.
+        var capture = new LogCapture();
         var services = new ServiceCollection();
-        services.AddLogging();
+        services.AddLogging(b => b.AddProvider(capture));
         services.AddDbContext<ContosoContext>(db => db.UseSqlite("Filename=:memory:"));
         services.UseEntities<ContosoContext>(o =>
             {
                 o.UseDefaults();
+                o.WireDbContext(DbContextWiring.All & ~DbContextWiring.PrimerInterceptors);
                 o.ConfigureValidation(v => v.Enabled = true);
             })
-            .For<Course, int, CourseSearchObject>();
+            // no default primer targets Course, so it brings one of its own
+            .For<Course, int, CourseSearchObject>(e => e.Prime(_ => { }));
 
         await using var sp = services.BuildServiceProvider();
         await RunHostedServices(sp); // must not throw
+
+        var issue = Assert.Single(capture.Entries, e => e.Message.Contains("primer interceptor"));
+        Assert.Equal(LogLevel.Warning, issue.Level);
+        Assert.Contains(nameof(ContosoContext), issue.Message);
     }
 
     [Fact]
     public async Task Startup_Boots_When_Only_The_Primer_Container_Is_Registered()
     {
         // The documented non-interceptor pattern: RegisterPrimerContainer + explicit ApplyPrimers().
+        var capture = new LogCapture();
         var services = new ServiceCollection();
-        services.AddLogging();
+        services.AddLogging(b => b.AddProvider(capture));
         services.AddDbContext<ContosoContext>(db => db.UseSqlite("Filename=:memory:"));
         services.RegisterPrimerContainer<ContosoContext>();
         services.UseEntities<ContosoContext>(o =>
             {
                 o.UseDefaults();
+                o.WireDbContext(DbContextWiring.All & ~DbContextWiring.PrimerInterceptors);
                 o.ConfigureValidation(v => v.Enabled = true);
             })
-            .For<Course, int, CourseSearchObject>();
+            // no default primer targets Course, so it brings one of its own
+            .For<Course, int, CourseSearchObject>(e => e.Prime(_ => { }));
 
         await using var sp = services.BuildServiceProvider();
         await RunHostedServices(sp); // must not throw — deliberate configuration, Info only
+
+        var issue = Assert.Single(capture.Entries, e => e.Message.Contains("primer interceptor"));
+        Assert.Equal(LogLevel.Information, issue.Level);
+        Assert.Contains(nameof(ContosoContext), issue.Message);
     }
 }

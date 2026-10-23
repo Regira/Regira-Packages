@@ -3,6 +3,9 @@ using Entities.Testing.Infrastructure.Processors;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Regira.Entities.DependencyInjection.Extensions;
+using Regira.Entities.Models;
+using Regira.Entities.Services.Abstractions;
 
 namespace Entities.Testing;
 
@@ -23,39 +26,33 @@ public class ProcessorTests
     }
 
 
+    // through the entity service, so it is the read pipeline that runs the registered processor
     [Test]
-    public async Task Test()
+    public async Task A_Registered_Processor_Fills_The_Listed_Items()
     {
         IServiceCollection services = new ServiceCollection();
         services.AddDbContext<ProductContext>(db => db.UseSqlite(_connection));
-        var sp = services.BuildServiceProvider();
-        var dbContext = sp.GetRequiredService<ProductContext>();
-        await dbContext.Database.EnsureCreatedAsync();
+        services.UseEntities<ProductContext>()
+            .For<Category>(e => e.AddProcessor<CategoryProcessor>());
+        await using var sp = services.BuildServiceProvider();
 
-        var inputCategories = Enumerable.Range(0, 3)
-            .Select((_, i) => new Category
-            {
-                Title = $"Category #{i + 1}",
-                Products = Enumerable.Range(0, (i + 1) * 2).Select((_, j) => new Product { Title = $"Product #{i + j + 1}" }).ToArray()
-            })
-            .ToArray();
-
-        dbContext.Categories.AddRange(inputCategories);
-        await dbContext.SaveChangesAsync();
-
-        var categories = await dbContext.Categories.ToListAsync();
-        var categoryProcessor = new CategoryProcessor(sp.GetRequiredService<ProductContext>());
-
-        foreach (var category in categories)
+        using (var scope = sp.CreateScope())
         {
-            Assert.That(category.NumberOfProducts, Is.Null);
+            var dbContext = scope.ServiceProvider.GetRequiredService<ProductContext>();
+            await dbContext.Database.EnsureCreatedAsync();
+            dbContext.Categories.AddRange(Enumerable.Range(1, 3)
+                .Select(i => new Category
+                {
+                    Title = $"Category #{i}",
+                    Products = Enumerable.Range(1, i * 2).Select(j => new Product { Title = $"Product #{i}.{j}" }).ToArray()
+                }));
+            await dbContext.SaveChangesAsync();
         }
 
-        await categoryProcessor.Process(categories, null);
+        using var readScope = sp.CreateScope();
+        var categories = await readScope.ServiceProvider.GetRequiredService<IEntityService<Category>>().List(new SearchObject());
 
-        foreach (var category in categories)
-        {
-            Assert.That(category.NumberOfProducts, Is.EqualTo(category.Id * 2));
-        }
+        Assert.That(categories.Select(x => (x.Title, x.NumberOfProducts)),
+            Is.EquivalentTo(new (string?, int?)[] { ("Category #1", 2), ("Category #2", 4), ("Category #3", 6) }));
     }
 }

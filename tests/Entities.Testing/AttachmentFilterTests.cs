@@ -258,6 +258,8 @@ public class AttachmentFilterTests
     public async Task Extension_Via_The_Query_Extension_Combines_With_ObjectId()
     {
         var seeded = await SeedCourseAttachments("my-report.pdf", "handbook-nopdf");
+        // another owner's pdf, which only the ObjectId half keeps out
+        await SeedCourseAttachments("other-report.pdf");
 
         var results = await FilterViaExtension(new EntityAttachmentSearchObject
         {

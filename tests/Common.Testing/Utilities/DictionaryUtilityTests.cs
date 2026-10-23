@@ -23,7 +23,7 @@ public class DictionaryUtilityTests
     private readonly IList<Country> _countries;
     public DictionaryUtilityTests()
     {
-        var assetsDir = new DirectoryInfo(Path.Combine(AppContext.BaseDirectory, "../../../assets")).FullName;
+        var assetsDir = new DirectoryInfo(Path.Combine(AppContext.BaseDirectory, "../../../Assets")).FullName;
         var countriesJson = File.ReadAllText(Path.Combine(assetsDir, "countries.json"));
         _countries = JsonSerializer.Deserialize<IList<Country>>(countriesJson)!;
     }
@@ -52,9 +52,10 @@ public class DictionaryUtilityTests
             {
                 Id = 1,
                 Title = "Parent object",
+                // an id of its own, so a root read from the wrong level shows
                 Parent = new
                 {
-                    Id = 1,
+                    Id = 2,
                     Title = "Root object"
                 },
                 Collection = new[] {
@@ -127,7 +128,8 @@ public class DictionaryUtilityTests
         Assert.That(obj.Parent.Id, Is.EqualTo(parent["Id"]));
         Assert.That(obj.Parent.Title, Is.EqualTo(parent["Title"]));
         IDictionary<string, object?> root = (IDictionary<string, object?>)parent["Parent"]!;
-        Assert.That(obj.Parent.Id, Is.EqualTo(root["Id"]));
+        Assert.That(obj.Parent.Parent.Id, Is.EqualTo(root["Id"]));
+        Assert.That(obj.Parent.Parent.Title, Is.EqualTo(root["Title"]));
     }
     [Test]
     public void Selectors_To_Dictionary_Renames_Every_Duplicate_Key()
@@ -717,7 +719,7 @@ public class DictionaryUtilityTests
             { "factuurLijnen:0:nested:second", "2nd nested" },
             { "factuurLijnen:1:omschrijving", "Diensten" },
             { "factuurLijnen:1:eenheidsPrijs", 180.50 },
-            { "factuurLijnen:1:nested:first", "1st nested" },
+            { "factuurLijnen:1:nested:first", "1st nested of line 2" },
             { "factuurLijnen:1:nested:second:0:foo:value", "fooValue" },
             { "factuurLijnen:2:nested:nested:third", "3th nested" }
         };
@@ -730,10 +732,12 @@ public class DictionaryUtilityTests
         Assert.That(source["leverancier:adres:straat"], Is.EqualTo(targetLeverancierAdres["straat"]));
 
         var targetFactuurLijnen = ((IEnumerable<IDictionary<string, object?>>)target["factuurLijnen"]!).ToArray();
+        var targetLijn1NestedProp = (IDictionary<string, object?>)targetFactuurLijnen[0]["nested"]!;
+        Assert.That(source["factuurLijnen:0:nested:first"], Is.EqualTo(targetLijn1NestedProp["first"]));
         var targetLijn2 = targetFactuurLijnen[1];
         Assert.That(targetLijn2["nested"] as IDictionary<string, object?>, Is.Not.Null);
         var targetNestedProp = (IDictionary<string, object?>)targetLijn2["nested"]!;
-        Assert.That(source["factuurLijnen:0:nested:first"], Is.EqualTo(targetNestedProp["first"]));
+        Assert.That(source["factuurLijnen:1:nested:first"], Is.EqualTo(targetNestedProp["first"]));
         var targetNestedSecond = ((IEnumerable<IDictionary<string, object?>>)targetNestedProp["second"]!).ToList();
         var targetNestedSecondFoo = (IDictionary<string, object?>)targetNestedSecond[0]["foo"]!;
         Assert.That(source["factuurLijnen:1:nested:second:0:foo:value"], Is.EqualTo(targetNestedSecondFoo["value"]));

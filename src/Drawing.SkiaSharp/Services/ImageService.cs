@@ -232,26 +232,16 @@ public class ImageService : IImageService
 
         using var inputBitmap = input.ToBitmap();
 
-        var outputBitmap = new SKBitmap(inputBitmap.Width, inputBitmap.Height);
-        using (var canvas = new SKCanvas(outputBitmap))
+        // All pixels at once, unpremultiplied: a fully transparent pixel turns white, any other keeps its colour at
+        // alpha 255.
+        var pixels = inputBitmap.Pixels;
+        for (var i = 0; i < pixels.Length; i++)
         {
-            canvas.Clear(SKColors.White);
+            pixels[i] = SkiaUtility.IsPixelTransparent(pixels[i]) ? SKColors.White : pixels[i].WithAlpha(255);
         }
 
-        for (int x = 0; x < inputBitmap.Width; x++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            for (int y = 0; y < inputBitmap.Height; y++)
-            {
-                var pixelColor = inputBitmap.GetPixel(x, y);
-                // Create a new color without the alpha value
-                var newColor = SkiaUtility.IsPixelTransparent(pixelColor)
-                    ? SKColors.White
-                    : new SKColor(pixelColor.Red, pixelColor.Green, pixelColor.Blue, 255);
-                outputBitmap.SetPixel(x, y, newColor);
-            }
-        }
-
+        using var outputBitmap = new SKBitmap(new SKImageInfo(inputBitmap.Width, inputBitmap.Height, SKColorType.Bgra8888, SKAlphaType.Unpremul));
+        outputBitmap.Pixels = pixels;
         return Task.FromResult<IImageFile>(outputBitmap.ToImageFile());
     }
 

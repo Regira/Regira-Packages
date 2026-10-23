@@ -87,6 +87,7 @@ public static partial class ExcelTestExtensions
 
         var sheets = (await service.Read(excelFile)).ToList();
         var data = sheets[0].Data!.ToList();
+        Assert.That(data, Has.Count.EqualTo(testData.Length));
         for (var i = 0; i < testData.Length; i++)
         {
             var sourceItem = testData[i];
@@ -94,10 +95,9 @@ public static partial class ExcelTestExtensions
             Assert.Multiple(() =>
             {
                 Assert.That(excelItem["Title"], Is.EqualTo(sourceItem.Title));
-                Assert.That(Convert.ToDecimal(excelItem["Value"]) - sourceItem.Value, Is.LessThan(.000000001m));
+                Assert.That(Convert.ToDecimal(excelItem["Value"]), Is.EqualTo(sourceItem.Value).Within(.000000001m));
+                Assert.That((DateTime)excelItem["Created"]!, Is.EqualTo(sourceItem.Created).Within(1).Milliseconds);
             });
-            var excelDate = (DateTime)excelItem["Created"]!;
-            Assert.That((sourceItem.Created - excelDate), Is.LessThan(TimeSpan.FromMilliseconds(1)));
         }
     }
     public static async Task Run_Compare_UnTyped_Input_With_Output<TService>(this TService service)
@@ -109,6 +109,7 @@ public static partial class ExcelTestExtensions
         AssertReadableWithoutRewind(excelFile);
         var sheets = (await service.Read(excelFile)).ToList();
         var data = sheets[0].Data!.ToList();
+        Assert.That(data, Has.Count.EqualTo(testData.Length));
         for (var i = 0; i < testData.Length; i++)
         {
             var sourceItem = testData[i];
@@ -116,10 +117,9 @@ public static partial class ExcelTestExtensions
             Assert.Multiple(() =>
             {
                 Assert.That(excelItem["Title"], Is.EqualTo(sourceItem.Title));
-                Assert.That(Convert.ToDecimal(excelItem["Value"]) - sourceItem.Value, Is.LessThan(.000000001m));
+                Assert.That(Convert.ToDecimal(excelItem["Value"]), Is.EqualTo(sourceItem.Value).Within(.000000001m));
+                Assert.That((DateTime)excelItem["Created"]!, Is.EqualTo(sourceItem.Created).Within(1).Milliseconds);
             });
-            var excelDate = (DateTime)excelItem["Created"]!;
-            Assert.That((sourceItem.Created - excelDate), Is.LessThan(TimeSpan.FromMilliseconds(1)));
         }
     }
     public static async Task Run_Compare_Typed_Input_With_Output<TService>(this TService service)
@@ -133,6 +133,7 @@ public static partial class ExcelTestExtensions
         var sheets = await service.Read(excelFile);
         var data = sheets.First().Data;
         var excelItems = JsonSerializer.Deserialize<TestObject[]>(JsonSerializer.Serialize(data))!.ToList();
+        Assert.That(excelItems, Has.Count.EqualTo(testData.Length));
 
         for (var i = 0; i < testData.Length; i++)
         {
@@ -141,10 +142,9 @@ public static partial class ExcelTestExtensions
             Assert.Multiple(() =>
             {
                 Assert.That(excelItem.Title, Is.EqualTo(sourceItem.Title));
-                Assert.That(Math.Abs(sourceItem.Value - excelItem.Value), Is.LessThan(.000000001m));
+                Assert.That(excelItem.Value, Is.EqualTo(sourceItem.Value).Within(.000000001m));
+                Assert.That(excelItem.Created, Is.EqualTo(sourceItem.Created).Within(1).Milliseconds);
             });
-            var excelDate = excelItem.Created;
-            Assert.That((sourceItem.Created - excelDate), Is.LessThan(TimeSpan.FromMilliseconds(1)));
         }
     }
     public static async Task Run_Read_With_Duplicate_Headers<TService>(this TService service)
@@ -156,7 +156,16 @@ public static partial class ExcelTestExtensions
         var sheets = (await service.Read(inputFile)).ToList();
         Assert.That(sheets, Is.Not.Empty);
         var data = sheets.First().Data!.ToList();
-        Assert.That(data, Is.Not.Empty);
+        Assert.That(data, Has.Count.EqualTo(100));
+
+        // the header row reads Id, Title, Value, Created, Title: the repeat is keyed Title_2, so neither column is lost
+        var first = DictionaryUtility.ToDictionary(data[0]);
+        Assert.Multiple(() =>
+        {
+            Assert.That(first.Keys, Is.EquivalentTo(new[] { "Id", "Title", "Value", "Created", "Title_2" }));
+            Assert.That(first["Title"], Is.EqualTo("Item #1"));
+            Assert.That(first["Title_2"], Is.EqualTo("duplicate1"));
+        });
     }
 
     public static async Task Run_Export_Countries_As_Dictionary<TService>(this TService service)

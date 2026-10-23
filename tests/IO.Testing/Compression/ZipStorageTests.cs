@@ -1,5 +1,6 @@
 ﻿using IO.Testing.Helpers;
 using Regira.IO.Abstractions;
+using Regira.IO.Extensions;
 using Regira.IO.Storage;
 using Regira.IO.Storage.Compression;
 
@@ -40,8 +41,12 @@ public class ZipStorageTests
     public async Task Filter_By_Extension() => await StorageTestContext.Test_Filter_By_Extension();
     [Test]
     public async Task Filter_Recursive() => await StorageTestContext.Test_Filter_Recursive();
-    //[Test]
-    //public async Task Filter_By_EntryType() => await StorageTestContext.Test_Filter_By_EntryType();
+    [Test]
+    [Ignore("Library defect S6: ZipFileService.List ignores FileSearchObject.Recursive and Type, which BinaryFileService honours")]
+    public async Task Filter_By_EntryType() => await StorageTestContext.Test_Filter_By_EntryType();
+    [Test]
+    [Ignore("Library defect S6: ZipFileService.List ignores FileSearchObject.Recursive and Type, which BinaryFileService honours")]
+    public async Task Filter_Non_Recursive() => await StorageTestContext.Test_Filter_Non_Recursive();
 
 #if NET10_0_OR_GREATER
     [Test]
@@ -85,32 +90,33 @@ public class ZipStorageTests
 
 
     [Test]
-    public async Task GetStream_With_Forward_Slashes()
-    {
-        var identifier = StorageTestContext.SourceFiles.First().Identifier!.Replace('\\', '/');
+    public Task GetStream_With_Forward_Slashes() => GetStream_Of_A_Nested_File(identifier => identifier.Replace('\\', '/'));
 
-        Assert.That(await StorageTestContext.FileService.Exists(identifier), Is.True);
-        await using var stream = await StorageTestContext.FileService.GetStream(identifier);
-        Assert.That(stream, Is.Not.Null);
-    }
-
+    // either separator reaches the nested folder; Recursive takes its subfolder's file along (Filter_Non_Recursive
+    // covers a folder's own files)
     [TestCase("dir2/dir2.1")]
     [TestCase(@"dir2\dir2.1")]
     public async Task List_Nested_Folder(string folderUri)
     {
-        var files = await StorageTestContext.FileService.List(new FileSearchObject { FolderUri = folderUri });
+        var files = await StorageTestContext.FileService.List(new FileSearchObject { FolderUri = folderUri, Recursive = true });
 
         var expected = StorageTestContext.SourceFiles.Count(x => x.Identifier!.StartsWith(@"dir2\dir2.1\"));
         Assert.That(files.Count(), Is.EqualTo(expected));
     }
 
     [Test]
-    public async Task GetStream_With_Backward_Slashes()
+    public Task GetStream_With_Backward_Slashes() => GetStream_Of_A_Nested_File(identifier => identifier.Replace('/', '\\'));
+
+    // a file in a folder, so the separator is part of the identifier
+    private async Task GetStream_Of_A_Nested_File(Func<string, string> spell)
     {
-        var identifier = StorageTestContext.SourceFiles.First().Identifier!.Replace('/', '\\');
+        var source = StorageTestContext.SourceFiles.First(x => x.Identifier!.Contains('\\'));
+        var identifier = spell(source.Identifier!);
 
         Assert.That(await StorageTestContext.FileService.Exists(identifier), Is.True);
         await using var stream = await StorageTestContext.FileService.GetStream(identifier);
-        Assert.That(stream, Is.Not.Null);
+        using var read = new MemoryStream();
+        await stream!.CopyToAsync(read);
+        Assert.That(read.ToArray(), Is.EqualTo(source.GetBytes()));
     }
 }

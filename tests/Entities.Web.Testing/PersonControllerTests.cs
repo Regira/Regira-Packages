@@ -336,16 +336,16 @@ public class PersonControllerTests : IClassFixture<ContosoApiFactory>, IDisposab
         _dbContext.Persons.AddRange(persons);
         await _dbContext.SaveChangesAsync();
 
+        // course3 holds only Student3 and course4 only Student2: a filter that reads one of the ids loses a student
         var so = new PersonSearchObject
         {
-            StudentCourseIds = [1, 3]
+            StudentCourseIds = [course3.Id, course4.Id]
         };
 
         var query = string.Join('&', so.StudentCourseIds.Select(id => $"StudentCourseIds={id}"));
         var listResponse = await client.GetAsync($"/persons/?{query}");
         var listResult = await listResponse.Content.ReadFromJsonAsync<ListResult<PersonDto>>();
-        Assert.Equal(2, listResult!.Items.Count);
-        Assert.Contains(listResult.Items, p => new[] { "Student1", "Student3" }.Contains(p.GivenName));
+        Assert.Equal(["Student2", "Student3"], listResult!.Items.Select(p => p.GivenName).Order());
     }
 
     [Fact]

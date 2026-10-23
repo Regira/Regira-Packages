@@ -56,7 +56,8 @@
   Data Protection key ring plus `SetApplicationName`, or restarts log everyone out at random.
 - **`IRefreshTokenStore.TryRevoke` must be atomic** — a conditional write (`WHERE RevokedAt IS NULL` + rowcount),
   never read-then-write. Two concurrent refreshes of one token would otherwise both succeed and split the family
-  into two live chains with no replay detected.
+  into two live chains with no replay detected. **`Store` must have written the record when it returns**: the
+  service stores a successor before it claims the rotation, so a concurrent refresh's family revocation reaches it.
 - **⚠️ `AddSchemeSelector` + interactive sign-in:** the forwarding rules key on the credential a request *carries*,
   and a browser hitting a guarded page carries none — so a challenge would resolve to a bearer `401` and login would
   be unreachable. A registered OIDC scheme therefore answers challenges automatically; set `ChallengeScheme`

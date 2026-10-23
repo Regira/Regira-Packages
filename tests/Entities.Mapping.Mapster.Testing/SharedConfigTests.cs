@@ -38,9 +38,13 @@ public class SharedConfigTests
         services.AddDbContext<AlphaContext>(o => o.UseSqlite("Filename=:memory:"));
         services.AddDbContext<BetaContext>(o => o.UseSqlite("Filename=:memory:"));
 
-        void RegisterAlpha() => services.UseEntities<AlphaContext>(o => o.UseMapsterMapping())
+        // Each stack brings a rule of its own. The DTOs mirror their entities, so Mapster maps them by name under any
+        // config; only a rule shows whether a stack's config survived.
+        void RegisterAlpha() => services.UseEntities<AlphaContext>(o => o.UseMapsterMapping(cfg =>
+                cfg.NewConfig<Alpha, AlphaDto>().Map(d => d.Name, s => s.Name + "!")))
             .For<Alpha>(e => e.UseMapping<AlphaDto, AlphaInputDto>());
-        void RegisterBeta() => services.UseEntities<BetaContext>(o => o.UseMapsterMapping())
+        void RegisterBeta() => services.UseEntities<BetaContext>(o => o.UseMapsterMapping(cfg =>
+                cfg.NewConfig<Beta, BetaDto>().Map(d => d.Label, s => s.Label + "?")))
             .For<Beta>(e => e.UseMapping<BetaDto, BetaInputDto>());
 
         if (alphaFirst) { RegisterAlpha(); RegisterBeta(); }
@@ -61,9 +65,9 @@ public class SharedConfigTests
         Assert.Multiple(() =>
         {
             Assert.That(alphaDto.Id, Is.EqualTo(1));
-            Assert.That(alphaDto.Name, Is.EqualTo("a"));
+            Assert.That(alphaDto.Name, Is.EqualTo("a!"));
             Assert.That(betaDto.Id, Is.EqualTo(2));
-            Assert.That(betaDto.Label, Is.EqualTo("b"));
+            Assert.That(betaDto.Label, Is.EqualTo("b?"));
         });
     }
 

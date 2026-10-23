@@ -41,7 +41,8 @@ public class ProviderQueryPipelineTests(DbProvider provider)
 
         await _dbContext.Database.EnsureCreatedAsync();
 
-        // Titles are chosen so NormalizedTitle ordering is unambiguous: Alpha < Bravo < Charlie.
+        // Titles are chosen so NormalizedTitle ordering is unambiguous: Alpha < Bravo < Charlie. They are inserted in
+        // reverse, so id order (what a lost sort falls back to) disagrees with title order.
         // Descriptions carry distinct keywords for the Q/LIKE test; the normalizer builds NormalizedContent.
         var alpha = new Widget
         {
@@ -63,12 +64,13 @@ public class ProviderQueryPipelineTests(DbProvider provider)
             Created = new DateTime(2024, 3, 1, 0, 0, 0, DateTimeKind.Utc)
         };
 
-        _dbContext.Widgets.AddRange(alpha, bravo, charlie);
+        _dbContext.Widgets.AddRange(charlie, bravo, alpha);
         await _dbContext.SaveChangesAsync();
 
         _alphaId = alpha.Id;
         _bravoArchivedId = bravo.Id;
         _charlieId = charlie.Id;
+        Assert.That(_charlieId, Is.LessThan(_alphaId), "id order must disagree with title order");
     }
 
     [OneTimeTearDown]
@@ -101,7 +103,7 @@ public class ProviderQueryPipelineTests(DbProvider provider)
     [Test]
     public async Task Filter_By_Ids_Returns_Only_Requested_NonArchived_Rows()
     {
-        var items = await Service.List(new SearchObject { Ids = new[] { _alphaId, _charlieId } });
+        var items = await Service.List(new SearchObject { Ids = new[] { _alphaId, _bravoArchivedId, _charlieId } });
 
         Assert.That(items.Select(x => x.Id), Is.EquivalentTo(new[] { _alphaId, _charlieId }));
     }

@@ -90,8 +90,8 @@ public class RefreshTokenEndpointTests : IClassFixture<TestingWebApplicationFact
         bearer.DefaultRequestHeaders.Authorization = new("Bearer", signedIn.Token);
         (await bearer.PostAsync("auth/validate", null)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
 
-        var httpClient = expiring.CreateClient();
-        var response = await httpClient.PostAsJsonAsync("auth/refresh-token", new { refreshToken = signedIn.RefreshToken });
+        // the expired bearer comes along, as a client that attaches it to every call sends it
+        var response = await bearer.PostAsJsonAsync("auth/refresh-token", new { refreshToken = signedIn.RefreshToken });
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var refreshed = (await response.Content.ReadFromJsonAsync<AuthenticateResponseDto>())!;
@@ -137,13 +137,18 @@ public class RefreshTokenEndpointTests : IClassFixture<TestingWebApplicationFact
         signIn.StatusCode.ShouldBe(HttpStatusCode.OK);
         var signedIn = (await signIn.Content.ReadFromJsonAsync<AuthenticateResponseDto>())!;
 
+        // while the address is confirmed, the renewal works
+        var renewal = await requiring.CreateClient().PostAsJsonAsync("auth/refresh-token", new { refreshToken = signedIn.RefreshToken });
+        renewal.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var renewed = (await renewal.Content.ReadFromJsonAsync<AuthenticateResponseDto>())!;
+
         using (var scope = requiring.Services.CreateScope())
         {
             var userManager = scope.ServiceProvider.GetRequiredService<Microsoft.AspNetCore.Identity.UserManager<TestUser>>();
             var user = await userManager.FindByNameAsync(username);
             (await userManager.SetEmailAsync(user!, "refresh-changed@example.com")).Succeeded.ShouldBeTrue();
         }
-        var response = await requiring.CreateClient().PostAsJsonAsync("auth/refresh-token", new { refreshToken = signedIn.RefreshToken });
+        var response = await requiring.CreateClient().PostAsJsonAsync("auth/refresh-token", new { refreshToken = renewed.RefreshToken });
 
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }

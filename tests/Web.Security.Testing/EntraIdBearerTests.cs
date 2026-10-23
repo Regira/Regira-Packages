@@ -148,12 +148,18 @@ public class EntraIdBearerTests : IClassFixture<TestingWebApplicationFactory<Ent
         (await Get("protected", token)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
     }
 
+    /// <summary>
+    /// Expired 30 seconds ago: outside the package's zero clock skew, inside the framework's default of five minutes.
+    /// </summary>
     [Fact]
     public async Task Test_Expired_Token_Is_Rejected()
     {
         var token = FakeAuthority.CreateToken(lifetime: TimeSpan.FromSeconds(-30));
 
-        (await Get("protected", token)).StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        var response = await Get("protected", token);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        response.Headers.WwwAuthenticate.ToString().ShouldContain("The token expired");
     }
 
     private async Task<EntraClaimsReport> GetReport(string token)

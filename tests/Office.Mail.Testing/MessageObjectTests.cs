@@ -112,6 +112,7 @@ public class MessageObjectTests
         {
             TestMailAddress(msg.ReplyTo, replyTo);
         }
+        Assert.That(msg.To, Has.Count.EqualTo(((IList<object?>)input.to).Count));
         for (var i = 0; i < msg.To.Count; i++)
         {
             TestMailAddress(msg.To.ToArray()[i], input.to[i]);
@@ -138,6 +139,8 @@ public class MessageObjectTests
         inputDic.TryGetValue("replyTo", out object? replyTo);
         TestMailAddress(msg.ReplyTo, replyTo);
 
+        inputDic.TryGetValue("to", out object? to);
+        Assert.That(msg.To, Has.Count.EqualTo((to as IList<object?>)?.Count ?? 0));
         for (var i = 0; i < msg.To.Count; i++)
         {
             TestMailAddress(msg.To.ToArray()[i], input.to[i]);

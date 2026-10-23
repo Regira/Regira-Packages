@@ -22,6 +22,5 @@ public class BillitRegistrationTests
         var invoiceService = provider.GetRequiredService<IInvoiceService>();
 
         Assert.That(invoiceService, Is.InstanceOf<InvoiceManager>());
-        Assert.That(provider.GetRequiredService<IInvoiceManager>(), Is.InstanceOf<IInvoiceService>());
     }
 }

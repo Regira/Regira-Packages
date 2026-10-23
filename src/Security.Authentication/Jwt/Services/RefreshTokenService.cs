@@ -71,23 +71,30 @@ public class RefreshTokenService(ITokenHelper tokenHelper, IRefreshTokenStore st
             return new TokenPair(accessToken, now.AddSeconds(jwtOptions.LifeSpan), refreshToken, record.ExpiresAt);
         }
 
-        // Claim the rotation *before* issuing anything. The successor's key has to exist first so the revocation can
-        // name it, but nothing is stored until this test-and-set succeeds — so of two concurrent refreshes exactly one
-        // proceeds, and the loser is indistinguishable from a replay because that is precisely what it looks like from
-        // here. Revoking after issuing would let both win and split the family into two live chains, defeating the
-        // detection this whole design exists for.
+        // Store the successor first, then claim the rotation with the test-and-set: of two concurrent refreshes exactly
+        // one claims it, and the loser is indistinguishable from a replay because that is precisely what it looks like
+        // from here. The order is what makes the loser's response reach the winner: its family revocation runs after
+        // the winner's claim, and so after the winner's successor exists. A successor stored after the claim could miss
+        // that revocation and stay live; a plain revoke in place of the test-and-set would let both win and split the
+        // family into two live chains. Either defeats the detection this whole design exists for.
         var successor = CreateToken();
+        var pair = await IssuePair(record.UserId, claims, record.Audience, record.FamilyId, record.FamilyExpiresAt, now, successor, cancellationToken);
         if (!await store.TryRevoke(ToKey(refreshToken), ToKey(successor), now, cancellationToken))
         {
             if (options.RevokeFamilyOnReuse)
             {
                 await store.RevokeFamily(record.FamilyId, now, cancellationToken);
             }
+            else
+            {
+                // Stored but never handed out: it must not stay live.
+                await store.TryRevoke(ToKey(successor), null, now, cancellationToken);
+            }
 
             return null;
         }
 
-        return await IssuePair(record.UserId, claims, record.Audience, record.FamilyId, record.FamilyExpiresAt, now, successor, cancellationToken);
+        return pair;
     }
 
     public async Task Revoke(string refreshToken, CancellationToken cancellationToken = default)

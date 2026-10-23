@@ -10,7 +10,8 @@ namespace Regira.Security.Authentication.Jwt.Services;
 /// lands on an instance that has never heard of the token and the user is signed out at random.
 /// <para>
 /// A real deployment implements <see cref="IRefreshTokenStore"/> over its own <c>DbContext</c> — five methods, of
-/// which only <see cref="TryRevoke"/> needs care: it must be a conditional write, not a read-then-write.
+/// which two need care: <see cref="TryRevoke"/> must be a conditional write, not a read-then-write, and
+/// <see cref="Store"/> must have written the record when it returns.
 /// </para>
 /// </summary>
 public class InMemoryRefreshTokenStore : IRefreshTokenStore

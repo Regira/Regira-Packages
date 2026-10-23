@@ -571,7 +571,8 @@ public class DeleteCycleTests
         Assert.Multiple(async () =>
         {
             Assert.That(await db.Articles.CountAsync(), Is.Zero);
-            Assert.That(loaded, Is.GreaterThan(0), "the fixture's token must have been in play");
+            // 1 by default, 2 once the trigger moved it on the seed's UPDATE of CoverImageId
+            Assert.That(loaded, Is.EqualTo(2), "the fixture's token must have been in play");
         });
     }
 

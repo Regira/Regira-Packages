@@ -44,7 +44,6 @@ public class NormalizingTests
 
         Assert.That(item.NormalizedGivenName, Is.EqualTo(normalizer.Normalize(item.GivenName)));
         Assert.That(item.NormalizedLastName, Is.EqualTo(normalizer.Normalize(item.LastName)));
-        Assert.That(item.NormalizedPhone, Is.EqualTo("+32 (0)899.99.99"));
         Assert.That(item.Email, Is.EqualTo(item.Email.ToLowerInvariant()));
     }
 

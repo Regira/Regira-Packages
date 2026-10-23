@@ -39,15 +39,18 @@ public class StartupValidationTests
     [Test]
     public async Task Validation_Is_Skipped_Without_Environment_Or_OptIn()
     {
-        // primers without interceptor would be an error — but validation is off outside Development
+        // primers without interceptor would be warned about — but validation is off outside Development
+        var capture = new StartupValidationHarness();
         var services = new ServiceCollection();
-        services.AddLogging();
+        services.AddLogging(b => b.AddProvider(capture));
         services.AddDbContext<ProductContext>(db => db.UseSqlite(_connection));
         services.UseEntities<ProductContext>()
             .For<Product>(e => e.Prime(_ => { }));
 
         using var sp = services.BuildServiceProvider();
-        await Assert.DoesNotThrowAsync(() => StartupValidationHarness.RunHostedServices(sp));
+        await StartupValidationHarness.RunHostedServices(sp);
+
+        Assert.That(capture.Warnings, Is.Empty);
     }
 
     [Test]
@@ -71,8 +74,10 @@ public class StartupValidationTests
     [Test]
     public async Task Wired_Primer_Interceptor_Passes_Validation()
     {
+        // the interceptor check only warns, so the log is what shows it passed
+        var capture = new StartupValidationHarness();
         var services = new ServiceCollection();
-        services.AddLogging();
+        services.AddLogging(b => b.AddProvider(capture));
         services.AddDbContext<ProductContext>(db => db.UseSqlite(_connection));
         services.UseEntities<ProductContext>(o =>
             {
@@ -82,7 +87,9 @@ public class StartupValidationTests
             .For<Product>(e => e.Prime(_ => { }));
 
         using var serviceProvider = services.BuildServiceProvider();
-        await Assert.DoesNotThrowAsync(() => StartupValidationHarness.RunHostedServices(serviceProvider));
+        await StartupValidationHarness.RunHostedServices(serviceProvider);
+
+        Assert.That(capture.Entries.Select(e => e.Message), Has.None.Contains("primer interceptor"));
     }
 
     [Test]
@@ -286,14 +293,15 @@ public class StartupValidationTests
     [Test]
     public async Task Second_Context_Without_PrimeAble_Entities_Does_Not_Fail_Startup()
     {
-        // Regression: primers registered for ProductContext's Product must not force a primer interceptor
-        // on an unrelated NoteContext whose entity has no primers.
+        // Primers registered for ProductContext's Product must not ask for a primer interceptor on an unrelated
+        // NoteContext whose entity has no primers. The check only warns, so the log is what shows it.
         var noteConnection = new SqliteConnection("Filename=:memory:");
         noteConnection.Open();
         try
         {
+            var capture = new StartupValidationHarness();
             var services = new ServiceCollection();
-            services.AddLogging();
+            services.AddLogging(b => b.AddProvider(capture));
             services.AddDbContext<ProductContext>(db => db.UseSqlite(_connection));
             services.AddDbContext<NoteContext>(db => db.UseSqlite(noteConnection)); // deliberately no interceptor
             services.UseEntities<ProductContext>(o =>
@@ -306,7 +314,9 @@ public class StartupValidationTests
                 .For<Note>();
 
             using var sp = services.BuildServiceProvider();
-            await Assert.DoesNotThrowAsync(() => StartupValidationHarness.RunHostedServices(sp));
+            await StartupValidationHarness.RunHostedServices(sp);
+
+            Assert.That(capture.Entries.Select(e => e.Message), Has.None.Contains(nameof(NoteContext)));
         }
         finally
         {

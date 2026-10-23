@@ -31,14 +31,16 @@ public class MsgReaderTests
 
         Assert.That(msgObj.From!.Email, Is.EqualTo(_sampleMessageObject.From!.Email));
         Assert.That(string.IsNullOrWhiteSpace(msgObj.From!.DisplayName), Is.True);
+        Assert.That(msgObj.Subject, Is.EqualTo(_sampleMessageObject.Subject));
         Assert.That(msgObj.Body, Is.EqualTo(_sampleMessageObject.Body));
         Assert.That(msgObj.To.Select(x => x.Email), Is.EquivalentTo(_sampleMessageObject.To.Select(x => x.Email)));
         var msgAttachments = msgObj.Attachments!.ToArray();
         var sampleAttachments = _sampleMessageObject.Attachments!.ToArray();
-        for (var i = 0; i < msgObj.Attachments!.Count; i++)
+        Assert.That(msgAttachments, Has.Length.EqualTo(sampleAttachments.Length));
+        for (var i = 0; i < sampleAttachments.Length; i++)
         {
             Assert.That(msgAttachments[i].FileName, Is.EqualTo(sampleAttachments[i].FileName));
-            Assert.That(msgAttachments[i].Bytes, Is.EquivalentTo(sampleAttachments[i].Bytes!));
+            Assert.That(msgAttachments[i].Bytes, Is.EqualTo(sampleAttachments[i].Bytes!));
         }
     }
     [Test]
@@ -51,14 +53,16 @@ public class MsgReaderTests
 
         Assert.That(msgObj.From!.Email, Is.EqualTo(_sampleMessageObject.From!.Email));
         //Assert.That(string.IsNullOrWhiteSpace(msgObj.From!.DisplayName), Is.True);
+        Assert.That(msgObj.Subject, Is.EqualTo(_sampleMessageObject.Subject));
         Assert.That(msgObj.Body, Is.EqualTo(_sampleMessageObject.Body));
         Assert.That(msgObj.To.Select(x => x.Email), Is.EquivalentTo(_sampleMessageObject.To.Select(x => x.Email)));
         var msgAttachments = msgObj.Attachments!.ToArray();
         var sampleAttachments = _sampleMessageObject.Attachments!.ToArray();
-        for (var i = 0; i < msgObj.Attachments!.Count; i++)
+        Assert.That(msgAttachments, Has.Length.EqualTo(sampleAttachments.Length));
+        for (var i = 0; i < sampleAttachments.Length; i++)
         {
             Assert.That(msgAttachments[i].FileName, Is.EqualTo(sampleAttachments[i].FileName));
-            Assert.That(msgAttachments[i].Bytes, Is.EquivalentTo(sampleAttachments[i].Bytes!));
+            Assert.That(msgAttachments[i].Bytes, Is.EqualTo(sampleAttachments[i].Bytes!));
         }
     }
 }

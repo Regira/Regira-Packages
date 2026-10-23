@@ -62,6 +62,15 @@ public abstract class WordTestsBase : WordAssetsTestsBase
     /// </summary>
     protected IWordService Service => (IWordService)Backend;
 
+    /// <summary>
+    /// The most pages of a document the backend writes to PDF. A capped backend writes a notice page in place of the
+    /// rest, so a scenario checks the pages past the cap only where the backend writes them.
+    /// </summary>
+    protected virtual int MaxPdfPages => int.MaxValue;
+
+    /// <summary>The page count of the PDF of a document of <paramref name="pages"/> pages: past the cap, the cap and its notice page.</summary>
+    protected int PdfPages(int pages) => pages <= MaxPdfPages ? pages : MaxPdfPages + 1;
+
     /// <summary>A <c>Convert_To</c> case: the format asked for and the content type the output must carry.</summary>
     protected static TestCaseData Output(FileFormat format, string contentType)
         => new TestCaseData(format, contentType).SetArgDisplayNames(format.ToString());
@@ -532,14 +541,18 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         using var pdf = await RequireConverter().Convert(new WordTemplateInput { Template = merged }, FileFormat.Pdf);
         var pages = await ReadPdf(pdf);
 
-        // three pages are enough to tell: the FreeSpire.Doc free edition writes no more
-        Assert.That(pages.Pages, Is.GreaterThanOrEqualTo(3));
+        // ALPHA, BRAVO's two sections, CHARLIE
+        Assert.That(pages.Pages, Is.EqualTo(PdfPages(4)));
         Assert.Multiple(() =>
         {
             Assert.That(facts.Sections.Skip(1).Select(section => section.Start), Is.EqualTo(new[] { "nextPage", "nextPage", "nextPage" }));
             Assert.That(pages.PageTexts[0], Does.Contain("ALPHA").And.Not.Contain("BRAVO"));
             Assert.That(pages.PageTexts[1], Does.Contain("BRAVOFIRST").And.Not.Contain("BRAVOLAST"));
             Assert.That(pages.PageTexts[2], Does.Contain("BRAVOLAST"));
+            if (MaxPdfPages >= 4)
+            {
+                Assert.That(pages.PageTexts[3], Does.Contain("CHARLIE").And.Not.Contain("BRAVO"));
+            }
         });
     }
 
@@ -569,7 +582,7 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         using var pdf = await RequireConverter().Convert(new WordTemplateInput { Template = merged }, FileFormat.Pdf);
         var pages = await ReadPdf(pdf);
 
-        Assert.That(pages.Pages, Is.GreaterThanOrEqualTo(3));
+        Assert.That(pages.Pages, Is.EqualTo(PdfPages(3)));
         Assert.Multiple(() =>
         {
             Assert.That(pages.PageTexts[0], Does.Contain("ALPHA"));
@@ -598,15 +611,15 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         using var pdf = await RequireConverter().Convert(new WordTemplateInput { Template = merged }, FileFormat.Pdf);
         var pages = await ReadPdf(pdf);
 
-        Assert.That(pages.Pages, Is.GreaterThanOrEqualTo(3));
+        Assert.That(pages.Pages, Is.EqualTo(PdfPages(5)));
         Assert.Multiple(() =>
         {
             Assert.That(facts.Sections.Skip(1).Select(section => section.Start), Is.EqualTo(new[] { "oddPage", "oddPage" }), "BRAVO and CHARLIE");
             Assert.That(pages.PageTexts[0], Does.Contain("ALPHA").And.Not.Contain("BRAVO"));
             Assert.That(pages.PageTexts[1], Does.Not.Contain("ALPHA").And.Not.Contain("BRAVO"), "the blank page before BRAVO's odd page");
             Assert.That(pages.PageTexts[2], Does.Contain("BRAVO"));
-            // CHARLIE on page 5, after BRAVO's padding page, where the PDF shows it: FreeSpire.Doc's free edition writes three pages
-            if (pages.Pages >= 5)
+            // CHARLIE on page 5, after BRAVO's padding page, where the backend writes that far
+            if (MaxPdfPages >= 5)
             {
                 Assert.That(pages.PageTexts[3], Does.Not.Contain("BRAVO").And.Not.Contain("CHARLIE"), "BRAVO's padding page");
                 Assert.That(pages.PageTexts[4], Does.Contain("CHARLIE"));
@@ -2446,19 +2459,14 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         });
     }
 
+    /// <summary>multipage.docx is five pages: four page breaks in one section.</summary>
     [Test]
-    [Needs(WordFeature.PageImages | WordFeature.Converting)]
+    [Needs(WordFeature.PageImages)]
     public virtual async Task ToImages_Returns_One_Image_Per_Page()
     {
-        using var pdf = await RequireConverter().Convert(TemplateInput("multipage.docx"), FileFormat.Pdf);
-        var pages = await ReadPdf(pdf);
         var images = (await RequireToImages().ToImages(TemplateInput("multipage.docx"))).ToList();
 
-        Assert.Multiple(() =>
-        {
-            Assert.That(pages.Pages, Is.GreaterThan(1));
-            Assert.That(images, Has.Count.EqualTo(pages.Pages));
-        });
+        Assert.That(images, Has.Count.EqualTo(5));
         images.ForEach(image => image.Dispose());
     }
 
@@ -2530,7 +2538,11 @@ public abstract class WordTestsBase : WordAssetsTestsBase
         using var docx = await Build([], [], inputs: MergeInputs());
         var facts = await ReadDocx(docx);
 
-        Assert.That(facts.Sections.Skip(1).Select(section => section.Start), Is.EqualTo(new[] { "nextPage", "nextPage", "nextPage" }));
+        Assert.Multiple(() =>
+        {
+            Assert.That(facts.Sections.Skip(1).Select(section => section.Start), Is.EqualTo(new[] { "nextPage", "nextPage", "nextPage" }));
+            Assert.That(Order(facts.BodyText, "ALPHA", "BRAVOFIRST", "BRAVOLAST", "CHARLIE"), Is.Ordered.And.All.GreaterThanOrEqualTo(0));
+        });
     }
 
     /// <summary>A builder's page settings apply to a loaded landscape section as <c>Convert</c>'s do.</summary>

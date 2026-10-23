@@ -109,7 +109,7 @@ public class ZipUtilityTests
         var dir2Files = Directory.GetFiles(Path.Combine(_assetsDir, "dir2"), "*", SearchOption.AllDirectories)
             .Select(path => new BinaryFileItem
             {
-                Identifier = path.Substring(_assetsDir.Length).TrimStart('\\'),
+                Identifier = Path.GetRelativePath(_assetsDir, path),
                 Path = path,
                 FileName = Path.GetFileName(path),
                 Bytes = File.ReadAllBytes(path)

@@ -31,7 +31,8 @@ public class InstructorNormalizer(IServiceProvider sp, INormalizer? normalizer) 
 
         foreach (var item in itemList)
         {
-            var itemCourses = courses.Where(d => item.Courses?.Any(x => x.Id == d.Id) == true).ToArray();
+            // a pending course has no id yet (0 for all of them while saving), so it is matched by reference
+            var itemCourses = courses.Where(d => item.Courses?.Any(x => x == d || x.Id != 0 && x.Id == d.Id) == true).ToArray();
 
             await DefaultObjectNormalizer.HandleNormalizeMany(itemCourses);
             item.NormalizedContent = $"{item.NormalizedContent} INSTRUCTING {itemCourses.Length} COURSES";

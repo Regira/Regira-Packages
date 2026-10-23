@@ -2,6 +2,7 @@
 using Regira.Media.Drawing.Dimensions;
 using Regira.Media.Drawing.Enums;
 using Regira.Media.Drawing.Models;
+using Regira.Media.Drawing.Models.Abstractions;
 using Regira.Media.Drawing.Services.Abstractions;
 
 namespace Drawing.Testing.Abstractions;
@@ -14,13 +15,19 @@ public static class DrawingImageExtensions
         var pngImg = await service.ChangeFormat(image, ImageFormat.Png);
 
         await service.SaveImage(pngImg, $"{Path.GetFileNameWithoutExtension(filename)}.png");
+
+        Assert.That(ImageReadBack.IsPng(pngImg), Is.True, "the output starts with the PNG signature");
+        AssertSameSize(image, pngImg);
     }
     public static async Task Test_To_Jpeg(this IImageService service, string filename)
     {
         using var image = await service.ReadImage(filename);
-        var pngImg = await service.ChangeFormat(image, ImageFormat.Jpeg);
+        var jpegImg = await service.ChangeFormat(image, ImageFormat.Jpeg);
 
-        await service.SaveImage(pngImg, $"{Path.GetFileNameWithoutExtension(filename)}.jpg");
+        await service.SaveImage(jpegImg, $"{Path.GetFileNameWithoutExtension(filename)}.jpg");
+
+        Assert.That(ImageReadBack.IsJpeg(jpegImg), Is.True, "the output starts with the JPEG signature");
+        AssertSameSize(image, jpegImg);
     }
     public static async Task Test_Resize(this IImageService service, string filename)
     {
@@ -105,6 +112,39 @@ public static class DrawingImageExtensions
         {
             using var cropped = await service.CropRectangle(image, rectangle.Value);
             await service.SaveImage(cropped, $"{Path.GetFileNameWithoutExtension(filename)}-{rectangle.Key}{Path.GetExtension(filename)}");
+
+            using var decoded = ImageReadBack.Decode(cropped);
+            Assert.That((decoded.Width, decoded.Height),
+                Is.EqualTo((image.Size.Value.Width - halfWidth, image.Size.Value.Height - halfHeight)), rectangle.Key);
+        }
+    }
+    /// <summary>Each quadrant of the known image, cropped out, holds that quadrant's pixels.</summary>
+    public static async Task Test_CropRect_Keeps_The_Pixels_Of_Each_Quadrant(this IImageService service)
+    {
+        using var image = ImageReadBack.KnownPixels();
+        var rectangles = new Dictionary<string, (ImageEdgeOffset Offset, int X, int Y)>
+        {
+            ["topleft"] = (new(0, 0, 32, 32), 0, 0),
+            ["topright"] = (new(0, 32, 32, 0), 32, 0),
+            ["bottomleft"] = (new(32, 0, 0, 32), 0, 32),
+            ["bottomright"] = (new(32, 32, 0, 0), 32, 32)
+        };
+
+        foreach (var (name, (offset, x, y)) in rectangles)
+        {
+            using var cropped = await service.CropRectangle(image, offset);
+            using var decoded = ImageReadBack.Decode(cropped);
+            var expected = ImageReadBack.Quadrant(x, y);
+            var actual = decoded.GetPixel(16, 16);
+            // drawing through premultiplied alpha rounds a half-transparent pixel's colour by up to one level
+            var tolerance = expected.Alpha == 255 ? 0 : 1;
+            Assert.Multiple(() =>
+            {
+                Assert.That((decoded.Width, decoded.Height), Is.EqualTo((32, 32)), name);
+                Assert.That(actual.Alpha, Is.EqualTo(expected.Alpha), name);
+                Assert.That(new[] { actual.Red, actual.Green, actual.Blue }.Select(c => (int)c),
+                    Is.EqualTo(new[] { expected.Red, expected.Green, expected.Blue }.Select(c => (int)c)).Within(tolerance).AsCollection, name);
+            });
         }
     }
     public static async Task Test_MakeTransparent(this IImageService service, string filename)
@@ -113,6 +153,24 @@ public static class DrawingImageExtensions
 
         using var rgbImg = await service.MakeTransparent(image, new Color(200, 200, 200));
         await service.SaveImage(rgbImg, $"{Path.GetFileNameWithoutExtension(filename)}-transparent.png");
+
+        AssertSameSize(image, rgbImg);
+    }
+    /// <summary>The interface clears "the specified color": the key quadrant only, not a lighter or a darker one.</summary>
+    public static async Task Test_MakeTransparent_Clears_The_Key_Colour_Only(this IImageService service)
+    {
+        using var image = ImageReadBack.KnownPixels();
+        var key = ImageReadBack.Key;
+
+        using var transparent = await service.MakeTransparent(image, new Color(key.Red, key.Green, key.Blue));
+        using var decoded = ImageReadBack.Decode(transparent);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(decoded.GetPixel(16, 16).Alpha, Is.Zero, "the key colour");
+            Assert.That(decoded.GetPixel(48, 16), Is.EqualTo(ImageReadBack.Lighter), "a lighter colour");
+            Assert.That(decoded.GetPixel(16, 48), Is.EqualTo(ImageReadBack.Blue), "a darker colour");
+        });
     }
     public static async Task Test_MakeOpaque(this IImageService service, string filename)
     {
@@ -120,5 +178,39 @@ public static class DrawingImageExtensions
 
         using var rgbImg = await service.MakeOpaque(image);
         await service.SaveImage(rgbImg, $"{Path.GetFileNameWithoutExtension(filename)}-rgb.png");
+
+        AssertSameSize(image, rgbImg);
+    }
+    /// <summary>
+    /// Every pixel ends opaque; an opaque pixel is unchanged, a half-transparent one keeps its colour, only its alpha
+    /// becomes 255, and a fully transparent one turns white — the same rule on every backend.
+    /// </summary>
+    public static async Task Test_MakeOpaque_Leaves_No_Alpha(this IImageService service)
+    {
+        using var image = ImageReadBack.KnownPixels();
+
+        using var opaque = await service.MakeOpaque(image);
+        using var decoded = ImageReadBack.Decode(opaque);
+
+        var half = ImageReadBack.HalfTransparent;
+        var halfMadeOpaque = decoded.GetPixel(48, 48);
+        Assert.Multiple(() =>
+        {
+            Assert.That(decoded.Pixels.Where(pixel => pixel.Alpha != 255), Is.Empty, "every pixel is opaque");
+            Assert.That(decoded.GetPixel(16, 16), Is.EqualTo(ImageReadBack.Key));
+            Assert.That(decoded.GetPixel(48, 16), Is.EqualTo(ImageReadBack.Lighter));
+            Assert.That(decoded.GetPixel(16, 48), Is.EqualTo(ImageReadBack.Blue));
+            // a decoder that stores premultiplied alpha rounds a half-transparent colour by up to one level
+            Assert.That(new[] { halfMadeOpaque.Red, halfMadeOpaque.Green, halfMadeOpaque.Blue }.Select(c => (int)c),
+                Is.EqualTo(new[] { half.Red, half.Green, half.Blue }.Select(c => (int)c)).Within(1).AsCollection,
+                "a half-transparent pixel keeps its colour");
+            Assert.That(decoded.GetPixel(48, ImageReadBack.TransparentRow), Is.EqualTo(SkiaSharp.SKColors.White), "a fully transparent pixel turns white");
+        });
+    }
+
+    private static void AssertSameSize(IImageFile source, IImageFile output)
+    {
+        using var decoded = ImageReadBack.Decode(output);
+        Assert.That((decoded.Width, decoded.Height), Is.EqualTo((source.Size!.Value.Width, source.Size.Value.Height)));
     }
 }

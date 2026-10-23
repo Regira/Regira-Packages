@@ -15,6 +15,9 @@ public class SpireTests() : WordTestsBase(new WordService(), "Spire")
 {
     public static IEnumerable<string> SourceFiles => ["template.dot", "template.doc", "template.odt", "multipage.docx"];
 
+    /// <summary>The FreeSpire.Doc free edition writes three pages to PDF, then a notice page.</summary>
+    protected override int MaxPdfPages => 3;
+
     public static IEnumerable<TestCaseData> OutputFormats =>
     [
         Output(FileFormat.Pdf, "application/pdf"),

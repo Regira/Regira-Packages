@@ -23,18 +23,18 @@ ik zet jou in het zonnetje
 op deze mooie dag
 little universe";
 
-    public static Task Test_Read_EN(this IOcrService service, string assetsDir)
-        => Test_Read(service, Path.Combine(assetsDir, "poem-en.jpg"), EXPECTED_EN);
-    public static Task Test_Read_NL(this IOcrService service, string assetsDir)
-        => Test_Read(service, Path.Combine(assetsDir, "poem-nl.jpg"), EXPECTED_NL);
+    public static Task Test_Read_EN(this IOcrService service, string assetsDir, string? lang = null)
+        => Test_Read(service, Path.Combine(assetsDir, "poem-en.jpg"), EXPECTED_EN, lang);
+    public static Task Test_Read_NL(this IOcrService service, string assetsDir, string? lang = null)
+        => Test_Read(service, Path.Combine(assetsDir, "poem-nl.jpg"), EXPECTED_NL, lang);
 
-    static async Task Test_Read(this IOcrService service, string input, string expected)
+    static async Task Test_Read(this IOcrService service, string input, string expected, string? lang)
     {
         var img = new BinaryFileItem
         {
             Bytes = await File.ReadAllBytesAsync(input)
         };
-        var result = await service.Read(img);
+        var result = await service.Read(img, lang);
         Assert.That(result.Text, Is.Not.Null);
 
         var contentLines = result.Text

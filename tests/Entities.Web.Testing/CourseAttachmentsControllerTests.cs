@@ -204,12 +204,20 @@ public abstract class CourseAttachmentsTests<TFactory> : IClassFixture<TFactory>
             //);
         }
 
+        // another course's file, which the owner's list must leave out
+        var otherContent = new MultipartFormDataContent
+        {
+            {new StreamContent(FileUtility.GetStreamFromString("another course")), "file", "other-course.txt"}
+        };
+        (await client.PostAsync($"/courses/{courseId + 1}/files", otherContent)).EnsureSuccessStatusCode();
+
         var listResponse = await client.GetAsync($"/courses/{courseId}/attachments");
         var listResult = await listResponse.Content.ReadFromJsonAsync<ListResult<EntityAttachmentDto>>();
         Assert.Equal(count, listResult!.Items.Count);
         foreach (var item in listResult.Items)
         {
-            Assert.Equal(item.ObjectId, item.ObjectId);
+            Assert.Equal(courseId, item.ObjectId);
+            Assert.Equal(attachmentFileName, item.Attachment!.FileName);
             Assert.True(item.Id > 0);
             Assert.True(item.Attachment!.Id > 0);
         }
@@ -1245,9 +1253,12 @@ public abstract class CourseAttachmentsTests<TFactory> : IClassFixture<TFactory>
         
         var detailsResponse3 = await client.GetAsync($"/courses/{courseId}");
         var detailsResult3 = await detailsResponse3.Content.ReadFromJsonAsync<DetailsResult<CourseDto>>();
-        Assert.Equal(2, detailsResult3!.Item.Attachments!.Count);
-        var firstAttachment = detailsResult3.Item.Attachments.First();
-        Assert.Equal(detailsResult.Item.Attachments!.Last().Id, firstAttachment.Id);
+        // the save stamps SortOrder from the input position; the order the links are included in is the app's choice
+        var stored = detailsResult3!.Item.Attachments!.ToDictionary(x => x.Attachment!.FileName!);
+        Assert.Equal(2, stored.Count);
+        Assert.Equal(detailsResult.Item.Attachments!.Single().Id, stored[attachmentFileName1].Id);
+        Assert.Equal(1, stored[attachmentFileName1].SortOrder);
+        Assert.Equal(0, stored[attachmentFileName2].SortOrder);
     }
 
     [Fact]

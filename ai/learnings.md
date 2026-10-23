@@ -136,7 +136,7 @@ Lessons that keep coming back; the entries below lean on them instead of restati
   - `RevokeFamily` also reaches already-revoked tokens.
   - An absolute ceiling bounds how long a chain can live.
   - A required claims resolver re-reads roles and account state on each refresh.
-  - The revoke is a test-and-set (`IRefreshTokenStore.TryRevoke`, a conditional write that returns `bool`), claimed before anything is issued. Otherwise two concurrent refreshes (a SPA after one 401) fork the family undetected.
+  - The revoke is a test-and-set (`IRefreshTokenStore.TryRevoke`, a conditional write that returns `bool`). Otherwise two concurrent refreshes (a SPA after one 401) fork the family undetected. The successor is stored before the claim, so the loser's family revocation reaches it; a successor stored after the claim escapes that revocation.
 
   An extension point's shape decides whether consumers *can* implement it correctly. *(2026-07-30)*
 - **Hash refresh tokens unsalted, unlike passwords.** Lookup is by hash, and a 256-bit random token has nothing guessable to protect. `IHasher`'s salt and iterations are for passwords. The in-memory store is for development only: it loses sessions on restart and is per-process behind a load balancer, and neither failure shows on one machine. *(2026-07-30)*

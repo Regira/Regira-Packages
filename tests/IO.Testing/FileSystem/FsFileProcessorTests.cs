@@ -7,14 +7,14 @@ namespace IO.Testing.FileSystem;
 [Parallelizable(ParallelScope.Self)]
 public class FsFileProcessorTests
 {
-    private const string TEST_FOLDER = "file_processor";
     public StorageTestHelper.IStorageTestContext StorageTestContext { get; set; }
+    // rooted where the context creates its files
     [SetUp]
     public void Setup() => StorageTestContext = StorageTestHelper.CreateDecoratedFileService((_, folder)
-        => new BinaryFileService(new FileSystemOptions { RootFolder = Path.Combine(folder, TEST_FOLDER) }));
+        => new BinaryFileService(new FileSystemOptions { RootFolder = folder }));
     [TearDown]
     public async Task TearDown() => await StorageTestContext.DisposeAsync();
 
     [Test]
-    public Task Recursive_Directories() => StorageTestContext.Test_Recursive_Directories(TEST_FOLDER);
+    public Task Recursive_Directories() => StorageTestContext.Test_Recursive_Directories(expected: StorageTestContext.SourceFiles.Select(file => file.Path!));
 }

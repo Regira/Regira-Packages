@@ -36,16 +36,12 @@ public class Symmetric_Tests
         Assert.That(decrypted, Is.EqualTo(plaintext));
     }
 
+    // "password" encrypted with "secret" (Encrypt_Success): decrypted with this other secret, the padding check refuses it
     [Test]
-    public void Decrypt_Encrypted_Failure()
+    public void Decrypt_With_Another_Secret_Throws()
     {
-        var plaintext = "password";
-        var secret = "secret";
-        var encrypter = new SymmetricEncrypter(new CryptoOptions { Secret = secret });
-        var encrypted = encrypter.Encrypt("wrong_password");
-        var decrypter = new SymmetricEncrypter(new CryptoOptions { Secret = secret });
-        var decrypted = decrypter.Decrypt(encrypted);
-        Assert.That(plaintext, Is.Not.EqualTo(decrypted));
+        var decrypter = new SymmetricEncrypter(new CryptoOptions { Secret = "another secret" });
+        Assert.Throws<System.Security.Cryptography.CryptographicException>(() => decrypter.Decrypt("Xw2CHaLT+CCu6nLY2CJ8Xw=="));
     }
 
     [Test]
