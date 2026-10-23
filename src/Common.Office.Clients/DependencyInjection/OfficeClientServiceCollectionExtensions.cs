@@ -9,6 +9,7 @@ using Regira.Office.Excel.Abstractions;
 using Regira.Office.Mail.Abstractions;
 using Regira.Office.OCR.Abstractions;
 using Regira.Office.PDF.Abstractions;
+using Regira.Office.VCards.Abstractions;
 using Regira.Office.Word.Abstractions;
 
 namespace Regira.Office.Clients.DependencyInjection;
@@ -56,6 +57,7 @@ public static class OfficeClientServiceCollectionExtensions
         services.AddHttpClient<IOcrService, OcrClient>(ConfigureClient);
         services.AddHttpClient<ICsvService, CsvClient>(ConfigureClient);
         services.AddHttpClient<IMessageParser, MessageParserClient>(ConfigureClient);
+        services.AddHttpClient<IVCardService, VCardClient>(ConfigureClient);
 
         // Asks the API what it makes of the key sent above; answers for an expired key too.
         services.AddHttpClient<ILicenseStatusClient, LicenseStatusClient>(ConfigureClient);

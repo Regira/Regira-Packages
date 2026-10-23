@@ -75,5 +75,6 @@ Version 3.0 is the most widely compatible.
 
 - The `VCard` type is `Regira.Office.VCards.Models.VCard`, a backend-agnostic model (`Name` (`VCardName`), `FormattedName`, `Emails`, `Tels`, `Organization`, `Photo`, `Addresses`, `BirthDay`, `Gender`, `Homepage`). `VCardManager` converts to and from the FolkerKinzel representation internally.
 - A single `.vcf` file may contain multiple VCARD blocks — use `ReadMany` in that case.
+- **Through the Office API (`Regira.Office.Clients`):** `VCardClient` implements `IVCardService` against a Regira Office API, registered with `AddOfficeClients`; content the API cannot read throws `InvalidCardException`, as `VCardManager` does.
 
 ---
