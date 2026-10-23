@@ -323,9 +323,13 @@ public class ProductImporter(IEntitySender sender)
   registration without a search object of its own (`For<Product>()`, `For<Product, int>()`) lists and searches with the
   `SearchObject` record on mapped endpoints, so its list handler replaces `ListQuery<Product, int, SearchObject,
   ProductDto>`; a controller on `EntityControllerBase<Product, int, SearchObject<int>, …>` sends `SearchObject<int>`,
-  which that handler does not reach. A `PATCH` saves its
-  merged input itself rather than through the `SaveCommand` handler, so a rule about how an entity saves — an
-  authorization check, say — overrides both `SaveCommand` and `PatchCommand`, or `PATCH` bypasses it.
+  which that handler does not reach. Startup validation warns for a handler registered for a type list neither the
+  controller nor the mapped endpoints send. A `PATCH` merges and checks its input, then ends in the `SaveCommand`
+  handler of the same type list — the override, when one is registered — called directly, so the behaviours run once,
+  around the patch. A rule about how an entity saves therefore overrides `SaveCommand` alone. A rule about the data
+  itself — who may write a row, what a field may hold — belongs in the write pipeline (preppers, validators, global
+  filters), which every path runs, a direct `IEntityService` call included; a handler is for work that wraps the whole
+  operation or changes what it answers.
 - **Replacing one endpoint.** For what belongs to HTTP — an attribute, a header, a status code — replace the endpoint
   rather than the handler. A controller overrides the `virtual` action with the same signature; the verb, route and
   binding attributes are inherited. Mapped endpoints exclude the generated one (`e.Endpoints(o => o.Exclude(EntityEndpoint.List))`)

@@ -21,6 +21,7 @@ using Regira.Entities.DependencyInjection.Validation;
 using Regira.Entities.EFcore.Extensions;
 using Regira.Entities.Mapping.Abstractions;
 using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Handlers;
 using Regira.Entities.Mediator.Requests;
 using Regira.Entities.Models;
 using Regira.Entities.Models.Abstractions;
@@ -440,6 +441,80 @@ public class EntityEndpointTests
         {
             var list = await client.GetFromJsonAsync<ListResult<Note>>("/notes");
             Assert.Equal(["pinned"], list!.Items.Select(x => x.Title));
+        }
+    }
+
+    private sealed class ExclaimedNoteSaveHandler(IServiceProvider services) : SaveHandler<Note, int, Note, Note>(services)
+    {
+        public override Task<SaveResult<Note>?> Handle(SaveCommand<Note, int, Note, Note> request, CancellationToken token = default)
+        {
+            request.Input.Title += "!";
+            return base.Handle(request, token);
+        }
+    }
+
+    // a rule about how a note saves, in its SaveCommand handler alone, holds for PATCH on either surface too
+    [Fact]
+    public async Task A_Patch_Ends_In_The_Save_Handler_On_Both_Surfaces()
+    {
+        static void Exclaimed(IServiceCollection services)
+            => services.AddTransient<IEntityRequestHandler<SaveCommand<Note, int, Note, Note>, SaveResult<Note>>, ExclaimedNoteSaveHandler>();
+        await using var controllerHost = await Host.CreateAsync(
+            services =>
+            {
+                services.AddControllers().AddApplicationPart(typeof(NotesController).Assembly);
+                Exclaimed(services);
+            },
+            app => app.MapControllers());
+        await using var mappedHost = await Host.CreateAsync(Exclaimed);
+
+        foreach (var client in new[] { controllerHost.Client, mappedHost.Client })
+        {
+            var id = (await client.GetFromJsonAsync<ListResult<Note>>("/notes"))!.Items.First().Id;
+            var response = await client.PatchAsync($"/notes/{id}", JsonContent.Create(new { title = "patched" }));
+            var patched = await response.Content.ReadFromJsonAsync<SaveResult<Note>>();
+
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal("patched!", patched!.Item.Title);
+        }
+    }
+
+    private sealed class LegacyNotesHandler : IEntityRequestHandler<ListQuery<Note, int, SearchObject<int>, Note>, ListResult<Note>>
+    {
+        public Task<ListResult<Note>?> Handle(ListQuery<Note, int, SearchObject<int>, Note> request, CancellationToken token = default)
+            => Task.FromResult<ListResult<Note>?>(new ListResult<Note> { Items = [] });
+    }
+
+    // a plain For<Note>() lists with the SearchObject record on both surfaces, so a handler for SearchObject<int> is
+    // never reached by them; one for the type list they send is not reported
+    [Fact]
+    public async Task A_Handler_Override_No_Surface_Reaches_Is_Reported_At_Startup()
+    {
+        static void Handlers(IServiceCollection services) => services
+            .AddTransient<IEntityRequestHandler<ListQuery<Note, int, SearchObject<int>, Note>, ListResult<Note>>, LegacyNotesHandler>()
+            .AddTransient<IEntityRequestHandler<ListQuery<Note, int, SearchObject, Note>, ListResult<Note>>, PinnedNotesHandler>();
+        await using var controllerHost = await Host.CreateAsync(
+            services =>
+            {
+                services.AddControllers().AddApplicationPart(typeof(NotesController).Assembly);
+                Handlers(services);
+            },
+            app => app.MapControllers());
+        await using var mappedHost = await Host.CreateAsync(Handlers);
+
+        foreach (var (host, surface) in new[] { (controllerHost, "NotesController sends"), (mappedHost, "the mapped endpoints send") })
+        {
+            var services = host.App.Services;
+            var context = new EntityValidationContext(services, services.GetRequiredService<IServiceCollection>(), services.GetRequiredService<EntityRegistrationLog>());
+            var warnings = services.GetServices<IEntityRegistrationValidator>()
+                .SelectMany(v => v.Validate(context))
+                .Where(i => i.Message.Contains(" answers "))
+                .ToList();
+
+            var warning = Assert.Single(warnings);
+            Assert.Equal(EntityValidationSeverity.Warning, warning.Severity);
+            Assert.StartsWith("LegacyNotesHandler answers ListQuery<Note, Int32, SearchObject<Int32>, Note>", warning.Message);
+            Assert.Contains($"{surface} ListQuery<Note, Int32, SearchObject, Note>", warning.Message);
         }
     }
 }

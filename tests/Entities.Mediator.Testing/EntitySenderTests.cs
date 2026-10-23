@@ -128,6 +128,45 @@ public class EntitySenderTests
         Assert.Null(await shop.FindAsync(shop.PenId));
     }
 
+    // the save override is the one place a rule about how a product saves lives: a PATCH ends in it too, its merged input
+    // already checked
+    [Fact]
+    public async Task A_Patch_Ends_In_The_Save_Handler_Of_The_App()
+    {
+        var trace = new List<string>();
+        await using var shop = await Shop.CreateServicesAsync(services => services
+            .AddSingleton(trace)
+            .AddTransient<IEntityRequestHandler<SaveCommand<Product, int, Product, ProductInputDto>, SaveResult<Product>>, StampedSaveHandler>());
+        using var scope = shop.Services.CreateScope();
+        using var patch = System.Text.Json.JsonDocument.Parse("""{ "stock": 7 }""");
+
+        var patched = await scope.ServiceProvider.GetRequiredService<IEntitySender>()
+            .Send(new PatchCommand<Product, int, Product, ProductInputDto>(shop.PenId, patch.RootElement));
+
+        Assert.Equal(("Pen (saved)", 7), (patched!.Item.Title, patched.Item.Stock));
+        Assert.Equal("Pen (saved)", (await shop.FindAsync(shop.PenId))!.Title);
+        Assert.Equal(["save, input checked: False"], trace);
+    }
+
+    // the save is called, not sent: an operation log sees one PATCH, and Duration covers all of it
+    [Fact]
+    public async Task A_Patch_Runs_The_Behaviours_Once()
+    {
+        var trace = new List<string>();
+        await using var shop = await Shop.CreateServicesAsync(services => services
+            .AddSingleton(trace)
+            .AddTransient(typeof(IEntityPipelineBehavior<,>), typeof(OuterBehavior<,>))
+            .AddTransient<IEntityRequestHandler<SaveCommand<Product, int, Product, ProductInputDto>, SaveResult<Product>>, StampedSaveHandler>());
+        using var scope = shop.Services.CreateScope();
+        using var patch = System.Text.Json.JsonDocument.Parse("""{ "stock": 7 }""");
+
+        var patched = await scope.ServiceProvider.GetRequiredService<IEntitySender>()
+            .Send(new PatchCommand<Product, int, Product, ProductInputDto>(shop.PenId, patch.RootElement));
+
+        Assert.Equal(["outer >", "save, input checked: False", "< outer"], trace);
+        Assert.NotNull(patched!.Duration);
+    }
+
     // without SerializerOptions a job's patch may name an enum value or give its number, as a client's JSON would
     [Theory]
     [InlineData("""{ "kind": "Refill" }""")]
@@ -193,6 +232,16 @@ public class EntitySenderTests
                 result.Item.Title = result.Item.Title.ToUpperInvariant();
             }
             return result;
+        }
+    }
+
+    public sealed class StampedSaveHandler(IServiceProvider services, List<string> trace) : SaveHandler<Product, int, Product, ProductInputDto>(services)
+    {
+        public override Task<SaveResult<Product>?> Handle(SaveCommand<Product, int, Product, ProductInputDto> request, CancellationToken token = default)
+        {
+            trace.Add($"save, input checked: {request.ValidateInput}");
+            request.Input.Title += " (saved)";
+            return base.Handle(request, token);
         }
     }
 

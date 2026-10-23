@@ -1181,8 +1181,19 @@ public static class ProductOperations
 }
 ```
 
-- **One request type each.** A `PATCH` saves its merged input itself, not through the `SaveCommand` handler: a change
-  to how an entity saves overrides both `SaveCommand<…>` and `PatchCommand<…>`.
+- **Which layer.** A rule about the data — who may write a row, what a field may hold — belongs in the write pipeline
+  (preppers, validators, global filters), which every path runs, a direct `IEntityService` call included. A handler is
+  for work that wraps the whole operation or changes what it answers; an endpoint (*Replacing one endpoint*, below) for
+  HTTP.
+- **A `PATCH` ends in the `SaveCommand` handler.** It merges and checks its input, then calls the handler a
+  `SaveCommand<…>` of the same type list resolves to — the override, when one is registered — with
+  `ValidateInput: false`. It is called, not sent, so the behaviours run once, around the patch. A change to how an
+  entity saves overrides `SaveCommand<…>` alone; a `PatchCommand<…>` override is for what only a patch does.
+- **One type list each.** The sender resolves the exact type list a surface sends, so a handler for another one is
+  never reached by the endpoints — startup validation warns for it. A plain `For<Product>()` lists with the
+  `SearchObject` record on its mapped endpoints and on `EntityControllerBase<Product, ProductDto, ProductInputDto>`, so
+  a handler for `ListQuery<Product, int, SearchObject<int>, ProductDto>` is reported there; a controller on
+  `EntityControllerBase<Product, int, SearchObject<int>, …>` sends that one, and reaches it.
 - A request of the app's own — a record implementing `IEntityRequest<TResponse>` — works the same way: it has no
   default handler, so it needs a registered one, and its first send says so when it is missing. It declares the
   `EntityType` and `Operation` a behaviour reads; a worked one is §Role-gated transitions → *Sent through the
@@ -1448,7 +1459,10 @@ public class ReservationSaveHandler(IServiceProvider services, RoomLock rooms)
             () => base.Handle(request, token), token);
 }
 
-// PATCH: the rooms it moves the booking to are in the patch, an array a merge patch replaces whole
+// PATCH: the locks come before the merge reads the stored booking, so two patches at once of a booking that holds a
+// room merge in turn, the second from what the first committed (without a stored room nothing makes them wait: a
+// concurrency token covers that). The rooms it moves the booking to are in the patch, an array a merge patch replaces
+// whole. The save the patch ends in runs ReservationSaveHandler too, which locks again inside this transaction.
 public class ReservationPatchHandler(IServiceProvider services, RoomLock rooms)
     : PatchHandler<Reservation, int, ReservationDto, ReservationInputDto>(services)
 {

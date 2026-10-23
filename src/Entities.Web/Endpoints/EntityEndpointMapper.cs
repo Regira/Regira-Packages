@@ -82,6 +82,7 @@ internal sealed class EntityEndpointMapper
         var route = options.Route ?? EntityEndpointNames.Route(entityType);
 
         var group = parent.MapGroup(route).WithTags(entityType.Name);
+        Type[] requests;
         if (registration.IsComplex)
         {
             if (registration.SortByType == null || registration.IncludesType == null)
@@ -90,6 +91,8 @@ internal sealed class EntityEndpointMapper
             }
             Invoke(MapComplexMethod.MakeGenericMethod(entityType, registration.KeyType, registration.SearchObjectType,
                 registration.SortByType, registration.IncludesType, dtoType, inputDtoType), group, options);
+            requests = EntityRequestTypes.Complex(entityType, registration.KeyType, registration.SearchObjectType,
+                registration.SortByType, registration.IncludesType, dtoType, inputDtoType);
         }
         else
         {
@@ -97,6 +100,7 @@ internal sealed class EntityEndpointMapper
             // that one too, the endpoints send the ListQuery and SearchQuery a controller sends, so one handler replaces either
             var searchObjectType = registration.SearchObjectType == typeof(SearchObject<int>) ? typeof(SearchObject) : registration.SearchObjectType;
             Invoke(MapSimpleMethod.MakeGenericMethod(entityType, registration.KeyType, searchObjectType, dtoType, inputDtoType), group, options);
+            requests = EntityRequestTypes.Simple(entityType, registration.KeyType, searchObjectType, dtoType, inputDtoType);
         }
 
         var attachments = AttachmentsOf(entityType);
@@ -108,7 +112,7 @@ internal sealed class EntityEndpointMapper
                 group, options, nameDownloads);
         }
 
-        _registry?.Add(new MappedEntity(entityType, route, dtoType, inputDtoType, attachments));
+        _registry?.Add(new MappedEntity(entityType, route, dtoType, inputDtoType, attachments, requests));
         return group;
     }
 

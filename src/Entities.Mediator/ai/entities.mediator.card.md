@@ -12,7 +12,9 @@
 - **`null` means not found;** a refused write throws `EntityInputException`, `EntityConstraintException` or
   `EntityConcurrencyException`.
 - **Replace one operation for one entity** with a closed `IEntityRequestHandler<TRequest, TResponse>`, usually derived
-  from the default handler (`Regira.Entities.Mediator.Handlers`); it answers for every surface and sender.
+  from the default handler (`Regira.Entities.Mediator.Handlers`); it answers for every surface and sender. A `PATCH`
+  ends in the `SaveCommand` handler, so a save override covers it. Startup validation warns for a handler whose type
+  list no endpoint sends.
 - **Wrap every operation** with an open-generic `IEntityPipelineBehavior<,>`, the first registered outermost.
 - **A request of the app's own** implements `IEntityRequest<TResponse>`, declares its `EntityType` and `Operation`,
   and needs a registered handler.
