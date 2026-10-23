@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Office.Barcodes.QRCoder</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.6.0</Version>
+    <Version>6.6.1</Version>
     <Description>QR code generation using QRCoder for Regira Office. Windows only (GDI+): for a cross-platform app use Regira.Office.Barcodes.ZXing.</Description>
     <PackageTags>regira;office;barcodes;qrcode;qr-code;generator;qrcoder;windows</PackageTags>
   </PropertyGroup>
