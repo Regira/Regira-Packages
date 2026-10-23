@@ -234,7 +234,7 @@ The table below lists the optional steps; the required steps (1–6, 11–15) fo
 | 7. Processors | Skip by default | You need to fill `[NotMapped]` or other derived values after fetching from the database |
 | 8. Preppers & Validators | Skip by default | A **prepper**: you must compute totals/codes/FKs or manage child collections before the entity reaches EF Core. A **validator**: a write must be refused with a field-level 400 — a referenced row that must exist (a 400 instead of the database's 409), a status transition, a rule on delete |
 | 9. Primers & Reactors | Skip by default | A **primer**: you need EF Core interceptor behavior during `SaveChanges()` or transaction-aware stamping across modified entities. A **reactor**: a side effect must follow a committed change — mail, a background job, a follow-up workflow when a status changes |
-| 10. Mapping & AfterMappers | Skip extra mapping config by default | DTO enrichment needs an after-mapper (`UseMapping<…>().After(...)`; the entity's own DTO only — a value also shown where the DTO is nested is a `[NotMapped]` getter, Step 10), or a nested/child mapping needs help Mapster's convention can't infer (`AddMapping<TSource, TTarget>()`) |
+| 10. Mapping & AfterMappers | Skip extra mapping config by default | DTO enrichment needs an after-mapper (`UseMapping<…>().After(...)`; the entity's own DTO only — a value also shown where the DTO is nested is a `[NotMapped]` getter, Step 10), or a nested/child type whose shape differs from its entity needs a mapping rule (`UseMapsterMapping(config => …)`, Step 10) |
 
 **Mnemonic:** Preppers run synchronously inside `Add()` / `Modify()` / `Save()`, *before* the change tracker — so computed values (totals, codes, FKs) are set the moment `await service.Add(item)` returns. Validators run right after the last prepper (and inside `Remove`), and refuse the write before the entity is tracked. Primers run later, in the `SaveChanges` interceptor, and can inspect every entity in the transaction. Reactors run last, once the transaction is committed.
 
@@ -853,11 +853,20 @@ options.AddReactor<AuditReactor>();    // global — an EntityReactorBase<IHasTi
   - `.After(...)` — enrich the output DTO after `Entity→DTO` mapping (computed properties, URLs)
   - `.AfterInput(...)` — modify the entity after `InputDto→Entity` mapping
   - `.After<TAfterMapper>()` — separate class when DI is needed; `options.AddAfterMapper<T>()` registers a global one. The class-based overload returns the **untyped** builder (drops `TDto`/`TInputDto`), so `.AfterInput(...)` no longer compiles after it (CS1061) — chain the typed `.After(...)`/`.AfterInput(...)` inline when you need both (e.g. a renamed DTO collection — see [`entities.patterns.md`](./entities.patterns.md) — Renamed DTO property)
-- **`AddMapping<TSource, TTarget>()`** — an escape hatch. Register an explicit mapping for a specific (usually nested/child) type pair **only** when Mapster's convention produces the wrong result — e.g. a child DTO whose shape diverges from the entity, or a child input type that needs a custom mapping. It is **not** required to project nested related collections; Mapster does that by convention.
+- **`AddMapping<TSource, TTarget>()`** — registers one more (usually nested/child) type pair with the mapping engine, **without a member rule**. AutoMapper needs it for every nested pair (each call is a `CreateMap`). With Mapster the pair maps by convention either way: the call only makes it explicit, which `RequireExplicitMapping` asks for and `Compile()` checks at startup, and it **does not change** what the pair maps to. It is **not** required to project nested related collections.
+- **A child type whose shape differs from its entity** (a renamed or computed member) needs a **rule** in the engine's own configuration. The rule applies wherever the pair is mapped, nested inside another DTO included, where an after-mapper runs for the read root only:
+
+<!-- no-compile -->
+```csharp
+options.UseMapsterMapping(config => config.ForType<OrderLine, OrderLineDto>()
+    .Map(dto => dto.Qty, line => line.Quantity));
+// AutoMapper: options.UseAutoMapper((sp, cfg) => cfg.CreateMap<OrderLine, OrderLineDto>()
+//     .ForMember(dto => dto.Qty, o => o.MapFrom(line => line.Quantity)));
+```
 
 > ⚠️ **An after-mapper runs for the read root only** (§Step 7): the same DTO nested inside another entity's projection is mapped without it. So a computed field that must also appear on, say, a `PersonCoreDto` carried by every `TicketDto` cannot come from an after-mapper — put it on the entity as a `[NotMapped]` getter and let Mapster project it. The failure is silent in the worst way: the field populates on `/people` and is blank on every ticket row, board card and comment, and nothing — compiler, DI validation, or a single-page smoke test — reports it.
 
-> **Empty nested collection in a response?** That is almost always a missing **`Includes`** (the navigation was never loaded from the database), **not** a missing mapping — see §Step 4 and Troubleshooting. Check `e.Includes(...)` before adding any `AddMapping`.
+> **Empty nested collection in a response?** That is almost always a missing **`Includes`** (the navigation was never loaded from the database), **not** a missing mapping — see §Step 4 and Troubleshooting. Check `e.Includes(...)` before touching the mapping.
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — Additional Patterns > Mapping / AfterMapper
 
@@ -2139,7 +2148,7 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 | Problem | Likely Cause | Fix |
 |---|---|---|
 | Navigation properties not loaded | Missing `Includes` config or wrong flag | Check `e.Includes(...)` and that the client sends the correct `includes` flag |
-| Nested collection comes back **empty** in an API response | The navigation was never eager-loaded — almost never a mapping problem | Add the eager-load in `e.Includes(...)` (never `Filter(...)` — filters pick rows, includes load navigations). Only add `AddMapping<…>()` if the child DTO shape genuinely diverges from the entity (§Step 10) |
+| Nested collection comes back **empty** in an API response | The navigation was never eager-loaded — almost never a mapping problem | Add the eager-load in `e.Includes(...)` (never `Filter(...)` — filters pick rows, includes load navigations). If the child DTO's shape genuinely differs from the entity, add a mapping rule (§Step 10); `AddMapping<…>()` alone changes nothing on Mapster |
 | A relation loads, then vanishes from responses after adding another `Includes(...)` | `Includes(...)` registrations are **last-write-wins** — the second call replaced the first (single `IIncludableQueryBuilder`) | Merge all eager-loads into **one** `Includes` lambda (§Step 4) |
 | Filter not applied | Query builder not registered or wrong `SearchObject` property name | Verify `e.AddFilter<>()` or `e.Filter(...)` and check property names |
 | A list page comes back **short** (`items` < `pageSize`) while `/search` still **counts** the rows; the shortfall looks like an off-by-one in paging | An `IArchivable` principal behind a **required** FK. On `net10.0` the archived filter propagates into the `Include` as an inner join, so a dependent whose parent is archived drops out of `items`; the count query has no join. A sort that interleaves parents (`SortOrder`, `Title`) loses about one row per page, which is why it reads as a paging bug. Startup validation warns on the shape | Reference data: don't make it `IArchivable` — real `DELETE` + `OnDelete(Restrict)`, or an optional FK. An aggregate parent whose dependent you also query directly: mirror the filter on the dependent ([`entities.patterns.md`](./entities.patterns.md) → Soft Delete → *Before you make reference data `IArchivable`*) |

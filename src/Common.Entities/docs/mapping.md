@@ -40,7 +40,9 @@ When using **Mapster** (`options.UseMapsterMapping()`), the explicit `UseMapping
 You only need the explicit statements when:
 
 - attaching an **AfterMapper** — `e.UseMapping<TDto, TInputDto>().After(...)` / `.AfterInput(...)`, or
-- registering a **custom or additional** type pair that doesn't map cleanly by convention — `e.AddMapping<TSource, TTarget>()`.
+- the Mapster config sets `RequireExplicitMapping` — `e.AddMapping<TSource, TTarget>()` registers a nested pair explicitly. It adds no member rule, so it does not change what the pair maps to.
+
+A type pair whose shape differs from its entity, with a renamed or computed member, needs a **rule** in the engine's configuration (below). The rule applies wherever the pair is mapped, nested inside another DTO included; an AfterMapper runs for the read root only.
 
 > **AutoMapper** (`options.UseAutoMapper()`) does **not** map by convention: every entity ↔ DTO pair must be registered explicitly (each `UseMapping<>()` / `AddMapping<>()` call performs a `CreateMap`). Without it, AutoMapper throws a missing-type-map error.
 
@@ -101,7 +103,8 @@ services
             .After((item, dto) => { /*...*/ })
             .AfterInput((dto, item) => { /*...*/ });
         
-        // extra mapping config (only required when convention isn't enough, or for AutoMapper)
+        // AutoMapper needs every nested pair registered; with Mapster these only make the pairs explicit.
+        // A pair whose shape differs needs a rule in UseMapsterMapping(...) / UseAutoMapper(...).
         e.AddMapping<OrderItem, OrderItemDto>();
         e.AddMapping<OrderItemInputDto, OrderItem>();
     });

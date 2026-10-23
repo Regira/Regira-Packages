@@ -932,10 +932,10 @@ collections correctly. Reach for these calls only in the cases below. (Full rule
 - **`UseMapping<TDto, TInputDto>()`** — needed when you want to attach an **after-mapper**
   (`.After(...)` to enrich the output DTO, `.AfterInput(...)` to tweak the entity after input mapping) or
   otherwise customise the top-level mapping. See the **AfterMapper** pattern below for the canonical example.
-- **`AddMapping<TSource, TTarget>()`** — an escape hatch: register an explicit mapping for a specific
-  (usually nested/child) type pair **only** when Mapster's convention produces the wrong result — e.g. a
-  child DTO whose shape diverges from the entity, or a child input type that needs a custom mapping. It is
-  **not** required to project nested collections.
+- **`AddMapping<TSource, TTarget>()`** — registers one more (usually nested/child) type pair **without a
+  rule**: AutoMapper needs it for every nested pair; with Mapster it only makes the pair explicit and changes
+  no result. A child DTO whose shape differs from its entity needs a rule in `UseMapsterMapping(config => …)`
+  instead (`entities.instructions.md` §Step 10). Neither is required to project nested collections.
 
 > If a nested collection comes back **empty** in an API response, that is almost always a missing
 > **`Includes`** (the navigation was never loaded from the database), not a missing mapping. Check

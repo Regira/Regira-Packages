@@ -1028,12 +1028,12 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
     MappedEntityServiceBuilder<TContext, TEntity, TKey, TDto, TInputDto>
         UseMapping<TDto, TInputDto>(Action<IEntityMapConfigurator>? mapAction = null);
 
-    // Escape hatch — register an explicit Mapster config for a single type pair.
-    // NOT required to project nested DTOs / Related() collections: Mapster maps similar models
-    // (incl. nested children) by convention. Add a pair only when convention gets it wrong —
-    // e.g. a child DTO whose shape diverges, or a child InputDto that needs a custom mapping.
-    // (See entities.instructions.md §Step 10. An empty nested collection is usually a missing
-    //  Includes, not a missing mapping.)
+    // Registers one more type pair with the mapping engine, without a member rule: AutoMapper needs it
+    // for every nested/child pair (a CreateMap); with Mapster it only makes the pair explicit
+    // (RequireExplicitMapping, Compile()) and changes no result. A pair whose shape differs needs a rule
+    // in UseMapsterMapping(config => …) or UseAutoMapper(...) (entities.instructions.md §Step 10).
+    // NOT required to project nested DTOs / Related() collections; an empty nested collection is
+    // usually a missing Includes, not a missing mapping.
     EntityServiceBuilder<TContext, TEntity, TKey> AddMapping<TSource, TTarget>();
 
     // Service registration
