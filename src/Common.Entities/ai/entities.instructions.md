@@ -603,7 +603,7 @@ e.Validate(ctx =>
 });
 e.Validate(async (ctx, db, token) =>
 {
-    // db sees every row: with scoped reads (tenants, owners), see the row-security note below
+    // db skips row security (tenants, owners: see the note below); on net10.0 the archived filter still applies
     if (ctx.Operation != EntityWriteOperation.Remove && !await db.Customers.AnyAsync(c => c.Id == ctx.Item.CustomerId, token))
         ctx.AddError(nameof(Order.CustomerId), $"Customer {ctx.Item.CustomerId} does not exist.");
 });
@@ -684,7 +684,9 @@ read as the rule (`ValueTooLarge`, `order.notOpen`). The 400 body is in §Respon
   filtered read service — a class validator taking `IEntityReadService<Customer, int>` and refusing when
   `await customers.Details(id, token)` is `null` — or repeat the scope's predicate in the query. Never inject
   `IEntityService<>` into a validator: its write service imports every validator, so the container meets a circular
-  dependency and no entity service in the app resolves.
+  dependency and no entity service in the app resolves. On `net10.0` the archived EF filter does apply to `db`, so an
+  archived row is not found there (`net8.0` installs none); to include archived rows on either target, query with
+  `db.Customers.FilterArchivable(ArchivedFilter.Included)` (`Regira.Entities.EFcore.Extensions`).
 - **Queries on `db` track nothing while the validators run**, `Find` / `FindAsync` included, so a lookup that returns
   the row being written — a uniqueness check `db.Orders.FirstOrDefaultAsync(o => o.Code == ctx.Item.Code, token)` on a
   `PUT` that keeps its code — leaves the write free to track its own instance. Only an explicit `AsTracking()` opts

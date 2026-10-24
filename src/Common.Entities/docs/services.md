@@ -433,7 +433,7 @@ public abstract class EntityValidatorBase<TScope> : IEntityValidator<TScope>
     // other rows
     e.Validate(async (ctx, db, token) =>
     {
-        // db sees every row: with scoped reads (tenants, owners), check through the filtered read service (above)
+        // db skips row security; on net10.0 the archived filter still applies. With scoped reads (tenants, owners), check through the filtered read service (above)
         if (ctx.Operation != EntityWriteOperation.Remove && !await db.Customers.AnyAsync(c => c.Id == ctx.Item.CustomerId, token))
             ctx.AddError(nameof(Order.CustomerId), $"Customer {ctx.Item.CustomerId} does not exist.");
     });

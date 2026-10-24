@@ -833,7 +833,7 @@ public static EntityServiceCollectionOptions AddValidator<TScope>(
     Func<IEntityValidatorContext<TScope>, Task> validate)
     where TScope : class;
 
-// receives the request's DbContext (unfiltered) and the write's cancellation token for its queries
+// receives the request's DbContext (no row security; the archived filter applies on net10.0) and the write's cancellation token for its queries
 public static EntityServiceCollectionOptions AddValidator<TContext, TScope>(
     this EntityServiceCollectionOptions options,
     Func<IEntityValidatorContext<TScope>, TContext, CancellationToken, Task> validate)
@@ -1139,7 +1139,7 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
     // e.Validate(async ctx => …)
     EntityServiceBuilder<TContext, TEntity, TKey> Validate(Func<IEntityValidatorContext<TEntity>, Task> validate);
 
-    // e.Validate(async (ctx, db, token) => …) with the request's DbContext — unfiltered: check a row-secured reference
+    // e.Validate(async (ctx, db, token) => …) with the request's DbContext — no row security (the archived filter applies on net10.0): check a row-secured reference
     // through IEntityReadService<,> in a class validator — and the write's cancellation token
     EntityServiceBuilder<TContext, TEntity, TKey> Validate(
         Func<IEntityValidatorContext<TEntity>, TContext, CancellationToken, Task> validate);

@@ -458,7 +458,7 @@ public class OrderValidator : AbstractValidator<Order>
         RuleFor(x => x.Code)
             .MustAsync(async (order, code, ct) => !await db.Orders.AnyAsync(o => o.Code == code && o.Id != order.Id, ct))
             .WithMessage("Code is taken");
-        // db sees every row: with scoped reads, check through the filtered read service (services.md → Entity Validators)
+        // db skips row security; on net10.0 the archived filter still applies. With scoped reads, check through the filtered read service (services.md → Entity Validators)
         RuleFor(x => x.CustomerId)
             .MustAsync((id, ct) => db.Customers.AnyAsync(c => c.Id == id, ct))
             .WithMessage(x => $"Customer {x.CustomerId} does not exist");

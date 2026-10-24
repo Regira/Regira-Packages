@@ -48,13 +48,14 @@ A collection managed by `e.Related()` is *owned* and has **no** `IEntityService<
 - **Through the parent's navigation** — set the owned collection before adding the parent; the parent's `Related()` prepper persists the join rows on `SaveChanges()`:
   <!-- no-compile -->
   ```csharp
-  product.Categories = [cat1, cat2];   // ProductCategory join rows
+  product.Categories = [new() { CategoryId = cat1.Id }, new() { CategoryId = cat2.Id }];   // ProductCategory join rows
   await products.Add(product);
   await products.SaveChanges();
   ```
-- **Straight on the DbContext** — for a standalone/self-referencing join (e.g. `RelatedCategory`) with no parent write path, add the rows on the context:
+- **Straight on the DbContext** — for a join no entity registers through `Related()`, add the rows on the context (a `RelatedCategory` whose Category registers `Related(x => x.ParentEntities)` goes through the parent instead):
   <!-- no-compile -->
   ```csharp
+  // a RelatedCategory here only when Category registers no Related() for it
   db.RelatedCategories.Add(new RelatedCategory { ParentId = a.Id, ChildId = b.Id });
   await db.SaveChangesAsync();
   ```
@@ -1753,7 +1754,7 @@ public class OrderValidator : AbstractValidator<Order>
             .MustAsync(async (order, code, ct) => !await db.Orders.AnyAsync(o => o.Code == code && o.Id != order.Id, ct))
             .WithMessage("Code is taken");
 
-        // db sees every row: with scoped reads, check through the filtered read service (entities.instructions §Step 8 → Validators)
+        // db skips row security; on net10.0 the archived filter still applies. With scoped reads, check through the filtered read service (entities.instructions §Step 8 → Validators)
         RuleFor(x => x.CustomerId)
             .MustAsync((id, ct) => db.Customers.AnyAsync(c => c.Id == id, ct))
             .WithMessage(x => $"Customer {x.CustomerId} does not exist");
@@ -2382,7 +2383,8 @@ public class RequestCodeGenerator(IServiceScopeFactory scopeFactory)
         finally { _lock.Release(); }
     }
 }
-// services.AddSingleton<RequestCodeGenerator>();  then inject it into the primer that stamps Code on create
+// Register once: services.Services.AddSingleton<RequestCodeGenerator>() inside an Add{Entities}(), or
+// services.AddSingleton<RequestCodeGenerator>() in the root AddEntityServices; then inject it into the primer that stamps Code on create
 ```
 
 ⚠️ **Prime from the highest code, never from a row count.** `CountAsync()` reads as the same thing and is
@@ -2413,7 +2415,7 @@ public class RequestCodePrimer(RequestCodeGenerator codes) : EntityPrimerBase<Re
             entity.Code = (string?)entry.OriginalValues[nameof(entity.Code)];      // update — the stored code, whatever the body said
     }
 }
-// Registration: services.AddSingleton<RequestCodeGenerator>(); e.AddPrimer<RequestCodePrimer>();
+// Registration: the generator's singleton as above; e.AddPrimer<RequestCodePrimer>();
 ```
 
 The restore holds on the service's `Modify` path too: it tracks the stored row's values as the entry's originals, so
