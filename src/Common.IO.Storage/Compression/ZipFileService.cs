@@ -44,9 +44,19 @@ public class ZipFileService(ZipFileCommunicator communicator) : IFileService, ID
             return Task.FromResult<StoredFileInfo?>(null);
         }
 
-        // an entry of an archive open for update has no Length once opened; its stream, held in memory, has one
-        using var stream = entry.Open();
-        return Task.FromResult<StoredFileInfo?>(new StoredFileInfo(stream.Length, entry.LastWriteTime.UtcDateTime));
+        // the size the archive records, so the entry is not inflated to measure it; an entry of an archive open for
+        // update has no Length once it was opened (read, or written by Save), and then its stream, held in memory, has one
+        long length;
+        try
+        {
+            length = entry.Length;
+        }
+        catch (InvalidOperationException)
+        {
+            using var stream = entry.Open();
+            length = stream.Length;
+        }
+        return Task.FromResult<StoredFileInfo?>(new StoredFileInfo(length, entry.LastWriteTime.UtcDateTime));
     }
     public Task<IEnumerable<string>> List(FileSearchObject? so = null)
     {

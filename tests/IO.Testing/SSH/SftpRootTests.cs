@@ -21,4 +21,16 @@ public class SftpRootTests
 
         await Assert.ThrowsAsync<ArgumentException>(() => service.Delete(identifier));
     }
+
+    // GetInfo goes through the containment GetBytes and Exists have, before it connects
+    [TestCase("../outside.txt")]
+    [TestCase("x/../../outside.txt")]
+    [TestCase("/files2/outside.txt")]
+    public async Task GetInfo_Of_An_Identifier_Leaving_The_Root_Is_Refused(string identifier)
+    {
+        using var communicator = new SftpCommunicator(new SftpConfig { Host = "localhost", UserName = "user", ContainerName = "/files" });
+        var service = new SftpService(communicator);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetInfo(identifier));
+    }
 }

@@ -68,6 +68,17 @@ public class IdentityMailerTests
             + "<a href=\"HTTPS://APP.EXAMPLE.COM/RESET\">HTTPS://APP.EXAMPLE.COM/RESET</a>");
     }
 
+    // HtmlEncode writes the characters from U+00A0 to U+00FF and those above U+FFFF as numeric references (ü as &#252;),
+    // which must not end a link: an allowed page on an IDN host linked https://b, another host. A no-break space still does.
+    [Fact]
+    public async Task FormatPlainText_Links_A_Url_Outside_Ascii_Whole()
+    {
+        var sent = await SendFormatted("https://bücher.example/reset?token=a%3D\nhttps://app.example.com/café/😀" + (char)0xA0 + "and on");
+
+        sent.ShouldBe("<a href=\"https://b&#252;cher.example/reset?token=a%3D\">https://b&#252;cher.example/reset?token=a%3D</a><br>"
+            + "<a href=\"https://app.example.com/caf&#233;/&#128512;\">https://app.example.com/caf&#233;/&#128512;</a>&#160;and on");
+    }
+
     private static async Task<string> SendFormatted(string body)
     {
         var mailService = new RecordingMailService();

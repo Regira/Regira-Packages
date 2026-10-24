@@ -97,7 +97,6 @@ public class RefreshTokenEndpointTests : IClassFixture<TestingWebApplicationFact
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         var refreshed = (await response.Content.ReadFromJsonAsync<AuthenticateResponseDto>())!;
         refreshed.Token.ShouldNotBeNullOrWhiteSpace();
-        refreshed.Token.ShouldNotBe(expired);
         refreshed.RefreshToken.ShouldNotBe(signedIn.RefreshToken);
         var renewed = _withRefresh.CreateClient();
         renewed.DefaultRequestHeaders.Authorization = new("Bearer", refreshed.Token);

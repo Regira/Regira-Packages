@@ -19,7 +19,8 @@ public interface IRefreshTokenStore
     /// <summary>
     /// Persists a new token. The record must be written when this returns, not left to a later unit of work: the
     /// service stores a successor before it claims the rotation with <see cref="TryRevoke"/>, so that a concurrent
-    /// caller's <see cref="RevokeFamily"/> reaches it.
+    /// caller's <see cref="RevokeFamily"/> reaches it. The token being rotated is still live at that moment, so this only
+    /// inserts: no rule of one live token per family, and no revoking of the family's other tokens.
     /// </summary>
     Task Store(RefreshTokenRecord record, CancellationToken cancellationToken = default);
 

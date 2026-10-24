@@ -24,9 +24,9 @@ public sealed class SftpServer : IAsyncDisposable
     // atmoz/sftp publishes no version tags, so the digest pins the image
     private const string Image = "atmoz/sftp:alpine@sha256:7e439fabeae536fa254340724c042e11999924d906417dbb5c73602ad518813f";
     private const ushort SshPort = 22;
-    private const string UserName = "regira";
+    private const string UserName = "deploy";
     private const string Password = "secret";
-    private const string ContainerName = "upload";
+    private const string ContainerName = "files";
 
     private readonly IContainer _container;
 

@@ -1416,10 +1416,12 @@ in the Development environment by default. It catches, with actionable messages:
   (which auto-wires the interceptors) that also skipped `e.WireDbContext(...)`. Without the reactor interceptor,
   no replaced or deleted attachment file is removed (§Attachments step 6).
 - **Ignored `?q=`** (warning) — entities without `IHasNormalizedContent` and either without a custom filter, or
-  whose custom filters never read `so.Q`: the check builds their query on an empty in-memory source with and without
-  `Q`, and warns when both read the same. Handle `Q` there (`FilterQ`). A filter it cannot build that way (a search
-  object without a parameterless constructor, a filter that throws) counts as reading `Q`, and the attachment entities
-  Regira's own filters serve are not checked.
+  whose custom filters never read `so.Q`: the check builds their query on an empty in-memory source without `Q`, with
+  a word and with a number, on a search object with no other field set, and warns when all three read the same. Handle
+  `Q` there (`FilterQ`). It calls each custom filter's `Build` up to three times at startup, so a query that runs inside
+  `Build` (a `ToList()` on a `DbContext`) runs then, and a filter that reads `Q` only when another field is set is
+  reported. A filter it cannot build that way (a search object without a parameterless constructor, a filter that
+  throws) counts as reading `Q`, and the attachment entities Regira's own filters serve are not checked.
 - **Two write paths** (warning) — an entity synced by a parent's `Related()` that also has its own `.For<>()`.
   Supported when the parent's input DTO omits the collection; the validator can't see DTO shapes, so it always
   reports the pairing. Detects top-level `Related()` calls, not ones nested inside a `configure` builder.
@@ -1430,6 +1432,9 @@ in the Development environment by default. It catches, with actionable messages:
 - **Null attachment `Uri`** (warning) — an attachment controller, or an owner's downloads mapped by
   `MapEntityEndpoints()`, is in place while the null resolver is, i.e. `UseAttachmentUris()` was omitted or set on a
   different options instance.
+- **Handler override no surface reaches** (warning) — a closed `IEntityRequestHandler` registered for a type list
+  neither the entity's controller nor its mapped endpoints send, so the default handler answers in its place
+  ([`entities.patterns.md`](./entities.patterns.md) → Replacing one operation for one entity).
 - **Attachment owner not mapped to `ObjectId`** (warning) — an `IHasAttachments` owner whose attachment
   collection reaches the link through any key but `ObjectId`, typically a shadow key EF invented because the
   owner side was left to conventions. Every link row is saved orphaned: the owner's `Attachments` loads empty and
@@ -1470,8 +1475,8 @@ in the Development environment by default. It catches, with actionable messages:
 
 The checks report what is silent; a failure that is loud at the first request — a 500, a 409 on every update —
 is a row in §Troubleshooting instead. A check that cannot complete (a registration that throws when resolved) is
-skipped with a warning naming it, and a `DbContext` the checks cannot resolve is reported once. A run that finds
-nothing logs one Information line, *"Entity registration validation found no issues"*, so a clean start reads apart
+skipped with a warning naming it, and a `DbContext` the checks cannot resolve is reported once. A run that completes
+every check and finds nothing logs one Information line, *"Entity registration validation found no issues"*, so a clean start reads apart
 from validation that is off.
 
 Configure via `UseEntities(o => o.ConfigureValidation(v => { v.Enabled = true; v.ThrowOnError = false; }))`:
@@ -1919,8 +1924,10 @@ concurrency.
 A read — details, list, search, the lookup behind a download — is sent with the request's `RequestAborted`, so its
 query stops when its client leaves; the file a download reads is read to its end, since `IFileService` takes no token.
 A write runs to its end, so a client never has to guess whether a save it walked away from committed. The cancelled
-query throws `OperationCanceledException`, which ASP.NET Core logs at debug level, not as an error — except on SQL
-Server, where a query cancelled mid-flight surfaces as a `SqlException` and is logged as an unhandled error.
+query throws `OperationCanceledException`, which ASP.NET Core's own pipeline (Kestrel, `UseExceptionHandler()`, the
+developer exception page) logs at debug level, not as an error; an exception filter or middleware of the app's own
+still sees it. On SQL Server a query cancelled mid-flight surfaces as a `SqlException` instead, logged as an unhandled
+error.
 
 ---
 
@@ -2178,7 +2185,7 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 | A user's edit silently overwrites another user's change — no 409 | No concurrency token, or it never round-trips: missing from the read or input DTO (the client then sends the default, which is not checked), an application-owned token nothing re-mints, or a token not declared a version stamp — a `[ConcurrencyCheck]` token without `[VersionStamp]` is a data column, compared with the stored row however a primer moves it | Implement `IHasConcurrencyToken`, or declare a token of your own `[VersionStamp]` and mint it in a primer, and put it on both DTOs ([`entities.patterns.md`](./entities.patterns.md) → Optimistic concurrency). Startup validation warns about a DTO without the property and about an undeclared token shaped like a stamp |
 | Every PUT/PATCH answers **409 "Concurrency conflict"**, even with a single user | The entity initializes its token (`= Guid.NewGuid()`) and the input DTO has no property for it, so each mapped entity carries a token the row never held; or an input DTO initializes it, so a client that leaves it out sends that value; or the client resends the token it read before its own last save | Remove the initializers and add the property to both DTOs; take the new token from the `SaveResult` after each save |
 | An owner `DELETE` answers **500** *"a circular dependency was detected in the data to be saved"*, or SQL Server refuses the migration with **Msg 1785** (*may cause cycles or multiple cascade paths*) | The owner holds a foreign key to one of its own child rows (a cover image among its images), so the two tables reference each other | [`entities.patterns.md`](./entities.patterns.md) → *An entity that references one of its own children* |
-| Any endpoint answers **500 with an empty body** | The host registers no problem details: an unhandled exception goes out bare, with no `traceId` to find it in the log by | `builder.Services.AddProblemDetails()` and `app.UseExceptionHandler()` right after `builder.Build()`, as the project templates have them; the response then carries a `traceId` to find the request's log lines by |
+| Any endpoint answers **500 with an empty body** | The host registers no problem details: an unhandled exception goes out bare, with no `traceId` to find it in the log by | `builder.Services.AddProblemDetails()` and `app.UseExceptionHandler()` right after `builder.Build()`, as the project templates have them; the response then carries a `traceId` to find the request's log lines by (on .NET 9 and later: .NET 8 writes the 500 problem without one) |
 | A dashboard/report endpoint answers **500** on a green build; the log says *"The LINQ expression … could not be translated"* or *"Translating this query requires the SQL APPLY operation"*, or a `NotSupportedException` | An untranslatable construct in the query: a record constructor in the projection, a correlated `SelectMany` (`CROSS APPLY` — absent on SQLite), **a method of your own called on the row**, date arithmetic between two columns on SQLite (`x.End - x.Start`), a decimal `Min`, `Max` or `OrderBy` on SQLite under EF Core 9 (`net8.0`), or a provider-specific `EF.Functions` member (`DateDiff*` is SQL Server only) | The full list with the translating alternative for each is in [`entities.patterns.md`](./entities.patterns.md) § Cross-entity aggregates & report endpoints |
 
 ### Troubleshooting — compiler errors

@@ -8,7 +8,7 @@ Swagger UI authentication inputs for APIs documented with [Swashbuckle.AspNetCor
 <PackageReference Include="Regira.Web.Swagger" Version="6.*" />
 ```
 
-The package uses only [Microsoft.OpenApi](https://www.nuget.org/packages/Microsoft.OpenApi) 2.x APIs. On `net10.0` it references Microsoft.OpenApi 2.12.2 directly, the same version as `Regira.Security.Authentication.Web`, so an app referencing both resolves one version.
+The package uses only [Microsoft.OpenApi](https://www.nuget.org/packages/Microsoft.OpenApi) 2.x APIs. On `net10.0` it references Microsoft.OpenApi 2.13.0 directly, the same version as `Regira.Security.Authentication.Web`, so an app referencing both resolves one version.
 
 ## Documentation
 

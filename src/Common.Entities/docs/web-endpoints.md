@@ -166,6 +166,8 @@ Save(inputDto) -> SaveResult
 > - Assumes `TInputDto` property names match the corresponding `TEntity` property names.
 > - The merged input is validated against `TInputDto`'s DataAnnotations before the save: a failure answers the **400**
 >   of a validator's refusal, `errorDetails` included (below). The save then runs the validators as a `PUT` does.
+> - A body that is no JSON object answers that 400 too, under the empty key — on a controller also a body that is not
+>   JSON at all.
 
 #### DELETE Endpoint
 

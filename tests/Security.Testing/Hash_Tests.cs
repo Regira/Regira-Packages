@@ -32,6 +32,14 @@ public class Hash_Tests
 
         Assert.That(new Hasher().Verify("password", hashed), Is.True);
     }
+    // a hash stored at the default count (500,000) keeps verifying: a changed default would sign every stored password out
+    [Test]
+    public void A_Hash_Stored_At_The_Default_Iterations_Keeps_Verifying()
+    {
+        const string stored = "tZjL6GAko+DPIvKWo2dcly40pAbsV1lybSa1nXfo42XTp8MCO5aFO6qlQ4djE8TEbEGGRmbZbs4luViCCxg3GUAdxz7TTX7wmg1guyZ6eDU=";
+
+        Assert.That(new Hasher().Verify("correct horse battery staple", stored), Is.True);
+    }
     [Test]
     public void Verify_Hasher_Failure()
     {

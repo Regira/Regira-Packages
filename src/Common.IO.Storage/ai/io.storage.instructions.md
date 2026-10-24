@@ -181,8 +181,12 @@ IAsyncEnumerable<string>  ListAsync(FileSearchObject? so = null)  // NET10+; wha
 > `GetInfo` reads the store's own metadata into a `StoredFileInfo(long Length, DateTime? LastModified)`
 > (`Regira.IO.Storage`, `LastModified` in UTC), and answers `null` for a missing file or a folder. `List` answers
 > identifiers only, so a listing that shows sizes or dates calls `GetInfo` per identifier. GitHub leaves
-> `LastModified` `null`: its contents API carries no time. An `IFileService` of your own that does not implement
-> `GetInfo` reads the content to measure it.
+> `LastModified` `null`: its contents API carries no time. A zip entry's `Length` is the size the archive records,
+> and its `LastModified` its DOS time, kept to two seconds and read in the server's time zone, so it is exact only for
+> an archive written in that zone. An `IFileService` of your own that does not implement `GetInfo` opens the content
+> with `GetStream` to measure it, reading it through unless the stream knows its length, leaves `LastModified` `null`,
+> and answers `null` when `GetStream` does: a store whose `GetStream` throws for a missing file or a folder implements
+> `GetInfo` itself.
 
 ### Write
 
@@ -389,7 +393,7 @@ Every communicator sends through a connection pool the package shares, and every
 | `ContentPath` | `string?` | repo root | Sub-path within the repository used as `Root` |
 | `Contained` | `bool` | `true` | Reject identifiers that escape `Root` (path traversal) |
 
-Fully implements `IFileService`: reads via the contents API, whose answer carries no time, so `GetInfo` leaves `LastModified` `null`; `Save`/`Move`/`Delete` create commits on `Branch`. Not suited for high-frequency writes (every write is a commit). An identifier ending in `?ref={branch}` reads and writes that branch instead, so a file name cannot hold a `?`; a `#` is part of the name.
+Fully implements `IFileService`: reads via the contents API, whose answer carries no time, so `GetInfo` leaves `LastModified` `null`; `Save`/`Move`/`Delete` create commits on `Branch`. A file over 1 MB, whose content that API leaves out, is read from its git blob in a second request (GitHub stores files up to 100 MB); such a read is held in memory whole, more than once over while it reads, and throws `TaskCanceledException` when it takes longer than `HttpClient`'s 100-second timeout, as every request does: a 100 MB file needs about 8 Mbit/s. Not suited for high-frequency writes (every write is a commit). An identifier ending in `?ref={branch}` reads and writes that branch instead, so a file name cannot hold a `?`; a `#` is part of the name.
 
 ---
 

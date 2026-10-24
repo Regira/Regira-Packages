@@ -9,18 +9,23 @@ namespace IO.Testing.Helpers;
 /// An HTTP endpoint on the loopback address that records the request line and the headers of every request, so a test
 /// reads which address a client asked for. It answers <c>404 Not Found</c>, or a <c>GET</c> with
 /// <c>200 OK</c> and the JSON body it was given, with a <c>Set-Cookie</c> header when it was given one.
+/// Given a function instead, it answers each request with the <c>200 OK</c> the function returns for it, or <c>404 Not Found</c> for <c>null</c>.
 /// </summary>
 public sealed class RecordingHttpServer : IAsyncDisposable
 {
     private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
     private readonly CancellationTokenSource _stop = new();
-    private readonly string? _getBody;
+    private readonly Func<RecordedRequest, (string ContentType, byte[] Body)?> _answer;
     private readonly string? _setCookie;
     private readonly Task _accepting;
 
     public RecordingHttpServer(string? getBody = null, string? setCookie = null)
+        : this(r => r.Method == "GET" && getBody != null ? ("application/json", Encoding.UTF8.GetBytes(getBody)) : null, setCookie)
     {
-        _getBody = getBody;
+    }
+    public RecordingHttpServer(Func<RecordedRequest, (string ContentType, byte[] Body)?> answer, string? setCookie = null)
+    {
+        _answer = answer;
         _setCookie = setCookie;
         _listener.Start();
         BaseUri = new Uri($"http://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}/");
@@ -75,13 +80,15 @@ public sealed class RecordingHttpServer : IAsyncDisposable
                 }
             }
 
-            Requests.Enqueue(new RecordedRequest(requestLine[0], requestLine[1], headers));
-            var (status, body) = requestLine[0] == "GET" && _getBody != null ? ("200 OK", _getBody) : ("404 Not Found", "");
-            var content = Encoding.UTF8.GetBytes(body);
-            var contentType = content.Length > 0 ? "Content-Type: application/json\r\n" : "";
+            var request = new RecordedRequest(requestLine[0], requestLine[1], headers);
+            Requests.Enqueue(request);
+            var answer = _answer(request);
+            var (status, content) = answer != null ? ("200 OK", answer.Value.Body) : ("404 Not Found", []);
+            var contentType = content.Length > 0 ? $"Content-Type: {answer!.Value.ContentType}\r\n" : "";
             var cookie = _setCookie != null ? $"Set-Cookie: {_setCookie}\r\n" : "";
             var responseHead = Encoding.ASCII.GetBytes($"HTTP/1.1 {status}\r\n{contentType}{cookie}Content-Length: {content.Length}\r\nConnection: close\r\n\r\n");
-            await stream.WriteAsync(responseHead.Concat(content).ToArray());
+            await stream.WriteAsync(responseHead);
+            await stream.WriteAsync(content);
         }
     }
 

@@ -363,14 +363,16 @@ generic-arity mismatches (the controller check activates automatically when `Reg
 referenced, or explicitly via `ValidateEntityControllers()`), warns when primers/normalizers/reactors are registered
 without their SaveChanges interceptor (an informational note instead when the `RegisterPrimerContainer` +
 `ApplyPrimers()` pattern is detected), warns when `?q=` would be silently ignored for an entity (one with no normalized
-content and either no custom filter or custom filters that never read `Q`) and when an
+content and either no custom filter or custom filters that never read `Q`: it builds each custom filter's query at
+startup without `Q`, with a word and with a number, on a search object with no other field set) and when an
 attachments owner's collection is not mapped to the link's `ObjectId`, when an entity validator applies to no
 registered entity or an entity's write path cannot run the validators in its scope, and when `UseRepository()` has no
 repository type for a `For<>()` shape, and fails on a `[ServerOwned]` declaration nothing can enforce. With
 [mapped endpoints](web-endpoints.md#mapped-endpoints) it also warns about mapped attachment downloads without
 `UseAttachmentUris()`, whose DTOs would carry a null `Uri`. It checks what fails silently; a failure that is loud at
 the first request is left to it. A check that cannot complete is skipped with a warning naming it, and a context the
-checks cannot resolve is reported once.
+checks cannot resolve is reported once. A run that completes every check and finds nothing logs one Information line, *"Entity registration
+validation found no issues"*, so a clean start reads apart from validation that is off.
 Configure via `UseEntities(o => o.ConfigureValidation(v => { v.Enabled = true; /* Production opt-in */ }))`.
 
 

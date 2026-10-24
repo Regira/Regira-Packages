@@ -61,6 +61,19 @@ Vivamus tempus enim lacinia nisi molestie vulputate. Praesent 1:2:3:4:5:6:7:8 tu
         Assert.That(isValid, Is.EqualTo(expected));
     }
 
+    // A long label without its dot would make the domain group backtrack exponentially: four times longer for every two
+    // characters, hours at 40, one thread pinned per call
+    [Test]
+    public void IsValidUrl_Answers_A_Long_Label_At_Once()
+    {
+        var check = Task.Run(() => RegexUtility.IsValidUrl(new string('a', 40) + "!"));
+
+        Assert.That(check.Wait(TimeSpan.FromSeconds(2)), Is.True, "IsValidUrl backtracks on a long label");
+        Assert.That(check.Result, Is.False);
+        // ExtractUrls shares the pattern, and ran into its 250 ms timeout on the same label
+        Assert.That(RegexUtility.ExtractUrls("see " + new string('a', 40) + "!"), Is.Empty);
+    }
+
     [TestCase("0032 3 384 30 44", true)]
     [TestCase("0032 (0)3 384 30 44", true)]
     [TestCase("+32 3 384 30 44", true)]
@@ -189,7 +202,10 @@ Vivamus tempus enim lacinia nisi molestie vulputate. Praesent 1:2:3:4:5:6:7:8 tu
         var matches = RegexUtility.ExtractPhoneNumbers(TestInput);
         Assert.That(matches, Is.Not.Empty);
         //Assert.IsTrue(matches.Length == 3); // also extracting IP 192.168.0.1
+        // each number of the multi-line text whole, its last digit group included
+        Assert.That(matches, Has.Member("+32 3 384 30 44"));
         Assert.That(matches, Has.Member("0032 (0)3 384 30 44"));
+        Assert.That(matches, Has.Member("0475 99 99 99"));
     }
     // a number is extracted whole, every digit group of it
     [TestCase("Proin et lacinia lorem, +32 3 384 30 44 vitae", "+32 3 384 30 44")]

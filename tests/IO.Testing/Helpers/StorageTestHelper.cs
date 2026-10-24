@@ -111,6 +111,8 @@ public static class StorageTestHelper
         if (hasLastModified)
         {
             Assert.That(info.LastModified, Is.Not.Null.And.LessThanOrEqualTo(DateTime.UtcNow.AddMinutes(5)));
+            // a local time passes the bound above on a server at UTC or east of it
+            Assert.That(info.LastModified!.Value.Kind, Is.EqualTo(DateTimeKind.Utc));
         }
         else
         {

@@ -19,6 +19,8 @@ public static class OfficeClientServiceCollectionExtensions
     /// <summary>
     /// Registers a client for every Office service the API offers. Each <see cref="HttpClient"/> is named after its interface
     /// (<c>nameof(IWordConverter)</c>), for adding handlers or resilience to it with <c>services.AddHttpClient(name)</c>.
+    /// Every client replaces what was registered before it for its interface, so a backend of the app's own is registered
+    /// after this call to keep it.
     /// </summary>
     public static IServiceCollection AddOfficeClients(this IServiceCollection services, Action<OfficeClientOptions> configure)
     {

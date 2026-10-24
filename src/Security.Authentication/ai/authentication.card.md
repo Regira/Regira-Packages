@@ -58,6 +58,8 @@
   never read-then-write. Two concurrent refreshes of one token would otherwise both succeed and split the family
   into two live chains with no replay detected. **`Store` must have written the record when it returns**: the
   service stores a successor before it claims the rotation, so a concurrent refresh's family revocation reaches it.
+  The token being rotated is still live then, so `Store` only inserts: no one-live-token-per-family rule, and no
+  revoking of the family's other tokens.
 - **⚠️ `AddSchemeSelector` + interactive sign-in:** the forwarding rules key on the credential a request *carries*,
   and a browser hitting a guarded page carries none — so a challenge would resolve to a bearer `401` and login would
   be unreachable. A registered OIDC scheme therefore answers challenges automatically; set `ChallengeScheme`

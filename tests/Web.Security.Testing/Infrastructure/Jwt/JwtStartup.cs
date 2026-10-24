@@ -16,6 +16,8 @@ public class JwtStartup
             .AddJwtAuthentication(o =>
             {
                 o.Secret = string.Join(":", Enumerable.Range(0, 3).Select(_ => Guid.NewGuid().ToString("N")));
+                // not the default (two hours), so a token minted at the default fails the lifespan checks
+                o.LifeSpan = 3600;
             });
 
         services.AddControllersFor(typeof(AuthController), typeof(TestController));

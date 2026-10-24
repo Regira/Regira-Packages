@@ -37,6 +37,11 @@ public class BinaryBlobService(AzureCommunicator communicator) : IFileService
         try
         {
             var properties = (await blob.GetPropertiesAsync()).Value;
+            // on a hierarchical-namespace (Data Lake) account a folder is a blob of its own, marked in its metadata
+            if (properties.Metadata.TryGetValue("hdi_isfolder", out var isFolder) && string.Equals(isFolder, "true", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
             return new StoredFileInfo(properties.ContentLength, properties.LastModified.UtcDateTime);
         }
         catch (RequestFailedException ex) when (ex.Status == 404)

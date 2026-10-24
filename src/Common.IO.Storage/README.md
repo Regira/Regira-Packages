@@ -57,7 +57,11 @@ Task<IEnumerable<string>> List(FileSearchObject? so = null)
 ```
 
 `GetInfo` answers a file's size and last-modified time (UTC) from the store's metadata, without reading the content,
-and `null` for a missing file or a folder. GitHub leaves `LastModified` `null`.
+and `null` for a missing file or a folder. GitHub leaves `LastModified` `null`. A zip entry's size is the one the
+archive records, and its time is its DOS time, kept to two seconds and read in the server's time zone, so it is exact
+only for an archive written in that zone. An `IFileService` of your own that does not implement `GetInfo` opens the
+content with `GetStream` to measure it, leaves `LastModified` `null`, and answers `null` when `GetStream` does: a store
+whose `GetStream` throws for a missing file or a folder implements `GetInfo` itself.
 
 ### Write
 
@@ -317,7 +321,10 @@ Every communicator sends through a connection pool the package shares, and every
 | `Contained` | `bool` | Reject identifiers that escape `Root` (default `true`) |
 
 Fully implements `IFileService` — `Save`/`Move`/`Delete` create commits on `Branch`, so it's not suited for high-frequency writes.
-An identifier ending in `?ref={branch}` reads and writes that branch instead, so a file name cannot hold a `?`; a `#` is
+A file over 1 MB, whose content the contents API leaves out, is read from its git blob in a second request (GitHub stores
+files up to 100 MB). Such a read is held in memory whole, more than once over while it reads, and
+throws `TaskCanceledException` when it takes longer than `HttpClient`'s 100-second timeout, as every request does: a
+100 MB file needs about 8 Mbit/s. An identifier ending in `?ref={branch}` reads and writes that branch instead, so a file name cannot hold a `?`; a `#` is
 part of the name.
 
 ## ZIP / Compression

@@ -3,7 +3,9 @@ using Regira.IO.Abstractions;
 using Regira.IO.Extensions;
 using Regira.IO.Storage;
 using Regira.IO.Storage.Abstractions;
+using Regira.IO.Models;
 using Regira.IO.Storage.Compression;
+using System.IO.Compression;
 
 namespace IO.Testing.Compression;
 
@@ -118,6 +120,46 @@ public class ZipStorageTests
 
         var expected = StorageTestContext.SourceFiles.Count(x => x.Identifier!.StartsWith(@"dir2\dir2.1\"));
         Assert.That(files.Count(), Is.EqualTo(expected));
+    }
+
+    // The archive is open for update, where opening an entry inflates it into memory: GetInfo reads the size the
+    // archive records. An entry opened before (read, or written by Save) answers from its stream, with the same size.
+    [Test]
+    public async Task GetInfo_Reads_The_Size_Without_Inflating_The_Entry()
+    {
+        const int size = 16 * 1024 * 1024;
+        using var zip = new[] { new BinaryFileItem { FileName = "big.bin", Bytes = new byte[size] } }.Zip();
+        using var service = new ZipFileService(new ZipFileCommunicator { SourceFile = zip });
+        Assert.That(await service.Exists("big.bin"), Is.True);
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        var info = await service.GetInfo("big.bin");
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.That(info!.Length, Is.EqualTo(size));
+        Assert.That(allocated, Is.LessThan(size / 16));
+        Assert.That((await service.GetBytes("big.bin"))!.Length, Is.EqualTo(size));
+        Assert.That((await service.GetInfo("big.bin"))!.Length, Is.EqualTo(size));
+        await service.Save("big.bin", new byte[7]);
+        Assert.That((await service.GetInfo("big.bin"))!.Length, Is.EqualTo(7));
+    }
+
+    // an archive another tool wrote may hold an entry for a folder, which is no file
+    [Test]
+    public async Task GetInfo_Of_A_Folder_Entry_Is_Null()
+    {
+        using var zip = new MemoryStream();
+        using (var archive = new ZipArchive(zip, ZipArchiveMode.Create, true))
+        {
+            archive.CreateEntry("dir/");
+            await using var entry = archive.CreateEntry("dir/file.txt").Open();
+            entry.Write("text"u8);
+        }
+        using var service = new ZipFileService(new ZipFileCommunicator { SourceFile = zip.ToMemoryFile() });
+
+        Assert.That(await service.GetInfo("dir/"), Is.Null);
+        Assert.That(await service.GetInfo("dir"), Is.Null);
+        Assert.That((await service.GetInfo("dir/file.txt"))!.Length, Is.EqualTo(4));
     }
 
     [Test]

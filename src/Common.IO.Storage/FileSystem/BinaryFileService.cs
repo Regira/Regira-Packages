@@ -51,7 +51,14 @@ public class BinaryFileService(FileSystemOptions options) : IFileService
     public Task<StoredFileInfo?> GetInfo(string identifier)
     {
         _communicator?.EnsureConnected();
-        var file = new FileInfo(ResolveUri(identifier));
+        var uri = ResolveUri(identifier);
+        // File.Exists first, as GetBytes checks: FileInfo trims a trailing separator ("a.txt/" named the file on Windows)
+        // and throws on a null character
+        if (!File.Exists(uri))
+        {
+            return Task.FromResult<StoredFileInfo?>(null);
+        }
+        var file = new FileInfo(uri);
         return Task.FromResult(file.Exists ? new StoredFileInfo(file.Length, file.LastWriteTimeUtc) : null);
     }
     public Task<IEnumerable<string>> List(FileSearchObject? so = null)

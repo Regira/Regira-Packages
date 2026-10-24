@@ -15,10 +15,14 @@ namespace Regira.Entities.DependencyInjection.Validation;
 /// <c>IFilteredQueryBuilder</c> is registered that could consume the search object, or its custom filters never read
 /// <see cref="ISearchObject.Q"/>.
 /// <para>
-/// The second case is found by building the custom filters' query on an empty in-memory source twice, once without
-/// <c>Q</c> and once with a probe value, with the values the query captured written out: when both read the same,
-/// nothing in the filters depends on <c>Q</c>. A filter that cannot be built that way (a search object without a
-/// parameterless constructor, a filter that throws) counts as reading it, so the check stays silent rather than guess.
+/// The second case is found by building the custom filters' query on an empty in-memory source up to three times,
+/// without <c>Q</c>, with a word and with a number, on a search object with no other field set, and with the values the
+/// query captured written out: when all three read the same, nothing in the filters depends on <c>Q</c>; the first that
+/// reads otherwise ends the probing. Each custom filter's
+/// <c>Build</c> runs at startup to do so, so a filter that runs a query inside <c>Build</c> (a <c>ToList()</c> on a
+/// <c>DbContext</c>) runs it then. A filter that reads <c>Q</c> only when another field is set is reported. A filter
+/// that cannot be built that way (a search object without a parameterless constructor, a filter that throws) counts as
+/// reading it, so the check stays silent rather than guess.
 /// An entity one of Regira's own filters serves (an attachment, an attachment link) is not checked: those search their
 /// own fields and leave <c>Q</c> alone by design, which the app cannot change.
 /// </para>
@@ -59,7 +63,8 @@ internal sealed class QSearchValidator : IEntityRegistrationValidator
         {
             yield return new EntityValidationIssue(EntityValidationSeverity.Warning,
                 $"?q= text search is ignored by the custom filters of: {string.Join(", ", qIgnored)}. " +
-                "These entities do not implement IHasNormalizedContent, and their filters build the same query with and without Q — " +
+                "These entities do not implement IHasNormalizedContent, and their filters build the same query with and without Q " +
+                "(probed on a search object with no other field set) — " +
                 "a q parameter returns unfiltered results. Read so.Q in the filter (FilterQ searches the columns you name) or implement IHasNormalizedContent." +
                 " An entity whose own IEntityService or IEntityRepository applies Q can ignore this.");
         }
@@ -110,7 +115,9 @@ internal sealed class QSearchValidator : IEntityRegistrationValidator
             return CapturedValueWriter.Describe(query.Expression);
         }
 
-        return Describe(null) != Describe(QProbe);
+        // a word and a number: a filter may read Q only when it parses as one (a search by id)
+        var withoutQ = Describe(null);
+        return withoutQ != Describe(QProbe) || withoutQ != Describe("1");
     }
 
     /// <summary>A filter one of Regira's packages declares; a <c>Filter(...)</c> lambda is the app's own code in Regira's wrapper.</summary>
@@ -125,7 +132,7 @@ internal sealed class QSearchValidator : IEntityRegistrationValidator
     /// Writes a query out with the values it captured: a field of a captured object (a closure, the filter itself) and a
     /// property of the search object become their value, and a captured collection lists its items. Without that, a
     /// query that captured <c>so</c>, or a value taken from it, reads the same whatever <c>Q</c> holds. Only fields and
-    /// the search object's own properties are read, so nothing with side effects runs.
+    /// the search object's own properties are read, so writing the query out runs nothing with side effects.
     /// </summary>
     private sealed class CapturedValueWriter : ExpressionVisitor
     {

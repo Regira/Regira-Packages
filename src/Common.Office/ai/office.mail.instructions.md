@@ -341,8 +341,8 @@ services.AddSingleton<IEmailSender>(provider =>
 
 It sends Identity's `htmlMessage` as an HTML body (`IsHtml` stays `true`). The Regira account controllers write
 that message as plain text (`security.instructions` → *PasswordControllerBase*), and `FormatPlainText = true` turns
-it into HTML: the text is HTML-encoded, then each `http://` or `https://` link becomes an anchor and each line break a
-`<br>`. The encoding comes first, so no character of the text can write markup or leave the link's `href`. With the
+it into HTML: each `http://` or `https://` link becomes an anchor and each line break a `<br>`, and every piece of the
+text is HTML-encoded, a link inside its `href` too, so no character of the text can write markup or leave the `href`. With the
 option on, every message is read as text: HTML that another caller sends through the same `IEmailSender` (the ASP.NET
 Identity UI pages' mails, an HTML mail of the app's own) arrives as escaped markup. Turn it on only for a sender that
 carries the plain-text account mails. Without it the message goes out unchanged, encoding nothing.

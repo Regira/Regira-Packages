@@ -194,6 +194,15 @@ public class StartupValidationTests
         Assert.That(capture.Warnings, Has.None.Contains("?q="));
     }
 
+    // a search by id reads Q only when it parses as a number
+    [Test]
+    public async Task A_Custom_Filter_That_Reads_Q_Only_As_A_Number_Is_Not_Flagged()
+    {
+        var capture = await ValidateProductFilter((query, so) => int.TryParse(so?.Q, out var id) ? query.Where(x => x.Id == id) : query);
+
+        Assert.That(capture.Warnings, Has.None.Contains("?q="));
+    }
+
     [Test]
     public async Task A_Custom_Filter_That_Captures_A_Collection_Taken_From_Q_Is_Not_Flagged()
     {
@@ -239,6 +248,28 @@ public class StartupValidationTests
             Assert.That(clean.Warnings.Concat(clean.Errors), Is.Empty);
             Assert.That(clean.Infos.Count(i => i.Contains("found no issues")), Is.EqualTo(1));
             Assert.That(flagged.Infos, Has.None.Contains("found no issues"));
+        });
+    }
+
+    // a check that could not complete proves nothing: its skip warning stands alone, without the clean-run line
+    [Test]
+    public async Task A_Skipped_Check_Is_No_Clean_Run()
+    {
+        var capture = new StartupValidationHarness();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.AddProvider(capture));
+        services.AddDbContext<ProductContext>(db => db.UseSqlite(_connection));
+        services.AddSingleton<Regira.Entities.DependencyInjection.Validation.IEntityRegistrationValidator, ThrowingValidator>();
+        services.UseEntities<ProductContext>(o => o.ConfigureValidation(v => v.Enabled = true))
+            .For<Product>(e => e.Filter((query, so) => string.IsNullOrWhiteSpace(so?.Q) ? query : query.Where(x => x.Title!.Contains(so.Q))));
+
+        await using var sp = services.BuildServiceProvider();
+        await StartupValidationHarness.RunHostedServices(sp);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(capture.Warnings, Has.Some.Contains("ThrowingValidator could not complete and was skipped"));
+            Assert.That(capture.Infos, Has.None.Contains("found no issues"));
         });
     }
 

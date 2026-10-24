@@ -3,7 +3,7 @@
 
 As of 2026-10-23. Sources: the `Regira-Packages` repository, branch `wip` at `4d3d479`, all 37 test projects under `tests/` plus `Entities.TestApi` and `Testing.Library` (about 70k lines). Seven read-only reviews, one per area, read every test file and the source each test calls. A sample of their claims, every security claim among them, was rechecked against the code, and one was proven by a probe (W2). Timings were measured on a snapshot of the tree built from scratch: `dotnet test --no-build --filter "TestCategory!=Network"`, Docker and LocalDB up, a local MongoDB service running.
 
-**Status: phase 1 (W1–W57) built and committed; see *Outcome (phase 1)*. Phase 2 built as easy wins, uncommitted; see *Outcome (phase 2)*. Phases 3–5 are proposals.**
+**Status: phase 1 (W1–W57) built and committed (`5e0f75f`); see *Outcome (phase 1)*. Phase 2 built as easy wins and committed (`850445e`); see *Outcome (phase 2)*. Phases 3–5 are proposals.**
 
 ## Answer
 
@@ -425,7 +425,7 @@ Each step is safe to commit on its own. The test projects ship nothing, so no `<
 
 ## Outcome (phase 1)
 
-As of 2026-10-23, on `wip` at `37cbaa3`, uncommitted. Only `tests/` changed: 73 files, plus one new file, `Drawing.Testing/Abstractions/ImageReadBack.cs`.
+As of 2026-10-23, on `wip` at `37cbaa3`; committed in `5e0f75f`. Only `tests/` changed: 73 files, plus one new file, `Drawing.Testing/Abstractions/ImageReadBack.cs`.
 
 **57 findings checked: 45 confirmed, 10 partly, 2 rejected.** Each fix was proven in a scratch copy of the tree. The old test passes on a broken copy of the source (a *mutant*), and the new test fails on that copy and passes on the real source. Ten new or corrected tests (12 cases) stay red on the real source because the library is wrong. They are marked ignored with the defect named (listed below). The full offline run (`dotnet build` then `dotnet test Regira-Packages.slnx --no-build --filter "TestCategory!=Network"`) is green: 4,671 passed, 0 failed, 42 skipped. That is the 29 skipped before plus these 13: the refresh-race test runs on net8 and net10. The path fixes (W49, W50, W52, W57) also ran on Linux in the `sdk:10.0` container: Common 308 passed and 5 skipped, TreeList 103 passed, IO 245 passed and 6 skipped.
 
@@ -512,11 +512,11 @@ S3, S6, S7 and S10 were shown the same way: each un-skipped or new test fails on
 
 ### Found in phase 1
 
-- **S9. A refresh-token race leaves the winner's chain alive.** When two callers refresh the same token, the loser revokes the family before the winner stores its successor. The successor survives the revocation. A probe of two truly concurrent refreshes kept the winner's chain alive in 472 of 500 rounds. **Fixed after phase 1, uncommitted:**
+- **S9. A refresh-token race leaves the winner's chain alive.** When two callers refresh the same token, the loser revokes the family before the winner stores its successor. The successor survives the revocation. A probe of two truly concurrent refreshes kept the winner's chain alive in 472 of 500 rounds. **Fixed after phase 1 (`5e0f75f`):**
   - `RefreshTokenService` stores the successor before it claims the rotation with `TryRevoke`, so the loser's `RevokeFamily` reaches it. The store contract is unchanged; the guides say a custom `Store` must have written the record when it returns.
   - With `RevokeFamilyOnReuse` off, the loser revokes the successor it stored.
   - The race test runs again, through an order-agnostic double that holds the winner just after its claim until the family is revoked. It fails on the old service. A second test pins that only the winner's token stays live without family revocation; it fails if the loser's successor is left live.
-  - The CHANGELOG says 6.6.1. `Regira.Security.Authentication`'s `<Version>` is still the published 6.6.0.
+  - The CHANGELOG and `Regira.Security.Authentication`'s `<Version>` say 6.6.1.
 - **S10 (found by the library review):** `IsValidPhoneNumber` accepts a newline or tab between digit groups (`"+32\n3 384 30 44"`), because `PhoneNumberPattern`'s separators use `\s`. Present in 6.6.0. **Fixed after phase 1, with S7:** a Unicode space separator (`\p{Zs}`) instead of `\s` between groups. `TestValidPhone` takes both inputs and a U+2028 line separator as invalid, and numbers grouped with non-breaking spaces as valid, as 6.6.0 did. `ExtractPhoneNumbers_Keeps_Numbers_On_Separate_Lines_Apart` extracts two numbers split by `\n`, `\r\n` or a tab.
 - `SymmetricEncrypter.Encrypt/Decrypt(text, secret)` derive the key into the instance's default key arrays. A call with an explicit secret changes the key that later calls without one use. The class is obsolete, so this is not tested here.
 - PaddleOCR's `OcrResult.Language` is the detection model's type name for every language.
@@ -538,11 +538,11 @@ S3, S6, S7 and S10 were shown the same way: each un-skipped or new test fails on
   - Each test seeds its files. W48's non-recursive scenario and W50's exact paths are wired in.
   - The stale `[Ignore]` and the SSH user secrets are gone.
 - W5: the 2.5 s wait stays until P8.
-- The guides call `AddMapping<TSource, TTarget>()` the fix for a pair "when Mapster's convention produces the wrong result", such as a child DTO whose shape diverges (`entities.instructions.md` §Step 10, the troubleshooting row, `entities.signatures.md`, `entities.examples.md`, `docs/mapping.md`). It takes no rule, so on Mapster it maps that pair by the same convention; a different result needs a rule in `UseMapsterMapping(cfg => …)`. Found while checking S8; not changed.
+- The guides call `AddMapping<TSource, TTarget>()` the fix for a pair "when Mapster's convention produces the wrong result", such as a child DTO whose shape diverges (`entities.instructions.md` §Step 10, the troubleshooting row, `entities.signatures.md`, `entities.examples.md`, `docs/mapping.md`). It takes no rule, so on Mapster it maps that pair by the same convention; a different result needs a rule in `UseMapsterMapping(cfg => …)`. Found while checking S8; the guides say so since `af56b7e`.
 
 ## Outcome (phase 2)
 
-As of 2026-10-24, on `wip` at `baffbc1`, uncommitted. Only `tests/` changed: 22 files. There are five new files: four 480-pixel copies of `img-1..4.jpg` (176 KB in all), `Office.Word.testing/NestedDocumentGuardTests.cs` and `Web.Security.Testing/Infrastructure/ExpiredTokens.cs`. `Web.Security.Testing/Infrastructure/TokenLifeSpan.cs` is gone. No `src/` change was needed.
+As of 2026-10-24, on `wip` at `baffbc1`; committed in `850445e`. Only `tests/` changed: 22 files. There are five new files: four 480-pixel copies of `img-1..4.jpg` (176 KB in all), `Office.Word.testing/NestedDocumentGuardTests.cs` and `Web.Security.Testing/Infrastructure/ExpiredTokens.cs`. `Web.Security.Testing/Infrastructure/TokenLifeSpan.cs` is gone. No `src/` change was needed.
 
 The rule was speed without weakening a check. Midway, the scope narrowed to easy wins: nothing that restructures hosts, containers or fixtures, and nothing that lowers what a test checks. P1, P2, P7, P8 and P12 are done. P4, P6 and P9 are done in part. P3, P5 and P11 are skipped; the table below says why. Where a test's mechanism changed (P1, P2, P7, P8), the old test ran beside the new one in a scratch copy of the tree, against deliberately broken copies of the source (*mutants*). The new test fails wherever the old one did.
 

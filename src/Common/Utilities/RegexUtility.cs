@@ -10,7 +10,9 @@ public static class RegexUtility
     // https://docs.microsoft.com/en-us/dotnet/standard/base-types/how-to-verify-that-strings-are-in-valid-email-format
     private static string EmailPattern => @"(?("")("".+?(?<!\\)""@)|(([0-9a-z]((\.(?!\.))|[-!#\$%&'\*\+/=\?\^`\{\}\|~\w])*)(?<=[0-9a-z])@))(?(\[)(\[(\d{1,3}\.){3}\d{1,3}\])|(([0-9a-z][-\w]*[0-9a-z]*\.)+[a-z0-9][\-a-z0-9]{0,22}[a-z0-9]))";
     // https://www.freecodecamp.org/news/how-to-validate-urls-in-javascript/
-    private static string UrlPattern => @"([a-zA-Z]+:\/\/)?((([a-z\d]([a-z\d-]*[a-z\d])*)\.)+[a-z]{2,}|((\d{1,3}\.){3}\d{1,3}))(\:\d+)?(\/[-a-z\d%_.~+]*)*(\?[;&a-z\d%_.~+=-]*)?(\#[-a-z\d_]*)?";
+    // A domain label: a letter or digit, then optionally a run of them and '-' that ends in one. The run is optional ('?'):
+    // repeating it ('*') matched the same labels but backtracked exponentially on a long label without its dot.
+    private static string UrlPattern => @"([a-zA-Z]+:\/\/)?((([a-z\d]([a-z\d-]*[a-z\d])?)\.)+[a-z]{2,}|((\d{1,3}\.){3}\d{1,3}))(\:\d+)?(\/[-a-z\d%_.~+]*)*(\?[;&a-z\d%_.~+=-]*)?(\#[-a-z\d_]*)?";
     // https://uibakery.io/regex-library/phone-number (added '/' to allowed chars and allowed (0) in second segment).
     // Greedy groups, so an extracted number is taken whole; a space separator between groups (\p{Zs}: a non-breaking
     // space too), not \s, so a number never runs over a tab or a line break.

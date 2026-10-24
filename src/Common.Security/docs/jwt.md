@@ -169,6 +169,9 @@ definition one that was already revoked.
 
 `Store` must have written the record when it returns: call `SaveChangesAsync` inside it, not in a later unit of work.
 The service stores a successor before it claims the rotation, so that a concurrent refresh's `RevokeFamily` reaches it.
+The token being rotated is still live at that moment, so `Store` only inserts: no rule of one live token per family
+(a unique index on `FamilyId` throws at every refresh), and no revoking of the family's other tokens (the refresh then
+reads as a replay).
 
 `TryRevoke` **must be atomic** — it is a test-and-set, revoking only if the token is not already revoked and
 returning whether this caller did it. Two concurrent refreshes of one token would otherwise both succeed and split

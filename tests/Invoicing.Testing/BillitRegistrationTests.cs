@@ -22,5 +22,7 @@ public class BillitRegistrationTests
         var invoiceService = provider.GetRequiredService<IInvoiceService>();
 
         Assert.That(invoiceService, Is.InstanceOf<InvoiceManager>());
+        // the README and the guide name IInvoiceManager among what AddBillit registers
+        Assert.That(provider.GetRequiredService<IInvoiceManager>(), Is.InstanceOf<InvoiceManager>());
     }
 }
