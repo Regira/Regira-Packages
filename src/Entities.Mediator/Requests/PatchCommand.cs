@@ -6,7 +6,8 @@ using Regira.Entities.Web.Models;
 namespace Regira.Entities.Mediator.Requests;
 
 /// <summary>
-/// Applies a JSON Merge Patch (RFC 7386) to an existing entity, as <c>PATCH {id}</c> does. The stored entity is
+/// Applies a JSON Merge Patch (RFC 7386) to an existing entity, as <c>PATCH {id}</c> does. The merge is one level deep:
+/// a nested object in the patch replaces the stored one whole. The stored entity is
 /// serialized as the merge base, patched, and read back as <typeparamref name="TInputDto"/>, so only what the input
 /// model carries can change, and its property names have to match the entity's. The merged input is checked
 /// (<see cref="DataAnnotationsEntityInputValidator"/>) and then saved by the <see cref="SaveCommand{TEntity,TKey,TDto,TInputDto}"/>

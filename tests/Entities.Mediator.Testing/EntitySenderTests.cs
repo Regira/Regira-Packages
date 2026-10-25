@@ -82,6 +82,28 @@ public class EntitySenderTests
     }
 
     [Fact]
+    public async Task A_Closed_Behaviour_Runs_Around_Its_Request_Alone_In_Registration_Order()
+    {
+        var trace = new List<string>();
+        await using var shop = await Shop.CreateServicesAsync(services =>
+        {
+            services.AddSingleton(trace);
+            services.AddTransient(typeof(IEntityPipelineBehavior<,>), typeof(OuterBehavior<,>));
+            services.AddTransient<IEntityPipelineBehavior<DetailsQuery<Product, int, Product>, DetailsResult<Product>>, DetailsBehavior>();
+            services.AddTransient(typeof(IEntityPipelineBehavior<,>), typeof(InnerBehavior<,>));
+        });
+        using var scope = shop.Services.CreateScope();
+        var sender = scope.ServiceProvider.GetRequiredService<IEntitySender>();
+
+        await sender.Send(new DetailsQuery<Product, int, Product>(shop.PenId));
+        Assert.Equal(["outer >", "details >", "inner >", "< inner", "< details", "< outer"], trace);
+
+        trace.Clear();
+        await sender.Send(new ListQuery<Product, int, SearchObject<int>, Product>());
+        Assert.Equal(["outer >", "inner >", "< inner", "< outer"], trace);
+    }
+
+    [Fact]
     public async Task A_Request_Of_The_Apps_Own_Needs_A_Handler_And_Says_So()
     {
         await using var shop = await Shop.CreateServicesAsync();
@@ -265,6 +287,17 @@ public class EntitySenderTests
             trace.Add("inner >");
             var response = await next();
             trace.Add("< inner");
+            return response;
+        }
+    }
+
+    public sealed class DetailsBehavior(List<string> trace) : IEntityPipelineBehavior<DetailsQuery<Product, int, Product>, DetailsResult<Product>>
+    {
+        public async Task<DetailsResult<Product>?> Handle(DetailsQuery<Product, int, Product> request, EntityRequestDelegate<DetailsResult<Product>> next, CancellationToken token = default)
+        {
+            trace.Add("details >");
+            var response = await next();
+            trace.Add("< details");
             return response;
         }
     }

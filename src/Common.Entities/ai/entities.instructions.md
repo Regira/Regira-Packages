@@ -1434,9 +1434,11 @@ in the Development environment by default. It catches, with actionable messages:
 - **Null attachment `Uri`** (warning) — an attachment controller, or an owner's downloads mapped by
   `MapEntityEndpoints()`, is in place while the null resolver is, i.e. `UseAttachmentUris()` was omitted or set on a
   different options instance.
-- **Handler override no surface reaches** (warning) — a closed `IEntityRequestHandler` registered for a type list
-  neither the entity's controller nor its mapped endpoints send, so the default handler answers in its place
-  ([`entities.patterns.md`](./entities.patterns.md) → Replacing one operation for one entity).
+- **Handler override no surface reaches** (warning) — a closed `IEntityRequestHandler` of `DetailsQuery`, `ListQuery`,
+  `SearchQuery`, `SaveCommand`, `PatchCommand` or `DeleteCommand` registered for a type list neither the entity's
+  controller nor its mapped endpoints send, so the default handler answers in its place
+  ([`entities.patterns.md`](./entities.patterns.md) → Replacing one operation for one entity). An attachment request's
+  handler is not checked.
 - **Attachment owner not mapped to `ObjectId`** (warning) — an `IHasAttachments` owner whose attachment
   collection reaches the link through any key but `ObjectId`, typically a shadow key EF invented because the
   owner side was left to conventions. Every link row is saved orphaned: the owner's `Attachments` loads empty and
@@ -1781,6 +1783,10 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 > way: the owner's preppers see `NewBytes` on its links, the link's preppers see an upload as a `Stream` on its
 > `Attachment`. Two preppers on the `UseEntities` options cover both: [`entities.patterns.md`](./entities.patterns.md) →
 > *Transform uploaded files before they are stored (resize photos)* (`how_to` key `transform-uploads`).
+
+> **Changing what an attachment route does** — a log of downloads, say — is a handler for the request the route
+> sends, which answers for an attachment controller and the mapped routes alike:
+> [`entities.patterns.md`](./entities.patterns.md) → *Changing an attachment operation*.
 
 > ⚠️ **Marking one attachment as the primary one? Mark the link entity, don't point the owner at it.** An
 > owner FK to one of its own attachments makes the two tables reference each other: SQL Server refuses the

@@ -11,7 +11,8 @@ using Regira.Entities.Web.Models;
 
 namespace Entities.Mediator.Testing;
 
-// The recipe of entities.patterns (Dispatching through a mediator library), as an app writes it
+// The recipe both doc layers carry (entities.patterns → Dispatching through a mediator library; docs/web-endpoints.md →
+// A mediator library), as an app writes it
 public sealed record EntityMessage(IEntityRequest Request, Func<IEntitySender, CancellationToken, Task<object?>> Run) : IRequest<object?>;
 
 public class EntityMessageHandler(IServiceProvider services) : IRequestHandler<EntityMessage, object?>

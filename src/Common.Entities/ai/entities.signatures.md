@@ -424,8 +424,9 @@ public abstract class EntityControllerBase<TEntity, TKey, TSo, TSortBy, TInclude
 reference data) without re-implementing it. Signatures are identical on both bases except `List` and `Search`: on
 the complex base they take `([FromQuery] TSo so, [FromQuery] PagingInfo pagingInfo, [FromQuery] TIncludes[] includes,
 [FromQuery] TSortBy[] sortBy)`, and its `[FromBody] TSo[] so` overloads (`POST list`, `POST search`) have the same
-tail. An override repeats all four: a method with only the first two is no override but a second action on the same
-route, and routing fails as ambiguous. The simple base's signatures:
+tail. An override repeats all four: a method with only the first two is no override but a new action, which inherits
+none of the base action's attributes, and requests fail: a body-binding error without a verb attribute, an ambiguous
+match with one. The simple base's signatures:
 
 <!-- no-compile -->
 ```csharp
@@ -1827,7 +1828,8 @@ public interface IEntityRequestHandler<in TRequest, TResponse> where TRequest : 
     Task<TResponse?> Handle(TRequest request, CancellationToken token = default);
 }
 public delegate Task<TResponse?> EntityRequestDelegate<TResponse>();
-// open generic → every request; registration order, first registered outermost
+// open generic → every request; closed (IEntityPipelineBehavior<DeleteCommand<Product, int, ProductDto>, DeleteResult<ProductDto>>)
+// → that request type alone; one registration order across both, first registered outermost
 public interface IEntityPipelineBehavior<in TRequest, TResponse> where TRequest : IEntityRequest<TResponse>
 {
     Task<TResponse?> Handle(TRequest request, EntityRequestDelegate<TResponse> next, CancellationToken token = default);
@@ -1862,7 +1864,7 @@ public sealed record DeleteCommand<TEntity, TKey, TDto>(TKey Id) : IEntityReques
 // an owner's attachment routes — TEntity is the int-keyed link (IEntityAttachment<int, int, int, Attachment>); the route
 // wins over the input, and a link of another owner throws an EntityInputException keyed objectId. The attachment
 // controller and the mapped endpoints send them; both downloads send AttachmentFileQuery — the one by name finds the
-// link first — so one handler override covers them
+// link first — so one handler override covers them. No startup check covers their type lists
 // ValidateInput as on SaveCommand: the input's DataAnnotations first; the attachment controller passes false
 public sealed record UploadAttachmentCommand<TEntity, TDto, TInputDto>(int ObjectId, TInputDto Input, INamedFile File, bool ValidateInput = true)
     : IEntityRequest<SaveResult<TDto>>;
@@ -1935,7 +1937,7 @@ public sealed class EntityExceptionEndpointFilter : IEndpointFilter;
 
 ## Response Types
 
-Shipped by `Regira.Entities.Mediator`, under the namespace they have always had.
+Shipped by `Regira.Entities.Mediator`, under the `Regira.Entities.Web.Models` namespace.
 
 ```csharp
 using Regira.Entities.Web.Models;

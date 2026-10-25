@@ -22,7 +22,9 @@ public delegate Task<TResponse?> EntityRequestDelegate<TResponse>();
 /// Runs around the handler of every request of its type: caching, auditing the operation itself, and other cross-cutting
 /// work at the operation level. Registered as an open generic it runs for every request:
 /// <code>services.AddTransient(typeof(IEntityPipelineBehavior&lt;,&gt;), typeof(AuditBehavior&lt;,&gt;));</code>
-/// Behaviours run in registration order, the first registered outermost. The executor writes <c>Duration</c> on the
+/// Registered closed, it runs around that one request type alone:
+/// <code>services.AddTransient&lt;IEntityPipelineBehavior&lt;DeleteCommand&lt;Product, int, ProductDto&gt;, DeleteResult&lt;ProductDto&gt;&gt;, ProductDeleteLog&gt;();</code>
+/// Behaviours run in registration order, open and closed ones alike, the first registered outermost. The executor writes <c>Duration</c> on the
 /// result a request returns, so a behaviour that serves a cached result returns a copy (<c>cached with { }</c>), not the
 /// instance it keeps.
 /// </summary>

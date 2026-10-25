@@ -319,33 +319,364 @@ public class ProductImporter(IEntitySender sender)
   controllers skip that check (`ValidateInput: false`), since MVC has answered an invalid request body by then; the
   mapped endpoints keep it. A patch's merged input is always checked, so `PATCH` answers an invalid result with the
   same 400 a validator's refusal has.
-- **Replacing one operation for one entity.** Register a closed `IEntityRequestHandler<TRequest, TResponse>` for the
-  request type — typically derived from the default handler, such as `DetailsHandler<Product, int, ProductDto>` from
-  `Regira.Entities.Mediator.Handlers`. It answers for the endpoint and for every other sender. An int-keyed simple
-  registration without a search object of its own (`For<Product>()`, `For<Product, int>()`) lists and searches with the
-  `SearchObject` record on mapped endpoints, so its list handler replaces `ListQuery<Product, int, SearchObject,
-  ProductDto>`; a controller on `EntityControllerBase<Product, int, SearchObject<int>, …>` sends `SearchObject<int>`,
-  which that handler does not reach. Startup validation warns for a handler registered for a type list neither the
-  controller nor the mapped endpoints send. A `PATCH` merges and checks its input, then ends in the `SaveCommand`
-  handler of the same type list — the override, when one is registered — called directly, so the behaviours run once,
-  around the patch. A rule about how an entity saves therefore overrides `SaveCommand` alone. A rule about the data
-  itself — who may write a row, what a field may hold — belongs in the write pipeline (preppers, validators, global
-  filters), which every path runs, a direct `IEntityService` call included; a handler is for work that wraps the whole
-  operation or changes what it answers.
-- **Replacing one endpoint.** For what belongs to HTTP — an attribute, a header, a status code — replace the endpoint
-  rather than the handler. A controller overrides the `virtual` action with the same signature; the verb, route and
-  binding attributes are inherited. Mapped endpoints exclude the generated one (`e.Endpoints(o => o.Exclude(EntityEndpoint.List))`)
-  and map the app's own on the entity's group (`MapEntityEndpoints(o => o.ConfigureGroup<Product>(g => g.MapGet(…)))`),
-  sending the same request and carrying `EntityEndpointMetadata`.
-- **Behaviours.** An `IEntityPipelineBehavior<TRequest, TResponse>` registered as an open generic runs around every
-  request, the first registered outermost. `IEntityRequest.EntityType` and `IEntityRequest.Operation` tell which entity
-  and which operation. `Duration` is written on the result a request returns when it is an `IEntityResult`, as the built-in envelopes are, so a caching behaviour hands out a copy
-  (`cached with { }`) rather than the instance it keeps.
-- **A mediator library.** To run every entity request inside the application's own mediator pipeline, such as
-  MediatR's, replace the `IEntitySender` registration with a sender that sends one message type through the library,
-  whose handler ends in the in-house `EntitySender`; handlers, behaviours and `Duration` work as without it. The guide
-  carries the three types it takes (`entities.patterns`, *Dispatching through a mediator library*). MediatR 13 and
-  later need a licence key; MediatR 12.5.0 is the last Apache-2.0 release.
+- **`null` means not found.** A refused write throws, as the write pipeline does: `EntityInputException`,
+  `EntityConstraintException` or `EntityConcurrencyException`.
+
+### Replacing one operation
+
+Register a closed `IEntityRequestHandler<TRequest, TResponse>` for the request type. It answers in place of the
+default handler, for the endpoint and for every other sender, with no controller override. Deriving from the default
+handler, in `Regira.Entities.Mediator.Handlers`, keeps what it does:
+
+```csharp
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Handlers;
+using Regira.Entities.Mediator.Requests;
+using Regira.Entities.Web.Models;
+
+public class Product : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductDto { public int Id { get; set; } public string? Title { get; set; } public int Stock { get; set; } }
+
+public interface IWarehouse { Task<int> Stock(int productId, CancellationToken token); }
+
+// GET products/{id}, and a job's DetailsQuery, answer with the stock the warehouse holds now
+public class ProductDetailsHandler(IServiceProvider services, IWarehouse warehouse)
+    : DetailsHandler<Product, int, ProductDto>(services)
+{
+    public override async Task<DetailsResult<ProductDto>?> Handle(DetailsQuery<Product, int, ProductDto> request, CancellationToken token = default)
+    {
+        var result = await base.Handle(request, token);
+        if (result != null)
+        {
+            result.Item.Stock = await warehouse.Stock(result.Item.Id, token);
+        }
+        return result;
+    }
+}
+
+public static class ProductOperations
+{
+    public static IServiceCollection AddProductOperations(this IServiceCollection services)
+        => services.AddTransient<IEntityRequestHandler<DetailsQuery<Product, int, ProductDto>, DetailsResult<ProductDto>>, ProductDetailsHandler>();
+}
+```
+
+- **Which layer.** A rule about the data itself — who may write a row, what a field may hold — belongs in the write
+  pipeline (preppers, validators, global filters), which every path runs, a direct `IEntityService` call included. A
+  handler is for work that wraps the whole operation or changes what it answers.
+- **A `PATCH` ends in the `SaveCommand` handler.** It merges and checks its input, then calls the handler of the
+  `SaveCommand` with the same type list — the override, when one is registered. It is called, not sent, so the
+  behaviours run once, around the patch. A change to how an entity saves therefore overrides `SaveCommand` alone.
+- **The type list is the one the endpoint sends.** An int-keyed simple registration without a search object of its
+  own (`For<Product>()`, `For<Product, int>()`) lists and searches with the `SearchObject` record on mapped endpoints,
+  so its list handler replaces `ListQuery<Product, int, SearchObject, ProductDto>`; a controller on
+  `EntityControllerBase<Product, int, SearchObject<int>, …>` sends `SearchObject<int>`, which that handler does not
+  reach. Startup validation warns for a handler of `DetailsQuery`, `ListQuery`, `SearchQuery`, `SaveCommand`,
+  `PatchCommand` or `DeleteCommand` whose type list neither the controller nor the mapped endpoints send; an attachment
+  request and a request of your own are not checked.
+- **Attachment routes** send requests of their own, replaced the same way:
+  [Attachments → Changing an attachment operation](attachments.md#changing-an-attachment-operation).
+
+### A request of your own
+
+An operation the standard requests do not cover can be a request of the application's own. It implements
+`IEntityRequest<TResponse>` and declares the entity and the operation, which a behaviour reads. It has no default
+handler, so it needs a registered one, and its first send says so when that is missing:
+
+```csharp
+using Regira.Entities.Mediator;
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Requests;
+using Regira.Entities.Web.Models;
+
+public class Product : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } public decimal Price { get; set; } }
+public class ProductDto { public int Id { get; set; } public string? Title { get; set; } public decimal Price { get; set; } }
+public class ProductInputDto { public int Id { get; set; } [Required] public string? Title { get; set; } public decimal Price { get; set; } }
+
+// a behaviour sees the copy as a Save of Product
+public sealed record DuplicateProduct(int Id) : IEntityRequest<SaveResult<ProductDto>>
+{
+    Type IEntityRequest.EntityType => typeof(Product);
+    EntityOperation IEntityRequest.Operation => EntityOperation.Save;
+}
+
+public class DuplicateProductHandler(IEntityService<Product, int> service, IEntitySender sender)
+    : IEntityRequestHandler<DuplicateProduct, SaveResult<ProductDto>>
+{
+    public async Task<SaveResult<ProductDto>?> Handle(DuplicateProduct request, CancellationToken token = default)
+    {
+        var original = await service.Details(request.Id, token);
+        if (original == null)
+        {
+            return null;
+        }
+        // saved as POST products saves it: the input checked, the write pipeline run, the copy re-read and mapped
+        var copy = new ProductInputDto { Title = $"{original.Title} (copy)", Price = original.Price };
+        return await sender.Send(new SaveCommand<Product, int, ProductDto, ProductInputDto>(copy), token);
+    }
+}
+
+public static class ProductCopies
+{
+    public static IServiceCollection AddProductCopies(this IServiceCollection services)
+        => services.AddTransient<IEntityRequestHandler<DuplicateProduct, SaveResult<ProductDto>>, DuplicateProductHandler>();
+}
+```
+
+An endpoint or a job sends it like the standard requests: `await sender.Send(new DuplicateProduct(id), token)`. The
+`SaveCommand` it sends passes the behaviours too, so an operation log records a `Save` of `Product` twice.
+
+### Replacing one endpoint
+
+For what belongs to HTTP — an attribute, a header, a status code, a parameter the request does not carry — replace
+the endpoint rather than the handler.
+
+**On a controller**, override the generated action. The actions are `virtual`, and the override inherits the verb and
+route attributes and the parameters' binding attributes, so it declares only what it adds:
+
+```csharp
+using Microsoft.AspNetCore.Authorization;
+using Regira.DAL.Paging;
+using Regira.Entities.Web.Controllers.Abstractions;
+using Regira.Entities.Web.Models;
+
+public class Product : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductDto { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductInputDto { public int Id { get; set; } [Required] public string? Title { get; set; } }
+
+[ApiController, Route("products")]
+public class ProductController : EntityControllerBase<Product, ProductDto, ProductInputDto>
+{
+    // still GET products?q=…&page=…: the route and the query binding come from the base action
+    [Authorize(Policy = "Catalog")]
+    public override Task<ActionResult<ListResult<ProductDto>>> List(SearchObject so, PagingInfo pagingInfo)
+    {
+        Response.Headers.CacheControl = "private, max-age=60";
+        return base.List(so, pagingInfo);
+    }
+}
+```
+
+Keep the signature exactly: a method with another parameter list is no override but a new action, which inherits
+none of the base action's attributes, and requests fail: a body-binding error without a verb attribute, an ambiguous
+match with one. The complex bases' `POST list` and `POST search` are overridden on
+their own.
+
+**On mapped endpoints** there is no action to override: exclude the generated endpoint and map your own on the
+entity's route group, sending the same request so a handler override and the behaviours still apply:
+
+```csharp
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Routing;
+using Regira.DAL.Paging;
+using Regira.Entities.DependencyInjection.ServiceCollections;
+using Regira.Entities.Mapping.Mapster;
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Requests;
+using Regira.Entities.Web.Endpoints;
+
+public class Product : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductDto { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductInputDto { public int Id { get; set; } [Required] public string? Title { get; set; } }
+
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+{
+    public DbSet<Product> Products => Set<Product>();
+}
+
+public static class ShopConfiguration
+{
+    public static EntityServiceCollection<AppDbContext> AddShop(this IServiceCollection services)
+        => services
+            .UseEntities<AppDbContext>(o =>
+            {
+                o.UseDefaults();
+                o.UseMapsterMapping();                                  // the mapper UseMapping configures
+            })
+            .For<Product>(e =>
+            {
+                e.UseMapping<ProductDto, ProductInputDto>();
+                e.Endpoints(o => o.Exclude(EntityEndpoint.List));          // GET products is the app's own below
+            });
+
+    public static IEndpointRouteBuilder MapShop(this IEndpointRouteBuilder app)
+    {
+        app.MapEntityEndpoints(o => o.ConfigureGroup<Product>(products => products
+            .MapGet("", async (IEntitySender sender, HttpContext http, string? q, int? page, int? pageSize) =>
+            {
+                http.Response.Headers.CacheControl = "private, max-age=60";
+                var paging = new PagingInfo { Page = page ?? 1, PageSize = pageSize };
+                return Results.Ok(await sender.Send(new ListQuery<Product, int, SearchObject, ProductDto>(new SearchObject { Q = q }, paging)));
+            })
+            .WithMetadata(new EntityEndpointMetadata(typeof(Product), EntityEndpoint.List))));
+        return app;
+    }
+}
+```
+
+- **Exclude first.** Without `o.Exclude(…)` two endpoints share the route, and every request to it fails as
+  ambiguous. `EntityEndpoint.List` covers `GET` and, on a complex entity, `POST list`; `EntityEndpoint.Search` covers
+  both searches.
+- **The group's exception filter applies**, so the endpoint answers a refused write with the 400 and 409 bodies the
+  mapped ones use.
+- **Add the metadata.** An authorization policy that gates writes per entity reads `EntityEndpointMetadata`.
+- **The endpoint binds its own parameters**: the mapped endpoints' query binder is not public, so take what the
+  endpoint needs as parameters, or `[AsParameters]` of a type of your own.
+
+### Behaviours
+
+An `IEntityPipelineBehavior<TRequest, TResponse>` runs around a request's handler: caching, or a log of the operation
+itself, reads and refused attempts included. Registered as an open generic it runs around every request, and
+`IEntityRequest.EntityType` and `IEntityRequest.Operation` tell which entity and which operation:
+
+```csharp
+using Microsoft.Extensions.Logging;
+using Regira.Entities.Mediator.Abstractions;
+
+public class OperationLog<TRequest, TResponse>(ILogger<OperationLog<TRequest, TResponse>> logger)
+    : IEntityPipelineBehavior<TRequest, TResponse>
+    where TRequest : IEntityRequest<TResponse>
+{
+    public async Task<TResponse?> Handle(TRequest request, EntityRequestDelegate<TResponse> next, CancellationToken token = default)
+    {
+        try
+        {
+            return await next();
+        }
+        finally
+        {
+            logger.LogInformation("{Operation} {Entity}", request.Operation, request.EntityType.Name);
+        }
+    }
+}
+
+public static class OperationLogging
+{
+    public static IServiceCollection AddOperationLog(this IServiceCollection services)
+        => services.AddTransient(typeof(IEntityPipelineBehavior<,>), typeof(OperationLog<,>));
+}
+```
+
+Registered closed, a behaviour runs around that one request type alone:
+
+```csharp
+using Microsoft.Extensions.Logging;
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Requests;
+using Regira.Entities.Web.Models;
+
+public class Product : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductDto { public int Id { get; set; } public string? Title { get; set; } }
+
+// every attempt to delete a product — failed and not-found ones included — whatever sent it
+public class ProductDeleteLog(ILogger<ProductDeleteLog> logger)
+    : IEntityPipelineBehavior<DeleteCommand<Product, int, ProductDto>, DeleteResult<ProductDto>>
+{
+    public async Task<DeleteResult<ProductDto>?> Handle(DeleteCommand<Product, int, ProductDto> request,
+        EntityRequestDelegate<DeleteResult<ProductDto>> next, CancellationToken token = default)
+    {
+        var outcome = "failed";
+        try
+        {
+            var result = await next();
+            outcome = result == null ? "not found" : "deleted";
+            return result;
+        }
+        finally
+        {
+            logger.LogInformation("Delete of product {Id}: {Outcome}", request.Id, outcome);
+        }
+    }
+}
+
+public static class ProductDeleteLogging
+{
+    public static IServiceCollection AddProductDeleteLog(this IServiceCollection services)
+        => services.AddTransient<IEntityPipelineBehavior<DeleteCommand<Product, int, ProductDto>, DeleteResult<ProductDto>>, ProductDeleteLog>();
+}
+```
+
+- **Order.** Behaviours run in registration order, open and closed ones alike, the first registered outermost.
+- **A closed behaviour's type list is the one the endpoint sends**, matched exactly as a handler's is, and no startup
+  check covers it. A `PATCH` sends a `PatchCommand` and calls its save, so a behaviour on `SaveCommand` alone misses
+  it: register one on `PatchCommand` too.
+- **A behaviour wraps the request it is given.** `next()` takes no request, so changing what is saved or asked is a
+  handler's job.
+- **`Duration`** spans every behaviour and is written on the result when it is an `IEntityResult`, as the built-in
+  envelopes are, so a caching behaviour hands out a copy (`cached with { }`) rather than the instance it keeps.
+- **What follows a committed write** belongs in a [reactor](services.md#entity-reactors), which runs once the save
+  commits, whatever path wrote. A behaviour sees only the requests sent, and an attempt the pipeline then refused.
+- **A behaviour that writes to the database** writes through a scope of its own
+  (`IServiceScopeFactory.CreateAsyncScope()`): a save refused with a 409 leaves the request's `DbContext` tracking the
+  refused change, which a `SaveChanges()` there sends again.
+
+### A mediator library
+
+To run every entity request inside the application's own mediator pipeline — logging, tracing, authorization, a unit
+of work around the generated endpoints as around its other requests — replace the `IEntitySender` registration with a
+sender that sends one message type through the library. With MediatR:
+
+```csharp
+using MediatR;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Regira.Entities.Mediator;
+using Regira.Entities.Mediator.Abstractions;
+
+// one message for every entity request; Run sends it on to the in-house sender, typed
+public sealed record EntityMessage(IEntityRequest Request, Func<IEntitySender, CancellationToken, Task<object?>> Run) : IRequest<object?>;
+
+public class EntityMessageHandler(IServiceProvider services) : IRequestHandler<EntityMessage, object?>
+{
+    public Task<object?> Handle(EntityMessage message, CancellationToken token)
+        => message.Run(ActivatorUtilities.CreateInstance<EntitySender>(services), token);
+}
+
+public class MediatREntitySender(ISender mediator) : IEntitySender
+{
+    public async Task<TResponse?> Send<TResponse>(IEntityRequest<TResponse> request, CancellationToken token = default)
+        => (TResponse?)await mediator.Send(new EntityMessage(request, async (inner, t) => await inner.Send(request, t)), token);
+}
+
+// one of the application's behaviours: it reads the entity request on the message to tell a read from a write
+public class WriteLog<TRequest, TResponse>(ILogger<WriteLog<TRequest, TResponse>> logger) : IPipelineBehavior<TRequest, TResponse>
+    where TRequest : notnull
+{
+    public async Task<TResponse> Handle(TRequest request, RequestHandlerDelegate<TResponse> next, CancellationToken cancellationToken)
+    {
+        if (request is EntityMessage { Request.Operation: EntityOperation.Save or EntityOperation.Patch or EntityOperation.Delete } message)
+        {
+            logger.LogInformation("{Operation} {Entity}", message.Request.Operation, message.Request.EntityType.Name);
+        }
+        return await next();
+    }
+}
+
+// in the application's registration, before or after UseEntities()
+public static class EntityMediatR
+{
+    public static IServiceCollection AddEntityMediatR(this IServiceCollection services)
+    {
+        services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<EntityMessage>());
+        services.AddTransient(typeof(IPipelineBehavior<,>), typeof(WriteLog<,>));
+        services.Replace(ServiceDescriptor.Scoped<IEntitySender, MediatREntitySender>());
+        return services;
+    }
+}
+```
+
+- **What stays the same:** handler overrides, the `IEntityPipelineBehavior`s and `Duration` — the message's handler
+  ends in the in-house `EntitySender`.
+- **Keep the message one closed type.** A generic one needs an open-generic handler registration, and the container
+  resolves a closed service from the last open-generic registration of its type, so it would shadow the application's
+  own open-generic handlers or be shadowed by them. Another library follows the same shape: one message, one handler
+  that calls `Run`, and a sender that sends the message.
+- **MediatR's version is a licence choice.** MediatR 13 and later need a licence key; MediatR 12.5.0 is the last
+  Apache-2.0 release.
+- ⚠️ **Let the entity exceptions through.** A behaviour that rethrows `EntityInputException`,
+  `EntityConstraintException` or `EntityConcurrencyException` wrapped in an exception of its own turns the endpoints'
+  400 and 409s into 500s.
 
 ---
 
