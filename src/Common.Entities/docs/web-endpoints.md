@@ -35,31 +35,8 @@ EntityControllerBase<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto, TIn
 Best practice: 
 Keep controller `[Route]` attributes **resource-relative**, and spell the resource as the kebab-case plural the mapped endpoints use (`[Route("products")]`, `[Route("intervention-types")]`). Avoid the `[controller]` token: it expands to the class-name stem, so an `InterventionTypesController` serves `/InterventionTypes`, which a client calling `intervention-types` does not reach. Apply a shared `api` base **once**, in a single configurable place:
 
-- **At the host:** an IIS virtual directory / reverse-proxy path, or `app.UsePathBase("/api")`.
-- **In the app:** a global route-prefix convention (the prefix can come from configuration):
-
-<!-- no-compile -->
-```csharp
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ApplicationModels;
-
-public sealed class RoutePrefixConvention(string prefix) : IApplicationModelConvention
-{
-    private readonly AttributeRouteModel _prefix = new(new RouteAttribute(prefix));
-    public void Apply(ApplicationModel application)
-    {
-        foreach (var controller in application.Controllers)
-            foreach (var selector in controller.Selectors)
-                selector.AttributeRouteModel = selector.AttributeRouteModel is { } existing
-                    ? AttributeRouteModel.CombineAttributeRouteModel(_prefix, existing)
-                    : _prefix;
-    }
-}
-
-// Program.cs — register once; every controller is served under /api/...
-builder.Services.AddControllers(options =>
-    options.Conventions.Add(new RoutePrefixConvention("api")));
-```
+- **At the host:** an IIS virtual directory / reverse-proxy path, or `app.UsePathBase("/api")`, which leaves every route answering without the base as well.
+- **In the app:** the `UseCentralRoutePrefix` that comes with `Regira.Entities.Web` ([Built-in Features → Routing](built-in-features.md#routing)); [mapped endpoints](#mapped-endpoints) take the same base as `app.MapEntityEndpoints(o => o.Prefix = "api")`.
 
 ### Standard Endpoints
 

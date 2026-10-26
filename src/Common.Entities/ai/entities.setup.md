@@ -542,30 +542,22 @@ using (var scope = app.Services.CreateScope())
 
 ### API route prefix
 
-Keep controller routes resource-relative and **spell the resource** — `[Route("products")]` — then apply a shared `api` base **once** at the host/app level so it stays configurable. Avoid the `[controller]` token: it expands to the class-name stem, so a `SupplierController` serves `/Supplier` instead of the `/suppliers` the SPA calls. Either host under that base path (IIS virtual directory / reverse proxy, or `app.UsePathBase("/api")`), or register a global route-prefix convention. `Regira.Entities.Web` already brings `Regira.Web` transitively, so `Regira.Web.Routing`'s `UseCentralRoutePrefix` is available without another reference — it configures `MvcOptions`, so call it where those are built: `builder.Services.AddControllers(o => o.UseCentralRoutePrefix(new RouteAttribute("api")));`. The self-contained equivalent below is here for a host that does not reference it:
+Keep controller routes resource-relative and **spell the resource** — `[Route("products")]` — then apply a shared `api` base **once** at the host/app level so it stays configurable. Avoid the `[controller]` token: it expands to the class-name stem, so a `SupplierController` serves `/Supplier` instead of the `/suppliers` the SPA calls. Either host under that base path (IIS virtual directory / reverse proxy, or `app.UsePathBase("/api")`, which leaves every route answering without the base as well), or register a global route prefix with `UseCentralRoutePrefix`. It comes from `Regira.Web`, which `Regira.Entities.Web` already brings transitively, so it needs no other reference — and no convention class of your own. It configures `MvcOptions`, so call it where those are built:
 
-<!-- no-compile -->
 ```csharp
-// namespace Microsoft.AspNetCore.Mvc.ApplicationModels (RouteAttribute is in Microsoft.AspNetCore.Mvc)
-public sealed class RoutePrefixConvention(string prefix) : IApplicationModelConvention
-{
-    private readonly AttributeRouteModel _prefix = new(new RouteAttribute(prefix));
-    public void Apply(ApplicationModel app)
-    {
-        foreach (var controller in app.Controllers)
-            foreach (var selector in controller.Selectors)
-                selector.AttributeRouteModel = selector.AttributeRouteModel is { } existing
-                    ? AttributeRouteModel.CombineAttributeRouteModel(_prefix, existing)
-                    : _prefix;
-    }
-}
-// Program.cs — the prefix can come from configuration
-builder.Services.AddControllers(o => o.Conventions.Add(new RoutePrefixConvention("api")));
+using Microsoft.AspNetCore.Mvc;
+using Regira.Web.Routing;
+
+// Program.cs — every controller is served under /api/...; the prefix can come from configuration
+builder.Services.AddControllers(o => o.UseCentralRoutePrefix(new RouteAttribute("api")));
 ```
+
+How it combines with each route, and the absolute template (`/x` or `~/x`) that skips it: `web.instructions` →
+*Central Route Prefix*.
 
 Spell a multi-word resource in **kebab-case plural**: `InterventionType` → `[Route("intervention-types")]`, `FacetGroup` → `[Route("facet-groups")]`. The SPA's `IConfig.api` must match it character-for-character, so a flattened `interventiontypes` or a camelCase `interventionTypes` costs a 404 on every call to that entity.
 
-**Mapped entity endpoints** (`app.MapEntityEndpoints()`, no controllers) are not reached by an MVC convention, so `UseCentralRoutePrefix` leaves them at the root. Give them the base where they are mapped — `app.MapEntityEndpoints(o => o.Prefix = "api")` — and keep it equal to the controllers' prefix when the app has both; `app.UsePathBase("/api")` covers both alike. Their routes are already the kebab-case plurals above (`entities.patterns` → *Mapped entity endpoints (no controllers)*).
+**Mapped entity endpoints** (`app.MapEntityEndpoints()`, no controllers) are not reached by an MVC convention, so `UseCentralRoutePrefix` leaves them at the root. Give them the base where they are mapped — `app.MapEntityEndpoints(o => o.Prefix = "api")` — and keep it equal to the controllers' prefix when the app has both; `app.UsePathBase("/api")` covers both alike, though both keep answering without the base too. Their routes are already the kebab-case plurals above (`entities.patterns` → *Mapped entity endpoints (no controllers)*).
 
 > **Building the paired SPA?** This prefix is one of four settings that must line up — SPA axios base,
 > entity `IConfig.api`, the Vite dev proxy, and this route prefix. The front-end guide resolves them as one

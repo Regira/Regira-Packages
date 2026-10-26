@@ -955,7 +955,7 @@ table below rather than reasoning it out.
 > `get_package(id: "Regira.Entities.Web", section: "entities.web.namespaces")` for the exact `using` set
 > (this guide ships with `Regira.Entities.Web` and is served over MCP only — it does not extract locally).
 
-> **Keep controller routes resource-relative and spell the resource** — `[Route("products")]` — then apply a shared `api` base **once** at host/app level so it stays configurable (`app.UsePathBase`, reverse proxy, or a global route-prefix convention). Avoid the `[controller]` token: it expands to the class-name stem, so a `SupplierController` serves `/Supplier`, not the kebab-case plural `/suppliers` the SPA calls — a 404 on every request for that entity. See [`entities.setup.md`](./entities.setup.md) — API route prefix.
+> **Keep controller routes resource-relative and spell the resource** — `[Route("products")]` — then apply a shared `api` base **once** at host/app level so it stays configurable (`app.UsePathBase`, reverse proxy, or `UseCentralRoutePrefix`). Avoid the `[controller]` token: it expands to the class-name stem, so a `SupplierController` serves `/Supplier`, not the kebab-case plural `/suppliers` the SPA calls — a 404 on every request for that entity. See [`entities.setup.md`](./entities.setup.md) — API route prefix.
 
 | `.For<>()` registration | Required controller base | Inject as (outside a controller) |
 |---|---|---|

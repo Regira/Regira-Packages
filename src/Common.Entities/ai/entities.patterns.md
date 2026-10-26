@@ -713,7 +713,7 @@ is no `SearchObject` that can express it and no entity service that should own i
 
 <!-- no-compile -->
 ```csharp
-[ApiController, Route("dashboard")]                 // RoutePrefixConvention still prefixes it
+[ApiController, Route("dashboard")]                 // UseCentralRoutePrefix still prefixes it
 public class DashboardController(AppDbContext db) : ControllerBase
 {
     [HttpGet("spend-by-month")]

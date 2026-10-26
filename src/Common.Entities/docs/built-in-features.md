@@ -297,6 +297,28 @@ services.AddDbContext<MyDbContext>(db =>
 });
 ```
 
+## Routing
+
+**UseCentralRoutePrefix**: *Puts one base path in front of every controller route, so the controllers' `[Route]`
+attributes stay resource-relative and the base is set in a single place. It ships in `Regira.Web`, which
+`Regira.Entities.Web` brings.*
+
+```csharp
+using Microsoft.AspNetCore.Mvc;
+using Regira.Web.Routing; // external namespace
+
+// every controller is served under /api/...; the prefix can come from configuration
+builder.Services.AddControllers(options =>
+    options.UseCentralRoutePrefix(new RouteAttribute("api")));
+```
+
+- How it combines with each route, an absolute template included:
+  [Regira.Web → RoutePrefixConvention](../../Common.Web/README.md#routeprefixconvention).
+- [Mapped endpoints](web-endpoints.md#mapped-endpoints) are not controllers, so `UseCentralRoutePrefix` leaves them at
+  the root: give them the same base where they are mapped, `app.MapEntityEndpoints(o => o.Prefix = "api")`. A host
+  path (an IIS virtual directory, a reverse-proxy path) covers both alike. `app.UsePathBase("/api")` does too, but
+  every route keeps answering without the base as well.
+
 ## Helper Services
 
 
