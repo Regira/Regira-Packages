@@ -12,16 +12,23 @@ internal static class PgSql
     public const string DatabaseExists = "SELECT EXISTS (SELECT NULL FROM pg_catalog.pg_database WHERE datname = @databaseName);";
 
     /// <summary>
+    /// Whether the connected role may run <c>CREATE DATABASE</c>: a superuser, or a role with <c>CREATEDB</c>. An owner
+    /// without it may still drop its own database.
+    /// </summary>
+    public const string CanCreateDatabase = "SELECT rolsuper OR rolcreatedb FROM pg_catalog.pg_roles WHERE rolname = current_user;";
+
+    /// <summary>
     /// <c>CREATE DATABASE</c> for <paramref name="databaseName"/>.
     /// </summary>
     public static string CreateDatabase(string databaseName)
         => $"CREATE DATABASE {QuoteIdentifier(databaseName)} WITH TABLESPACE = pg_default;";
 
     /// <summary>
-    /// <c>DROP DATABASE</c> for <paramref name="databaseName"/>.
+    /// <c>DROP DATABASE</c> for <paramref name="databaseName"/>. With <paramref name="force"/> the server first ends
+    /// the sessions connected to it (<c>WITH (FORCE)</c>, PostgreSQL 13 or later), where it would refuse the drop.
     /// </summary>
-    public static string DropDatabase(string databaseName)
-        => $"DROP DATABASE IF EXISTS {QuoteIdentifier(databaseName)};";
+    public static string DropDatabase(string databaseName, bool force = false)
+        => $"DROP DATABASE IF EXISTS {QuoteIdentifier(databaseName)}{(force ? " WITH (FORCE)" : string.Empty)};";
 
     /// <summary>
     /// Quotes an identifier: wrapped in double quotes, with embedded double quotes doubled.

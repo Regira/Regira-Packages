@@ -60,8 +60,10 @@ public class BackupRestoreManager
     /// <param name="settings">Database configuration</param>
     /// <param name="targetDb">Name of target Database</param>
     /// <param name="sourcePath">Path of backup-file to restore</param>
-    /// <param name="overwrite">Replaces the target database when it already exists: it is dropped and recreated,
-    /// so anything the backup does not contain is lost. Without it, restoring onto an existing database fails.</param>
+    /// <param name="overwrite">Replaces the target database when it already exists: the sessions on it are ended,
+    /// then it is dropped and recreated, so anything the backup does not contain is lost. Needs PostgreSQL 13 or later
+    /// and a role that may create databases and end the sessions on the target; otherwise the restore fails before
+    /// anything is dropped. Without it, restoring onto an existing database fails.</param>
     /// <returns></returns>
     /// <exception cref="Exception"></exception>
     public Task Restore(PgSettings settings, string targetDb, string sourcePath, bool overwrite = false)

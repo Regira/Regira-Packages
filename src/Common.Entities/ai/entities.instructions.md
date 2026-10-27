@@ -899,7 +899,7 @@ Add `DbSet<YourEntity>` and configure any relationships in `OnModelCreating`.
 >     .ConfigureWarnings(w => w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning)));
 > ```
 >
-> The ignore covers every such pair in the context, reference data included. Regira's startup validation (net10.0) still reports each separately registered dependent behind a required foreign key that has no query filter of its own.
+> The ignore covers every such pair in the context, reference data included. Regira's startup validation (net10.0) still reports each separately registered dependent behind a required foreign key that has no query filter of its own; an `IArchivable` dependent's own archived filter does not count, since it hides the dependent's archived rows, not those of an archived parent.
 >
 > **Mirror the parent's archived filter onto a dependent?** Per dependent:
 >
@@ -909,7 +909,7 @@ Add `DbSet<YourEntity>` and configure any relationships in `OnModelCreating`.
 > | is reached **only** through the parent's `Include(...)` | **No** — the parent's filter already removed it |
 > | sits **two hops** away (`!x.Session!.Event!.IsArchived`) | **No** — needs `APPLY`, which SQLite lacks. Filter explicitly in the queries that care |
 >
-> It never collides with the named archived filter, because that one only touches `IArchivable` types.
+> It never collides with the named archived filter. On a dependent that is not `IArchivable` there is nothing to collide with; on one that is (a list item archived on its own), the anonymous `HasQueryFilter(x => !x.Parent!.IsArchived)` is kept beside the archived filter as the named `Regira:Model` filter and applies as written — [`entities.patterns.md`](./entities.patterns.md) → Soft Delete.
 >
 > ⚠️ **A mirrored filter leaves the dependent's own routes.** EF inlines it into every correlated `Any(x => …)`
 > over that entity from anywhere else — including the parent's search (`Assignments.Any(a => a.ReturnedOn == null)`).

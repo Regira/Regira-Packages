@@ -123,6 +123,43 @@ public class ArchivableReferenceDataValidatorTests
         }
     }
 
+    /// <summary>A dependent that is soft-deletable itself, so it carries the named archived filter of its own.</summary>
+    public class ListItem : IEntity<int>, IArchivable
+    {
+        public int Id { get; set; }
+        public int CategoryId { get; set; }
+        public Category? Category { get; set; }
+        public bool IsArchived { get; set; }
+    }
+
+    public class ArchivableDependentContext(DbContextOptions<ArchivableDependentContext> options) : DbContext(options)
+    {
+        public DbSet<Category> Categories => Set<Category>();
+        public DbSet<ListItem> ListItems => Set<ListItem>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+            modelBuilder.Entity<ListItem>().HasOne(x => x.Category).WithMany().HasForeignKey(x => x.CategoryId).IsRequired();
+            modelBuilder.SetArchivedQueryFilter();
+        }
+    }
+
+    /// <summary>Same model, with the parent's filter mirrored onto the archivable dependent.</summary>
+    public class MirroredArchivableDependentContext(DbContextOptions<MirroredArchivableDependentContext> options) : DbContext(options)
+    {
+        public DbSet<Category> Categories => Set<Category>();
+        public DbSet<ListItem> ListItems => Set<ListItem>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+            modelBuilder.Entity<ListItem>().HasOne(x => x.Category).WithMany().HasForeignKey(x => x.CategoryId).IsRequired();
+            modelBuilder.Entity<ListItem>().HasQueryFilter(x => !x.Category!.IsArchived);
+            modelBuilder.SetArchivedQueryFilter();
+        }
+    }
+
     public class Ticket : IEntity<int>, IArchivable
     {
         public int Id { get; set; }
@@ -246,6 +283,25 @@ public class ArchivableReferenceDataValidatorTests
 #endif
     }
 
+    [Test]
+    public async Task An_Archivable_Dependent_Is_Reported_Despite_Its_Own_Archived_Filter()
+    {
+        // Its own archived filter hides its archived rows, not the rows of an archived Category.
+        var warnings = await Warnings(services =>
+        {
+            services.AddDbContext<ArchivableDependentContext>(db => db.UseSqlite(_connection));
+            services.UseEntities<ArchivableDependentContext>(o => { o.UseDefaults(); Logging()(o); })
+                .For<Category>()
+                .For<ListItem>();
+        });
+
+#if NET10_0_OR_GREATER
+        Assert.That(warnings, Has.Some.Contains(Hazard).And.Some.Contains(nameof(ListItem)));
+#else
+        Assert.That(warnings, Has.None.Contains(Hazard));
+#endif
+    }
+
     // ── false-positive guards ──────────────────────────────────────────────────
 
     [Test]
@@ -286,6 +342,21 @@ public class ArchivableReferenceDataValidatorTests
             services.UseEntities<MirroredContext>(o => { o.UseDefaults(); Logging()(o); })
                 .For<Category>()
                 .For<Asset>();
+        });
+
+        Assert.That(warnings, Has.None.Contains(Hazard));
+    }
+
+    [Test]
+    public async Task An_Archivable_Dependent_With_The_Mirrored_Filter_Is_Not_Reported()
+    {
+        // Its anonymous mirror is kept as a named filter beside the archived one, and that is the remedy.
+        var warnings = await Warnings(services =>
+        {
+            services.AddDbContext<MirroredArchivableDependentContext>(db => db.UseSqlite(_connection));
+            services.UseEntities<MirroredArchivableDependentContext>(o => { o.UseDefaults(); Logging()(o); })
+                .For<Category>()
+                .For<ListItem>();
         });
 
         Assert.That(warnings, Has.None.Contains(Hazard));
