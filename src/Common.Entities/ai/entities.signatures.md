@@ -425,8 +425,8 @@ reference data) without re-implementing it. Signatures are identical on both bas
 the complex base they take `([FromQuery] TSo so, [FromQuery] PagingInfo pagingInfo, [FromQuery] TIncludes[] includes,
 [FromQuery] TSortBy[] sortBy)`, and its `[FromBody] TSo[] so` overloads (`POST list`, `POST search`) have the same
 tail. An override repeats all four: a method with only the first two is no override but a new action, which inherits
-none of the base action's attributes, and requests fail: a body-binding error without a verb attribute, an ambiguous
-match with one. The simple base's signatures:
+none of the base action's attributes: under `[ApiController]` its search object and paging both bind from the body,
+and `MapControllers()` throws at startup. The simple base's signatures:
 
 <!-- no-compile -->
 ```csharp

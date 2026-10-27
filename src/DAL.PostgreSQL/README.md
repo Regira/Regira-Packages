@@ -110,7 +110,7 @@ IProcessHelper processHelper = new ProcessHelper();   // Regira.System
 
 var mgr = new BackupRestoreManager(processHelper, options);
 mgr.Backup(settings, "source-db", "/backups/snapshot.dump");   // synchronous (void)
-// overwrite: drops target-db and recreates it from the backup
+// overwrite: ends target-db's sessions, drops it and recreates it from the backup
 await mgr.Restore(settings, "target-db", "/backups/snapshot.dump", overwrite: true);
 ```
 

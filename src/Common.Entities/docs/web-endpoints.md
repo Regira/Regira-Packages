@@ -435,9 +435,9 @@ public class ProductController : EntityControllerBase<Product, ProductDto, Produ
 ```
 
 Keep the signature exactly: a method with another parameter list is no override but a new action, which inherits
-none of the base action's attributes, and requests fail: a body-binding error without a verb attribute, an ambiguous
-match with one. The complex bases' `POST list` and `POST search` are overridden on
-their own.
+none of the base action's attributes: under `[ApiController]` its complex parameters bind from the body, so a search
+object beside `PagingInfo` makes `MapControllers()` throw at startup. The complex bases' `POST list` and `POST search`
+are overridden on their own.
 
 **On mapped endpoints** there is no action to override: exclude the generated endpoint and map your own on the
 entity's route group, sending the same request so a handler override and the behaviours still apply:

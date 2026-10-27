@@ -18,7 +18,8 @@
   their own requests, which no startup check covers —
   `get_package(id: "Regira.Entities", section: "entities.patterns", heading: "Changing an attachment operation")`.
 - **Wrap every operation** with an open-generic `IEntityPipelineBehavior<,>`, or one request type with a closed one;
-  open and closed share one registration order, the first registered outermost.
+  open and closed share one registration order, the first registered outermost. A `PATCH` calls its save directly,
+  so a closed behaviour on `SaveCommand<…>` alone misses it: register one on `PatchCommand<…>` too.
 - **A request of the app's own** implements `IEntityRequest<TResponse>`, declares its `EntityType` and `Operation`,
   and needs a registered handler.
 - **Through a mediator library** such as MediatR: replace the `IEntitySender` registration with a sender whose handler
