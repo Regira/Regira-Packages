@@ -146,7 +146,7 @@ provider on every request.
 | `RequireHttpsMetadata` | `bool` | `true` | |
 | `NameClaimType` / `RoleClaimType` | `string` | `"name"` / `"role"` | |
 | `ValidIssuers` | `ICollection<string>?` | `null` | Null ⇒ the discovery document's issuer |
-| `Cookie` | `CookieAuthOptions` | *(defaults)* | The session half |
+| `Cookie` | `CookieAuthOptions` | *(defaults)* | The session half. Its `SecurePolicy` is `Always`, so over plain HTTP the session cookie never comes back ([Cookie notes](cookies.md#cookie-notes)) |
 | `Claims` | `ClaimNormalizationOptions` | *(defaults)* | |
 | `Configure` | `Action<OpenIdConnectOptions>?` | `null` | Applied before the normalization hook is chained on |
 
@@ -164,6 +164,9 @@ provider on every request.
 - **`SaveTokens = true`** is required for a later downstream call and makes the cookie considerably larger.
 - A **multi-tenant** sign-in has the same issuer hole as a multi-tenant API; it is closed automatically, and the
   check is applied after your `Configure` delegate so customization cannot drop it.
+- **An `email` claim is not an identity.** Key a local account or record on the issuer and `sub` (`tid` + `oid` on
+  Entra ID), never on the address alone: a provider may send one it has not verified, and Entra ID sends no
+  `email_verified` by default.
 
 The code exchange itself needs a live provider — verify the full round trip against a real tenant.
 

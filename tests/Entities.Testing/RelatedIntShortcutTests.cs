@@ -66,11 +66,13 @@ public class RelatedIntShortcutTests
         Lines = [new OrderLine { Product = "Desk", Notes = [new OrderLineNote { Text = "oak" }] }, new OrderLine { Product = "Chair" }],
     };
 
-    [Test]
-    public async Task A_Guid_Parent_Registers_Nested_Int_Children_Without_Key_Type_Arguments()
+    /// <summary>
+    /// Adds <see cref="NewOrder"/>, then saves it again without the chair and without the desk's note. Without any
+    /// <c>Related()</c> registration EF still inserts the whole new graph; only the related sync deletes what the second
+    /// save leaves out.
+    /// </summary>
+    private static async Task<Order> AddThenDropTheChairAndTheNote(ServiceProvider sp)
     {
-        var sp = await Build(e => e.Related(x => x.Lines, lines => lines.Related(x => x.Notes)));
-
         var order = NewOrder();
         using (var scope = sp.CreateScope())
         {
@@ -79,14 +81,48 @@ public class RelatedIntShortcutTests
             await service.SaveChanges();
         }
 
-        using var readScope = sp.CreateScope();
-        var stored = await readScope.ServiceProvider.GetRequiredService<OrderContext>().Orders
-            .Include(x => x.Lines!).ThenInclude(x => x.Notes)
-            .SingleAsync(x => x.Id == order.Id);
+        var added = await Read(sp, order.Id);
         Assert.Multiple(() =>
         {
-            Assert.That(stored.Lines!.Select(x => x.Product), Is.EquivalentTo(new[] { "Desk", "Chair" }));
-            Assert.That(stored.Lines!.Single(x => x.Product == "Desk").Notes!.Select(x => x.Text), Is.EqualTo(new[] { "oak" }));
+            Assert.That(added.Lines!.Select(x => x.Product), Is.EquivalentTo(new[] { "Desk", "Chair" }));
+            Assert.That(added.Lines!.Single(x => x.Product == "Desk").Notes!.Select(x => x.Text), Is.EqualTo(new[] { "oak" }));
+        });
+
+        var desk = order.Lines!.Single(x => x.Product == "Desk");
+        using (var scope = sp.CreateScope())
+        {
+            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order, Guid>>();
+            await service.Modify(new Order
+            {
+                Id = order.Id,
+                Title = order.Title,
+                Lines = [new OrderLine { Id = desk.Id, OrderId = order.Id, Product = "Desk", Notes = [] }]
+            });
+            await service.SaveChanges();
+        }
+
+        return await Read(sp, order.Id);
+    }
+
+    private static async Task<Order> Read(ServiceProvider sp, Guid id)
+    {
+        using var readScope = sp.CreateScope();
+        return await readScope.ServiceProvider.GetRequiredService<OrderContext>().Orders
+            .Include(x => x.Lines!).ThenInclude(x => x.Notes)
+            .SingleAsync(x => x.Id == id);
+    }
+
+    [Test]
+    public async Task A_Guid_Parent_Registers_Nested_Int_Children_Without_Key_Type_Arguments()
+    {
+        var sp = await Build(e => e.Related(x => x.Lines, lines => lines.Related(x => x.Notes)));
+
+        var stored = await AddThenDropTheChairAndTheNote(sp);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(stored.Lines!.Select(x => x.Product), Is.EqualTo(new[] { "Desk" }));
+            Assert.That(stored.Lines!.Single().Notes, Is.Empty);
         });
     }
 
@@ -109,19 +145,13 @@ public class RelatedIntShortcutTests
             .BuildServiceProvider();
         await sp.GetRequiredService<OrderContext>().Database.EnsureCreatedAsync();
 
-        var order = NewOrder();
-        using (var scope = sp.CreateScope())
-        {
-            var service = scope.ServiceProvider.GetRequiredService<IEntityService<Order, Guid>>();
-            await service.Add(order);
-            await service.SaveChanges();
-        }
+        var stored = await AddThenDropTheChairAndTheNote(sp);
 
-        using var readScope = sp.CreateScope();
-        var stored = await readScope.ServiceProvider.GetRequiredService<OrderContext>().Orders
-            .Include(x => x.Lines!).ThenInclude(x => x.Notes)
-            .SingleAsync(x => x.Id == order.Id);
-        Assert.That(stored.Lines!.SelectMany(x => x.Notes ?? []).Select(x => x.Text), Is.EqualTo(new[] { "oak" }));
+        Assert.Multiple(() =>
+        {
+            Assert.That(stored.Lines!.Select(x => x.Product), Is.EqualTo(new[] { "Desk" }));
+            Assert.That(stored.Lines!.Single().Notes, Is.Empty);
+        });
     }
 
     [Test]

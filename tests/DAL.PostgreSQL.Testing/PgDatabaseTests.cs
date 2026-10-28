@@ -177,6 +177,71 @@ public class PgDatabaseTests
     }
 
     [Test]
+    public async Task Restore_with_overwrite_ends_the_sessions_on_the_target()
+    {
+        await using (var cn = await OpenServerConnection())
+        {
+            await CreateService(HyphenatedDb).Create(cn, HyphenatedDb);
+        }
+        // an app restoring its own database: one of its sessions is in use, another sits idle in its pool
+        var appConnectionString = new PgSettings(_server.Host, HyphenatedDb, _server.Username, _server.Password, _server.Port).BuildConnectionString();
+        await using (var idle = new NpgsqlConnection(appConnectionString))
+        {
+            await idle.OpenAsync();
+        }
+        object? result;
+        await using (var busy = new NpgsqlConnection(appConnectionString))
+        {
+            await busy.OpenAsync();
+
+            await CreateService(HyphenatedDb, new CapturingProcessHelper(), overwrite: true).Restore(Backup());
+        }
+        // the app's next query gets a live session on the restored database, not one the server has closed
+        await using (var after = new NpgsqlConnection(appConnectionString))
+        {
+            await after.OpenAsync();
+            await using var command = new NpgsqlCommand("SELECT 1", after);
+            result = await command.ExecuteScalarAsync();
+        }
+        // TearDown's Drop ends no session, so leave none behind
+        NpgsqlConnection.ClearAllPools();
+
+        Assert.That(result, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Restore_with_overwrite_leaves_the_database_alone_when_the_role_may_not_create_one()
+    {
+        // an owner may drop its own database, but without CREATEDB it cannot create it again
+        const string owner = "restore_owner";
+        const string ownerPassword = "owner-pass";
+        await using (var cn = await OpenServerConnection())
+        {
+            await Execute(cn, $"DROP ROLE IF EXISTS {owner}; CREATE ROLE {owner} LOGIN PASSWORD '{ownerPassword}' NOCREATEDB;");
+            await Execute(cn, $"CREATE DATABASE \"{HyphenatedDb}\" OWNER {owner};");
+        }
+        var service = new PgRestoreService(
+            new PgOptions
+            {
+                DbSettings = new PgSettings(_server.Host, HyphenatedDb, owner, ownerPassword, _server.Port),
+                ToolsDirectory = Path.GetTempPath(),
+                Overwrite = true
+            },
+            new CapturingProcessHelper()
+        );
+
+        var ex = await Assert.ThrowsAsync<Exception>(() => service.Restore(Backup()));
+
+        await using var check = await OpenServerConnection();
+        var exists = await CreateService(HyphenatedDb).Exists(check, HyphenatedDb);
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex!.Message, Does.Contain("CREATEDB"));
+            Assert.That(exists, Is.True, "the database was dropped although it could not be created again");
+        });
+    }
+
+    [Test]
     public async Task Restore_hands_the_tool_a_closed_complete_file_and_removes_it_afterwards()
     {
         var contents = new byte[] { 1, 2, 3, 4, 5 };
@@ -273,6 +338,12 @@ public class PgDatabaseTests
             },
             processHelper ?? new CapturingProcessHelper()
         );
+
+    private static async Task Execute(NpgsqlConnection cn, string sql)
+    {
+        await using var command = new NpgsqlCommand(sql, cn);
+        await command.ExecuteNonQueryAsync();
+    }
 
     private async Task<NpgsqlConnection> OpenServerConnection()
     {

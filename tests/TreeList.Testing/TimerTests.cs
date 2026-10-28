@@ -64,13 +64,15 @@ public class TimerTests
             .OrderByHierarchy()
             .ToArray();
 
-        TreeNode<SimplePerson> prevNode = null!;
-        foreach (var sortedNode in sortedNodes)
-        {
-            Assert.That(sortedNode.Parent == null || sortedNode.Parent == prevNode || sortedNode.Parent == prevNode?.Parent
-                          || sortedNode.GetAncestors().Intersect(prevNode!.GetAncestors()).Any(), Is.True);
-            prevNode = sortedNode;
-        }
+        // every node once, each after its parent; depth first: a node is a root, the previous node's child, or the
+        // child of one of the previous node's ancestors
+        var treeNodes = addSelfAvg.Tree.ToHashSet();
+        Assert.That(sortedNodes, Has.Length.EqualTo(treeNodes.Count));
+        Assert.That(sortedNodes.Distinct().Count(treeNodes.Contains), Is.EqualTo(treeNodes.Count), "every node once");
+        var positions = sortedNodes.Select((node, position) => (node, position)).ToDictionary(x => x.node, x => x.position);
+        var misplaced = sortedNodes.Where((node, i) => node.Parent != null
+            && (positions[node.Parent] > i || node.Parent != sortedNodes[i - 1] && !sortedNodes[i - 1].GetAncestors().Contains(node.Parent)));
+        Assert.That(misplaced, Is.Empty);
     }
     [Test]
     public void Create_Relations()

@@ -57,6 +57,7 @@ public class AzureContainmentTests
         Assert.Throws<UnauthorizedAccessException>(() => service.GetAbsoluteUri(identifier));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.Exists(identifier));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetBytes(identifier));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetInfo(identifier));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.Save(identifier, [1]));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.Delete(identifier));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.Move(identifier, "inv-001.pdf"));

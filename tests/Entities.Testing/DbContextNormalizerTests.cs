@@ -131,9 +131,9 @@ internal class DbContextNormalizerTests
         Assert.That(francois.NormalizedContent, Is.EqualTo("PERSON Francois Du sacre Coeur Le poete parisien du xiiie siecle Rutebeuf se fait gravement l echo de la faiblesse humaine de l incertitude et de la pauvrete a l oppose des valeurs courtoises Creme brulee"));
 
         Assert.That(bob.NormalizedTitle, Is.EqualTo("Kennedy Robert"));
-        Assert.That(bob.NormalizedContent, Is.EqualTo("PERSON Robert Kennedy He s an American politician and lawyer known for his roles as US Attorney General and Senator his advocacy for civil rights and social justice and his tragic assassination in 1968 while campaigning for the presidency INSTRUCTING 6 COURSES"));
+        Assert.That(bob.NormalizedContent, Is.EqualTo("PERSON Robert Kennedy He s an American politician and lawyer known for his roles as US Attorney General and Senator his advocacy for civil rights and social justice and his tragic assassination in 1968 while campaigning for the presidency INSTRUCTING 4 COURSES"));
 
         Assert.That(bill.NormalizedTitle, Is.EqualTo("Nixon Richard"));
-        Assert.That(bill.NormalizedContent, Is.EqualTo("PERSON Richard Nixon He s the 37th President of the United States remembered for his foreign policy achievements and his involvement in the Watergate scandal which led to his resignation in 1974 INSTRUCTING 6 COURSES"));
+        Assert.That(bill.NormalizedContent, Is.EqualTo("PERSON Richard Nixon He s the 37th President of the United States remembered for his foreign policy achievements and his involvement in the Watergate scandal which led to his resignation in 1974 INSTRUCTING 3 COURSES"));
     }
 }

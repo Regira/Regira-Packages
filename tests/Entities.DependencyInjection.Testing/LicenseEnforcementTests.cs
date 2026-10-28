@@ -25,10 +25,22 @@ public class LicenseEnforcementTests
 {
     private RSA _testRsa = null!;
 
+    // one key for the fixture: generating a 2048-bit key took longer than the test using it
+    [OneTimeSetUp]
+    public void CreateKey()
+    {
+        _testRsa = RSA.Create(2048);
+    }
+
+    [OneTimeTearDown]
+    public void DisposeKey()
+    {
+        _testRsa.Dispose();
+    }
+
     [SetUp]
     public void Setup()
     {
-        _testRsa = RSA.Create(2048);
         LicenseValidator.TestPublicKey = _testRsa;
     }
 
@@ -36,7 +48,6 @@ public class LicenseEnforcementTests
     public void Teardown()
     {
         LicenseValidator.TestPublicKey = null;
-        _testRsa.Dispose();
     }
 
     private string MakeValidLicenseKey()
@@ -54,7 +65,7 @@ public class LicenseEnforcementTests
         return LicenseSigner.Sign(license, _testRsa);
     }
 
-    private string MakeFreeLicenseKey()
+    private string MakeFreeLicenseKey(int simple = 5, int complex = 2)
     {
         var license = new License
         {
@@ -64,8 +75,8 @@ public class LicenseEnforcementTests
             IssuedAtUnix = DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds(),
             Limits = new Dictionary<string, int>
             {
-                ["entities.simple"] = 5,
-                ["entities.complex"] = 2
+                ["entities.simple"] = simple,
+                ["entities.complex"] = complex
             }
         };
         return LicenseSigner.Sign(license, _testRsa);
@@ -143,6 +154,31 @@ public class LicenseEnforcementTests
                 .For<Department>()
                 .For<Enrollment>()
                 .For<Instructor>());
+    }
+
+    // The free key's 5/2 equal the limits without a key, so only a key with other numbers shows its own apply.
+    [Test]
+    public void For4thSimpleEntity_WithAKeyLimitedToThree_Throws()
+    {
+        var services = new ServiceCollection();
+        services.UseRegira(MakeFreeLicenseKey(simple: 3, complex: 1));
+        var entities = services.UseEntities<ContosoContext>()
+            .For<Course>()
+            .For<Department>()
+            .For<Enrollment>();
+
+        Assert.Throws<LicenseException>(() => entities.For<Instructor>());
+    }
+
+    [Test]
+    public void For2ndComplexEntity_WithAKeyLimitedToOne_Throws()
+    {
+        var services = new ServiceCollection();
+        services.UseRegira(MakeFreeLicenseKey(simple: 3, complex: 1));
+        var entities = services.UseEntities<ContosoContext>()
+            .For<Course, CourseSearchObject, CourseSortBy, CourseIncludes>();
+
+        Assert.Throws<LicenseException>(() => entities.For<Department, CourseSearchObject, CourseSortBy, CourseIncludes>());
     }
 
     [Test]

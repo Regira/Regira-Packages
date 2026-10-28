@@ -424,8 +424,9 @@ public abstract class EntityControllerBase<TEntity, TKey, TSo, TSortBy, TInclude
 reference data) without re-implementing it. Signatures are identical on both bases except `List` and `Search`: on
 the complex base they take `([FromQuery] TSo so, [FromQuery] PagingInfo pagingInfo, [FromQuery] TIncludes[] includes,
 [FromQuery] TSortBy[] sortBy)`, and its `[FromBody] TSo[] so` overloads (`POST list`, `POST search`) have the same
-tail. An override repeats all four: a method with only the first two is no override but a second action on the same
-route, and routing fails as ambiguous. The simple base's signatures:
+tail. An override repeats all four: a method with only the first two is no override but a new action, which inherits
+none of the base action's attributes: under `[ApiController]` its search object and paging both bind from the body,
+and `MapControllers()` throws at startup. The simple base's signatures:
 
 <!-- no-compile -->
 ```csharp
@@ -833,7 +834,7 @@ public static EntityServiceCollectionOptions AddValidator<TScope>(
     Func<IEntityValidatorContext<TScope>, Task> validate)
     where TScope : class;
 
-// receives the request's DbContext (unfiltered) and the write's cancellation token for its queries
+// receives the request's DbContext (no row security; the archived filter applies on net10.0) and the write's cancellation token for its queries
 public static EntityServiceCollectionOptions AddValidator<TContext, TScope>(
     this EntityServiceCollectionOptions options,
     Func<IEntityValidatorContext<TScope>, TContext, CancellationToken, Task> validate)
@@ -1028,12 +1029,12 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
     MappedEntityServiceBuilder<TContext, TEntity, TKey, TDto, TInputDto>
         UseMapping<TDto, TInputDto>(Action<IEntityMapConfigurator>? mapAction = null);
 
-    // Escape hatch — register an explicit Mapster config for a single type pair.
-    // NOT required to project nested DTOs / Related() collections: Mapster maps similar models
-    // (incl. nested children) by convention. Add a pair only when convention gets it wrong —
-    // e.g. a child DTO whose shape diverges, or a child InputDto that needs a custom mapping.
-    // (See entities.instructions.md §Step 10. An empty nested collection is usually a missing
-    //  Includes, not a missing mapping.)
+    // Registers one more type pair with the mapping engine, without a member rule: AutoMapper needs it
+    // for every nested/child pair (a CreateMap); with Mapster it only makes the pair explicit
+    // (RequireExplicitMapping, Compile()) and changes no result. A pair whose shape differs needs a rule
+    // in UseMapsterMapping(config => …) or UseAutoMapper(...) (entities.instructions.md §Step 10).
+    // NOT required to project nested DTOs / Related() collections; an empty nested collection is
+    // usually a missing Includes, not a missing mapping.
     EntityServiceBuilder<TContext, TEntity, TKey> AddMapping<TSource, TTarget>();
 
     // Service registration
@@ -1139,7 +1140,7 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
     // e.Validate(async ctx => …)
     EntityServiceBuilder<TContext, TEntity, TKey> Validate(Func<IEntityValidatorContext<TEntity>, Task> validate);
 
-    // e.Validate(async (ctx, db, token) => …) with the request's DbContext — unfiltered: check a row-secured reference
+    // e.Validate(async (ctx, db, token) => …) with the request's DbContext — no row security (the archived filter applies on net10.0): check a row-secured reference
     // through IEntityReadService<,> in a class validator — and the write's cancellation token
     EntityServiceBuilder<TContext, TEntity, TKey> Validate(
         Func<IEntityValidatorContext<TEntity>, TContext, CancellationToken, Task> validate);
@@ -1827,7 +1828,8 @@ public interface IEntityRequestHandler<in TRequest, TResponse> where TRequest : 
     Task<TResponse?> Handle(TRequest request, CancellationToken token = default);
 }
 public delegate Task<TResponse?> EntityRequestDelegate<TResponse>();
-// open generic → every request; registration order, first registered outermost
+// open generic → every request; closed (IEntityPipelineBehavior<DeleteCommand<Product, int, ProductDto>, DeleteResult<ProductDto>>)
+// → that request type alone; one registration order across both, first registered outermost
 public interface IEntityPipelineBehavior<in TRequest, TResponse> where TRequest : IEntityRequest<TResponse>
 {
     Task<TResponse?> Handle(TRequest request, EntityRequestDelegate<TResponse> next, CancellationToken token = default);
@@ -1862,7 +1864,7 @@ public sealed record DeleteCommand<TEntity, TKey, TDto>(TKey Id) : IEntityReques
 // an owner's attachment routes — TEntity is the int-keyed link (IEntityAttachment<int, int, int, Attachment>); the route
 // wins over the input, and a link of another owner throws an EntityInputException keyed objectId. The attachment
 // controller and the mapped endpoints send them; both downloads send AttachmentFileQuery — the one by name finds the
-// link first — so one handler override covers them
+// link first — so one handler override covers them. No startup check covers their type lists
 // ValidateInput as on SaveCommand: the input's DataAnnotations first; the attachment controller passes false
 public sealed record UploadAttachmentCommand<TEntity, TDto, TInputDto>(int ObjectId, TInputDto Input, INamedFile File, bool ValidateInput = true)
     : IEntityRequest<SaveResult<TDto>>;
@@ -1935,7 +1937,7 @@ public sealed class EntityExceptionEndpointFilter : IEndpointFilter;
 
 ## Response Types
 
-Shipped by `Regira.Entities.Mediator`, under the namespace they have always had.
+Shipped by `Regira.Entities.Mediator`, under the `Regira.Entities.Web.Models` namespace.
 
 ```csharp
 using Regira.Entities.Web.Models;

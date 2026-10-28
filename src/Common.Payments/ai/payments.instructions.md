@@ -139,6 +139,7 @@ var paylink = response.Paylink;                  // send the payer here
 
 `Save` and `CreatePaylink` send `Amount`, `Currency` and `ExpiresAt` (the link's expiry, one day after it is created when unset; `ExpiresAt` is settable on `Payment`, and `IPayment` reads `null` for an implementation without it), the sender contract number coming from `PomSettings`, and set the payment's `Id` to POM's document id. They send nothing else: `Description` and `Metadata` stay behind, so a POM payment carries no reference of yours — keep POM's id on your own record; `CreatePaylink` also returns POM's `PomPaymentResponse`, with the link in `Paylink`.
 Every instance sends through a connection pool the package shares. An instance keeps its POM token and, when POM refuses it (`401`), authenticates again and sends the request once more, so it can be registered as a singleton.
+`Details` maps POM's `paymentStatus` by name onto `PaymentStatus` (`Open`, `Pending`, `Authorized`, `Paid`, `Canceled`, `Expired`, `Failed`; case-sensitive). Any other value leaves `Status` `null`, and `NOT_FOUND` returns `null`.
 `PomException` is thrown on API errors — check `StatusCode` and `PomResponse` for details.
 
 ---

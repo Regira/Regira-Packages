@@ -1,6 +1,5 @@
 using Microsoft.Extensions.Configuration;
 using Regira.IO.Storage.GitHub;
-using Regira.IO.Storage.SSH;
 
 namespace IO.Testing.Helpers;
 
@@ -25,16 +24,6 @@ public static class TestSecrets
         Key = Require("Storage:GitHub:Key", "a GitHub token that may write the contents of that repository"),
         Branch = Configuration["Storage:GitHub:Branch"] ?? "main",
         ContentPath = contentPath
-    };
-
-    public static SftpConfig Ssh() => new()
-    {
-        Host = Require("Storage:SSH:Host", "the host name of an SFTP server the tests may write to"),
-        Port = int.Parse(Require("Storage:SSH:Port", "the port of that SFTP server")),
-        UserName = Require("Storage:SSH:Username", "a user name on that SFTP server"),
-        Password = Configuration["Storage:SSH:Password"],
-        ContainerName = Configuration["Storage:SSH:ContainerName"],
-        HostKeyFingerprint = Configuration["Storage:SSH:HostKeyFingerprint"]
     };
 
     private static string Require(string key, string target)

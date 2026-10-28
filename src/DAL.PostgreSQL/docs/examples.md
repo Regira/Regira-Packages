@@ -20,7 +20,9 @@ IMemoryFile backup = await new PgBackupService(options, processHelper).Backup();
 ## Example 2: Copy one database onto another
 
 `Overwrite` drops the target database and recreates it from the backup — anything the backup does not
-contain is lost. Without it, restoring onto a database that already exists fails.
+contain is lost. It ends the sessions still connected to the target first, so it needs PostgreSQL 13 or later
+and a role that may create databases and end those sessions; otherwise it fails before anything is dropped.
+Without it, restoring onto a database that already exists fails.
 
 ```csharp
 var processHelper = new ProcessHelper();

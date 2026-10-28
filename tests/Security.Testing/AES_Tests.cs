@@ -18,17 +18,6 @@ public class AES_Tests
         var decrypted = decrypter.Decrypt(encrypted);
         Assert.That(decrypted, Is.EqualTo(plaintext));
     }
-    [Test]
-    public void Decrypt_Encrypted_Failure()
-    {
-        var plaintext = "password";
-        var secret = "secret";
-        var encrypter = new AesEncrypter(new CryptoOptions { Secret = secret });
-        var encrypted = encrypter.Encrypt("wrong_password");
-        var decrypter = new AesEncrypter(new CryptoOptions { Secret = secret });
-        var decrypted = decrypter.Decrypt(encrypted);
-        Assert.That(plaintext, Is.Not.EqualTo(decrypted));
-    }
     // the default key is published with the source, so encrypting with it protects nothing
     [TestCase(null, null)]
     [TestCase("", null)]

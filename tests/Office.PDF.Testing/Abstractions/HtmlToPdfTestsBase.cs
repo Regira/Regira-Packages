@@ -43,14 +43,6 @@ public abstract class HtmlToPdfTestsBase(IHtmlToPdfService backend, string outpu
         Assert.That(page.Height, Is.EqualTo(expected.Height * PointsPerMm).Within(Tolerance));
     }
 
-    [Test]
-    public async Task The_File_Is_A_Pdf()
-    {
-        using var file = await Backend.Create(new HtmlInput { HtmlContent = "<p>Page</p>" });
-
-        Assert.That(file.ContentType, Is.EqualTo(ContentTypes.PDF));
-    }
-
     // every backend reads a missing HtmlContent as an empty page, not as an exception of its own
     [Test]
     public async Task An_Input_Without_Html_Content_Is_A_Blank_Page()
@@ -58,6 +50,11 @@ public abstract class HtmlToPdfTestsBase(IHtmlToPdfService backend, string outpu
         var pdf = await Create(new HtmlInput());
 
         Assert.That(pdf.Pages, Has.Count.EqualTo(1));
+        Assert.Multiple(() =>
+        {
+            Assert.That(pdf.Pages[0].Words, Is.Empty);
+            Assert.That(pdf.Pages[0].Images, Is.Empty);
+        });
     }
 
     [Test]
@@ -178,9 +175,11 @@ public abstract class HtmlToPdfTestsBase(IHtmlToPdfService backend, string outpu
     }
 
 
+    // every scenario checks the content type the file carries; reading it checks the bytes are a PDF
     private async Task<PdfFacts> Create(HtmlInput input)
     {
         using var file = await Backend.Create(input);
+        Assert.That(file.ContentType, Is.EqualTo(ContentTypes.PDF));
         return await ReadPdf(file);
     }
 

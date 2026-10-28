@@ -28,7 +28,8 @@
         "src/Entities.DependencyInjection/Entities.DependencyInjection.csproj",
         "src/Entities.Web/Entities.Web.csproj",
         "src/Entities.Validation.FluentValidation/Entities.Validation.FluentValidation.csproj",
-        "src/Entities.Mediator/Entities.Mediator.csproj"
+        "src/Entities.Mediator/Entities.Mediator.csproj",
+        "src/Entities.Mapping.Mapster/Entities.Mapping.Mapster.csproj"
       ],
       "guideDirs": [
         "src/Common.Entities/ai",
@@ -46,6 +47,8 @@
         "src/Common.Entities/docs/services.md",
         "src/Common.Entities/docs/web-endpoints.md"
       ],
+      "//packages": "MediatR for the recipe that dispatches entity requests through a mediator library; 12.5.0 is the version a keyless app pins",
+      "packages": { "MediatR": "12.5.0" },
       "usings": [
         "System.ComponentModel.DataAnnotations",
         "System.Threading",

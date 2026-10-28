@@ -20,7 +20,7 @@ public abstract class AttachmentControllerBase(IEntityService<Attachment, int> s
     [HttpGet("{id}")]
     public virtual async Task<IActionResult> GetFile([FromRoute] int id, bool inline = true)
     {
-        var item = await service.Details(id);
+        var item = await service.Details(id, HttpContext.RequestAborted);
 
         if (item == null)
         {

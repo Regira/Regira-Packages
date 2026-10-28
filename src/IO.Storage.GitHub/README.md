@@ -1,6 +1,6 @@
 # Regira.IO.Storage.GitHub
 
-Stores files in a GitHub repository through the [Regira IO.Storage](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/) contracts, over the REST API's [repository contents](https://docs.github.com/en/rest/repos/contents) endpoints. `GitHubService` implements `IFileService` with a `GitHubCommunicator` and an `ISerializer`: reads come from the repository, and `Save`, `Move` and `Delete` each create a commit on the configured branch, so it is not suited to high-frequency writes.
+Stores files in a GitHub repository through the [Regira IO.Storage](https://regira.github.io/Regira-Packages/src/Common.IO.Storage/) contracts, over the REST API's [repository contents](https://docs.github.com/en/rest/repos/contents) endpoints, and its [git blobs](https://docs.github.com/en/rest/git/blobs) for a file over 1 MB. `GitHubService` implements `IFileService` with a `GitHubCommunicator` and an `ISerializer`: reads come from the repository, and `Save`, `Move` and `Delete` each create a commit on the configured branch, so it is not suited to high-frequency writes.
 
 ## Installation
 

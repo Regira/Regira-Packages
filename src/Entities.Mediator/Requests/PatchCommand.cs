@@ -6,11 +6,13 @@ using Regira.Entities.Web.Models;
 namespace Regira.Entities.Mediator.Requests;
 
 /// <summary>
-/// Applies a JSON Merge Patch (RFC 7386) to an existing entity, as <c>PATCH {id}</c> does. The stored entity is
+/// Applies a JSON Merge Patch (RFC 7386) to an existing entity, as <c>PATCH {id}</c> does. The merge is one level deep:
+/// a nested object in the patch replaces the stored one whole. The stored entity is
 /// serialized as the merge base, patched, and read back as <typeparamref name="TInputDto"/>, so only what the input
 /// model carries can change, and its property names have to match the entity's. The merged input is checked
-/// (<see cref="DataAnnotationsEntityInputValidator"/>) before it is saved as a <see cref="SaveCommand{TEntity,TKey,TDto,TInputDto}"/>
-/// would save it. Archived rows can be patched — that is how one is restored. <c>null</c> when the row does not exist.
+/// (<see cref="DataAnnotationsEntityInputValidator"/>) and then saved by the <see cref="SaveCommand{TEntity,TKey,TDto,TInputDto}"/>
+/// handler — the app's override when one is registered — called directly, so the behaviours run once, around the patch.
+/// Archived rows can be patched — that is how one is restored. <c>null</c> when the row does not exist.
 /// <para>
 /// <see cref="Patch"/> has to be a JSON object; anything else is refused with an <c>EntityInputException</c>, a 400. <see cref="SerializerOptions"/> are the ones the merge reads and writes
 /// with; the default is <see cref="JsonSerializerDefaults.Web"/>, ignoring cycles, with enums read by name or by number.

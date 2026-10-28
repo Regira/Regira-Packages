@@ -82,6 +82,7 @@ internal sealed class EntityEndpointMapper
         var route = options.Route ?? EntityEndpointNames.Route(entityType);
 
         var group = parent.MapGroup(route).WithTags(entityType.Name);
+        Type[] requests;
         if (registration.IsComplex)
         {
             if (registration.SortByType == null || registration.IncludesType == null)
@@ -90,6 +91,8 @@ internal sealed class EntityEndpointMapper
             }
             Invoke(MapComplexMethod.MakeGenericMethod(entityType, registration.KeyType, registration.SearchObjectType,
                 registration.SortByType, registration.IncludesType, dtoType, inputDtoType), group, options);
+            requests = EntityRequestTypes.Complex(entityType, registration.KeyType, registration.SearchObjectType,
+                registration.SortByType, registration.IncludesType, dtoType, inputDtoType);
         }
         else
         {
@@ -97,6 +100,7 @@ internal sealed class EntityEndpointMapper
             // that one too, the endpoints send the ListQuery and SearchQuery a controller sends, so one handler replaces either
             var searchObjectType = registration.SearchObjectType == typeof(SearchObject<int>) ? typeof(SearchObject) : registration.SearchObjectType;
             Invoke(MapSimpleMethod.MakeGenericMethod(entityType, registration.KeyType, searchObjectType, dtoType, inputDtoType), group, options);
+            requests = EntityRequestTypes.Simple(entityType, registration.KeyType, searchObjectType, dtoType, inputDtoType);
         }
 
         var attachments = AttachmentsOf(entityType);
@@ -108,7 +112,7 @@ internal sealed class EntityEndpointMapper
                 group, options, nameDownloads);
         }
 
-        _registry?.Add(new MappedEntity(entityType, route, dtoType, inputDtoType, attachments));
+        _registry?.Add(new MappedEntity(entityType, route, dtoType, inputDtoType, attachments, requests));
         return group;
     }
 
@@ -203,7 +207,7 @@ internal sealed class EntityEndpointMapper
             group.MapGet("", async (HttpContext http) =>
                 {
                     var (so, paging) = BindQuery<TEntity, TSearchObject>(http);
-                    return Ok(await Sender(http).Send(new ListQuery<TEntity, TKey, TSearchObject, TDto>(so, paging)));
+                    return Ok(await Sender(http).Send(new ListQuery<TEntity, TKey, TSearchObject, TDto>(so, paging), http.RequestAborted));
                 })
                 .Describe<TEntity>(EntityEndpoint.List, options)
                 .Produces<ListResult<TDto>>()
@@ -214,7 +218,7 @@ internal sealed class EntityEndpointMapper
             group.MapGet("search", async (HttpContext http) =>
                 {
                     var (so, paging) = BindQuery<TEntity, TSearchObject>(http);
-                    return Ok(await Sender(http).Send(new SearchQuery<TEntity, TKey, TSearchObject, TDto>(so, paging)));
+                    return Ok(await Sender(http).Send(new SearchQuery<TEntity, TKey, TSearchObject, TDto>(so, paging), http.RequestAborted));
                 })
                 .Describe<TEntity>(EntityEndpoint.Search, options)
                 .Produces<SearchResult<TDto>>()
@@ -237,7 +241,7 @@ internal sealed class EntityEndpointMapper
             group.MapGet("", async (HttpContext http) =>
                 {
                     var (so, paging, includes, sortBy) = BindComplexQuery<TEntity, TSearchObject, TSortBy, TIncludes>(http, bindSearchObject: true);
-                    return Ok(await Sender(http).Send(new ListQuery<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto>([so], paging, includes, sortBy)));
+                    return Ok(await Sender(http).Send(new ListQuery<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto>([so], paging, includes, sortBy), http.RequestAborted));
                 })
                 .Describe<TEntity>(EntityEndpoint.List, options)
                 .Produces<ListResult<TDto>>()
@@ -245,7 +249,7 @@ internal sealed class EntityEndpointMapper
             group.MapPost("list", async (TSearchObject?[] searchObjects, HttpContext http) =>
                 {
                     var (_, paging, includes, sortBy) = BindComplexQuery<TEntity, TSearchObject, TSortBy, TIncludes>(http, bindSearchObject: false);
-                    return Ok(await Sender(http).Send(new ListQuery<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto>(searchObjects, paging, includes, sortBy)));
+                    return Ok(await Sender(http).Send(new ListQuery<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto>(searchObjects, paging, includes, sortBy), http.RequestAborted));
                 })
                 .Describe<TEntity>(EntityEndpoint.List, options)
                 .Produces<ListResult<TDto>>()
@@ -256,7 +260,7 @@ internal sealed class EntityEndpointMapper
             group.MapGet("search", async (HttpContext http) =>
                 {
                     var (so, paging, includes, sortBy) = BindComplexQuery<TEntity, TSearchObject, TSortBy, TIncludes>(http, bindSearchObject: true);
-                    return Ok(await Sender(http).Send(new SearchQuery<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto>([so], paging, includes, sortBy)));
+                    return Ok(await Sender(http).Send(new SearchQuery<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto>([so], paging, includes, sortBy), http.RequestAborted));
                 })
                 .Describe<TEntity>(EntityEndpoint.Search, options)
                 .Produces<SearchResult<TDto>>()
@@ -264,7 +268,7 @@ internal sealed class EntityEndpointMapper
             group.MapPost("search", async (TSearchObject?[] searchObjects, HttpContext http) =>
                 {
                     var (_, paging, includes, sortBy) = BindComplexQuery<TEntity, TSearchObject, TSortBy, TIncludes>(http, bindSearchObject: false);
-                    return Ok(await Sender(http).Send(new SearchQuery<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto>(searchObjects, paging, includes, sortBy)));
+                    return Ok(await Sender(http).Send(new SearchQuery<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto>(searchObjects, paging, includes, sortBy), http.RequestAborted));
                 })
                 .Describe<TEntity>(EntityEndpoint.Search, options)
                 .Produces<SearchResult<TDto>>()
@@ -285,7 +289,7 @@ internal sealed class EntityEndpointMapper
                 var errors = new List<EntityInputError>();
                 var archived = EntityQueryBinder.BindValue<ArchivedFilter?>(http.Request.Query, "archived", errors);
                 ThrowIfInvalid<TEntity>(errors);
-                return Ok(await Sender(http).Send(new DetailsQuery<TEntity, TKey, TDto>(id, archived)));
+                return Ok(await Sender(http).Send(new DetailsQuery<TEntity, TKey, TDto>(id, archived), http.RequestAborted));
             })
             .Describe<TEntity>(EntityEndpoint.Details, options)
             .Produces<DetailsResult<TDto>>()
@@ -351,7 +355,7 @@ internal sealed class EntityEndpointMapper
         if (options.Maps(EntityEndpoint.AttachmentDetails))
         {
             group.MapGet("attachments/{id}", async (int id, HttpContext http)
-                    => Ok(await Sender(http).Send(new DetailsQuery<TLink, int, TDto>(id))))
+                    => Ok(await Sender(http).Send(new DetailsQuery<TLink, int, TDto>(id), http.RequestAborted)))
                 .Describe<TOwner>(EntityEndpoint.AttachmentDetails, options)
                 .Produces<DetailsResult<TDto>>()
                 .ProducesProblem(StatusCodes.Status404NotFound);
@@ -361,7 +365,7 @@ internal sealed class EntityEndpointMapper
             group.MapGet("attachments", async (HttpContext http) =>
                 {
                     var (so, paging) = BindQuery<TLink, EntityAttachmentSearchObject>(http);
-                    return Ok(await Sender(http).Send(new ListQuery<TLink, int, EntityAttachmentSearchObject, TDto>(so, paging)));
+                    return Ok(await Sender(http).Send(new ListQuery<TLink, int, EntityAttachmentSearchObject, TDto>(so, paging), http.RequestAborted));
                 })
                 .Describe<TOwner>(EntityEndpoint.AttachmentList, options)
                 .Produces<ListResult<TDto>>()
@@ -370,7 +374,7 @@ internal sealed class EntityEndpointMapper
                 {
                     var (so, paging) = BindQuery<TLink, EntityAttachmentSearchObject>(http);
                     so.ObjectId = [objectId];
-                    return Ok(await Sender(http).Send(new ListQuery<TLink, int, EntityAttachmentSearchObject, TDto>(so, paging)));
+                    return Ok(await Sender(http).Send(new ListQuery<TLink, int, EntityAttachmentSearchObject, TDto>(so, paging), http.RequestAborted));
                 })
                 .Describe<TOwner>(EntityEndpoint.AttachmentList, options)
                 .Produces<ListResult<TDto>>()
@@ -394,14 +398,14 @@ internal sealed class EntityEndpointMapper
         {
             var byId = group.MapGet("files/{id}", async (int id, HttpContext http, bool inline = true) =>
                 {
-                    var attachment = await Sender(http).Send(new AttachmentFileQuery<TLink>(id));
+                    var attachment = await Sender(http).Send(new AttachmentFileQuery<TLink>(id), http.RequestAborted);
                     return attachment == null ? Results.Problem(statusCode: StatusCodes.Status404NotFound) : attachment.ToFileResult(http, inline);
                 })
                 .Describe<TOwner>(EntityEndpoint.Download, options);
             var byName = group.MapGet("{objectId}/files/{*fileName}", async (int objectId, string fileName, HttpContext http, bool inline = true) =>
                 {
-                    var id = await AttachmentRouteValues.FindLinkId<TLink>(http.RequestServices, objectId, fileName);
-                    var attachment = id == null ? null : await Sender(http).Send(new AttachmentFileQuery<TLink>(id.Value));
+                    var id = await AttachmentRouteValues.FindLinkId<TLink>(http.RequestServices, objectId, fileName, http.RequestAborted);
+                    var attachment = id == null ? null : await Sender(http).Send(new AttachmentFileQuery<TLink>(id.Value), http.RequestAborted);
                     return attachment == null ? Results.Problem(statusCode: StatusCodes.Status404NotFound) : attachment.ToFileResult(http, inline);
                 })
                 .Describe<TOwner>(EntityEndpoint.Download, options);

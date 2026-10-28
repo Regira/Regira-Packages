@@ -367,7 +367,7 @@ public class CookbookTests
     // ─── GetBrothers ──────────────────────────────────────────────────────────
 
     [Test]
-    public void GetBrothers_ForRecipeNode_ReturnsOtherRecipes()
+    public void GetBrothers_Of_A_Root_Recipe_Is_Empty()
     {
         var data = CreateData();
         var pastaNode = data.Tree.Roots.First(n => n.Value == data.Pasta);

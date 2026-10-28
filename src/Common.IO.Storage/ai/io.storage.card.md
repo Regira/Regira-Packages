@@ -18,7 +18,8 @@
 - **Listing:** `List(new FileSearchObject { FolderUri, Extensions, Recursive, Type = FileEntryTypes.Files })`
   answers identifiers; `Type` defaults to files and folders both.
 - **Reading:** `GetBytes` or `GetStream`. Check `Exists` first when the file may be missing: the local disk answers
-  `null` for it, and not every remote store does (SFTP throws).
+  `null` for it, and not every remote store does (SFTP throws). `GetInfo` answers the size and last-modified time
+  (`StoredFileInfo`) without the content, `null` for a missing file.
 - **ZIP:** `ZipFileService` browses an archive through `IFileService`, `ZipBuilder` creates one, `ZipManager` handles
   password-protected archives.
 - **Two stores in one app:** a second `IFileService` registration replaces the first, so register the second store

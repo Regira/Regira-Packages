@@ -32,6 +32,10 @@ public class ProductRepository(MongoCommunicator comm, ISerializer serializer)
 {
     public Product ToEntity(BsonDocument bson) => Convert(bson);
 
+    /// <summary>The document as Save stored it, read without the repository's own mapping.</summary>
+    public Task<BsonDocument> StoredDocument(string id)
+        => Collection.Find(GetFilter(GetSearchObject(id))).SingleAsync();
+
     protected override FilterDefinition<BsonDocument> GetFilter(IDictionary<string, object?>? so)
     {
         var filter = base.GetFilter(so);   // keeps the Id filter

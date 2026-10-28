@@ -234,7 +234,7 @@ The table below lists the optional steps; the required steps (1–6, 11–15) fo
 | 7. Processors | Skip by default | You need to fill `[NotMapped]` or other derived values after fetching from the database |
 | 8. Preppers & Validators | Skip by default | A **prepper**: you must compute totals/codes/FKs or manage child collections before the entity reaches EF Core. A **validator**: a write must be refused with a field-level 400 — a referenced row that must exist (a 400 instead of the database's 409), a status transition, a rule on delete |
 | 9. Primers & Reactors | Skip by default | A **primer**: you need EF Core interceptor behavior during `SaveChanges()` or transaction-aware stamping across modified entities. A **reactor**: a side effect must follow a committed change — mail, a background job, a follow-up workflow when a status changes |
-| 10. Mapping & AfterMappers | Skip extra mapping config by default | DTO enrichment needs an after-mapper (`UseMapping<…>().After(...)`), or a nested/child mapping needs help Mapster's convention can't infer (`AddMapping<TSource, TTarget>()`) |
+| 10. Mapping & AfterMappers | Skip extra mapping config by default | DTO enrichment needs an after-mapper (`UseMapping<…>().After(...)`; the entity's own DTO only — a value also shown where the DTO is nested is a `[NotMapped]` getter, Step 10), or a nested/child type whose shape differs from its entity needs a mapping rule (`UseMapsterMapping(config => …)`, Step 10) |
 
 **Mnemonic:** Preppers run synchronously inside `Add()` / `Modify()` / `Save()`, *before* the change tracker — so computed values (totals, codes, FKs) are set the moment `await service.Add(item)` returns. Validators run right after the last prepper (and inside `Remove`), and refuse the write before the entity is tracked. Primers run later, in the `SaveChanges` interceptor, and can inspect every entity in the transaction. Reactors run last, once the transaction is committed.
 
@@ -389,7 +389,7 @@ public record SearchObject<TKey> : ISearchObject<TKey>
   **nullable and uninitialized** (`ICollection<LineInputDto>? Lines { get; set; }`), never `= []`. An omitted
   collection then maps as `null` (untouched); an initialized/non-nullable property defaults to `[]` = **delete-all**
   on any save that doesn't send it (a status-only PATCH silently clears the rows)
-- Use `AfterMapper` for computed/calculated properties (e.g. URLs, display names) in DTO
+- Use `AfterMapper` for computed/calculated properties (e.g. URLs) on the entity's own DTO; a value also shown on a nested DTO (a display name) is a `[NotMapped]` getter (Step 10)
 
 > **⚠️ Exclude a server-owned field and restore it in the same edit.** A field absent from `TInputDto` maps
 > as `null`/default on every PUT *and* PATCH — 200 OK, silent corruption (a status-only PATCH zeroes a
@@ -603,7 +603,7 @@ e.Validate(ctx =>
 });
 e.Validate(async (ctx, db, token) =>
 {
-    // db sees every row: with scoped reads (tenants, owners), see the row-security note below
+    // db skips row security (tenants, owners: see the note below); on net10.0 the archived filter still applies
     if (ctx.Operation != EntityWriteOperation.Remove && !await db.Customers.AnyAsync(c => c.Id == ctx.Item.CustomerId, token))
         ctx.AddError(nameof(Order.CustomerId), $"Customer {ctx.Item.CustomerId} does not exist.");
 });
@@ -662,7 +662,7 @@ read as the rule (`ValueTooLarge`, `order.notOpen`). The 400 body is in §Respon
 
 - **The runtime type decides** — unlike preppers, which match the service's declared entity: a `Person` saved
   through the `Party` service gets its `Person` validators too. The exception is still the service's own
-  `EntityInputException<Party>`, so the generated endpoint's typed `catch` matches.
+  `EntityInputException<Party>`.
 - ⚠️ **The place of registration never narrows the scope.** Every registration joins the one list every write
   service imports: an `EntityValidatorBase<IHasCode>` added inside `For<Order>()` checks every entity that has a
   code. Register an interface- or base-scoped validator once, with `options.AddValidator<T>()` in `UseEntities()`;
@@ -684,7 +684,9 @@ read as the rule (`ValueTooLarge`, `order.notOpen`). The 400 body is in §Respon
   filtered read service — a class validator taking `IEntityReadService<Customer, int>` and refusing when
   `await customers.Details(id, token)` is `null` — or repeat the scope's predicate in the query. Never inject
   `IEntityService<>` into a validator: its write service imports every validator, so the container meets a circular
-  dependency and no entity service in the app resolves.
+  dependency and no entity service in the app resolves. On `net10.0` the archived EF filter does apply to `db`, so an
+  archived row is not found there (`net8.0` installs none); to include archived rows on either target, query with
+  `db.Customers.FilterArchivable(ArchivedFilter.Included)` (`Regira.Entities.EFcore.Extensions`).
 - **Queries on `db` track nothing while the validators run**, `Find` / `FindAsync` included, so a lookup that returns
   the row being written — a uniqueness check `db.Orders.FirstOrDefaultAsync(o => o.Code == ctx.Item.Code, token)` on a
   `PUT` that keeps its code — leaves the write free to track its own instance. Only an explicit `AsTracking()` opts
@@ -830,7 +832,9 @@ options.AddReactor<AuditReactor>();    // global — an EntityReactorBase<IHasTi
   (a fresh one after a reactor throws), with a fresh `DbContext`: a reactor that writes calls `SaveChanges()` itself, and that save triggers the reactors of what it wrote. Nesting stops at 8
   levels with a logged error — guard `CanReact` so a chain ends. Within a request, `IHttpContextAccessor.HttpContext`
   and its `User` still reach the reactor's scope, since they run before the call that commits returns; a save from a
-  job or seeder has none.
+  job or seeder has none. So the request user's global filters scope the reactor's reads and its `Modify` too: a
+  reactor that must reach rows that user cannot see (a waiting list, a cascade) sets an explicit identity in its own
+  scope first (§Security & Authorization → *Scope before any early return*).
 - **A reactor that throws is logged and skipped** — the data is committed, so the save still succeeds and the
   other reactors still run. The save's `CancellationToken` does not cancel them.
 - **At most once** — a crash between the commit and the reaction loses it, the enqueue to a job system included,
@@ -845,17 +849,26 @@ options.AddReactor<AuditReactor>();    // global — an EntityReactorBase<IHasTi
 
 ### Step 10: Mapping & AfterMappers (Optional extra configuration)
 
-**Mapping configuration is optional.** With Mapster (the default), `TEntity ↔ TDto`/`TInputDto` mapping — **including nested objects and child collections** — works by convention whenever the DTO shape resembles the entity. Most entities need no mapping statements at all (the Category, Product and Order examples register none and still round-trip their nested collections). Add configuration only for the specific cases below.
+**Mapping configuration is optional.** With Mapster (the default), `TEntity ↔ TDto`/`TInputDto` mapping — **including nested objects and child collections** — works by convention whenever the DTO shape resembles the entity. Most entities need no mapping statements at all (the Category, Product and Order examples register none and still round-trip their nested collections). A back-navigation (`Child.Parent`) is safe as well: `UseMapsterMapping()` turns on Mapster's `PreserveReference(true)`, so a cycle maps to the same DTO instance, and the default JSON options' `IgnoreCycles` drops the repeat. Add configuration only for the specific cases below.
 
 - **`UseMapping<TDto, TInputDto>()`** — call it when you need to attach an **after-mapper** or customise the top-level mapping. It registers `TEntity→TDto` + `TInputDto→TEntity` and returns a builder you chain the after-mapper onto:
   - `.After(...)` — enrich the output DTO after `Entity→DTO` mapping (computed properties, URLs)
   - `.AfterInput(...)` — modify the entity after `InputDto→Entity` mapping
   - `.After<TAfterMapper>()` — separate class when DI is needed; `options.AddAfterMapper<T>()` registers a global one. The class-based overload returns the **untyped** builder (drops `TDto`/`TInputDto`), so `.AfterInput(...)` no longer compiles after it (CS1061) — chain the typed `.After(...)`/`.AfterInput(...)` inline when you need both (e.g. a renamed DTO collection — see [`entities.patterns.md`](./entities.patterns.md) — Renamed DTO property)
-- **`AddMapping<TSource, TTarget>()`** — an escape hatch. Register an explicit mapping for a specific (usually nested/child) type pair **only** when Mapster's convention produces the wrong result — e.g. a child DTO whose shape diverges from the entity, or a child input type that needs a custom mapping. It is **not** required to project nested related collections; Mapster does that by convention.
+- **`AddMapping<TSource, TTarget>()`** — registers one more (usually nested/child) type pair with the mapping engine, **without a member rule**. AutoMapper needs it for every nested pair (each call is a `CreateMap`). With Mapster the pair maps by convention either way: the call only makes it explicit, which `RequireExplicitMapping` asks for and `Compile()` checks at startup, and it **does not change** what the pair maps to. It is **not** required to project nested related collections.
+- **A child type whose shape differs from its entity** (a renamed or computed member) needs a **rule** in the engine's own configuration. The rule applies wherever the pair is mapped, nested inside another DTO included, where an after-mapper runs for the read root only:
+
+<!-- no-compile -->
+```csharp
+options.UseMapsterMapping(config => config.ForType<OrderLine, OrderLineDto>()
+    .Map(dto => dto.Qty, line => line.Quantity));
+// AutoMapper: options.UseAutoMapper((sp, cfg) => cfg.CreateMap<OrderLine, OrderLineDto>()
+//     .ForMember(dto => dto.Qty, o => o.MapFrom(line => line.Quantity)));
+```
 
 > ⚠️ **An after-mapper runs for the read root only** (§Step 7): the same DTO nested inside another entity's projection is mapped without it. So a computed field that must also appear on, say, a `PersonCoreDto` carried by every `TicketDto` cannot come from an after-mapper — put it on the entity as a `[NotMapped]` getter and let Mapster project it. The failure is silent in the worst way: the field populates on `/people` and is blank on every ticket row, board card and comment, and nothing — compiler, DI validation, or a single-page smoke test — reports it.
 
-> **Empty nested collection in a response?** That is almost always a missing **`Includes`** (the navigation was never loaded from the database), **not** a missing mapping — see §Step 4 and Troubleshooting. Check `e.Includes(...)` before adding any `AddMapping`.
+> **Empty nested collection in a response?** That is almost always a missing **`Includes`** (the navigation was never loaded from the database), **not** a missing mapping — see §Step 4 and Troubleshooting. Check `e.Includes(...)` before touching the mapping.
 
 > **→ See:** [`entities.examples.md`](./entities.examples.md) — Additional Patterns > Mapping / AfterMapper
 
@@ -886,7 +899,7 @@ Add `DbSet<YourEntity>` and configure any relationships in `OnModelCreating`.
 >     .ConfigureWarnings(w => w.Ignore(CoreEventId.PossibleIncorrectRequiredNavigationWithQueryFilterInteractionWarning)));
 > ```
 >
-> The ignore covers every such pair in the context, reference data included. Regira's startup validation (net10.0) still reports each separately registered dependent behind a required foreign key that has no query filter of its own.
+> The ignore covers every such pair in the context, reference data included. Regira's startup validation (net10.0) still reports each separately registered dependent behind a required foreign key that has no query filter of its own; an `IArchivable` dependent's own archived filter does not count, since it hides the dependent's archived rows, not those of an archived parent.
 >
 > **Mirror the parent's archived filter onto a dependent?** Per dependent:
 >
@@ -896,7 +909,7 @@ Add `DbSet<YourEntity>` and configure any relationships in `OnModelCreating`.
 > | is reached **only** through the parent's `Include(...)` | **No** — the parent's filter already removed it |
 > | sits **two hops** away (`!x.Session!.Event!.IsArchived`) | **No** — needs `APPLY`, which SQLite lacks. Filter explicitly in the queries that care |
 >
-> It never collides with the named archived filter, because that one only touches `IArchivable` types.
+> It never collides with the named archived filter. On a dependent that is not `IArchivable` there is nothing to collide with; on one that is (a list item archived on its own), the anonymous `HasQueryFilter(x => !x.Parent!.IsArchived)` is kept beside the archived filter as the named `Regira:Model` filter and applies as written — [`entities.patterns.md`](./entities.patterns.md) → Soft Delete.
 >
 > ⚠️ **A mirrored filter leaves the dependent's own routes.** EF inlines it into every correlated `Any(x => …)`
 > over that entity from anywhere else — including the parent's search (`Assignments.Any(a => a.ReturnedOn == null)`).
@@ -942,7 +955,7 @@ table below rather than reasoning it out.
 > `get_package(id: "Regira.Entities.Web", section: "entities.web.namespaces")` for the exact `using` set
 > (this guide ships with `Regira.Entities.Web` and is served over MCP only — it does not extract locally).
 
-> **Keep controller routes resource-relative and spell the resource** — `[Route("products")]` — then apply a shared `api` base **once** at host/app level so it stays configurable (`app.UsePathBase`, reverse proxy, or a global route-prefix convention). Avoid the `[controller]` token: it expands to the class-name stem, so a `SupplierController` serves `/Supplier`, not the kebab-case plural `/suppliers` the SPA calls — a 404 on every request for that entity. See [`entities.setup.md`](./entities.setup.md) — API route prefix.
+> **Keep controller routes resource-relative and spell the resource** — `[Route("products")]` — then apply a shared `api` base **once** at host/app level so it stays configurable (`app.UsePathBase`, reverse proxy, or `UseCentralRoutePrefix`). Avoid the `[controller]` token: it expands to the class-name stem, so a `SupplierController` serves `/Supplier`, not the kebab-case plural `/suppliers` the SPA calls — a 404 on every request for that entity. See [`entities.setup.md`](./entities.setup.md) — API route prefix.
 
 | `.For<>()` registration | Required controller base | Inject as (outside a controller) |
 |---|---|---|
@@ -997,7 +1010,7 @@ IEntityService<Order, int, OrderSearchObject, OrderSortBy, OrderIncludes>       
 
 > **Response envelope.** Responses are wrapped, not bare DTOs: Details → `{ "item": {…} }`; List → `{ "items": [...] }`; Search → `{ "items": [...], "count": N }` (each also carries `duration` in ms). Unwrap `item`/`items` client-side.
 
-> **PATCH vs PUT:** Use `PUT` when the client has the full entity. Use `PATCH` when only a subset of fields should change. The PATCH implementation deserializes the incoming JSON Merge Patch into `TInputDto`, so only fields declared on the input model can be modified. `TInputDto` property names must match `TEntity` property names (camelCase in JSON, PascalCase in C#, which is the STJ default). Related collections absent from the body are left intact while the entity declares them uninitialized (Step 1) and the merge base leaves them out: the entity is read with no includes flag, so a collection `Includes()` loads on every read is part of the merge base, and a PATCH saves it again through the child input DTO — a child column that DTO leaves out, and not `[ServerOwned]`, is cleared. Gate such an include behind a flag (`includes?.HasFlag(…) == true`), or keep every child column on the child input DTO or `[ServerOwned]`. A scalar field **declared on `TInputDto`** but omitted from a PATCH body is preserved too — Merge Patch writes only the keys you send. The merge is one level deep: a nested object in the body replaces the stored one whole, so a field it leaves out is cleared, not kept — send the whole object. The merged input is validated against `TInputDto`'s DataAnnotations first: a failure answers the 400 of a validator's refusal, `errorDetails` included (§Error Handling). The trap is the opposite case: a field the DTO **never declares** maps as `null`/default on every PATCH *and* PUT — see ⚠️ below.
+> **PATCH vs PUT:** Use `PUT` when the client has the full entity. Use `PATCH` when only a subset of fields should change. The PATCH implementation deserializes the incoming JSON Merge Patch into `TInputDto`, so only fields declared on the input model can be modified. `TInputDto` property names must match `TEntity` property names (camelCase in JSON, PascalCase in C#, which is the STJ default). Related collections absent from the body are left intact while the entity declares them uninitialized (Step 1) and the merge base leaves them out: the entity is read with no includes flag, so a collection `Includes()` loads on every read is part of the merge base, and a PATCH saves it again through the child input DTO — a child column that DTO leaves out, and not `[ServerOwned]`, is cleared. Gate such an include behind a flag (`includes?.HasFlag(…) == true`), or keep every child column on the child input DTO or `[ServerOwned]`. A scalar field **declared on `TInputDto`** but omitted from a PATCH body is preserved too — Merge Patch writes only the keys you send. The merge is one level deep: a nested object in the body replaces the stored one whole, so a field it leaves out is cleared, not kept — send the whole object. The merged input is validated against `TInputDto`'s DataAnnotations first: a failure answers the 400 of a validator's refusal, `errorDetails` included (§Error Handling). A body that is no JSON object answers that 400 too, under the empty key — on a controller also a body that is not JSON at all. The trap is the opposite case: a field the DTO **never declares** maps as `null`/default on every PATCH *and* PUT — see ⚠️ below.
 
 > **⚠️ A field absent from `TInputDto` maps as `null`/default on PATCH *and* PUT.** Server-owned/immutable
 > values (`OwnerId` FKs, generated codes, computed totals) silently reset — a `[Required]` column 500s, a
@@ -1404,8 +1417,13 @@ in the Development environment by default. It catches, with actionable messages:
   the matching interceptor (they would silently never run). Only applies to setups without `UseDefaults()`
   (which auto-wires the interceptors) that also skipped `e.WireDbContext(...)`. Without the reactor interceptor,
   no replaced or deleted attachment file is removed (§Attachments step 6).
-- **Ignored `?q=`** (warning) — entities without `IHasNormalizedContent` and without a custom filter. Any custom
-  filter counts as handling `q`, so one that never reads `so.Q` gets no warning: handle it there (`FilterQ`).
+- **Ignored `?q=`** (warning) — entities without `IHasNormalizedContent` and either without a custom filter, or
+  whose custom filters never read `so.Q`: the check builds their query on an empty in-memory source without `Q`, with
+  a word and with a number, on a search object with no other field set, and warns when all three read the same. Handle
+  `Q` there (`FilterQ`). It calls each custom filter's `Build` up to three times at startup, so a query that runs inside
+  `Build` (a `ToList()` on a `DbContext`) runs then, and a filter that reads `Q` only when another field is set is
+  reported. A filter it cannot build that way (a search object without a parameterless constructor, a filter that
+  throws) counts as reading `Q`, and the attachment entities Regira's own filters serve are not checked.
 - **Two write paths** (warning) — an entity synced by a parent's `Related()` that also has its own `.For<>()`.
   Supported when the parent's input DTO omits the collection; the validator can't see DTO shapes, so it always
   reports the pairing. Detects top-level `Related()` calls, not ones nested inside a `configure` builder.
@@ -1416,6 +1434,11 @@ in the Development environment by default. It catches, with actionable messages:
 - **Null attachment `Uri`** (warning) — an attachment controller, or an owner's downloads mapped by
   `MapEntityEndpoints()`, is in place while the null resolver is, i.e. `UseAttachmentUris()` was omitted or set on a
   different options instance.
+- **Handler override no surface reaches** (warning) — a closed `IEntityRequestHandler` of `DetailsQuery`, `ListQuery`,
+  `SearchQuery`, `SaveCommand`, `PatchCommand` or `DeleteCommand` registered for a type list neither the entity's
+  controller nor its mapped endpoints send, so the default handler answers in its place
+  ([`entities.patterns.md`](./entities.patterns.md) → Replacing one operation for one entity). An attachment request's
+  handler is not checked.
 - **Attachment owner not mapped to `ObjectId`** (warning) — an `IHasAttachments` owner whose attachment
   collection reaches the link through any key but `ObjectId`, typically a shadow key EF invented because the
   owner side was left to conventions. Every link row is saved orphaned: the owner's `Attachments` loads empty and
@@ -1456,7 +1479,9 @@ in the Development environment by default. It catches, with actionable messages:
 
 The checks report what is silent; a failure that is loud at the first request — a 500, a 409 on every update —
 is a row in §Troubleshooting instead. A check that cannot complete (a registration that throws when resolved) is
-skipped with a warning naming it, and a `DbContext` the checks cannot resolve is reported once.
+skipped with a warning naming it, and a `DbContext` the checks cannot resolve is reported once. A run that completes
+every check and finds nothing logs one Information line, *"Entity registration validation found no issues"*, so a clean start reads apart
+from validation that is off.
 
 Configure via `UseEntities(o => o.ConfigureValidation(v => { v.Enabled = true; v.ThrowOnError = false; }))`:
 `Enabled` — `null` (default) = Development only, `true` = always (Production opt-in), `false` = never.
@@ -1759,6 +1784,10 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 > `Attachment`. Two preppers on the `UseEntities` options cover both: [`entities.patterns.md`](./entities.patterns.md) →
 > *Transform uploaded files before they are stored (resize photos)* (`how_to` key `transform-uploads`).
 
+> **Changing what an attachment route does** — a log of downloads, say — is a handler for the request the route
+> sends, which answers for an attachment controller and the mapped routes alike:
+> [`entities.patterns.md`](./entities.patterns.md) → *Changing an attachment operation*.
+
 > ⚠️ **Marking one attachment as the primary one? Mark the link entity, don't point the owner at it.** An
 > owner FK to one of its own attachments makes the two tables reference each other: SQL Server refuses the
 > migration and every owner `DELETE` answers 500. Use `SortOrder` or a flag on the link entity, and [`entities.patterns.md`](./entities.patterns.md) → *An entity that references one of its
@@ -1882,7 +1911,8 @@ detected per provider: SQLSTATE class 23, SQLite error 19, SQL Server 547/515/26
 attachment controllers, and any hand-written action, through the same filter
 `ConfigureDefaultJsonOptions()` registers, and the mapped endpoints through `EntityExceptionEndpointFilter`. The response detail is generic — the provider's
 constraint message can leak index names and other users' values, so it is logged server-side (warning) by
-the write service instead. Transient faults (deadlocks, timeouts) are **not** wrapped and keep surfacing as
+the write service instead; the 409 is built by the app's `ProblemDetailsFactory`, so its `traceId` finds that warning.
+Transient faults (deadlocks, timeouts) are **not** wrapped and keep surfacing as
 500s for alerting. When the client can fix the input, prefer an explicit check in a validator — a
 field-level 400 beats a generic 409.
 
@@ -1896,6 +1926,16 @@ always `EntityConcurrencyException.ClientMessage`: the message you pass is not s
 `EntityInputException` (400) instead. Tokens,
 the DTO rules and what each route checks: [`entities.patterns.md`](./entities.patterns.md) → Optimistic
 concurrency.
+
+### A client that disconnects
+
+A read — details, list, search, the lookup behind a download — is sent with the request's `RequestAborted`, so its
+query stops when its client leaves; the file a download reads is read to its end, since `IFileService` takes no token.
+A write runs to its end, so a client never has to guess whether a save it walked away from committed. The cancelled
+query throws `OperationCanceledException`, which ASP.NET Core's own pipeline (Kestrel, `UseExceptionHandler()`, the
+developer exception page) logs at debug level, not as an error; an exception filter or middleware of the app's own
+still sees it. On SQL Server a query cancelled mid-flight surfaces as a `SqlException` instead, logged as an unhandled
+error.
 
 ---
 
@@ -1933,7 +1973,7 @@ Load that file when implementing one of these:
 - **Entity operations outside a controller** — opt-in: the request an endpoint sends (`IEntitySender`), from a job, an import or the app's own endpoint, with the endpoint's paging, re-read and DTO mapping; replacing one operation for one entity with a handler, or one endpoint (a controller override, or an excluded mapped endpoint and the app's own); behaviours around every operation; dispatching through MediatR.
 - **Aggregates over a non-owned child collection** — a parent total rolled up from children that own their own FK. Eventually consistent, seeding needs a second pass, and a child query filter can zero it on restore.
 - **Role-gated write authorization filter** — one global authorization filter mapping controller type → required role, failing closed for a controller it has no entry for, keyed on the generated write actions because the controllers serve reads over `POST` too; on mapped endpoints, a policy keyed on `EntityEndpointMetadata`.
-- **Writing to a related entity from a prepper** — the typed `e.Prepare(entity, dbContext)` overload; `EntityInputException<T>` must name the *serviced* entity or it escapes as a 500.
+- **Writing to a related entity from a prepper** — the typed `e.Prepare(entity, dbContext)` overload; a rule breach throws `EntityInputException<T>` of the *serviced* entity, and any type argument answers 400.
 - **Renamed DTO property** — wire both directions on the typed `UseMapping` chain when a DTO name differs from the entity's (Mapster maps by name only).
 - **Public (anonymous) attachment downloads** — serve images to `<img>` on a secured API (`[AllowAnonymous]` override of `GetFile`, or on mapped endpoints `o.AllowAnonymous(…)`, which opens chosen endpoints: public reads, the downloads an `<img>` loads).
 - **An entity that references one of its own children** — an owner FK pointing at one of its own child rows: the SQL Server migration and every owner `DELETE` both fail. What to do instead, and the two-phase save when the reference has to stay.
@@ -2104,7 +2144,7 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 - **What a scoping filter cannot do:** validate **create** (the client supplies the FK — stamp/verify `OwnerId` from the claim in a prepper, never trust the body) or guard **direct `IEntityService` calls** in custom code, which bypass the controller's filtered existence checks. Two variants of the create hole bite hardest:
   - ⚠️ **An owner's row scope does not reach its attachments.** The per-owner link entity (`ProductAttachment`) has no owner column and no navigation back, so a filter that scopes the owner never runs on it. Every attachment route — `GET attachments`, `attachments/{id}`, `{objectId}/attachments`, both downloads (`files/{id}`, `{objectId}/files/{name}`), and the link's `PUT` and `DELETE` — then reads across owners: any signed-in user lists, downloads, edits and deletes every user's files. Give a row-scoped owner with attachments a second global filter, on the **link** entity, that reruns the owner's scope through the owner's `DbSet` (`db.Products.Any(p => p.Id == link.ObjectId && p.OwnerId == userId)`) with the same exemptions, registered app-wide beside the owner's — the shape is in [`entities.examples.md`](./entities.examples.md) → Attachments. With it, those routes answer 404 for another owner's file; check one by id as a second user.
   - ⚠️ **An attachment upload is a create no filter sees, the link filter included.** `POST /{owner}/{id}/files` takes the owner id from the **route**, stamps it on a new link row and saves — no query runs, so no global filter applies, and any authenticated caller can attach a file to a row they cannot read. Add a validator on the **link** entity (registered on its `HasAttachments` builder: §Attachments, the link-rule callout after step 7) that re-runs the owner's scope over the owner's `DbSet` on `Add` and adds an error when it resolves nothing — which answers **400**, not the 404 the read path gives a foreign row, since the write pipeline maps only 400 and 409. Override the controller's `virtual Add` and return `NotFound()` instead where the two must agree.
-  - ⚠️ **A row scope does not reach an `Include`.** A global filter runs on its own entity's queries only: `Include(x => x.Comments)` on the parent loads every child row, the ones the child's filter hides included (internal notes, another tenant's rows). Keep a scoped child off the parent's DTO and includes and read it through its own endpoint, or repeat the predicate in a filtered include.
+  - ⚠️ **A row scope does not reach an `Include`.** A global filter runs on its own entity's queries only: `Include(x => x.Comments)` on the parent loads every child row, the ones the child's filter hides included (internal notes, another tenant's rows). Keep a scoped child off the parent's DTO and includes and read it through its own endpoint, or repeat the predicate in a filtered include. A to-one is no exception: a scoped reference that another entity includes on every row (a staff-only Employee as a ticket's Assignee) reaches every caller of that entity with each column its DTO maps, so map it to a narrow core DTO (Id, Name) there.
   - ⚠️ **Read scope is not write scope.** The write endpoints' existence checks run the *same* filter, so a read scope you widened deliberately — a manager who may see their reports' rows — silently grants that manager `PATCH`/`DELETE` on them too. When the two differ, keep the filter at read width and put the ownership check in a validator, which runs on a delete too (no prepper does).
 - **Scope before any early return.** The idiomatic query-builder shape opens with `if (so == null) return query;` — for a security filter that is a hole, because `Details(id)` and the write existence checks can run with a null search object and would skip the scoping entirely. Derive from `GlobalFilteredQueryBuilderBase<TEntity>` (it runs on every query and takes no search object), apply the ownership predicate unconditionally, and return `query.Where(_ => false)` when no identity resolves — an anonymous or stale-token call must see nothing, not everything. A seeder or hosted job has no request either, so its `IEntityService` reads see nothing too — and so does `Modify`, whose re-read of the stored row then finds none and saves nothing: give it an explicit identity through a context it sets (the shape of `WritableTenantContext` in [`entities.blueprints.md`](./entities.blueprints.md) → Multi-tenancy — IHasTenantId + global filter + primer). Its reads may go to the `DbContext` directly, as §Seeding via IEntityService reads keys, but its writes still go through the service, and a `Modify` there needs the identity. Don't equate "no `HttpContext`" with "system": work started from inside a request inherits that request's context.
 - **Multiple global filters accumulate (AND).** Every registered filter whose `TEntity` the entity satisfies runs, and their predicates compose — so an `IHasUserId`-wide filter and a `ShoppingList`-specific one both apply. `TEntity` may be an interface, a base class, **or the concrete entity type**. The one case that does *not* stack is the key variants of a single filter family (`FilterArchivablesQueryBuilder` vs `<Guid>`): one variant runs, preferring the key-matching one. Two filters deriving separately from `GlobalFilteredQueryBuilderBase<>` are always distinct families and never suppress each other. A filter scoped to a type **no registered entity satisfies** never runs at all — startup validation warns about this, which is your signal that a security filter is inert.
@@ -2123,12 +2163,12 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 | Problem | Likely Cause | Fix |
 |---|---|---|
 | Navigation properties not loaded | Missing `Includes` config or wrong flag | Check `e.Includes(...)` and that the client sends the correct `includes` flag |
-| Nested collection comes back **empty** in an API response | The navigation was never eager-loaded — almost never a mapping problem | Add the eager-load in `e.Includes(...)` (never `Filter(...)` — filters pick rows, includes load navigations). Only add `AddMapping<…>()` if the child DTO shape genuinely diverges from the entity (§Step 10) |
+| Nested collection comes back **empty** in an API response | The navigation was never eager-loaded — almost never a mapping problem | Add the eager-load in `e.Includes(...)` (never `Filter(...)` — filters pick rows, includes load navigations). If the child DTO's shape genuinely differs from the entity, add a mapping rule (§Step 10); `AddMapping<…>()` alone changes nothing on Mapster |
 | A relation loads, then vanishes from responses after adding another `Includes(...)` | `Includes(...)` registrations are **last-write-wins** — the second call replaced the first (single `IIncludableQueryBuilder`) | Merge all eager-loads into **one** `Includes` lambda (§Step 4) |
 | Filter not applied | Query builder not registered or wrong `SearchObject` property name | Verify `e.AddFilter<>()` or `e.Filter(...)` and check property names |
 | A list page comes back **short** (`items` < `pageSize`) while `/search` still **counts** the rows; the shortfall looks like an off-by-one in paging | An `IArchivable` principal behind a **required** FK. On `net10.0` the archived filter propagates into the `Include` as an inner join, so a dependent whose parent is archived drops out of `items`; the count query has no join. A sort that interleaves parents (`SortOrder`, `Title`) loses about one row per page, which is why it reads as a paging bug. Startup validation warns on the shape | Reference data: don't make it `IArchivable` — real `DELETE` + `OnDelete(Restrict)`, or an optional FK. An aggregate parent whose dependent you also query directly: mirror the filter on the dependent ([`entities.patterns.md`](./entities.patterns.md) → Soft Delete → *Before you make reference data `IArchivable`*) |
 | `?q=` matches **nothing** — every search empty, 200, no error, no warning | The entity implements `IHasNormalizedContent` but nothing fills `NormalizedContent`: `[Normalized]` sits on the class instead of the property, or there is no attribute at all. The global `Q` filter then ANDs a match against `null` | Put `[Normalized(SourceProperties = [...])]` on the `NormalizedContent` **property** (§Step 1 — all-or-nothing note, §Normalizing). Rows saved before the attribute existed stay empty until re-saved |
-| `?q=` returns **everything**, unfiltered | The entity doesn't implement `IHasNormalizedContent` and has no custom filter — startup logs *"?q= text search is silently ignored for: X"* | Implement `IHasNormalizedContent` with a `[Normalized]` source (§Step 1) |
+| `?q=` returns **everything**, unfiltered | The entity doesn't implement `IHasNormalizedContent` and has no custom filter — startup logs *"?q= text search is silently ignored for: X"* — or its custom filter never reads `so.Q` — *"?q= text search is ignored by the custom filters of: X"* | Implement `IHasNormalizedContent` with a `[Normalized]` source (§Step 1), or read `so.Q` in the filter (`FilterQ`) |
 | `?q=` finds fewer rows than it should, or none once a domain filter is on | A per-entity `Q` filter in your query builder ANDs on top of the global one | Delete it — keyword search is already global for `IHasNormalizedContent` entities (§Step 6 — *Don't write a `Q` filter*) |
 | `?q=` returns nothing although the text is clearly in the row | `NormalizedContent` holds raw text while the query term is normalized — punctuation the normalizer deletes never matches | Write `NormalizedContent` through `[Normalized]` or `INormalizer.Normalize(...)` (§Normalizing — the normalize contract) |
 | A computed / `[NotMapped]` field is `null` on a row nested inside another entity's response, but filled on the entity's own endpoint | Processors and after-mappers run only in their **own** entity's read pipeline — never inside another entity's projection | Expected. Render `null` as empty (not `0`), or fetch the child list from its own endpoint (§Step 7) |
@@ -2153,7 +2193,8 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 | A user's edit silently overwrites another user's change — no 409 | No concurrency token, or it never round-trips: missing from the read or input DTO (the client then sends the default, which is not checked), an application-owned token nothing re-mints, or a token not declared a version stamp — a `[ConcurrencyCheck]` token without `[VersionStamp]` is a data column, compared with the stored row however a primer moves it | Implement `IHasConcurrencyToken`, or declare a token of your own `[VersionStamp]` and mint it in a primer, and put it on both DTOs ([`entities.patterns.md`](./entities.patterns.md) → Optimistic concurrency). Startup validation warns about a DTO without the property and about an undeclared token shaped like a stamp |
 | Every PUT/PATCH answers **409 "Concurrency conflict"**, even with a single user | The entity initializes its token (`= Guid.NewGuid()`) and the input DTO has no property for it, so each mapped entity carries a token the row never held; or an input DTO initializes it, so a client that leaves it out sends that value; or the client resends the token it read before its own last save | Remove the initializers and add the property to both DTOs; take the new token from the `SaveResult` after each save |
 | An owner `DELETE` answers **500** *"a circular dependency was detected in the data to be saved"*, or SQL Server refuses the migration with **Msg 1785** (*may cause cycles or multiple cascade paths*) | The owner holds a foreign key to one of its own child rows (a cover image among its images), so the two tables reference each other | [`entities.patterns.md`](./entities.patterns.md) → *An entity that references one of its own children* |
-| A dashboard/report endpoint answers **500 with an empty body** on a green build; the log says *"The LINQ expression … could not be translated"* or *"Translating this query requires the SQL APPLY operation"*, or a `NotSupportedException` | An untranslatable construct in the query: a record constructor in the projection, a correlated `SelectMany` (`CROSS APPLY` — absent on SQLite), **a method of your own called on the row**, date arithmetic between two columns on SQLite (`x.End - x.Start`), a decimal `Min`, `Max` or `OrderBy` on SQLite under EF Core 9 (`net8.0`), or a provider-specific `EF.Functions` member (`DateDiff*` is SQL Server only) | The full list with the translating alternative for each is in [`entities.patterns.md`](./entities.patterns.md) § Cross-entity aggregates & report endpoints |
+| Any endpoint answers **500 with an empty body** | The host registers no problem details: an unhandled exception goes out bare, with no `traceId` to find it in the log by | `builder.Services.AddProblemDetails()` and `app.UseExceptionHandler()` right after `builder.Build()`, as the project templates have them; the response then carries a `traceId` to find the request's log lines by (on .NET 9 and later: .NET 8 writes the 500 problem without one) |
+| A dashboard/report endpoint answers **500** on a green build; the log says *"The LINQ expression … could not be translated"* or *"Translating this query requires the SQL APPLY operation"*, or a `NotSupportedException` | An untranslatable construct in the query: a record constructor in the projection, a correlated `SelectMany` (`CROSS APPLY` — absent on SQLite), **a method of your own called on the row**, date arithmetic between two columns on SQLite (`x.End - x.Start`), a decimal `Min`, `Max` or `OrderBy` on SQLite under EF Core 9 (`net8.0`), or a provider-specific `EF.Functions` member (`DateDiff*` is SQL Server only) | The full list with the translating alternative for each is in [`entities.patterns.md`](./entities.patterns.md) § Cross-entity aggregates & report endpoints |
 
 ### Troubleshooting — compiler errors
 

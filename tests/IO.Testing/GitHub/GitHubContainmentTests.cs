@@ -45,11 +45,13 @@ public class GitHubContainmentTests
 
         await service.Exists(identifier);
         await service.GetBytes(identifier);
+        await service.GetInfo(identifier);
         await Assert.ThrowsAsync<HttpRequestException>(() => service.Save(identifier, [1]), "the stand-in refuses the write");
         await service.Delete(identifier);
 
         Assert.That(_server.Requests.Select(r => $"{r.Method} {r.Target}"), Is.EqualTo(new[]
         {
+            $"GET {ContentPath}{expected}",
             $"GET {ContentPath}{expected}",
             $"GET {ContentPath}{expected}",
             $"GET {ContentPath}{expected}",
@@ -95,6 +97,7 @@ public class GitHubContainmentTests
             Assert.Throws<UnauthorizedAccessException>(() => service.GetAbsoluteUri(identifier));
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.Exists(identifier));
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetBytes(identifier));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetInfo(identifier));
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.Save(identifier, [1]));
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.Delete(identifier));
             await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.Move(identifier, "inv-001.pdf"));

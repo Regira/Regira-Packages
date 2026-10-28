@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Entities.Mediator</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.6.0</Version>
+    <Version>6.6.1</Version>
     <RegiraLicenseEnforced>true</RegiraLicenseEnforced>
     <Description>HTTP-neutral entity operations for Regira entities: details, list, search, save, patch and delete as requests sent through IEntitySender, with the paging, refetch-after-save and DTO mapping the generated endpoints apply. The controllers send through it, and so can jobs, seeders and a consumer's own endpoints. Free tier included — a license key removes the free-tier limits.</Description>
     <PackageTags>regira;entities;mediator;requests;handlers;pipeline;operations</PackageTags>

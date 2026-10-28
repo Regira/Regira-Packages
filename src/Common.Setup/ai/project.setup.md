@@ -23,7 +23,7 @@ The nearest default per app shape; mix elements from several templates, or devia
 | Self-hosted API protected by API key and/or JWT Bearer | `SelfHostingApiWithAuth` |
 | Must be deployable as a Windows Service | `SelfHostingApi`; with API key or JWT, `SelfHostingApiWithAuth` |
 | Self-hosted, controller-based routing with enforced authorization | `SelfHostingApiWithAuth` |
-| Minimal API endpoints with authentication | `SelfHostingApiWithAuth` |
+| Minimal API endpoints with authentication | `BasicApi` (self-hosted: `SelfHostingApi`) plus the auth registrations from `SelfHostingApiWithAuth`, with `AddAuthorization()` and `.RequireAuthorization()` on the mapped endpoints instead of `AddControllers()` and `MapControllers()` (note under Template 2) |
 | Users sign in with a work Microsoft account (Entra ID), or any OpenID Connect provider | `SelfHostingApiWithAuth` + `AddEntraIdSignIn` / `AddOidcAuthentication` |
 | API called with tokens Entra ID (or Auth0 / Keycloak / Okta) issued | `SelfHostingApiWithAuth` + `AddEntraIdBearer` / `AddBearerAuthentication` |
 | Browser session rather than a bearer token (server-rendered, Blazor Server, same-site SPA) | `SelfHostingApiWithAuth` + `AddCookieAuthentication` |
@@ -228,7 +228,7 @@ dotnet add package Microsoft.AspNetCore.OpenApi
 dotnet add package Scalar.AspNetCore
 ```
 
-> **⚠️ On the native `Microsoft.AspNetCore.OpenApi`/Scalar path, `Microsoft.OpenApi` must stay on 2.x** _(while on .NET 10 — remove once the OpenAPI source generator supports 3.x)_. (A `Regira.Web.Swagger` setup stays on 2.x too: it and `Regira.Security.Authentication.Web` reference `Microsoft.OpenApi` 2.12.2.)
+> **⚠️ On the native `Microsoft.AspNetCore.OpenApi`/Scalar path, `Microsoft.OpenApi` must stay on 2.x** _(while on .NET 10 — remove once the OpenAPI source generator supports 3.x)_. (A `Regira.Web.Swagger` setup stays on 2.x too: it and `Regira.Security.Authentication.Web` reference `Microsoft.OpenApi` 2.13.0.)
 > Leave it **transitive**: from **10.0.11** on, `Microsoft.AspNetCore.OpenApi` declares the 2.x range its generator
 > is compatible with, already past the 2.x security advisory (10.0.12 → `[2.12.0, 3.0.0)`), so no direct reference
 > is needed; 10.0.10 and earlier pull the vulnerable 2.0.0 — raise that pin instead. Never
@@ -345,7 +345,7 @@ dotnet add package Regira.Security.Authentication.Web
 ```
 
 > `Regira.Security.Authentication.Web` references `Microsoft.AspNetCore.OpenApi` and thereby **floors** it
-> (and, through it, `Microsoft.OpenApi`) — 6.6.0 floors them at `10.0.13` and `2.12.2`. Pinning either
+> (and, through it, `Microsoft.OpenApi`) — it floors them at `10.0.13` and `2.13.0`. Pinning either
 > lower than the resolved version fails restore with **NU1605 (package downgrade)** — resolve
 > `Microsoft.AspNetCore.OpenApi` to the latest stable patch and leave `Microsoft.OpenApi` transitive.
 >
@@ -625,8 +625,11 @@ try
             options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()); // recommended — enums as names, a stable SPA contract
         });
     builder.Services.AddOpenApi();
+    builder.Services.AddProblemDetails(); // an error the app raises answers application/problem+json with a traceId
 
     var app = builder.Build();
+
+    app.UseExceptionHandler(); // an unhandled exception answers a 500 problem; its detail stays in the log
 
     if (app.Environment.IsDevelopment())
     {
@@ -697,8 +700,11 @@ try
     builder.Services.AddControllers();
 
     builder.Services.AddOpenApi();
+    builder.Services.AddProblemDetails(); // an error the app raises answers application/problem+json with a traceId
 
     var app = builder.Build();
+
+    app.UseExceptionHandler(); // an unhandled exception answers a 500 problem; its detail stays in the log
 
     if (app.Environment.IsDevelopment())
     {
@@ -792,8 +798,11 @@ try
         options.AddDocumentTransformer<AuthenticationSchemeDocumentTransformer>();
         options.AddOperationTransformer<SecurityRequirementOperationTransformer>();
     });
+    builder.Services.AddProblemDetails(); // an error the app raises answers application/problem+json with a traceId
 
     var app = builder.Build();
+
+    app.UseExceptionHandler(); // an unhandled exception answers a 500 problem; its detail stays in the log
 
     if (app.Environment.IsDevelopment())
     {

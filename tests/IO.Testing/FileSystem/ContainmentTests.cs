@@ -33,10 +33,35 @@ public class ContainmentTests
     [TestCase(@"..\..\outside.txt")]
     [TestCase(@"subfolder/..\..\outside.txt")]
     [TestCase("/outside.txt")]
-    public void FileService_Traversal_Throws(string identifier)
+    public async Task FileService_Traversal_Throws(string identifier)
     {
         var svc = new BinaryFileService(new FileSystemOptions { RootFolder = _root });
         Assert.Throws<UnauthorizedAccessException>(() => svc.Exists(identifier));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => svc.GetInfo(identifier));
+    }
+
+    // GetInfo answers what GetBytes answers, a file outside the root reached only without containment
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task FileService_GetInfo_Answers_As_GetBytes_Does(bool contained)
+    {
+        var root = Directory.CreateDirectory(Path.Combine(_root, "root")).FullName;
+        await File.WriteAllTextAsync(Path.Combine(root, "file.txt"), "text");
+        await File.WriteAllTextAsync(Path.Combine(_root, "outside.txt"), "outside");
+        var svc = new BinaryFileService(new FileSystemOptions { RootFolder = root, Contained = contained });
+
+        foreach (var identifier in new[] { "file.txt", "file.txt/", "file.txt" + (char)0, "missing.txt", "", "../outside.txt" })
+        {
+            async Task<object?> Answer(Func<Task<object?>> read)
+            {
+                try { return await read(); }
+                catch (Exception ex) { return ex.GetType(); }
+            }
+            var bytes = await Answer(async () => (await svc.GetBytes(identifier))?.Length);
+            var info = await Answer(async () => (await svc.GetInfo(identifier))?.Length);
+
+            Assert.That(info, Is.EqualTo(bytes is int length ? (long)length : bytes), $"identifier '{identifier}'");
+        }
     }
 
     // the root is within itself, so containment lets it through: a delete of it is refused, and the root stays

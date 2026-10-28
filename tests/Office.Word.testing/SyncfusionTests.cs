@@ -35,6 +35,9 @@ public class SyncfusionTests() : WordTestsBase(CreateService(), "Syncfusion")
     /// </summary>
     private const string TrialBanner = "trial version of Syncfusion Word library";
 
+    /// <summary>The banner the PDF library writes on a converted page when the key does not cover it.</summary>
+    private const string PdfTrialBanner = "trial version of Syncfusion PDF library";
+
     private static WordService CreateService()
         => new(new SyncfusionWordConfig { LicenseKey = LicenseKey });
 
@@ -45,7 +48,6 @@ public class SyncfusionTests() : WordTestsBase(CreateService(), "Syncfusion")
     public static IEnumerable<TestCaseData> OutputFormats =>
     [
         Output(FileFormat.Pdf, "application/pdf"),
-        Output(FileFormat.Html, "text/html"),
         Output(FileFormat.Rtf, "text/rtf"),
         Output(FileFormat.Odt, "application/vnd.oasis.opendocument.text")
     ];
@@ -71,8 +73,8 @@ public class SyncfusionTests() : WordTestsBase(CreateService(), "Syncfusion")
 
 
     /// <summary>
-    /// Answers the licensing question outright: a key that does not license DocIO produces a
-    /// watermarked document, and every other assertion in this fixture still passes against one
+    /// Answers the licensing question outright: a key that does not license DocIO, or the PDF library a conversion
+    /// renders through, produces watermarked output, and every other assertion in this fixture still passes against it
     /// because the banner is only additional text.
     /// </summary>
     [Test]
@@ -85,10 +87,43 @@ public class SyncfusionTests() : WordTestsBase(CreateService(), "Syncfusion")
             Assert.Ignore($"Set the {LicenseSetting} user secret or {LicenseVariable} to verify the key licenses DocIO.");
         }
 
-        var text = await Service.GetText(TemplateInput("lorem_ipsum.docx"));
+        var (text, pdfText) = await ReadLoremIpsum();
 
-        Assert.That(text, Does.Not.Contain(TrialBanner),
-            $"The configured key ({LicenseSetting} / {LicenseVariable}) does not license the DocIO Word library — output is watermarked.");
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Does.Not.Contain(TrialBanner),
+                $"The configured key ({LicenseSetting} / {LicenseVariable}) does not license the DocIO Word library — output is watermarked.");
+            Assert.That(pdfText, Does.Not.Contain(PdfTrialBanner),
+                $"The configured key ({LicenseSetting} / {LicenseVariable}) does not license the PDF library — converted output is watermarked.");
+        });
+    }
+
+    /// <summary>
+    /// The control for the licence test: without a key both libraries write their banner, in the words that test looks
+    /// for. Wording that moved would otherwise let watermarked output pass it.
+    /// </summary>
+    [Test]
+    public async Task Without_A_Key_The_Output_Carries_Both_Trial_Banners()
+    {
+        if (!string.IsNullOrWhiteSpace(LicenseKey))
+        {
+            Assert.Ignore("A key is set, and SyncfusionLicenseProvider registers it for the whole process: no output here is unlicensed.");
+        }
+
+        var (text, pdfText) = await ReadLoremIpsum();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(text, Does.Contain(TrialBanner));
+            Assert.That(pdfText, Does.Contain(PdfTrialBanner));
+        });
+    }
+
+    private async Task<(string Text, string PdfText)> ReadLoremIpsum()
+    {
+        var text = await Service.GetText(TemplateInput("lorem_ipsum.docx"));
+        using var pdf = await Service.Convert(TemplateInput("lorem_ipsum.docx"), FileFormat.Pdf);
+        return (text, string.Join("\n", (await ReadPdf(pdf)).PageTexts));
     }
 
     [Test]

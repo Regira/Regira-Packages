@@ -486,7 +486,8 @@ public class PartyUser : IEntityWithSerial
 
 Enforce the 1:1 with unique indexes — `modelBuilder.Entity<PartyUser>().HasIndex(x => x.UserId).IsUnique();`, and the
 same on `PartyId` — and scope a signed-in user's rows by the claim with a global filter, as *Multi-tenancy* →
-*Global filter + primer* does.
+*Global filter + primer* does. ⚠️ Link a new account to an existing party only by an e-mail address the user has
+confirmed, or by a stored external login (`Regira.Security` → `security.instructions` → *Sign-up with profile fields*).
 
 ### Gotchas
 

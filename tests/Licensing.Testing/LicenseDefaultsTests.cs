@@ -7,28 +7,29 @@ namespace Licensing.Testing;
 public class LicenseDefaultsTests
 {
     // --- Free-tier constants ---
+    // The published free tier, as literals: compared with the constants they are built from, a changed limit would pass.
 
     [Test]
     public void EntityFreeLimits_HoldExpectedValues()
     {
-        Assert.That(LicenseDefaults.EntityFreeLimits["entities.simple"], Is.EqualTo(LicenseDefaults.Free.Entities.Simple));
-        Assert.That(LicenseDefaults.EntityFreeLimits["entities.complex"], Is.EqualTo(LicenseDefaults.Free.Entities.Complex));
+        Assert.That(LicenseDefaults.EntityFreeLimits["entities.simple"], Is.EqualTo(5));
+        Assert.That(LicenseDefaults.EntityFreeLimits["entities.complex"], Is.EqualTo(2));
     }
 
     [Test]
     public void ServiceFreeLimits_HoldExpectedValues()
     {
-        Assert.That(LicenseDefaults.ServiceFreeLimits["services.ratelimit.permit"], Is.EqualTo(LicenseDefaults.Free.Services.Permit));
-        Assert.That(LicenseDefaults.ServiceFreeLimits["services.ratelimit.window"], Is.EqualTo(LicenseDefaults.Free.Services.Window));
-        Assert.That(LicenseDefaults.ServiceFreeLimits["services.ratelimit.queue"], Is.EqualTo(LicenseDefaults.Free.Services.Queue));
+        Assert.That(LicenseDefaults.ServiceFreeLimits["services.ratelimit.permit"], Is.EqualTo(5));
+        Assert.That(LicenseDefaults.ServiceFreeLimits["services.ratelimit.window"], Is.EqualTo(60));
+        Assert.That(LicenseDefaults.ServiceFreeLimits["services.ratelimit.queue"], Is.EqualTo(0));
     }
 
     [Test]
     public void McpFreeLimits_HoldExpectedValues()
     {
-        Assert.That(LicenseDefaults.McpFreeLimits["mcp.ratelimit.permit"], Is.EqualTo(LicenseDefaults.Free.Mcp.Permit));
-        Assert.That(LicenseDefaults.McpFreeLimits["mcp.ratelimit.window"], Is.EqualTo(LicenseDefaults.Free.Mcp.Window));
-        Assert.That(LicenseDefaults.McpFreeLimits["mcp.ratelimit.queue"], Is.EqualTo(LicenseDefaults.Free.Mcp.Queue));
+        Assert.That(LicenseDefaults.McpFreeLimits["mcp.ratelimit.permit"], Is.EqualTo(30));
+        Assert.That(LicenseDefaults.McpFreeLimits["mcp.ratelimit.window"], Is.EqualTo(60));
+        Assert.That(LicenseDefaults.McpFreeLimits["mcp.ratelimit.queue"], Is.EqualTo(0));
     }
 
     // --- CreateFree covers all products including MCP ---

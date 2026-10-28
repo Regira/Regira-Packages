@@ -48,6 +48,8 @@ public class FsStorageTests
     [Test]
     public async Task GetBytes() => await StorageTestContext.Test_GetBytes();
     [Test]
+    public async Task GetInfo() => await StorageTestContext.Test_GetInfo();
+    [Test]
     public async Task Filter_By_Folder() => await StorageTestContext.Test_Filter_By_Folder();
     [Test]
     public async Task Filter_By_Extension() => await StorageTestContext.Test_Filter_By_Extension();
@@ -55,6 +57,8 @@ public class FsStorageTests
     public async Task Filter_Recursive() => await StorageTestContext.Test_Filter_Recursive();
     [Test]
     public async Task Filter_By_EntryType() => await StorageTestContext.Test_Filter_By_EntryType();
+    [Test]
+    public async Task Filter_Non_Recursive() => await StorageTestContext.Test_Filter_Non_Recursive();
 
 #if NET10_0_OR_GREATER
     [Test]

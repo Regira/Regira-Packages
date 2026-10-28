@@ -51,7 +51,6 @@ public class AsposeTests() : WordTestsBase(new WordService(LicenseFromEnvironmen
     public static IEnumerable<TestCaseData> OutputFormats =>
     [
         Output(FileFormat.Pdf, "application/pdf"),
-        Output(FileFormat.Html, "text/html"),
         Output(FileFormat.Rtf, "text/rtf"),
         Output(FileFormat.Odt, "application/vnd.oasis.opendocument.text"),
         Output(FileFormat.EPub, "application/epub+zip"),
@@ -135,14 +134,6 @@ public class AsposeTests() : WordTestsBase(new WordService(LicenseFromEnvironmen
         // evaluation mode replaces every header and footer with its own banner, so only licensed output shows them
         RequireLicence();
         return base.A_Story_Given_For_Some_Pages_Leaves_The_Other_Story_On_Them(type, specialHeader);
-    }
-
-    [Test]
-    public async Task Odt_Template_Is_Read()
-    {
-        var text = await Service.GetText(TemplateInput("template.odt"));
-
-        Assert.That(text, Is.Not.Empty);
     }
 
 

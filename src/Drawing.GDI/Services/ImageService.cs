@@ -184,7 +184,24 @@ public class ImageService : IImageService
         cancellationToken.ThrowIfCancellationRequested();
 
         using var img = input.ToBitmap();
-        using var target = GdiUtility.ChangeOpacity(img, 1);
+        using var target = new Bitmap(img);
+        var rect = new Rectangle(0, 0, target.Width, target.Height);
+
+        // Unpremultiplied BGRA bytes: a fully transparent pixel turns white, any other keeps its colour at alpha 255.
+        var bmpData = target.LockBits(rect, ImageLockMode.ReadWrite, PixelFormat.Format32bppArgb);
+        var pixels = new byte[bmpData.Stride * bmpData.Height];
+        Marshal.Copy(bmpData.Scan0, pixels, 0, pixels.Length);
+        for (var alpha = 3; alpha < pixels.Length; alpha += 4)
+        {
+            if (pixels[alpha] == 0)
+            {
+                pixels[alpha - 3] = pixels[alpha - 2] = pixels[alpha - 1] = 255;
+            }
+            pixels[alpha] = 255;
+        }
+        Marshal.Copy(pixels, 0, bmpData.Scan0, pixels.Length);
+        target.UnlockBits(bmpData);
+
         return Task.FromResult<IImageFile>(target.ToImageFile(img.RawFormat));
     }
 

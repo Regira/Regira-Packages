@@ -82,6 +82,28 @@ public class EntitySenderTests
     }
 
     [Fact]
+    public async Task A_Closed_Behaviour_Runs_Around_Its_Request_Alone_In_Registration_Order()
+    {
+        var trace = new List<string>();
+        await using var shop = await Shop.CreateServicesAsync(services =>
+        {
+            services.AddSingleton(trace);
+            services.AddTransient(typeof(IEntityPipelineBehavior<,>), typeof(OuterBehavior<,>));
+            services.AddTransient<IEntityPipelineBehavior<DetailsQuery<Product, int, Product>, DetailsResult<Product>>, DetailsBehavior>();
+            services.AddTransient(typeof(IEntityPipelineBehavior<,>), typeof(InnerBehavior<,>));
+        });
+        using var scope = shop.Services.CreateScope();
+        var sender = scope.ServiceProvider.GetRequiredService<IEntitySender>();
+
+        await sender.Send(new DetailsQuery<Product, int, Product>(shop.PenId));
+        Assert.Equal(["outer >", "details >", "inner >", "< inner", "< details", "< outer"], trace);
+
+        trace.Clear();
+        await sender.Send(new ListQuery<Product, int, SearchObject<int>, Product>());
+        Assert.Equal(["outer >", "inner >", "< inner", "< outer"], trace);
+    }
+
+    [Fact]
     public async Task A_Request_Of_The_Apps_Own_Needs_A_Handler_And_Says_So()
     {
         await using var shop = await Shop.CreateServicesAsync();
@@ -126,6 +148,45 @@ public class EntitySenderTests
         Assert.Equal(("Ink", 7), (patched!.Item.Title, patched.Item.Stock));
         Assert.Equal(1, deleted!.Affected);
         Assert.Null(await shop.FindAsync(shop.PenId));
+    }
+
+    // the save override is the one place a rule about how a product saves lives: a PATCH ends in it too, its merged input
+    // already checked
+    [Fact]
+    public async Task A_Patch_Ends_In_The_Save_Handler_Of_The_App()
+    {
+        var trace = new List<string>();
+        await using var shop = await Shop.CreateServicesAsync(services => services
+            .AddSingleton(trace)
+            .AddTransient<IEntityRequestHandler<SaveCommand<Product, int, Product, ProductInputDto>, SaveResult<Product>>, StampedSaveHandler>());
+        using var scope = shop.Services.CreateScope();
+        using var patch = System.Text.Json.JsonDocument.Parse("""{ "stock": 7 }""");
+
+        var patched = await scope.ServiceProvider.GetRequiredService<IEntitySender>()
+            .Send(new PatchCommand<Product, int, Product, ProductInputDto>(shop.PenId, patch.RootElement));
+
+        Assert.Equal(("Pen (saved)", 7), (patched!.Item.Title, patched.Item.Stock));
+        Assert.Equal("Pen (saved)", (await shop.FindAsync(shop.PenId))!.Title);
+        Assert.Equal(["save, input checked: False"], trace);
+    }
+
+    // the save is called, not sent: an operation log sees one PATCH, and Duration covers all of it
+    [Fact]
+    public async Task A_Patch_Runs_The_Behaviours_Once()
+    {
+        var trace = new List<string>();
+        await using var shop = await Shop.CreateServicesAsync(services => services
+            .AddSingleton(trace)
+            .AddTransient(typeof(IEntityPipelineBehavior<,>), typeof(OuterBehavior<,>))
+            .AddTransient<IEntityRequestHandler<SaveCommand<Product, int, Product, ProductInputDto>, SaveResult<Product>>, StampedSaveHandler>());
+        using var scope = shop.Services.CreateScope();
+        using var patch = System.Text.Json.JsonDocument.Parse("""{ "stock": 7 }""");
+
+        var patched = await scope.ServiceProvider.GetRequiredService<IEntitySender>()
+            .Send(new PatchCommand<Product, int, Product, ProductInputDto>(shop.PenId, patch.RootElement));
+
+        Assert.Equal(["outer >", "save, input checked: False", "< outer"], trace);
+        Assert.NotNull(patched!.Duration);
     }
 
     // without SerializerOptions a job's patch may name an enum value or give its number, as a client's JSON would
@@ -196,6 +257,16 @@ public class EntitySenderTests
         }
     }
 
+    public sealed class StampedSaveHandler(IServiceProvider services, List<string> trace) : SaveHandler<Product, int, Product, ProductInputDto>(services)
+    {
+        public override Task<SaveResult<Product>?> Handle(SaveCommand<Product, int, Product, ProductInputDto> request, CancellationToken token = default)
+        {
+            trace.Add($"save, input checked: {request.ValidateInput}");
+            request.Input.Title += " (saved)";
+            return base.Handle(request, token);
+        }
+    }
+
     public sealed class OuterBehavior<TRequest, TResponse>(List<string> trace) : IEntityPipelineBehavior<TRequest, TResponse>
         where TRequest : IEntityRequest<TResponse>
     {
@@ -216,6 +287,17 @@ public class EntitySenderTests
             trace.Add("inner >");
             var response = await next();
             trace.Add("< inner");
+            return response;
+        }
+    }
+
+    public sealed class DetailsBehavior(List<string> trace) : IEntityPipelineBehavior<DetailsQuery<Product, int, Product>, DetailsResult<Product>>
+    {
+        public async Task<DetailsResult<Product>?> Handle(DetailsQuery<Product, int, Product> request, EntityRequestDelegate<DetailsResult<Product>> next, CancellationToken token = default)
+        {
+            trace.Add("details >");
+            var response = await next();
+            trace.Add("< details");
             return response;
         }
     }

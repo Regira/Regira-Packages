@@ -38,6 +38,8 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\src\Entities.DependencyInjection\Entities.DependencyInjection.csproj" />
+      <!-- the JSON options beside AddProblemDetails(), on both frameworks (ProblemDetailsJsonTests) -->
+      <ProjectReference Include="..\..\src\Entities.Web\Entities.Web.csproj" />
       <ProjectReference Include="..\..\src\Entities.Validation.FluentValidation\Entities.Validation.FluentValidation.csproj" />
       <ProjectReference Include="..\Testing.Library\_Testing.Library.csproj" />
     </ItemGroup>

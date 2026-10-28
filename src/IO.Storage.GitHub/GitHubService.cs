@@ -38,12 +38,30 @@ public class GitHubService(GitHubCommunicator communicator, ISerializer serializ
         var item = serializer.Deserialize<GitHubItem>(json);
         if (item?.Content == null)
             return null;
+        // the contents API leaves out the content of a file over 1 MB ("encoding": "none"); its blob holds it
+        if (item.Content.Length == 0 && item.Size > 0)
+            return await GetBlob(item.Sha);
         return Convert.FromBase64String(item.Content.Replace("\n", ""));
     }
     public async Task<Stream?> GetStream(string identifier)
     {
         var bytes = await GetBytes(identifier);
         return bytes != null ? new MemoryStream(bytes) : null;
+    }
+    /// <inheritdoc />
+    /// <remarks>The contents API gives a file's size but no time, so <see cref="StoredFileInfo.LastModified"/> is <c>null</c>.</remarks>
+    public async Task<StoredFileInfo?> GetInfo(string identifier)
+    {
+        var uri = GetAbsoluteUri(identifier);
+        var response = await communicator.GetAsync(uri);
+        if (!response.IsSuccessStatusCode)
+            return null;
+        var json = await response.Content.ReadAsStringAsync();
+        // a folder answers with the list of its items
+        if (json.TrimStart().StartsWith('['))
+            return null;
+        var item = serializer.Deserialize<GitHubItem>(json);
+        return item?.Type == GitHubItemType.File ? new StoredFileInfo(item.Size, null) : null;
     }
     public async Task<IEnumerable<string>> List(FileSearchObject? so = null)
     {
@@ -248,6 +266,20 @@ public class GitHubService(GitHubCommunicator communicator, ISerializer serializ
             return null;
         var content = await response.Content.ReadAsStringAsync();
         return serializer.Deserialize<GitHubItem>(content)?.Sha;
+    }
+    // the git blobs API serves a blob up to 100 MB raw, from the repository's own host, with the same Contents read permission;
+    // a file's download_url is on another host, so the token would leave the configured one
+    private async Task<byte[]?> GetBlob(string? sha)
+    {
+        // the sha comes from the answer: only a hash goes into the address
+        if (string.IsNullOrEmpty(sha) || !sha.All(char.IsAsciiHexDigit))
+            return null;
+        using var request = new HttpRequestMessage(HttpMethod.Get, communicator.BlobsRoot + sha);
+        request.Headers.Accept.ParseAdd("application/vnd.github.raw+json");
+        using var response = await communicator.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+            return null;
+        return await response.Content.ReadAsByteArrayAsync();
     }
     private (string path, string branch) GetPathAndBranch(string identifier)
     {

@@ -29,7 +29,7 @@ END:VCARD";
     [Test]
     public virtual Task Can_Read_V3_0() => CanRead(ContentSamples.VCards[VCardVersion.V3_0], VCardVersion.V3_0);
     [Test]
-    public virtual Task Can_Read_V4_0() => CanRead(ContentSamples.VCards[VCardVersion.V3_0], VCardVersion.V3_0);
+    public virtual Task Can_Read_V4_0() => CanRead(ContentSamples.VCards[VCardVersion.V4_0], VCardVersion.V4_0);
 
 
     [Test]
@@ -65,8 +65,12 @@ END:VCARD";
                 Assert.That(item.Tels!.Last().Uri, Is.EqualTo("tel:+1-404-555-1212"));
                 break;
         }
-        Assert.That((VCardTelType.Cell | VCardTelType.Work) == item.Tels!.First().Type, Is.True);
-        Assert.That((VCardTelType.Voice | VCardTelType.Home) == item.Tels!.Last().Type, Is.True);
+        // the 4.0 sample marks the first number as one that also takes text messages
+        var firstTelType = version == VCardVersion.V4_0
+            ? VCardTelType.Cell | VCardTelType.Work | VCardTelType.Text
+            : VCardTelType.Cell | VCardTelType.Work;
+        Assert.That(item.Tels!.First().Type, Is.EqualTo(firstTelType));
+        Assert.That(item.Tels!.Last().Type, Is.EqualTo(VCardTelType.Voice | VCardTelType.Home));
         Assert.That(item.Emails!.First().Text, Is.EqualTo("forrestgump@example.com"));
 
         // ReSharper disable PossibleInvalidOperationException

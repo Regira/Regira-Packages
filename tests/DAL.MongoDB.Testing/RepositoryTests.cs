@@ -185,6 +185,18 @@ public class RepositoryTests : IDisposable
     }
 
     [Test]
+    public async Task Save_Stores_Fields_Under_The_Serializers_Names()
+    {
+        var product = new Product { Name = "Desk", Category = $"furniture-{Guid.NewGuid()}", Price = 12.5m };
+        await _productRepo.Save(product);
+
+        var stored = await _productRepo.StoredDocument(product.Id!);
+        Assert.That(stored.Names, Is.SupersetOf(new[] { "name", "category", "price" }));
+
+        await _productRepo.Delete(product);
+    }
+
+    [Test]
     public async Task CountProducts_Applies_The_Filter_List_Uses()
     {
         var category = $"furniture-{Guid.NewGuid()}";

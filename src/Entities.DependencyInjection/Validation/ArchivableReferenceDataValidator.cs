@@ -21,7 +21,8 @@ namespace Regira.Entities.DependencyInjection.Validation;
 /// apart by whether the dependent is separately registered: an <c>OrderLine</c> synced by its parent's
 /// <c>Related()</c> is never queried on its own, while an <c>Asset</c> with its own list endpoint is. Only the
 /// latter is reported. A dependent that already declares a query filter of its own is treated as handled — that
-/// is the documented remedy for a dependent you query directly.
+/// is the documented remedy for a dependent you query directly. The archived filter of a dependent that is
+/// itself <see cref="IArchivable"/> does not count: it does not mirror the parent's.
 /// </para>
 /// <para>
 /// Silent on <c>net8.0</c>: EF Core 9 has no named query filters, so no archived filter is installed on the
@@ -65,8 +66,10 @@ internal sealed class ArchivableReferenceDataValidator : IEntityRegistrationVali
             var dependents = principal.GetReferencingForeignKeys()
                 .Where(fk => fk.IsRequired && !fk.DeclaringEntityType.IsOwned())
                 // A filter of the dependent's own is the documented remedy — it keeps count and items in
-                // agreement by eliminating the same rows from both.
-                .Where(fk => fk.DeclaringEntityType.GetDeclaredQueryFilters().Count == 0)
+                // agreement by eliminating the same rows from both. An IArchivable dependent's own archived
+                // filter is not one: it hides the dependent's archived rows, not those of an archived parent.
+                .Where(fk => fk.DeclaringEntityType.GetDeclaredQueryFilters()
+                    .All(f => f.Key == ModelBuilderExtensions.ArchivedQueryFilterName))
                 .Where(fk => registered.Contains(fk.DeclaringEntityType.ClrType) && !ownedByParent.Contains(fk.DeclaringEntityType.ClrType))
                 .Select(fk => fk.DeclaringEntityType.ClrType.Name)
                 .Distinct()

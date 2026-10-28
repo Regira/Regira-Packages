@@ -1,4 +1,6 @@
 ﻿using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
 using System.Text.RegularExpressions;
 
 namespace Regira.Utilities;
@@ -8,9 +10,13 @@ public static class RegexUtility
     // https://docs.microsoft.com/en-us/dotnet/standard/base-types/how-to-verify-that-strings-are-in-valid-email-format
     private static string EmailPattern => @"(?("")("".+?(?<!\\)""@)|(([0-9a-z]((\.(?!\.))|[-!#\$%&'\*\+/=\?\^`\{\}\|~\w])*)(?<=[0-9a-z])@))(?(\[)(\[(\d{1,3}\.){3}\d{1,3}\])|(([0-9a-z][-\w]*[0-9a-z]*\.)+[a-z0-9][\-a-z0-9]{0,22}[a-z0-9]))";
     // https://www.freecodecamp.org/news/how-to-validate-urls-in-javascript/
-    private static string UrlPattern => @"([a-zA-Z]+:\/\/)?((([a-z\d]([a-z\d-]*[a-z\d])*)\.)+[a-z]{2,}|((\d{1,3}\.){3}\d{1,3}))(\:\d+)?(\/[-a-z\d%_.~+]*)*(\?[;&a-z\d%_.~+=-]*)?(\#[-a-z\d_]*)?";
-    // https://uibakery.io/regex-library/phone-number (added '/' to allowed chars and allowed (0) in second segment)
-    private static string PhoneNumberPattern => @"\+?\d{1,4}?[-./\s]?(\(0\))?\(?\d{1,3}?\)?[-.\s]?\d{1,4}[-.\s]?\d{1,4}[-.\s]?\d{1,9}";
+    // A domain label: a letter or digit, then optionally a run of them and '-' that ends in one. The run is optional ('?'):
+    // repeating it ('*') matched the same labels but backtracked exponentially on a long label without its dot.
+    private static string UrlPattern => @"([a-zA-Z]+:\/\/)?((([a-z\d]([a-z\d-]*[a-z\d])?)\.)+[a-z]{2,}|((\d{1,3}\.){3}\d{1,3}))(\:\d+)?(\/[-a-z\d%_.~+]*)*(\?[;&a-z\d%_.~+=-]*)?(\#[-a-z\d_]*)?";
+    // https://uibakery.io/regex-library/phone-number (added '/' to allowed chars and allowed (0) in second segment).
+    // Greedy groups, so an extracted number is taken whole; a space separator between groups (\p{Zs}: a non-breaking
+    // space too), not \s, so a number never runs over a tab or a line break.
+    private static string PhoneNumberPattern => @"\+?\d{1,4}[-./\p{Zs}]?(\(0\))?\(?\d{1,3}\)?[-.\p{Zs}]?\d{1,4}[-.\p{Zs}]?\d{1,4}[-.\p{Zs}]?\d{1,9}";
     private static string IPv4AddressPattern => @"(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)";
     private static string IPv6AddressPattern => @"(([0-9a-fA-F]{1,4}:){7,7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]{1,}|::(ffff(:0{1,4}){0,1}:){0,1}((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9])\.){3,3}(25[0-5]|(2[0-4]|1{0,1}[0-9]){0,1}[0-9]))";
 
@@ -103,7 +109,8 @@ public static class RegexUtility
     /// </returns>
     /// <remarks>
     /// This method uses a regular expression to validate phone number formats, including international formats.
-    /// It supports various delimiters such as spaces, dashes, dots, and slashes.
+    /// Digit groups are separated by a space (a non-breaking one too), a dash, a dot or a slash; a tab or a line break
+    /// is no separator.
     /// Additionally, it can validate short numbers if <paramref name="allowShortNumber"/> is set to <c>true</c>.
     /// </remarks>
     public static bool IsValidPhoneNumber(string? input, bool allowShortNumber = false)
@@ -143,7 +150,7 @@ public static class RegexUtility
         {
             return false;
         }
-        return Regex.IsMatch(input, IPv4AddressPattern);
+        return Regex.IsMatch(input, PatternToExactMatch(IPv4AddressPattern));
     }
     /// <summary>
     /// Validates whether the provided input string is in a valid IPv6 address format.
@@ -153,8 +160,9 @@ public static class RegexUtility
     /// <c>true</c> if the input string is a valid IPv6 address; otherwise, <c>false</c>.
     /// </returns>
     /// <remarks>
-    /// This method uses a regular expression to validate the IPv6 address format. 
-    /// It supports various IPv6 notations, including compressed and mixed IPv6/IPv4 formats.
+    /// This method reads the input with .NET's own address parser, so every IPv6 notation is accepted: compressed,
+    /// mixed IPv6/IPv4 and with a zone ID of letters, digits and <c>._~-</c> (<c>fe80::1%eth0</c>). A bracketed form,
+    /// with or without a port, is not an address and is refused.
     /// </remarks>
     public static bool IsValidIPv6Address(string? input)
     {
@@ -162,7 +170,10 @@ public static class RegexUtility
         {
             return false;
         }
-        return Regex.IsMatch(input, IPv6AddressPattern, RegexOptions.IgnoreCase);
+        // the parser also takes "[::1]:80" and any text after a '%': a zone ID is letters, digits and ._~- (RFC 6874)
+        return Regex.IsMatch(input, @"^[0-9a-fA-F:.]+(?:%[0-9a-zA-Z._~-]+)?\z")
+            && IPAddress.TryParse(input, out var address)
+            && address.AddressFamily == AddressFamily.InterNetworkV6;
     }
     /// <summary>
     /// Validates whether the provided input string is a valid IP address (either IPv4 or IPv6).
@@ -179,7 +190,8 @@ public static class RegexUtility
     public static bool IsValidIPAddress(string? input)
         => IsValidIPv4Address(input) || IsValidIPv6Address(input);
 
-    static string PatternToExactMatch(string input) => $"^{input}$";
+    // \z, not $: $ also matches before a final newline. The group keeps any top-level alternation inside the anchors.
+    static string PatternToExactMatch(string input) => $"^(?:{input})\\z";
     static string PatternToExtract(string input) => $@"\b{input}\b";
 
     /// <summary>
@@ -233,7 +245,9 @@ public static class RegexUtility
     /// An array of unique phone numbers found in the input string. Returns an empty array if no phone numbers are found.
     /// </returns>
     /// <remarks>
-    /// This method uses regular expressions to identify phone numbers in the input string. 
+    /// This method uses regular expressions to identify phone numbers in the input string.
+    /// Each number is taken whole, with the separators <see cref="IsValidPhoneNumber"/> accepts, so numbers on separate
+    /// lines are extracted apart.
     /// The extraction process is case-insensitive and has a timeout of 250 milliseconds for regex matching.
     /// </remarks>
     public static string[] ExtractPhoneNumbers(string input, bool allowShortNumbers = false)

@@ -4,7 +4,9 @@ using System.Globalization;
 
 namespace Common.Testing.Globalization;
 
+// the queries match display names, which follow the UI culture; the expectations are written in English
 [TestFixture]
+[SetUICulture("en-US")]
 [Parallelizable(ParallelScope.All)]
 public class CultureUtilityTests
 {

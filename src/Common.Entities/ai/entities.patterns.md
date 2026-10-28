@@ -48,13 +48,14 @@ A collection managed by `e.Related()` is *owned* and has **no** `IEntityService<
 - **Through the parent's navigation** — set the owned collection before adding the parent; the parent's `Related()` prepper persists the join rows on `SaveChanges()`:
   <!-- no-compile -->
   ```csharp
-  product.Categories = [cat1, cat2];   // ProductCategory join rows
+  product.Categories = [new() { CategoryId = cat1.Id }, new() { CategoryId = cat2.Id }];   // ProductCategory join rows
   await products.Add(product);
   await products.SaveChanges();
   ```
-- **Straight on the DbContext** — for a standalone/self-referencing join (e.g. `RelatedCategory`) with no parent write path, add the rows on the context:
+- **Straight on the DbContext** — for a join no entity registers through `Related()`, add the rows on the context (a `RelatedCategory` whose Category registers `Related(x => x.ParentEntities)` goes through the parent instead):
   <!-- no-compile -->
   ```csharp
+  // a RelatedCategory here only when Category registers no Related() for it
   db.RelatedCategories.Add(new RelatedCategory { ParentId = a.Id, ChildId = b.Id });
   await db.SaveChangesAsync();
   ```
@@ -477,8 +478,10 @@ Two silent shapes, one fix. **Every `?q=` request returns an empty list** — 20
 entity implements `IHasNormalizedContent` but nothing fills `NormalizedContent` (`[Normalized]` on the
 class instead of the property, or no attribute at all), so the global `Q` filter ANDs a match against
 `null`. **`?q=` returns everything, unfiltered**: the entity does not implement the interface and has no
-custom filter — startup logs *"?q= text search is silently ignored for: X"*. Either way the attribute goes
-on the **property**, naming its sources:
+custom filter — startup logs *"?q= text search is silently ignored for: X"*. A custom `Filter(...)` that never reads
+`so.Q` returns everything too — startup logs *"?q= text search is ignored by the custom filters of: X"*
+(§Startup validation): read `so.Q` there, or name the columns with `FilterQ` (`entities.instructions` → *Searching a
+few explicit columns*). Otherwise the attribute goes on the **property**, naming its sources:
 
 <!-- no-compile -->
 ```csharp
@@ -710,7 +713,7 @@ is no `SearchObject` that can express it and no entity service that should own i
 
 <!-- no-compile -->
 ```csharp
-[ApiController, Route("dashboard")]                 // RoutePrefixConvention still prefixes it
+[ApiController, Route("dashboard")]                 // UseCentralRoutePrefix still prefixes it
 public class DashboardController(AppDbContext db) : ControllerBase
 {
     [HttpGet("spend-by-month")]
@@ -1179,12 +1182,97 @@ public static class ProductOperations
 }
 ```
 
-- **One request type each.** A `PATCH` saves its merged input itself, not through the `SaveCommand` handler: a change
-  to how an entity saves overrides both `SaveCommand<…>` and `PatchCommand<…>`.
+- **Which layer.** A rule about the data — who may write a row, what a field may hold — belongs in the write pipeline
+  (preppers, validators, global filters), which every path runs, a direct `IEntityService` call included. A handler is
+  for work that wraps the whole operation or changes what it answers; an endpoint (*Replacing one endpoint*, below) for
+  HTTP.
+- **A `PATCH` ends in the `SaveCommand` handler.** It merges and checks its input, then calls the handler a
+  `SaveCommand<…>` of the same type list resolves to — the override, when one is registered — with
+  `ValidateInput: false`. It is called, not sent, so the behaviours run once, around the patch. A change to how an
+  entity saves overrides `SaveCommand<…>` alone; a `PatchCommand<…>` override is for what only a patch does.
+- **One type list each.** The sender resolves the exact type list a surface sends, so a handler for another one is
+  never reached by the endpoints. Startup validation warns for such a handler of `DetailsQuery`, `ListQuery`,
+  `SearchQuery`, `SaveCommand`, `PatchCommand` or `DeleteCommand`; an attachment request (*Changing an attachment
+  operation*, below) and a request of the app's own go unchecked. A plain `For<Product>()` lists with the
+  `SearchObject` record on its mapped endpoints and on `EntityControllerBase<Product, ProductDto, ProductInputDto>`, so
+  a handler for `ListQuery<Product, int, SearchObject<int>, ProductDto>` is reported there; a controller on
+  `EntityControllerBase<Product, int, SearchObject<int>, …>` sends that one, and reaches it.
 - A request of the app's own — a record implementing `IEntityRequest<TResponse>` — works the same way: it has no
   default handler, so it needs a registered one, and its first send says so when it is missing. It declares the
   `EntityType` and `Operation` a behaviour reads; a worked one is §Role-gated transitions → *Sent through the
   mediator*.
+
+### Changing an attachment operation
+
+The routes `HasAttachments()` adds under an owner send requests too, from an attachment controller and from the
+mapped routes alike, so one handler changes a route on both. `TLink` is the link entity:
+
+| Route | Request | Default handler |
+|---|---|---|
+| `POST {objectId}/files` | `UploadAttachmentCommand<TLink, TDto, TInputDto>` | `UploadAttachmentHandler<,,>` |
+| `PUT {objectId}/attachments/{id}` | `UpdateAttachmentCommand<TLink, TDto, TInputDto>` | `UpdateAttachmentHandler<,,>` |
+| `PUT {objectId}/files/{id}` | `ReplaceAttachmentFileCommand<TLink, TDto>` | `ReplaceAttachmentFileHandler<,>` |
+| `GET files/{id}`, `GET {objectId}/files/{*fileName}` | `AttachmentFileQuery<TLink>` | `AttachmentFileHandler<>` |
+| `GET attachments/{id}`, both lists, `DELETE attachments/{id}` | `DetailsQuery`, `ListQuery`, `DeleteCommand` of `TLink` | the entity handlers |
+
+```csharp
+using Regira.Entities.Attachments.Models;
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Handlers;
+using Regira.Entities.Mediator.Requests;
+
+// the owner implements IHasAttachments<ProductAttachment> and registers HasAttachments() (entities.instructions §Attachments)
+public class Product : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductAttachment : EntityAttachment
+{
+    public ProductAttachment() => ObjectType = nameof(Product);
+}
+public class FileDownload
+{
+    public int Id { get; set; }
+    public int LinkId { get; set; }
+    public DateTime DownloadedOn { get; set; }
+}
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+{
+    public DbSet<FileDownload> FileDownloads => Set<FileDownload>();
+}
+
+// both downloads of a product's file, on an attachment controller or mapped, and a job's AttachmentFileQuery: the
+// file as the default handler serves it, and a row for each download served
+public class ProductFileHandler(IServiceProvider services, AppDbContext db) : AttachmentFileHandler<ProductAttachment>(services)
+{
+    public override async Task<Attachment?> Handle(AttachmentFileQuery<ProductAttachment> request, CancellationToken token = default)
+    {
+        var file = await base.Handle(request, token);
+        if (file != null)
+        {
+            db.FileDownloads.Add(new FileDownload { LinkId = request.Id, DownloadedOn = DateTime.UtcNow });
+            await db.SaveChangesAsync(token);
+        }
+        return file;
+    }
+}
+
+public static class ProductFileOperations
+{
+    public static IServiceCollection AddProductFileOperations(this IServiceCollection services)
+        => services.AddTransient<IEntityRequestHandler<AttachmentFileQuery<ProductAttachment>, Attachment>, ProductFileHandler>();
+}
+```
+
+- **Both downloads send `AttachmentFileQuery`** — the one by name finds the link first — so one override covers
+  them. `null` answers 404.
+- **The type list is the surface's.** `AttachmentFileQuery` names only the link, so a download override always
+  matches. The other requests name the read DTO too, and the upload and the update the input DTO as well: an
+  attachment controller's pair (`EntityAttachmentControllerBase<ProductAttachment>` sends `EntityAttachmentDto` and
+  `EntityAttachmentInputDto`), and on mapped routes the link's `UseMapping` pair, else those two. No startup check
+  covers a handler for the link, so one for another pair is skipped without a word.
+- **A rule about the file stays on the link entity.** The allowed types, a size cap, who may attach: a validator on
+  the link runs for every attachment write — upload, update, file replace and delete — and the owner's validator for
+  the owner's own saves (`entities.instructions`
+  → *Attachments*, the link-rule callout). A handler is for what wraps the operation, such as a log of downloads,
+  which no write pipeline sees.
 
 ### Replacing one endpoint
 
@@ -1222,8 +1310,9 @@ public class ProductController : EntityControllerBase<Product, ProductDto, Produ
 }
 ```
 
-- **Keep the signature exactly.** A method with another parameter list is no override but a second action on the
-  same route, and every request to it fails as ambiguous.
+- **Keep the signature exactly.** A method with another parameter list is no override but a new action, which
+  inherits none of the base action's attributes: under `[ApiController]` its complex parameters bind from the body,
+  so a search object beside `PagingInfo` makes `MapControllers()` throw at startup.
 - The complex base has a second `List` and `Search` — `POST list` and `POST search`, with the search objects in the
   body — and each is overridden on its own.
 
@@ -1236,6 +1325,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Regira.DAL.Paging;
 using Regira.Entities.DependencyInjection.ServiceCollections;
+using Regira.Entities.Mapping.Mapster;
 using Regira.Entities.Mediator.Abstractions;
 using Regira.Entities.Mediator.Requests;
 using Regira.Entities.Web.Endpoints;
@@ -1253,7 +1343,11 @@ public static class ShopConfiguration
 {
     public static EntityServiceCollection<AppDbContext> AddShop(this IServiceCollection services)
         => services
-            .UseEntities<AppDbContext>(o => o.UseDefaults())
+            .UseEntities<AppDbContext>(o =>
+            {
+                o.UseDefaults();
+                o.UseMapsterMapping();                                  // the mapper UseMapping configures
+            })
             .For<Product>(e =>
             {
                 e.UseMapping<ProductDto, ProductInputDto>();
@@ -1446,7 +1540,10 @@ public class ReservationSaveHandler(IServiceProvider services, RoomLock rooms)
             () => base.Handle(request, token), token);
 }
 
-// PATCH: the rooms it moves the booking to are in the patch, an array a merge patch replaces whole
+// PATCH: the locks come before the merge reads the stored booking, so two patches at once of a booking that holds a
+// room merge in turn, the second from what the first committed (without a stored room nothing makes them wait: a
+// concurrency token covers that). The rooms it moves the booking to are in the patch, an array a merge patch replaces
+// whole. The save the patch ends in runs ReservationSaveHandler too, which locks again inside this transaction.
 public class ReservationPatchHandler(IServiceProvider services, RoomLock rooms)
     : PatchHandler<Reservation, int, ReservationDto, ReservationInputDto>(services)
 {
@@ -1521,7 +1618,52 @@ public static class OperationLogging
 }
 ```
 
-- Behaviours run in registration order, the first registered outermost. `Duration` spans them all and is written on
+**Around one request type**, register the behaviour closed. It runs for that type list alone, in the same
+registration order as the open ones:
+
+```csharp
+using Microsoft.Extensions.Logging;
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Requests;
+using Regira.Entities.Web.Models;
+
+public class Product : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductDto { public int Id { get; set; } public string? Title { get; set; } }
+
+// every attempt to delete a product — failed and not-found ones included — whatever sent it
+public class ProductDeleteLog(ILogger<ProductDeleteLog> logger)
+    : IEntityPipelineBehavior<DeleteCommand<Product, int, ProductDto>, DeleteResult<ProductDto>>
+{
+    public async Task<DeleteResult<ProductDto>?> Handle(DeleteCommand<Product, int, ProductDto> request,
+        EntityRequestDelegate<DeleteResult<ProductDto>> next, CancellationToken token = default)
+    {
+        var outcome = "failed";
+        try
+        {
+            var result = await next();
+            outcome = result == null ? "not found" : "deleted";
+            return result;
+        }
+        finally
+        {
+            logger.LogInformation("Delete of product {Id}: {Outcome}", request.Id, outcome);
+        }
+    }
+}
+
+public static class ProductDeleteLogging
+{
+    public static IServiceCollection AddProductDeleteLog(this IServiceCollection services)
+        => services.AddTransient<IEntityPipelineBehavior<DeleteCommand<Product, int, ProductDto>, DeleteResult<ProductDto>>, ProductDeleteLog>();
+}
+```
+
+- **A closed behaviour's type list is the surface's**, matched exactly as a handler's is (*One type list each*,
+  above), and no startup check covers it. A `PATCH` sends a `PatchCommand` and calls its save, so a behaviour on
+  `SaveCommand<…>` alone misses it: register one on `PatchCommand<…>` too.
+- **A behaviour wraps the request it is given.** `next()` takes no request, so changing what is saved or asked is a
+  handler's job (*Replacing one operation for one entity*).
+- Behaviours run in registration order, open and closed ones alike, the first registered outermost. `Duration` spans them all and is written on
   the result returned when it is an `IEntityResult`, as the built-in envelopes are; a request of the app's own that
   answers with another type gets none. A cache hands out a copy (`cached with { }`), not the instance it keeps, or
   every hit — parallel ones too — rewrites the shared instance.
@@ -1541,10 +1683,10 @@ To run every entity request inside an app's own mediator pipeline — logging, t
 around the generated endpoints as around the app's other requests — replace the `IEntitySender` registration with a
 sender that sends through the library. Three small types do it; with MediatR:
 
-<!-- no-compile -->
 ```csharp
 using MediatR;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Regira.Entities.Mediator;
 using Regira.Entities.Mediator.Abstractions;
 
@@ -1578,9 +1720,16 @@ public class WriteLog<TRequest, TResponse>(ILogger<WriteLog<TRequest, TResponse>
 }
 
 // in the app's registration, before or after UseEntities()
-services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<EntityMessage>());
-services.AddTransient(typeof(IPipelineBehavior<,>), typeof(WriteLog<,>));
-services.Replace(ServiceDescriptor.Scoped<IEntitySender, MediatREntitySender>());
+public static class EntityMediatR
+{
+    public static IServiceCollection AddEntityMediatR(this IServiceCollection services)
+    {
+        services.AddMediatR(cfg => cfg.RegisterServicesFromAssemblyContaining<EntityMessage>());
+        services.AddTransient(typeof(IPipelineBehavior<,>), typeof(WriteLog<,>));
+        services.Replace(ServiceDescriptor.Scoped<IEntitySender, MediatREntitySender>());
+        return services;
+    }
+}
 ```
 
 - **What stays the same:** the closed-handler override, the `IEntityPipelineBehavior`s and `Duration` — the
@@ -1609,6 +1758,7 @@ say how its entity maps:
 
 ```csharp
 using Regira.Entities.DependencyInjection.ServiceCollections;
+using Regira.Entities.Mapping.Mapster;
 using Regira.Entities.Web.Endpoints;
 
 public class Product : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } }
@@ -1626,7 +1776,11 @@ public static class ShopServiceConfiguration
 {
     public static EntityServiceCollection<AppDbContext> AddShop(this IServiceCollection services)
         => services
-            .UseEntities<AppDbContext>(o => o.UseDefaults())
+            .UseEntities<AppDbContext>(o =>
+            {
+                o.UseDefaults();
+                o.UseMapsterMapping();                                  // the mapper UseMapping configures
+            })
             .For<Product>(e =>
             {
                 e.UseMapping<ProductDto, ProductInputDto>();          // the DTO pair the endpoints answer with and bind
@@ -1737,7 +1891,7 @@ public class OrderValidator : AbstractValidator<Order>
             .MustAsync(async (order, code, ct) => !await db.Orders.AnyAsync(o => o.Code == code && o.Id != order.Id, ct))
             .WithMessage("Code is taken");
 
-        // db sees every row: with scoped reads, check through the filtered read service (entities.instructions §Step 8 → Validators)
+        // db skips row security; on net10.0 the archived filter still applies. With scoped reads, check through the filtered read service (entities.instructions §Step 8 → Validators)
         RuleFor(x => x.CustomerId)
             .MustAsync((id, ct) => db.Customers.AnyAsync(c => c.Id == id, ct))
             .WithMessage(x => $"Customer {x.CustomerId} does not exist");
@@ -2038,7 +2192,7 @@ e.Prepare(async (order, dbContext) =>
 });
 ```
 
-- Throw `EntityInputException<Order>` on a rule breach — parameterized by the **serviced** entity (`Order`, the one with the `.For<>()`/controller), **not** the related `Product`. Both still return 400 (the registered filter matches the non-generic base), but the generated action's own `catch` is on its closed `EntityInputException<TEntity>`, so only the matching type argument gets the action's own 400 — another reaches the filter, and a host without it answers 500 — and any `catch` you write should be on the base for the same reason.
+- Throw `EntityInputException<Order>` on a rule breach — parameterized by the **serviced** entity (`Order`, the one with the `.For<>()`/controller), **not** the related `Product`, so its `Item` can carry the entity being written. Either answers 400 on every surface, since the mapping matches the non-generic base, and a `catch` you write should be on that base too: a closed `EntityInputException<Order>` misses the `EntityInputException<Product>` another prepper throws.
 - On **update** the decrement would compound — diff against the original quantities (prepper-with-original, or a primer branching on `EntityState.Modified`) and apply only the delta.
 - ⚠️ Two concurrent orders can read the same stock and lose a decrement; where that matters, give `Product` `IHasConcurrencyToken` so the losing save answers 409 (§Optimistic concurrency (stale-write detection)).
 - To insert a related row on update, `dbContext.Add(row)` with its FK set; it is saved with the parent and taken back if a validator refuses the write.
@@ -2366,7 +2520,8 @@ public class RequestCodeGenerator(IServiceScopeFactory scopeFactory)
         finally { _lock.Release(); }
     }
 }
-// services.AddSingleton<RequestCodeGenerator>();  then inject it into the primer that stamps Code on create
+// Register once: services.Services.AddSingleton<RequestCodeGenerator>() inside an Add{Entities}(), or
+// services.AddSingleton<RequestCodeGenerator>() in the root AddEntityServices; then inject it into the primer that stamps Code on create
 ```
 
 ⚠️ **Prime from the highest code, never from a row count.** `CountAsync()` reads as the same thing and is
@@ -2397,7 +2552,7 @@ public class RequestCodePrimer(RequestCodeGenerator codes) : EntityPrimerBase<Re
             entity.Code = (string?)entry.OriginalValues[nameof(entity.Code)];      // update — the stored code, whatever the body said
     }
 }
-// Registration: services.AddSingleton<RequestCodeGenerator>(); e.AddPrimer<RequestCodePrimer>();
+// Registration: the generator's singleton as above; e.AddPrimer<RequestCodePrimer>();
 ```
 
 The restore holds on the service's `Modify` path too: it tracks the stored row's values as the entry's originals, so

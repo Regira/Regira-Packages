@@ -2,7 +2,8 @@
 
 NUnit tests for [Entities.Mapping.Mapster](../../src/Entities.Mapping.Mapster/README.md): two
 `UseEntities<TContext>()` stacks that each call `UseMapsterMapping()` share one `TypeAdapterConfig`, so both
-contexts' entity ↔ DTO mappings work whichever stack is registered first.
+contexts' entity ↔ DTO mappings work whichever stack is registered first; `UseMapping` and `AddMapping` add their
+pairs to that config, so one that requires explicit mapping maps them.
 
 ## Running
 

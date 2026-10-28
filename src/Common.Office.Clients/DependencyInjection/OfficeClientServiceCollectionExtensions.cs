@@ -9,6 +9,7 @@ using Regira.Office.Excel.Abstractions;
 using Regira.Office.Mail.Abstractions;
 using Regira.Office.OCR.Abstractions;
 using Regira.Office.PDF.Abstractions;
+using Regira.Office.VCards.Abstractions;
 using Regira.Office.Word.Abstractions;
 
 namespace Regira.Office.Clients.DependencyInjection;
@@ -18,6 +19,8 @@ public static class OfficeClientServiceCollectionExtensions
     /// <summary>
     /// Registers a client for every Office service the API offers. Each <see cref="HttpClient"/> is named after its interface
     /// (<c>nameof(IWordConverter)</c>), for adding handlers or resilience to it with <c>services.AddHttpClient(name)</c>.
+    /// Every client replaces what was registered before it for its interface, so a backend of the app's own is registered
+    /// after this call to keep it.
     /// </summary>
     public static IServiceCollection AddOfficeClients(this IServiceCollection services, Action<OfficeClientOptions> configure)
     {
@@ -56,6 +59,7 @@ public static class OfficeClientServiceCollectionExtensions
         services.AddHttpClient<IOcrService, OcrClient>(ConfigureClient);
         services.AddHttpClient<ICsvService, CsvClient>(ConfigureClient);
         services.AddHttpClient<IMessageParser, MessageParserClient>(ConfigureClient);
+        services.AddHttpClient<IVCardService, VCardClient>(ConfigureClient);
 
         // Asks the API what it makes of the key sent above; answers for an expired key too.
         services.AddHttpClient<ILicenseStatusClient, LicenseStatusClient>(ConfigureClient);

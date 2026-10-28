@@ -101,8 +101,9 @@ public class PdfClientTests : OfficeClientTestsBase
 
         var text = await _textExtractor.GetText(file);
 
-        Assert.That(text, Is.Not.Null);
-        Assert.That(text, Is.Not.Empty);
+        Assert.That(text, Does.Contain("Lorem ipsum dolor sit amet"));
+        Assert.That(text, Does.Contain("Donec ut urna mollis"), "the text of page 2");
+        Assert.That(text, Does.Not.Contain("System.Threading.Tasks"));
     }
 
     [Test]

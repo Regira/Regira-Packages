@@ -43,8 +43,15 @@ public class PgRestoreService(PgOptions options, IProcessHelper processHelper, I
     /// Restores the backup at <paramref name="sourcePath"/> as <paramref name="targetDb"/>, creating it, or replacing
     /// it with <paramref name="overwrite"/>, from a connection to the maintenance database; <c>pg_restore</c> gets the
     /// password in its environment. <see cref="BackupRestoreManager"/> restores through it too.
+    /// <para>
+    /// Replacing needs PostgreSQL 13 or later and a role that may create databases and end the sessions on the target:
+    /// it ends them (<c>DROP DATABASE … WITH (FORCE)</c>) and clears the Npgsql pools of connections opened from a
+    /// connection string in this process, so an app can restore its own database while it runs. A query running on
+    /// the target at that moment fails, and a pool this does not reach (an app's own <c>NpgsqlDataSource</c>, another
+    /// process) fails its next query once, unless its <c>Clear()</c> is called after the restore.
+    /// </para>
     /// </summary>
-    /// <exception cref="Exception">The database exists without <paramref name="overwrite"/>, the backup cannot be read, or the tool fails</exception>
+    /// <exception cref="Exception">The database exists without <paramref name="overwrite"/>, the role may not create it again, the backup cannot be read, or the tool fails</exception>
     internal static async Task RestoreFrom(IProcessHelper processHelper, string restorePath, PgSettings settings, string targetDb, string sourcePath,
         string? maintenanceDatabase, bool overwrite, ILogger? logger)
     {
@@ -72,7 +79,15 @@ public class PgRestoreService(PgOptions options, IProcessHelper processHelper, I
 
         if (exists)
         {
-            await cn.ExecuteAsync(PgSql.DropDatabase(targetDb));
+            // an owner without CREATEDB may drop its database but not create it again, which would leave neither
+            if (!await cn.ExecuteScalarAsync<bool>(PgSql.CanCreateDatabase))
+            {
+                throw new Exception($"Database {targetDb} is not replaced: the role {settings.Username} may not create databases (CREATEDB).");
+            }
+            // an app restoring its own database always has sessions on it, its own pool among them: end them, then
+            // drop the pooled connections of this process that the server has just closed
+            await cn.ExecuteAsync(PgSql.DropDatabase(targetDb, force: true));
+            NpgsqlConnection.ClearAllPools();
         }
         await cn.ExecuteAsync(PgSql.CreateDatabase(targetDb));
 

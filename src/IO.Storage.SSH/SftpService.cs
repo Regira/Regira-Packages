@@ -1,5 +1,6 @@
 ﻿using Regira.IO.Storage.Abstractions;
 using Renci.SshNet;
+using Renci.SshNet.Common;
 using Renci.SshNet.Sftp;
 
 namespace Regira.IO.Storage.SSH;
@@ -28,6 +29,22 @@ public class SftpService(SftpCommunicator communicator) : IFileService
         var fileUri = ResolveUri(identifier);
 
         return client.OpenRead(fileUri);
+    }
+    public async Task<StoredFileInfo?> GetInfo(string identifier)
+    {
+        var fileUri = ResolveUri(identifier);
+        var client = await communicator.Open();
+        // one request: a missing file is the server's answer, not a check made before it
+        SftpFileAttributes attributes;
+        try
+        {
+            attributes = client.GetAttributes(fileUri);
+        }
+        catch (SftpPathNotFoundException)
+        {
+            return null;
+        }
+        return attributes.IsRegularFile ? new StoredFileInfo(attributes.Size, attributes.LastWriteTimeUtc) : null;
     }
     public async Task<IEnumerable<string>> List(FileSearchObject? so = null)
     {

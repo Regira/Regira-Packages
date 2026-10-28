@@ -47,6 +47,8 @@ public class TestController : ControllerBase
         {
             // what a hand-written row-security check reads
             Role = User.FindFirstValue("role"),
+            // FindFirstValue cannot see a duplicate
+            RoleCount = User.FindAll("role").Count(),
             MappedRole = User.FindFirstValue(ClaimTypes.Role),
             // what [Authorize(Roles = ...)] resolves
             IsInAdminRole = User.IsInRole("admin"),
@@ -63,6 +65,7 @@ public class TestController : ControllerBase
 public class ClaimsReport
 {
     public string? Role { get; set; }
+    public int RoleCount { get; set; }
     public string? MappedRole { get; set; }
     public bool IsInAdminRole { get; set; }
     public string? UserId { get; set; }

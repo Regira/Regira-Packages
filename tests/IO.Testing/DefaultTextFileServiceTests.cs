@@ -1,6 +1,7 @@
 using System.Text;
 using Regira.IO.Storage;
 using Regira.IO.Storage.Abstractions;
+using Regira.IO.Storage.FileSystem;
 
 namespace IO.Testing;
 
@@ -23,6 +24,27 @@ public class DefaultTextFileServiceTests
 
         Assert.That(identifier, Is.EqualTo("config/app.json"));
         Assert.That(Encoding.UTF8.GetString(binaryService.Files["config/app.json"]), Is.EqualTo(json));
+    }
+
+    // the wrapped service answers, its last-modified time included, which the content-measuring default has not
+    [Test]
+    public async Task GetInfo_Is_The_Wrapped_Services()
+    {
+        var root = Directory.CreateTempSubdirectory("text-info-").FullName;
+        try
+        {
+            var text = new DefaultTextFileService(new BinaryFileService(new FileSystemOptions { RootFolder = root }), Encoding.UTF8);
+            await text.Save("notes.txt", "text");
+
+            var info = await ((IFileService)text).GetInfo("notes.txt");
+
+            Assert.That(info!.Length, Is.EqualTo(4));
+            Assert.That(info.LastModified, Is.Not.Null);
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
     }
 
 

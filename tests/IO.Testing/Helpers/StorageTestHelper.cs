@@ -93,6 +93,34 @@ public static class StorageTestHelper
             Assert.That(bytes.Length, Is.EqualTo(sourceFile.Length));
         }
     }
+    public static async Task Test_GetInfo(this IStorageTestContext ctx, bool hasLastModified = true)
+    {
+        var fso = new FileSearchObject
+        {
+            Type = FileEntryTypes.Files,
+            FolderUri = "dir2",
+            Recursive = true
+        };
+        var file = (await ctx.FileService.List(fso)).First();
+        var info = await ctx.FileService.GetInfo(file);
+
+        var sourceFileName = Path.GetFileName(file.Split('?').First());
+        var sourceFile = ctx.SourceFiles.Single(x => sourceFileName.Equals(x.FileName, StringComparison.InvariantCultureIgnoreCase));
+        Assert.That(info, Is.Not.Null);
+        Assert.That(info!.Length, Is.EqualTo(sourceFile.Length));
+        if (hasLastModified)
+        {
+            Assert.That(info.LastModified, Is.Not.Null.And.LessThanOrEqualTo(DateTime.UtcNow.AddMinutes(5)));
+            // a local time passes the bound above on a server at UTC or east of it
+            Assert.That(info.LastModified!.Value.Kind, Is.EqualTo(DateTimeKind.Utc));
+        }
+        else
+        {
+            Assert.That(info.LastModified, Is.Null);
+        }
+        Assert.That(await ctx.FileService.GetInfo($"dir2/{Guid.NewGuid():N}.txt"), Is.Null);
+        Assert.That(await ctx.FileService.GetInfo("dir2"), Is.Null);
+    }
     public static async Task Test_Filter_By_Folder(this IStorageTestContext ctx)
     {
         var folder = "dir2";
@@ -136,6 +164,15 @@ public static class StorageTestHelper
         Assert.That(files, Is.Not.Empty);
         var filteredSourceFiles = ctx.SourceFiles.Where(x => x.Identifier!.Contains($"{folder}\\"));
         Assert.That(files.Count, Is.EqualTo(filteredSourceFiles.Count()));
+    }
+    /// <summary>Without <c>Recursive</c> a folder lists its own files only: the file in dir2.1's subfolder stays out.</summary>
+    public static async Task Test_Filter_Non_Recursive(this IStorageTestContext ctx)
+    {
+        var so = new FileSearchObject { FolderUri = "dir2/dir2.1", Recursive = false, Type = FileEntryTypes.Files };
+
+        var files = await ctx.FileService.List(so);
+
+        Assert.That(files.Select(file => file.Split('/', '\\').Last()), Is.EquivalentTo(new[] { "file2.1.1.log", "file2.1.2.txt" }));
     }
     public static async Task Test_Filter_By_EntryType(this IStorageTestContext ctx)
     {
@@ -235,7 +272,11 @@ public static class StorageTestHelper
     }
 
 
-    public static async Task Test_Recursive_Directories(this IStorageTestContext ctx, string? folder = null)
+    /// <summary>
+    /// Processing folder by folder finds the files one recursive listing does, and, given <paramref name="expected"/>,
+    /// exactly those: two empty listings agree with each other as well.
+    /// </summary>
+    public static async Task Test_Recursive_Directories(this IStorageTestContext ctx, string? folder = null, IEnumerable<string>? expected = null)
     {
         var fileProcessor = new FileProcessor(ctx.FileService);
         var filesWithRecursiveSearchObject = new List<string>();
@@ -257,6 +298,11 @@ public static class StorageTestHelper
             true
         );
         Assert.That(filesFromRecursiveDirectories, Is.EquivalentTo(filesWithRecursiveSearchObject));
+        if (expected != null)
+        {
+            static string Normalize(string uri) => uri.Replace('\\', '/');
+            Assert.That(filesWithRecursiveSearchObject.Select(Normalize), Is.EquivalentTo(expected.Select(Normalize)));
+        }
     }
     // ReSharper restore PossibleMultipleEnumeration
 }

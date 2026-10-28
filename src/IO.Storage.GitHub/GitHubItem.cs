@@ -9,5 +9,7 @@ public class GitHubItem
     // ReSharper disable once InconsistentNaming
     public string? Download_Url { get; set; }
     public string? Sha { get; set; }
+    /// <summary>The file's size in bytes; 0 for a folder.</summary>
+    public long Size { get; set; }
     public string? Content { get; set; }
 }

@@ -1,6 +1,6 @@
 # Regira.Entities.Mediator
 
-The entity operations of [Regira Entities](https://regira.github.io/Regira-Packages/src/Common.Entities/) as requests: `DetailsQuery`, `ListQuery`, `SearchQuery`, `SaveCommand`, `PatchCommand` and `DeleteCommand`, sent through `IEntitySender`. The generated endpoints of Regira.Entities.Web send these requests, and a background job, an import or an application's own endpoint can send the same ones, getting what the endpoint answers: paging defaults, the re-read after a save, the DTO mapping and the result envelope. `UseEntities()` registers the sender. A closed `IEntityRequestHandler` replaces one operation for one entity, and an `IEntityPipelineBehavior` runs around every request. An application that runs a mediator library, such as MediatR, replaces the in-house sender with one that dispatches through it.
+The entity operations of [Regira Entities](https://regira.github.io/Regira-Packages/src/Common.Entities/) as requests: `DetailsQuery`, `ListQuery`, `SearchQuery`, `SaveCommand`, `PatchCommand` and `DeleteCommand`, sent through `IEntitySender`. The generated endpoints of Regira.Entities.Web send these requests, and a background job, an import or an application's own endpoint can send the same ones, getting what the endpoint answers: paging defaults, the re-read after a save, the DTO mapping and the result envelope. `UseEntities()` registers the sender. A closed `IEntityRequestHandler` replaces one operation for one entity, an attachment route's included, and an `IEntityPipelineBehavior` runs around every request, or around one request type. An application that runs a mediator library, such as MediatR, replaces the in-house sender with one that dispatches through it.
 
 ## Installation
 
@@ -12,7 +12,8 @@ Regira.Entities.Web brings this package. A host without the web layer references
 
 ## Documentation
 
-- [Entity Operations](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/web-endpoints.html#entity-operations) — sending the endpoints' requests from other code, input validation, replacing an operation, behaviours and a mediator library
+- [Entity Operations](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/web-endpoints.html#entity-operations) — sending the endpoints' requests from other code, input validation, replacing an operation, a request of your own, replacing an endpoint, behaviours and a mediator library
+- [Changing an attachment operation](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/attachments.html#changing-an-attachment-operation) — the requests the attachment routes send, and a handler that replaces one
 - [Web Endpoints](https://regira.github.io/Regira-Packages/src/Common.Entities/docs/web-endpoints.html) — the endpoints that send these requests
 
 ## License

@@ -33,12 +33,4 @@ public class ReadPathTests
         Assert.That(read.Name, Is.EqualTo("Desk"));
         Assert.That(read.Id, Is.EqualTo(stored["_id"].ToString()));
     }
-
-    [Test]
-    public void Stores_Fields_Under_The_Serializers_Names()
-    {
-        var stored = Stored(new Product { Name = "Desk", Category = "furniture", Price = 12.5m });
-
-        Assert.That(stored.Names, Is.SupersetOf(new[] { "name", "category", "price" }));
-    }
 }

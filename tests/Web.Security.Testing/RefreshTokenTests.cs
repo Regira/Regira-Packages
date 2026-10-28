@@ -2,6 +2,7 @@ using Regira.Security.Authentication.Jwt.Abstraction;
 using Regira.Security.Authentication.Jwt.Models;
 using Regira.Security.Authentication.Jwt.Services;
 using Shouldly;
+using System.Collections.Concurrent;
 using System.Security.Claims;
 using Xunit;
 
@@ -246,8 +247,7 @@ public class RefreshTokenTests
         var (service, _) = Create();
         var issued = await service.Issue(UserId, Claims());
 
-        var attempts = await Task.WhenAll(Enumerable.Range(0, 8)
-            .Select(_ => service.Refresh(issued.RefreshToken!, Resolver())));
+        var attempts = await RefreshConcurrently(service, issued.RefreshToken!, 8);
 
         attempts.Count(pair => pair != null).ShouldBe(1);
     }
@@ -255,18 +255,83 @@ public class RefreshTokenTests
     /// <summary>
     /// The losers of that race are treated as replays, so the family is revoked and the winner's token is dead too —
     /// the same response a genuine stolen-token replay gets, because the two are indistinguishable from the server.
+    /// ⚠️ The store holds the winner right after it claims the rotation, until the loser has revoked the family: the
+    /// moment at which a successor the winner has not stored yet would escape that revocation and leave a live chain.
     /// </summary>
     [Fact]
     public async Task Test_Losing_A_Refresh_Race_Ends_The_Chain()
     {
-        var (service, _) = Create();
+        var store = new ClaimHoldingStore(new InMemoryRefreshTokenStore());
+        var service = Create(store);
         var issued = await service.Issue(UserId, Claims());
+        store.HoldClaims = true;
 
-        var attempts = await Task.WhenAll(Enumerable.Range(0, 4)
-            .Select(_ => service.Refresh(issued.RefreshToken!, Resolver())));
+        var attempts = await RefreshConcurrently(service, issued.RefreshToken!, 2);
         var winner = attempts.Single(pair => pair != null)!;
 
         (await service.Refresh(winner.RefreshToken!, Resolver())).ShouldBeNull();
+    }
+
+    /// <summary>
+    /// Without family revocation the winner's chain goes on, and nothing the loser stored on its way stays live: the
+    /// family holds exactly one active token, the one handed to the winner.
+    /// </summary>
+    [Fact]
+    public async Task Test_A_Race_Without_Family_Revocation_Leaves_Only_The_Winners_Token_Live()
+    {
+        var store = new ClaimHoldingStore(new InMemoryRefreshTokenStore());
+        var service = Create(store, new RefreshTokenOptions { RevokeFamilyOnReuse = false, HashStoredTokens = false });
+        var issued = await service.Issue(UserId, Claims());
+
+        var attempts = await RefreshConcurrently(service, issued.RefreshToken!, 2);
+        var winner = attempts.Single(pair => pair != null)!;
+
+        var live = new List<string>();
+        foreach (var key in store.StoredKeys)
+        {
+            var record = await store.Find(key);
+            if (record!.RevokedAt == null)
+            {
+                live.Add(key);
+            }
+        }
+
+        live.ShouldBe([winner.RefreshToken!]);
+        (await service.Refresh(winner.RefreshToken!, Resolver())).ShouldNotBeNull();
+    }
+
+    /// <summary>The store's own test-and-set: of callers released together, exactly one revokes the token.</summary>
+    [Fact]
+    public async Task Test_Store_Revokes_A_Token_For_Exactly_One_Concurrent_Caller()
+    {
+        const int callers = 8;
+        var store = new InMemoryRefreshTokenStore();
+        var now = DateTimeOffset.UtcNow;
+
+        for (var round = 0; round < 200; round++)
+        {
+            var key = $"token-{round}";
+            await store.Store(new RefreshTokenRecord
+            {
+                TokenKey = key, FamilyId = "family", UserId = UserId,
+                CreatedAt = now, ExpiresAt = now.AddHours(1), FamilyExpiresAt = now.AddHours(1)
+            });
+
+            var wins = 0;
+            using var start = new Barrier(callers);
+            var threads = Enumerable.Range(0, callers).Select(caller => new Thread(() =>
+            {
+                start.SignalAndWait();
+                if (store.TryRevoke(key, $"successor-{caller}", now).Result)
+                {
+                    Interlocked.Increment(ref wins);
+                }
+            })).ToArray();
+            foreach (var thread in threads) thread.Start();
+            foreach (var thread in threads) thread.Join();
+
+            wins.ShouldBe(1, $"round {round}");
+        }
     }
 
     private static (IRefreshTokenService Service, IRefreshTokenStore Store) Create(Action<RefreshTokenOptions>? configure = null)
@@ -274,10 +339,40 @@ public class RefreshTokenTests
         var options = new RefreshTokenOptions();
         configure?.Invoke(options);
 
-        var jwtOptions = new JwtTokenOptions { Secret = Secret, Audience = "spa", Authority = "https://issuer.example" };
         var store = new InMemoryRefreshTokenStore();
+        return (Create(store, options), store);
+    }
 
-        return (new RefreshTokenService(new JwtTokenHelper(jwtOptions), store, jwtOptions, options), store);
+    private static IRefreshTokenService Create(IRefreshTokenStore store, RefreshTokenOptions? options = null)
+    {
+        var jwtOptions = new JwtTokenOptions { Secret = Secret, Audience = "spa", Authority = "https://issuer.example" };
+        return new RefreshTokenService(new JwtTokenHelper(jwtOptions), store, jwtOptions, options ?? new RefreshTokenOptions());
+    }
+
+    /// <summary>
+    /// Starts <paramref name="count"/> refreshes of one token on the thread pool and holds each one in the claims resolver
+    /// until all of them are inside it. By then every call has looked the token up and found it live, so only the
+    /// store's test-and-set can pick the winner. Without the gate the in-memory store and resolver complete synchronously,
+    /// the calls run one after another, and every loser is refused by the replay branch instead.
+    /// </summary>
+    private static async Task<TokenPair?[]> RefreshConcurrently(IRefreshTokenService service, string refreshToken, int count)
+    {
+        var arrived = 0;
+        var allInside = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        async Task<IEnumerable<Claim>?> GatedResolver(string _)
+        {
+            if (Interlocked.Increment(ref arrived) == count)
+            {
+                allInside.SetResult();
+            }
+
+            await allInside.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            return Claims();
+        }
+
+        return await Task.WhenAll(Enumerable.Range(0, count)
+            .Select(_ => Task.Run(() => service.Refresh(refreshToken, GatedResolver))));
     }
 
     private static Claim[] Claims(string role = "admin") =>
@@ -298,4 +393,47 @@ public class RefreshTokenTests
 
     private const string RegiraClaimTypesSubject = "sub";
     private const string RegiraClaimTypesRole = "role";
+
+    /// <summary>
+    /// Records every key it stores. Once <see cref="HoldClaims"/> is set, a caller whose <see cref="TryRevoke"/> claims a
+    /// token waits, with the claim made, until a family has been revoked (at most 5 s).
+    /// </summary>
+    private sealed class ClaimHoldingStore(IRefreshTokenStore inner) : IRefreshTokenStore
+    {
+        private readonly TaskCompletionSource _familyRevoked = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly ConcurrentQueue<string> _storedKeys = new();
+
+        public bool HoldClaims { get; set; }
+
+        public IEnumerable<string> StoredKeys => _storedKeys;
+
+        public Task<RefreshTokenRecord?> Find(string tokenKey, CancellationToken cancellationToken = default)
+            => inner.Find(tokenKey, cancellationToken);
+
+        public async Task Store(RefreshTokenRecord record, CancellationToken cancellationToken = default)
+        {
+            await inner.Store(record, cancellationToken);
+            _storedKeys.Enqueue(record.TokenKey);
+        }
+
+        public async Task<bool> TryRevoke(string tokenKey, string? replacedByTokenKey, DateTimeOffset revokedAt, CancellationToken cancellationToken = default)
+        {
+            var claimed = await inner.TryRevoke(tokenKey, replacedByTokenKey, revokedAt, cancellationToken);
+            if (claimed && HoldClaims)
+            {
+                await Task.WhenAny(_familyRevoked.Task, Task.Delay(TimeSpan.FromSeconds(5), cancellationToken));
+            }
+
+            return claimed;
+        }
+
+        public async Task RevokeFamily(string familyId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default)
+        {
+            await inner.RevokeFamily(familyId, revokedAt, cancellationToken);
+            _familyRevoked.TrySetResult();
+        }
+
+        public Task RevokeAllForUser(string userId, DateTimeOffset revokedAt, CancellationToken cancellationToken = default)
+            => inner.RevokeAllForUser(userId, revokedAt, cancellationToken);
+    }
 }

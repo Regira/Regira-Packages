@@ -292,7 +292,7 @@ Regira.Entities.Validation.FluentValidation ← optional — AbstractValidator r
 | `Regira.Entities.*` | major **6**; resolve the patch at add time. Keep the `Regira.*` packages you reference **directly** on the same version, or restore reports NU1605 |
 | `Microsoft.OpenApi` | **no direct reference** — it arrives through `Microsoft.AspNetCore.OpenApi`, whose range is the compatible one by definition — from **10.0.11** on it is past the 2.x advisory (10.0.12 → `[2.12.0, 3.0.0)`); 10.0.10 and earlier pull the vulnerable 2.0.0, one more reason that package is added first (below). It must stay on **2.x**: 3.x breaks the .NET 10 OpenAPI source generator, and `dotnet add package Microsoft.OpenApi` resolves 3.x with at most an NU1608 warning. Overriding it anyway? Pin by hand the version restore already resolves (`dotnet list package --include-transitive`) — anything lower fails restore with NU1605 |
 | `SQLitePCLRaw.bundle_e_sqlite3` | **no direct reference** on EF Core Sqlite **10.0.11** or later, which brings 2.1.12, past GHSA-2m69-gcr7-jv3q; on net8 or 10.0.10 and earlier pin **2.1.12** (the advisory note above) |
-| `System.Security.Cryptography.Pkcs` | **10.0.13** for an app on `Microsoft.EntityFrameworkCore.SqlServer` 10.0.x: the provider's `Microsoft.Data.SqlClient` 6.1.7 brings 9.0.11 (GHSA-846f-f764-76mx, NU1903). **No direct reference** beside `Regira.DAL.SqlServer` or `Regira.Office.Mail.MailKit`, which pin it |
+| `System.Security.Cryptography.Pkcs` | **10.0.13** for an app on `Microsoft.EntityFrameworkCore.SqlServer` 10.0.x: the provider's `Microsoft.Data.SqlClient` 6.1.7 brings 9.0.11 (GHSA-846f-f764-76mx, NU1903). **No direct reference** beside `Regira.DAL.SqlServer` or `Regira.Office.Mail.MailKit`, which bring 10.0.13 |
 | `Microsoft.EntityFrameworkCore.*` (+ provider) | major must equal the TFM's EF Core major (`net10.0` → **10.x**, see Checklist 0.5); resolve the patch at add time |
 | `Microsoft.AspNetCore.OpenApi` | major must equal your TFM (`net10.0` → **10.x**); resolve the patch at add time. ⚠️ `dotnet new webapi` pins the patch its SDK shipped with, which can sit below the floor **`Regira.Security.Authentication.Web`** sets (SDK 10.0.400 writes `10.0.11`; the floor is `10.0.13`) — adding sign-in then trips NU1605 until you raise the pin |
 | `Scalar.AspNetCore` | major **2**; resolve the patch at add time |
@@ -333,7 +333,7 @@ dotnet add package Serilog.Settings.Configuration
 > separate choices; this combination is ordinary, not a deviation.
 > - **Via MCP:** call `get_package(id: "Regira.Setup", section: "project.setup")` to read the template.
 > - **Via local extraction:** read `.regira/instructions/project.setup.md` if it exists.
-> - **Fallback (if neither is available):** ASP.NET Core Web API project, thin `Program.cs`, DI via extension methods, `app.MapOpenApi()` (requires `Microsoft.AspNetCore.OpenApi`), `app.MapScalarApiReference()` (requires `Scalar.AspNetCore` + `using Scalar.AspNetCore;`), both mapped inside `if (app.Environment.IsDevelopment())`, and no `UseSwaggerUI()`.
+> - **Fallback (if neither is available):** ASP.NET Core Web API project, thin `Program.cs`, DI via extension methods, `app.MapOpenApi()` (requires `Microsoft.AspNetCore.OpenApi`), `app.MapScalarApiReference()` (requires `Scalar.AspNetCore` + `using Scalar.AspNetCore;`), both mapped inside `if (app.Environment.IsDevelopment())`, `builder.Services.AddProblemDetails()` with `app.UseExceptionHandler()` right after `builder.Build()` (an unhandled exception answers a problem with a `traceId`, not an empty 500), and no `UseSwaggerUI()`.
 
 > **⚠️ Source encoding — keep `.cs` files ASCII-only.** A `.cs` file saved as UTF-8 *without* a BOM that
 > contains non-ASCII characters (`→`, `×`, `é`, an em dash, smart quotes — in comments, seed data or string
@@ -542,30 +542,22 @@ using (var scope = app.Services.CreateScope())
 
 ### API route prefix
 
-Keep controller routes resource-relative and **spell the resource** — `[Route("products")]` — then apply a shared `api` base **once** at the host/app level so it stays configurable. Avoid the `[controller]` token: it expands to the class-name stem, so a `SupplierController` serves `/Supplier` instead of the `/suppliers` the SPA calls. Either host under that base path (IIS virtual directory / reverse proxy, or `app.UsePathBase("/api")`), or register a global route-prefix convention. `Regira.Entities.Web` already brings `Regira.Web` transitively, so `Regira.Web.Routing`'s `UseCentralRoutePrefix` is available without another reference — it configures `MvcOptions`, so call it where those are built: `builder.Services.AddControllers(o => o.UseCentralRoutePrefix(new RouteAttribute("api")));`. The self-contained equivalent below is here for a host that does not reference it:
+Keep controller routes resource-relative and **spell the resource** — `[Route("products")]` — then apply a shared `api` base **once** at the host/app level so it stays configurable. Avoid the `[controller]` token: it expands to the class-name stem, so a `SupplierController` serves `/Supplier` instead of the `/suppliers` the SPA calls. Either host under that base path (IIS virtual directory / reverse proxy, or `app.UsePathBase("/api")`, which leaves every route answering without the base as well), or register a global route prefix with `UseCentralRoutePrefix`. It comes from `Regira.Web`, which `Regira.Entities.Web` already brings transitively, so it needs no other reference — and no convention class of your own. It configures `MvcOptions`, so call it where those are built:
 
-<!-- no-compile -->
 ```csharp
-// namespace Microsoft.AspNetCore.Mvc.ApplicationModels (RouteAttribute is in Microsoft.AspNetCore.Mvc)
-public sealed class RoutePrefixConvention(string prefix) : IApplicationModelConvention
-{
-    private readonly AttributeRouteModel _prefix = new(new RouteAttribute(prefix));
-    public void Apply(ApplicationModel app)
-    {
-        foreach (var controller in app.Controllers)
-            foreach (var selector in controller.Selectors)
-                selector.AttributeRouteModel = selector.AttributeRouteModel is { } existing
-                    ? AttributeRouteModel.CombineAttributeRouteModel(_prefix, existing)
-                    : _prefix;
-    }
-}
-// Program.cs — the prefix can come from configuration
-builder.Services.AddControllers(o => o.Conventions.Add(new RoutePrefixConvention("api")));
+using Microsoft.AspNetCore.Mvc;
+using Regira.Web.Routing;
+
+// Program.cs — every controller is served under /api/...; the prefix can come from configuration
+builder.Services.AddControllers(o => o.UseCentralRoutePrefix(new RouteAttribute("api")));
 ```
+
+How it combines with each route, and the absolute template (`/x` or `~/x`) that skips it: `web.instructions` →
+*Central Route Prefix*.
 
 Spell a multi-word resource in **kebab-case plural**: `InterventionType` → `[Route("intervention-types")]`, `FacetGroup` → `[Route("facet-groups")]`. The SPA's `IConfig.api` must match it character-for-character, so a flattened `interventiontypes` or a camelCase `interventionTypes` costs a 404 on every call to that entity.
 
-**Mapped entity endpoints** (`app.MapEntityEndpoints()`, no controllers) are not reached by an MVC convention, so `UseCentralRoutePrefix` leaves them at the root. Give them the base where they are mapped — `app.MapEntityEndpoints(o => o.Prefix = "api")` — and keep it equal to the controllers' prefix when the app has both; `app.UsePathBase("/api")` covers both alike. Their routes are already the kebab-case plurals above (`entities.patterns` → *Mapped entity endpoints (no controllers)*).
+**Mapped entity endpoints** (`app.MapEntityEndpoints()`, no controllers) are not reached by an MVC convention, so `UseCentralRoutePrefix` leaves them at the root. Give them the base where they are mapped — `app.MapEntityEndpoints(o => o.Prefix = "api")` — and keep it equal to the controllers' prefix when the app has both; `app.UsePathBase("/api")` covers both alike, though both keep answering without the base too. Their routes are already the kebab-case plurals above (`entities.patterns` → *Mapped entity endpoints (no controllers)*).
 
 > **Building the paired SPA?** This prefix is one of four settings that must line up — SPA axios base,
 > entity `IConfig.api`, the Vite dev proxy, and this route prefix. The front-end guide resolves them as one

@@ -11,7 +11,7 @@
     <AssemblyName>Regira.IO.Storage</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.6.0</Version>
+    <Version>6.6.1</Version>
     <Description>Store, list, read and delete files and folders behind one IFileService, for Regira: on the local file system or in a ZIP archive, and on Azure Blob Storage, SFTP or GitHub through the provider packages.</Description>
     <PackageTags>regira;io;storage;file-storage;files;blobs;attachments;zip;disk;download</PackageTags>
   </PropertyGroup>

@@ -21,6 +21,8 @@ public class DateTimeUtilityTests
     public void AsUtc_Converts_Local_To_Universal_Time()
     {
         var value = new DateTime(2026, 7, 17, 10, 30, 0, DateTimeKind.Local);
+        // on a UTC host local and universal time coincide, and a conversion that only relabels the kind would pass
+        Assume.That(TimeZoneInfo.Local.GetUtcOffset(value), Is.Not.EqualTo(TimeSpan.Zero), "the host's time zone is UTC");
 
         var result = value.AsUtc();
 

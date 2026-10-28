@@ -171,6 +171,9 @@ Task<IImageFile> MakeTransparent(IImageFile input, Color? color = null)  // null
 Task<IImageFile> MakeOpaque(IImageFile input)
 ```
 
+`MakeTransparent` clears the pixels of exactly that colour, matching its red, green and blue, and returns a PNG; every
+other pixel keeps its colour and alpha. A photo's background is seldom one exact colour, so it clears little there.
+
 ### Draw / Create
 
 <!-- no-compile -->

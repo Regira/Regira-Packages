@@ -23,7 +23,7 @@ Regira DAL.PostgreSQL provides PostgreSQL backup/restore via `pg_dump`/`pg_resto
 | `Host` | `string` | Hostname |
 | `DatabaseName` | `string` | Target database |
 | `Username` | `string?` | Auth username |
-| `Password` | `string?` | Auth password |
+| `Password` | `string?` | Auth password. Left out, here or in a connection string, it is `PgDefaults.Password` (`"postgres"`), which the tools get as `PGPASSWORD` and which therefore wins over a `.pgpass` file |
 | `Port` | `string` | Default `"5432"` |
 
 ```csharp
@@ -73,12 +73,24 @@ start the tool without it.
 `Restore` creates the target database itself, connecting to `MaintenanceDatabase` to do so —
 `CREATE DATABASE` cannot run from a connection to the database it creates. When the target already
 exists, `Overwrite` drops and recreates it (so anything the backup does not contain is lost) and
-without `Overwrite` the restore fails. PostgreSQL refuses to drop a database while other sessions are
-connected to it. That connection never joins an ambient `TransactionScope`, inside which PostgreSQL refuses
-to create or drop a database.
+without `Overwrite` the restore fails. The maintenance connection never joins an ambient `TransactionScope`,
+inside which PostgreSQL refuses to create or drop a database.
+
+`Overwrite` onto an existing database needs PostgreSQL 13 or later and a role that may create databases
+(`CREATEDB`) and end the sessions on the target (superuser, a member of their role, or `pg_signal_backend`);
+otherwise the restore fails before anything is dropped. It ends those sessions (`DROP DATABASE … WITH (FORCE)`)
+and clears the Npgsql pools of connections this process opened from a connection string, so an app can restore its
+own database while it runs:
+
+- a query running on the target at that moment fails;
+- a pool the clear does not reach, an `NpgsqlDataSource` of the app's own (`AddNpgsqlDataSource`, or EF Core's
+  `UseNpgsql` with `MapEnum` or a plugin) or another process, fails its next query once, unless you call its
+  `Clear()` after the restore;
+- until `pg_restore` finishes, the app sees the database missing, then partly restored, so keep its writes out of
+  that window; a failure after the drop leaves the database missing or partly restored.
 
 The three database operations are also available on their own, against a connection to any *other*
-database on the same server:
+database on the same server. `Drop` ends no session: PostgreSQL refuses it while other sessions are connected.
 
 <!-- no-compile -->
 ```csharp
@@ -98,7 +110,7 @@ IProcessHelper processHelper = new ProcessHelper();   // Regira.System
 
 var mgr = new BackupRestoreManager(processHelper, options);
 mgr.Backup(settings, "source-db", "/backups/snapshot.dump");   // synchronous (void)
-// overwrite: drops target-db and recreates it from the backup
+// overwrite: ends target-db's sessions, drops it and recreates it from the backup
 await mgr.Restore(settings, "target-db", "/backups/snapshot.dump", overwrite: true);
 ```
 

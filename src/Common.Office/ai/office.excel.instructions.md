@@ -100,7 +100,7 @@ Composite: `IExcelReader + IExcelWriter` (and their generic variants).
 
 The non-generic `ExcelSheet` is `ExcelSheet<object>`.
 
-No backend writes charts, cell styles beyond `DateFormat`, or formulas (a string starting with `=` is written as text). Post-process the created bytes with the Open XML SDK (`DocumentFormat.OpenXml`, which ClosedXML brings), or build the workbook with ClosedXML's `XLWorkbook` directly.
+No backend writes charts, cell styles beyond `DateFormat`, or formulas (a string starting with `=` is written as text). Post-process the created bytes with the Open XML SDK (`DocumentFormat.OpenXml`, which ClosedXML brings), or, for styles and formulas, build the workbook with ClosedXML's `XLWorkbook` directly. ClosedXML does not create charts: a chart takes the Open XML SDK (a `DrawingsPart` holding a `ChartPart`).
 
 ---
 

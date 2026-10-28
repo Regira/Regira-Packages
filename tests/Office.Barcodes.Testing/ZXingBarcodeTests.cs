@@ -67,7 +67,7 @@ public class ZXingBarcodeTests() : BarcodeTestsBase(new BarcodeService(), new Ba
         var withoutFormat = await Reader.Read(barcode);
 
         Assert.That(withFormat?.Contents?.FirstOrDefault(), Is.EqualTo(content));
-        Assert.That(withoutFormat?.Contents?.FirstOrDefault(), Is.Not.Null);
+        Assert.That(withoutFormat?.Contents?.FirstOrDefault(), Is.EqualTo(content));
     }
 
     // GS1-128: FNC1 (ñ) in front of the application identifiers, as the barcodes guide shows

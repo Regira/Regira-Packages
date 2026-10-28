@@ -547,10 +547,10 @@ public class EntityServiceBuilder<TContext, TEntity, TKey>(EntityServiceCollecti
     }
     /// <summary>
     /// Checks every write of this entity against the request's <typeparamref name="TContext"/> — e.g. that a referenced row
-    /// exists. <paramref name="validate"/> rejects the write with <c>ctx.AddError(key, message)</c>. The context is
-    /// unfiltered — global filters (tenant, owner) do not apply to it — so check a row-secured reference through
-    /// <c>IEntityReadService&lt;TEntity, TKey&gt;</c> in a validator class instead. <paramref name="validate"/> receives the
-    /// write's cancellation token, to pass to its queries.
+    /// exists. <paramref name="validate"/> rejects the write with <c>ctx.AddError(key, message)</c>. Global filters
+    /// (tenant, owner) do not apply to the context, while on net10.0 its archived filter does, so an archived row is not
+    /// found there; check a row-secured reference through <c>IEntityReadService&lt;TEntity, TKey&gt;</c> in a validator
+    /// class instead. <paramref name="validate"/> receives the write's cancellation token, to pass to its queries.
     /// </summary>
     public EntityServiceBuilder<TContext, TEntity, TKey> Validate(Func<IEntityValidatorContext<TEntity>, TContext, CancellationToken, Task> validate)
     {

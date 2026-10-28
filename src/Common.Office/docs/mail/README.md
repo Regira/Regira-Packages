@@ -370,9 +370,16 @@ IServiceCollection services = new ServiceCollection();
 services.AddSingleton<IEmailSender>(provider =>
     new IdentityMailer(
         provider.GetRequiredService<IMailService>(),
-        new IdentityMailerOptions { Sender = "no-reply@example.com" }
+        new IdentityMailerOptions { Sender = "no-reply@example.com", FormatPlainText = true }
     ));
 ```
+
+`FormatPlainText` reads each message as plain text, the form the Regira account controllers write their mails in: each
+`http://` or `https://` link becomes an anchor, each line break a `<br>`, and all of the text, each link in its `href`
+too, is HTML-encoded. Every
+message is read that way, so HTML that another caller sends through the same `IEmailSender` (the ASP.NET Identity UI
+pages' mails) arrives as escaped markup: turn it on only for a sender that carries the plain-text account mails.
+Without it the message is sent unchanged as HTML.
 
 ## Overview
 

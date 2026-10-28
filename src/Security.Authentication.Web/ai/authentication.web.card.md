@@ -26,7 +26,7 @@
   answers `400`; **with none listed, `recover` throws** (500). An override, or a minimal-API endpoint, that mails a link of
   its own checks the page with `AccountLinks.FindAllowedPage` — `security.instructions` → *Pre-built Auth
   Controllers* (*An endpoint of your own that mails a token link*).
-- **Version floor:** floors `Microsoft.OpenApi` at **2.12.2** and `Microsoft.AspNetCore.OpenApi` at
+- **Version floor:** floors `Microsoft.OpenApi` at **2.13.0** and `Microsoft.AspNetCore.OpenApi` at
   **10.0.13** on net10 — a direct pin of either below the resolved version fails restore with NU1605, and
   nothing restores or builds until it is cleared. Leave `Microsoft.OpenApi` **transitive**:
   `Microsoft.AspNetCore.OpenApi` brings the 2.x its source generator is compatible with (3.x breaks it).

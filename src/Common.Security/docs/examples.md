@@ -221,14 +221,15 @@ public class UsersController(UserManager<AppUser> users)
 // POST /users/confirm-email — confirms with token
 ```
 
-Register the mailer so Identity confirmation emails are sent:
+Register the mailer so Identity confirmation emails are sent. `FormatPlainText` sends the controllers' plain-text mails
+as HTML-encoded text, with their line breaks and a linked URL:
 
 <!-- no-compile -->
 ```csharp
 services.AddSingleton<IEmailSender>(provider =>
     new IdentityMailer(
         provider.GetRequiredService<IMailService>(),
-        new IdentityMailerOptions { Sender = "no-reply@example.com" }
+        new IdentityMailerOptions { Sender = "no-reply@example.com", FormatPlainText = true }
     ));
 ```
 

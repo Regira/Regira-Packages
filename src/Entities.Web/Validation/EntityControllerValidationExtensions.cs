@@ -14,7 +14,8 @@ public static class EntityControllerValidationExtensions
     /// <c>For&lt;&gt;()</c> registrations (see <see cref="ControllerRegistrationValidator"/>), and hands the
     /// controllers' DTOs to the checks that judge DTOs (<see cref="ControllerDtoShapeSource"/>) — and the same for the
     /// mapped entity endpoints (<c>MapEntityEndpoints()</c>): what they mapped, their DTOs and attachment downloads without
-    /// <c>UseAttachmentUris()</c>. Also registered automatically by <c>UseEntities()</c>.
+    /// <c>UseAttachmentUris()</c>. It also warns for a handler override registered for a type list neither surface sends
+    /// (<see cref="EntityRequestHandlerValidator"/>). Also registered automatically by <c>UseEntities()</c>.
     /// Runs in Development by default.
     /// </summary>
     public static EntityServiceCollectionOptions ValidateEntityControllers(this EntityServiceCollectionOptions options)
@@ -32,6 +33,7 @@ public static class EntityControllerValidationExtensions
         services.TryAddSingleton<EntityEndpointRegistry>();
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, EntityEndpointValidator>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityDtoShapeSource, EntityEndpointDtoShapeSource>());
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IEntityRegistrationValidator, EntityRequestHandlerValidator>());
         return services;
     }
 }

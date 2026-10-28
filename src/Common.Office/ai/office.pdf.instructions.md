@@ -212,7 +212,7 @@ Task<IList<IImageFile>>  ToImages(IMemoryFile pdf, PdfToImagesOptions? options =
 Task<IMemoryFile?>       ImagesToPdf(ImagesInput input, CancellationToken cancellationToken = default);
 ```
 
-`ToImages` returns an image per page, fitted to `PdfToImagesOptions.Size` either way round — the page's shorter side
+`ToImages` returns an image per page (for one page, split it off first: `office.pdf.examples` → *Preview the first page*), fitted to `PdfToImagesOptions.Size` either way round — the page's shorter side
 to the smaller dimension, its longer side to the larger — keeping the page's aspect ratio; without options it takes
 `PdfDefaults.ImageSize` (1080 × 1920) and `PdfDefaults.ImageFormat` (JPEG). `ImagesToPdf` without images returns
 `null`. `PdfClient` (`Regira.Office.Clients`) posts the images only, so the Office API lays them out on its defaults: an
@@ -357,7 +357,7 @@ IMemoryFile reportPdf = await converter.Create(new DocumentInput
 IImageService imageService = new Regira.Drawing.SkiaSharp.Services.ImageService();
 // …or both for DI (IImageService: using Regira.Media.Drawing.Services.Abstractions;)
 services.AddSingleton<IImageService, Regira.Drawing.SkiaSharp.Services.ImageService>();
-services.AddSingleton<IPdfService, Regira.Office.PDF.PdfPig.PdfService>();
+services.AddSingleton<IPdfService, Regira.Office.PDF.PdfPig.PdfService>(); // inject IPdfService to merge or split too: it extends IPdfEditor (IPdfMerger + IPdfSplitter)
 IPdfMerger merger = new Regira.Office.PDF.PdfPig.PdfService(imageService);
 IMemoryFile merged = (await merger.Merge([pdf1, pdf2, pdf3]))!;
 

@@ -333,6 +333,82 @@ builder.Services
 > route, the link generator finds no match and `Uri` stays `null` — use the download endpoint
 > directly. It is also `null` outside an active request (e.g. during seeding).
 
+### Changing an attachment operation
+
+Every attachment route sends a request through `IEntitySender`, from an attachment controller and from the mapped
+routes alike ([Web Endpoints → Entity Operations](web-endpoints.md#entity-operations)). A closed handler for that
+request changes the route on both, and for a job that sends the same request. `TLink` is the link entity:
+
+| Route | Request | Default handler |
+|---|---|---|
+| `POST {objectId}/files` | `UploadAttachmentCommand<TLink, TDto, TInputDto>` | `UploadAttachmentHandler<,,>` |
+| `PUT {objectId}/attachments/{id}` | `UpdateAttachmentCommand<TLink, TDto, TInputDto>` | `UpdateAttachmentHandler<,,>` |
+| `PUT {objectId}/files/{id}` | `ReplaceAttachmentFileCommand<TLink, TDto>` | `ReplaceAttachmentFileHandler<,>` |
+| `GET files/{id}`, `GET {objectId}/files/{fileName}` | `AttachmentFileQuery<TLink>` | `AttachmentFileHandler<>` |
+| `GET attachments/{id}`, both lists, `DELETE attachments/{id}` | `DetailsQuery`, `ListQuery`, `DeleteCommand` of `TLink` | the entity handlers |
+
+The requests live in `Regira.Entities.Mediator.Requests` and the default handlers in
+`Regira.Entities.Mediator.Handlers`. Deriving from the default handler keeps what it does. This one records every
+download it serves:
+
+```csharp
+using Regira.Entities.Attachments.Models;
+using Regira.Entities.Mediator.Abstractions;
+using Regira.Entities.Mediator.Handlers;
+using Regira.Entities.Mediator.Requests;
+
+// the owner implements IHasAttachments<ProductAttachment> and registers HasAttachments() (Owning Entity, above)
+public class Product : IEntityWithSerial { public int Id { get; set; } public string? Title { get; set; } }
+public class ProductAttachment : EntityAttachment
+{
+    public ProductAttachment() => ObjectType = nameof(Product);
+}
+public class FileDownload
+{
+    public int Id { get; set; }
+    public int LinkId { get; set; }
+    public DateTime DownloadedOn { get; set; }
+}
+public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
+{
+    public DbSet<FileDownload> FileDownloads => Set<FileDownload>();
+}
+
+// both downloads of a product's file, on an attachment controller or mapped, and a job's AttachmentFileQuery: the
+// file as the default handler serves it, and a row for each download served
+public class ProductFileHandler(IServiceProvider services, AppDbContext db) : AttachmentFileHandler<ProductAttachment>(services)
+{
+    public override async Task<Attachment?> Handle(AttachmentFileQuery<ProductAttachment> request, CancellationToken token = default)
+    {
+        var file = await base.Handle(request, token);
+        if (file != null)
+        {
+            db.FileDownloads.Add(new FileDownload { LinkId = request.Id, DownloadedOn = DateTime.UtcNow });
+            await db.SaveChangesAsync(token);
+        }
+        return file;
+    }
+}
+
+public static class ProductFileOperations
+{
+    public static IServiceCollection AddProductFileOperations(this IServiceCollection services)
+        => services.AddTransient<IEntityRequestHandler<AttachmentFileQuery<ProductAttachment>, Attachment>, ProductFileHandler>();
+}
+```
+
+- **Both downloads send `AttachmentFileQuery`** — the one by name finds the link first — so one override covers them.
+  `null` answers 404.
+- **The type list is the one the route sends.** `AttachmentFileQuery` names only the link, so a download override
+  always matches. The other requests name the read DTO too, and the upload and the update the input DTO as well: an
+  attachment controller's pair (`EntityAttachmentControllerBase<ProductAttachment>` sends `EntityAttachmentDto` and
+  `EntityAttachmentInputDto`), and on mapped routes the link's `UseMapping` pair, else those two. No startup check
+  covers a handler for the link, so one for another pair is skipped without a word.
+- **A rule about the file stays on the link entity.** The allowed types, a size cap, who may attach: a
+  [validator](services.md#entity-validators) on the link runs for every attachment write — upload, update, file replace
+  and delete — and the owner's validator for the owner's own saves (*Controllers*, above). A handler is for what wraps the operation, such as a log of downloads,
+  which no write pipeline sees.
+
 ## Overview
 
 1. [Index](../README.md) — Overview of Regira Entities

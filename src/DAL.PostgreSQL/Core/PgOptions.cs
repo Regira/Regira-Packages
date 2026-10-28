@@ -6,8 +6,10 @@ public class PgOptions
     public string? ConnectionString { get; set; }
     public ICollection<string>? BackupSchemas { get; set; }
     /// <summary>
-    /// Replaces the target database when it already exists: it is dropped and recreated, so anything the
-    /// backup does not contain is lost. Without it, restoring onto an existing database fails.
+    /// Replaces the target database when it already exists: the sessions on it are ended, then it is dropped and
+    /// recreated, so anything the backup does not contain is lost. Needs PostgreSQL 13 or later and a role that may
+    /// create databases and end the sessions on the target; otherwise the restore fails before anything is dropped.
+    /// Without it, restoring onto an existing database fails.
     /// </summary>
     public bool Overwrite { get; set; }
     /// <summary>

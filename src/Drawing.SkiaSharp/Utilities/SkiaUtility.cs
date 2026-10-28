@@ -82,24 +82,19 @@ public static class SkiaUtility
 
     public static SKBitmap MakeTransparent(SKBitmap src, SKColor color)
     {
-        var transparentImage = new SKBitmap(new SKImageInfo(src.Width, src.Height, src.ColorType, SKAlphaType.Premul));
-        using (var canvas = new SKCanvas(transparentImage))
+        // All pixels at once, unpremultiplied: a pixel of exactly the colour's red, green and blue turns transparent, as
+        // GDI+'s colour key does; any other pixel is unchanged.
+        var pixels = src.Pixels;
+        for (var i = 0; i < pixels.Length; i++)
         {
-            canvas.DrawBitmap(src, 0, 0);
-        }
-
-        for (var r = 0; r < transparentImage.Height; r++)
-        {
-            for (var c = 0; c < transparentImage.Width; c++)
+            if (pixels[i].Red == color.Red && pixels[i].Green == color.Green && pixels[i].Blue == color.Blue)
             {
-                var imgColor = transparentImage.GetPixel(c, r);
-                if (imgColor.Red > color.Red && imgColor.Green > color.Green && imgColor.Blue > color.Blue)
-                {
-                    transparentImage.SetPixel(c, r, SKColors.Transparent);
-                }
+                pixels[i] = SKColors.Transparent;
             }
         }
 
+        var transparentImage = new SKBitmap(new SKImageInfo(src.Width, src.Height, SKColorType.Bgra8888, SKAlphaType.Unpremul));
+        transparentImage.Pixels = pixels;
         return transparentImage;
     }
     public static bool IsPixelTransparent(SKColor pixel)

@@ -32,6 +32,7 @@ Vivamus tempus enim lacinia nisi molestie vulputate. Praesent 1:2:3:4:5:6:7:8 tu
     [TestCase("bbv_info@regira.something", true)]
     [TestCase("ftp://user:pwd@domain.com", false)]
     [TestCase("info@regira.com.", false)]
+    [TestCase("info@regira.com\n", false)]
     [TestCase("+32 3 384 30 44", false)]
     [TestCase("a@b.c", false)]
     [TestCase("xxx", false)]
@@ -60,6 +61,19 @@ Vivamus tempus enim lacinia nisi molestie vulputate. Praesent 1:2:3:4:5:6:7:8 tu
         Assert.That(isValid, Is.EqualTo(expected));
     }
 
+    // A long label without its dot would make the domain group backtrack exponentially: four times longer for every two
+    // characters, hours at 40, one thread pinned per call
+    [Test]
+    public void IsValidUrl_Answers_A_Long_Label_At_Once()
+    {
+        var check = Task.Run(() => RegexUtility.IsValidUrl(new string('a', 40) + "!"));
+
+        Assert.That(check.Wait(TimeSpan.FromSeconds(2)), Is.True, "IsValidUrl backtracks on a long label");
+        Assert.That(check.Result, Is.False);
+        // ExtractUrls shares the pattern, and ran into its 250 ms timeout on the same label
+        Assert.That(RegexUtility.ExtractUrls("see " + new string('a', 40) + "!"), Is.Empty);
+    }
+
     [TestCase("0032 3 384 30 44", true)]
     [TestCase("0032 (0)3 384 30 44", true)]
     [TestCase("+32 3 384 30 44", true)]
@@ -73,6 +87,13 @@ Vivamus tempus enim lacinia nisi molestie vulputate. Praesent 1:2:3:4:5:6:7:8 tu
     [TestCase("xx xxx xx xx", false)]
     [TestCase("info@regira.com", false)]
     [TestCase("http://www.regira.com", false)]
+    // digit groups are separated by a space, a non-breaking one too, "-", "." or "/": a tab or a line break is no
+    // separator
+    [TestCase("+32\n3 384 30 44", false)]
+    [TestCase("0475\t99 99 99", false)]
+    [TestCase("+32\u2028" + "3 384 30 44", false)]
+    [TestCase("+32\u00a03\u00a0384\u00a030\u00a044", true)]
+    [TestCase("0475\u202f99\u202f99\u202f99", true)]
     // sms numbers
     [TestCase("4466", false)]
     [TestCase("44667", false)]
@@ -97,6 +118,13 @@ Vivamus tempus enim lacinia nisi molestie vulputate. Praesent 1:2:3:4:5:6:7:8 tu
     [TestCase("xx xxx xx xx", false)]
     [TestCase("info@regira.com", false)]
     [TestCase("http://www.regira.com", false)]
+    // digit groups are separated by a space, a non-breaking one too, "-", "." or "/": a tab or a line break is no
+    // separator
+    [TestCase("+32\n3 384 30 44", false)]
+    [TestCase("0475\t99 99 99", false)]
+    [TestCase("+32\u2028" + "3 384 30 44", false)]
+    [TestCase("+32\u00a03\u00a0384\u00a030\u00a044", true)]
+    [TestCase("0475\u202f99\u202f99\u202f99", true)]
     // sms numbers
     [TestCase("4466", true)]
     [TestCase("44667", true)]
@@ -117,10 +145,32 @@ Vivamus tempus enim lacinia nisi molestie vulputate. Praesent 1:2:3:4:5:6:7:8 tu
     [TestCase("1:2:3:4:5:6:7:8", true)]
     [TestCase("256.256.256.256", false)]
     [TestCase("255.256.255.255", false)]
-    //[TestCase("192.168.0.1.1", false)]
-    //[TestCase("300.255.0.255", false)]
-    //[TestCase("66.249.66.01", false)]
-    //[TestCase("0.0.0.0", false)]
+    [TestCase("::1", true)]
+    [TestCase("fe80::1ff:fe23:4567:890a", true)]
+    [TestCase("::ffff:192.168.0.1", true)]
+    // every IPv6 notation: an IPv4 part after six groups or after a compression, and a zone ID
+    [TestCase("1:2:3:4:5:6:192.0.2.1", true)]
+    [TestCase("fe80::5efe:192.0.2.1", true)]
+    [TestCase("64:ff9b::192.0.2.1", true)]
+    [TestCase("fe80::1%eth0", true)]
+    [TestCase("ff02::1%eth0", true)]
+    [TestCase("fe80::1%eth0.100", true)]
+    // the whole input is the address: one inside a longer text, in brackets or before a newline is not valid
+    [TestCase("192.168.0.1.1", false)]
+    [TestCase("300.255.0.255", false)]
+    [TestCase("1:2:3:4:5:6:7:8:9", false)]
+    [TestCase("[::1]", false)]
+    [TestCase("[::1]:80", false)]
+    [TestCase("::1/64", false)]
+    [TestCase("192.168.0.1\n", false)]
+    [TestCase("::1\n", false)]
+    // a zone ID is letters, digits and ._~-: nothing else rides along after the '%'
+    [TestCase("fe80::1%eth0\r\nX-Injected: 1", false)]
+    [TestCase("fe80::1%eth0\n", false)]
+    [TestCase("::1%<script>", false)]
+    [TestCase("::1%", false)]
+    // 66.249.66.01 and 0.0.0.0 are well-formed: rejecting a leading zero or the unspecified address is a choice the
+    // validator does not make
     public void TestValidIP(string input, bool expected)
     {
         var isValid = RegexUtility.IsValidIPAddress(input);
@@ -152,9 +202,28 @@ Vivamus tempus enim lacinia nisi molestie vulputate. Praesent 1:2:3:4:5:6:7:8 tu
         var matches = RegexUtility.ExtractPhoneNumbers(TestInput);
         Assert.That(matches, Is.Not.Empty);
         //Assert.IsTrue(matches.Length == 3); // also extracting IP 192.168.0.1
-        Assert.That(matches, Has.Member("+32 3 384 30"));
+        // each number of the multi-line text whole, its last digit group included
+        Assert.That(matches, Has.Member("+32 3 384 30 44"));
         Assert.That(matches, Has.Member("0032 (0)3 384 30 44"));
-        Assert.That(matches, Has.Member("0475 99 99"));
+        Assert.That(matches, Has.Member("0475 99 99 99"));
+    }
+    // a number is extracted whole, every digit group of it
+    [TestCase("Proin et lacinia lorem, +32 3 384 30 44 vitae", "+32 3 384 30 44")]
+    [TestCase("rutrum risus efficitur turpis tempor 0475 99 99 99 vehicula", "0475 99 99 99")]
+    [TestCase("+32 (0)899.99.99.99 (test)", "+32 (0)899.99.99.99")]
+    public void ExtractPhoneNumbers_Takes_The_Whole_Number(string input, string expected)
+    {
+        Assert.That(RegexUtility.ExtractPhoneNumbers(input), Is.EqualTo(new[] { expected }));
+    }
+    // a number never runs over a tab or a line break into the next one
+    [TestCase("\n")]
+    [TestCase("\r\n")]
+    [TestCase("\t")]
+    public void ExtractPhoneNumbers_Keeps_Numbers_On_Separate_Lines_Apart(string between)
+    {
+        var input = $"03 384 30 44{between}0475 99 99 99";
+
+        Assert.That(RegexUtility.ExtractPhoneNumbers(input), Is.EqualTo(new[] { "03 384 30 44", "0475 99 99 99" }));
     }
     [Test]
     public void TestExtractPhoneNumbers_AllowShortNumbers()

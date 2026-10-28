@@ -68,8 +68,7 @@ public class TestPagingOptions
             .AddDbContext<ContosoContext>()
             .UseEntities<ContosoContext>(e =>
             {
-                e.DefaultPageSize = 10;   // simulate UseDefaults()
-                e.MaxPageSize = 100;
+                e.UseDefaults();
                 e.SetPageSize();          // opt out, no args
             })
             .For<Course>()

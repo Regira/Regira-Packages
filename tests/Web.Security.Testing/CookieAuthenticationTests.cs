@@ -135,13 +135,14 @@ public class CookieAuthenticationTests : IClassFixture<TestingWebApplicationFact
         var httpClient = CreateClient();
         await SignIn(httpClient);
 
-        var first = await httpClient.GetFromJsonAsync<ClaimsReport>("protected/claims");
-        var second = await httpClient.GetFromJsonAsync<ClaimsReport>("protected/claims");
-        var third = await httpClient.GetFromJsonAsync<ClaimsReport>("protected/claims");
+        for (var request = 0; request < 3; request++)
+        {
+            var report = await httpClient.GetFromJsonAsync<ClaimsReport>("protected/claims");
 
-        second!.Role.ShouldBe(first!.Role);
-        third!.Role.ShouldBe(first.Role);
-        third.IsInAdminRole.ShouldBeTrue();
+            report!.Role.ShouldBe(CookieAuthController.AdminRole);
+            report.RoleCount.ShouldBe(1, $"request {request + 1}");
+            report.IsInAdminRole.ShouldBeTrue();
+        }
     }
 
     private static async Task SignIn(HttpClient httpClient, bool withRole = true)

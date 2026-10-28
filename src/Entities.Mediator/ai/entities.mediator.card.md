@@ -12,8 +12,14 @@
 - **`null` means not found;** a refused write throws `EntityInputException`, `EntityConstraintException` or
   `EntityConcurrencyException`.
 - **Replace one operation for one entity** with a closed `IEntityRequestHandler<TRequest, TResponse>`, usually derived
-  from the default handler (`Regira.Entities.Mediator.Handlers`); it answers for every surface and sender.
-- **Wrap every operation** with an open-generic `IEntityPipelineBehavior<,>`, the first registered outermost.
+  from the default handler (`Regira.Entities.Mediator.Handlers`); it answers for every surface and sender. A `PATCH`
+  ends in the `SaveCommand` handler, so a save override covers it. Startup validation warns for a handler of the six
+  requests above whose type list no endpoint sends. An owner's attachment routes are replaced the same way, through
+  their own requests, which no startup check covers —
+  `get_package(id: "Regira.Entities", section: "entities.patterns", heading: "Changing an attachment operation")`.
+- **Wrap every operation** with an open-generic `IEntityPipelineBehavior<,>`, or one request type with a closed one;
+  open and closed share one registration order, the first registered outermost. A `PATCH` calls its save directly,
+  so a closed behaviour on `SaveCommand<…>` alone misses it: register one on `PatchCommand<…>` too.
 - **A request of the app's own** implements `IEntityRequest<TResponse>`, declares its `EntityType` and `Operation`,
   and needs a registered handler.
 - **Through a mediator library** such as MediatR: replace the `IEntitySender` registration with a sender whose handler

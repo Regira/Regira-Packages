@@ -53,7 +53,7 @@ public class WordService : IWordService
         using var doc = await MergeDocuments(inputs);
         return ToMemoryFile(doc);
     }
-    public Task<IMemoryFile> Convert(WordTemplateInput input, RegiraFileFormat format, CancellationToken cancellationToken = default)
+    public Task<IMemoryFile> Convert(WordTemplateInput input, Regira.Office.Models.FileFormat format, CancellationToken cancellationToken = default)
     {
         return Convert(input, new ConversionOptions { OutputFormat = format }, cancellationToken);
     }

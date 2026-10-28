@@ -153,8 +153,8 @@ as C# in the API (*Compiled Razor templates*). Templates end users edit belong t
 Task<string> Render(Type componentType, IDictionary<string, object?>? parameters = null);
 
 // Extensions — HtmlComponentRendererExtensions, in Regira.Web.HTML.Abstractions beside the interface
-Task<string> Render<TComponent>(IDictionary<string, object?>? parameters = null);
-Task<string> Render<TComponent, TModel>(TModel model);   // sets the component's Model parameter
+Task<string> Render<TComponent>(IDictionary<string, object?>? parameters = null) where TComponent : IComponent;
+Task<string> Render<TComponent, TModel>(TModel model) where TComponent : IComponent;   // sets the component's Model parameter
 ```
 
 Each dictionary entry sets the component parameter of that name. The `Type` form serves a template picked at runtime.

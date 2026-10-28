@@ -11,6 +11,8 @@ public class GitHubCommunicator : IDisposable
 
     public string Root { get; }
     internal Uri RootUri { get; }
+    /// <summary>The git blobs API of the repository, where a file's content is read by its sha.</summary>
+    internal string BlobsRoot { get; }
     internal string Branch { get; }
     internal string? CommitMessage { get; }
     internal bool Contained { get; }
@@ -24,6 +26,7 @@ public class GitHubCommunicator : IDisposable
             ? options.Uri.TrimEnd('/') + "/contents/"
             : options.Uri.TrimEnd('/') + "/contents/" + options.ContentPath!.Trim('/') + "/";
         RootUri = new Uri(Root);
+        BlobsRoot = options.Uri.TrimEnd('/') + "/git/blobs/";
 
         Branch = options.Branch;
         CommitMessage = options.CommitMessage;

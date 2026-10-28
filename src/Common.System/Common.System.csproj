@@ -11,9 +11,9 @@
     <AssemblyName>Regira.System</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.6.0</Version>
-    <Description>System-level utilities including file system, process, and configuration helpers.</Description>
-    <PackageTags>regira;system;utilities;filesystem</PackageTags>
+    <Version>6.6.1</Version>
+    <Description>Runs external processes and captures their output (IProcessHelper). Hub of the system guides, which also cover Regira.System.Hosting and Regira.System.Projects.</Description>
+    <PackageTags>regira;system;utilities;process</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common\Common.csproj" />

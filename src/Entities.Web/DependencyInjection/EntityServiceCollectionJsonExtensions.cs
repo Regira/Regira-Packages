@@ -72,9 +72,15 @@ public static class EntityServiceCollectionJsonExtensions
         options.Converters.Add(new JsonStringEnumConverter());
     }
 
-    // a modifier, not a converter: a custom DateTime converter blanks the type out of the OpenAPI schema
+    // a modifier, not a converter: a custom DateTime converter blanks the type out of the OpenAPI schema.
+    // It wraps a copy of the chain: on .NET 8, once a resolver is inserted into the chain (AddProblemDetails() does),
+    // TypeInfoResolver returns the chain itself, and a wrapper of it assigned back would make the chain contain itself
     private static void AddUtcRead(JsonSerializerOptions options)
-        => options.TypeInfoResolver = (options.TypeInfoResolver ?? new DefaultJsonTypeInfoResolver())
-            .WithAddedModifier(UtcDateTimeJsonModifier.Apply);
+    {
+        var resolver = options.TypeInfoResolverChain.Count > 0
+            ? JsonTypeInfoResolver.Combine([.. options.TypeInfoResolverChain])
+            : options.TypeInfoResolver ?? new DefaultJsonTypeInfoResolver();
+        options.TypeInfoResolver = resolver.WithAddedModifier(UtcDateTimeJsonModifier.Apply);
+    }
 }
 #endif

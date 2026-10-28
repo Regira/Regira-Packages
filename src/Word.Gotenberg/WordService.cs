@@ -46,7 +46,7 @@ public class WordService(
 {
     internal const string ConvertRoute = "forms/libreoffice/convert";
 
-    public Task<IMemoryFile> Convert(WordTemplateInput input, RegiraFileFormat format, CancellationToken cancellationToken = default)
+    public Task<IMemoryFile> Convert(WordTemplateInput input, Regira.Office.Models.FileFormat format, CancellationToken cancellationToken = default)
         => Convert(input, new ConversionOptions { OutputFormat = format }, cancellationToken);
 
     public async Task<IMemoryFile> Convert(WordTemplateInput input, ConversionOptions options, CancellationToken cancellationToken = default)

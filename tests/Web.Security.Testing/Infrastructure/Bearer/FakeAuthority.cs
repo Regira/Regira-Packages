@@ -52,11 +52,16 @@ public static class FakeAuthority
             claims["roles"] = new[] { AdminRole };
         }
 
+        // Issued ten minutes back, so a negative lifetime still gives a well-formed token that has expired. Left to the
+        // handler, nbf would be now and lie after exp, which fails as an invalid lifetime (IDX10224) at any clock skew.
+        var issuedAt = DateTime.UtcNow.AddMinutes(-10);
         var descriptor = new SecurityTokenDescriptor
         {
             Issuer = issuer ?? V2Issuer(),
             Audience = audience ?? ScopedAudience,
             Claims = claims,
+            IssuedAt = issuedAt,
+            NotBefore = issuedAt,
             Expires = DateTime.UtcNow.Add(lifetime ?? TimeSpan.FromMinutes(5)),
             SigningCredentials = new SigningCredentials(SigningKey, SecurityAlgorithms.RsaSha256)
         };

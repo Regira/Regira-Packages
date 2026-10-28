@@ -4,6 +4,7 @@ using Regira.IO.Extensions;
 using Regira.IO.Models;
 using Regira.Office.Excel.Abstractions;
 using Regira.Office.Excel.Models;
+using System.Text.Json;
 
 namespace Office.Clients.Testing;
 
@@ -66,7 +67,8 @@ public class ExcelClientTests : OfficeClientTestsBase
         var data = new List<object>
         {
             new { Name = "Alice", Score = 95 },
-            new { Name = "Bob", Score = 87 }
+            new { Name = "Bob", Score = 87.5 },
+            new { Name = "", Score = 0 }
         };
         var sheet = new ExcelSheet { Name = "Scores", Data = data };
 
@@ -74,9 +76,12 @@ public class ExcelClientTests : OfficeClientTestsBase
         var readFile = new BinaryFileItem { Bytes = excelFile.GetBytes()! };
         var sheets = (await _service.Read(readFile)).ToList();
 
-        Assert.That(sheets, Is.Not.Empty);
-        Assert.That(sheets[0].Data, Is.Not.Null);
-        Assert.That(sheets[0].Data!.Count, Is.EqualTo(data.Count));
+        Assert.That(sheets.Select(s => s.Name), Is.EqualTo(new[] { "Scores" }));
+        var rows = sheets[0].Data!.Cast<JsonElement>().ToList();
+        Assert.That(rows.Select(r => GetProperty(r, "Name")?.GetString()), Is.EqualTo(new[] { "Alice", "Bob", null }),
+            "an empty text cell reads back as null");
+        Assert.That(rows.Select(r => GetProperty(r, "Score")?.GetDouble()), Is.EqualTo(new double?[] { 95, 87.5, 0 }),
+            "numbers read back as doubles");
     }
 
     [Test]
@@ -92,4 +97,10 @@ public class ExcelClientTests : OfficeClientTestsBase
         Assert.That(sheets[0].Data, Is.Not.Null);
         Assert.That(sheets[0].Data, Is.Not.Empty);
     }
+
+    private static JsonElement? GetProperty(JsonElement row, string name)
+        => row.EnumerateObject()
+            .Where(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
+            .Select(p => (JsonElement?)p.Value)
+            .FirstOrDefault();
 }

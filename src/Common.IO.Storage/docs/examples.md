@@ -157,7 +157,7 @@ public async Task<IMemoryFile> ReplaceZipEntry(
     // Retrieve the updated archive as a memory file
     return await new ZipBuilder()
         .For(await Task.WhenAll(
-            (await zipService.List()).Select(async id =>
+            (await zipService.List(new FileSearchObject { Recursive = true, Type = FileEntryTypes.Files })).Select(async id =>
                 new BinaryFileItem { FileName = id, Bytes = await zipService.GetBytes(id) })))
         .Build();
 }

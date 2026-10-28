@@ -44,8 +44,12 @@ internal sealed class EntityEndpointRegistry
     }
 }
 
-/// <summary>One mapped entity; <c>Attachments</c> is the link served under its route, with its DTO pair, or <c>null</c>.</summary>
-internal sealed record MappedEntity(Type EntityType, string Route, Type DtoType, Type InputDtoType, MappedAttachments? Attachments);
+/// <summary>
+/// One mapped entity; <c>Attachments</c> is the link served under its route, with its DTO pair, or <c>null</c>.
+/// <c>Requests</c> are the closed entity requests its endpoints send, for the handler-override check.
+/// </summary>
+internal sealed record MappedEntity(Type EntityType, string Route, Type DtoType, Type InputDtoType, MappedAttachments? Attachments,
+    IReadOnlyList<Type> Requests);
 
 internal sealed record MappedAttachments(Type AttachmentType, Type DtoType, Type InputDtoType);
 

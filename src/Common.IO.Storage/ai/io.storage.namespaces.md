@@ -15,7 +15,7 @@ most common source of a missing `using`.
 | Namespace | Types |
 |---|---|
 | `Regira.IO.Storage.Abstractions` | `IFileService`, `ITextFileService`, `IFileProcessor`, `FileEntryTypes` |
-| `Regira.IO.Storage` | `FileSearchObject`, `DefaultTextFileService` |
+| `Regira.IO.Storage` | `FileSearchObject`, `StoredFileInfo`, `DefaultTextFileService` |
 | `Regira.IO.Abstractions` | `IMemoryFile`, `IBinaryFile`, `IMemoryBytesFile`, `IMemoryStreamFile` — assembly **`Regira.Common`** |
 | `Regira.IO.Models` | `BinaryFileItem` (the concrete `IBinaryFile`) — assembly **`Regira.Common`** |
 | `Regira.IO.Extensions` | `MemoryFileExtensions`, `BinaryFileExtensions` — `GetBytes()`, `GetStream()`, `HasPath()`; assembly **`Regira.Common`** |
@@ -70,7 +70,7 @@ to an owner entity.
 
 ```
 Regira.IO.Storage.Abstractions   → IFileService, FileEntryTypes
-Regira.IO.Storage               → FileSearchObject
+Regira.IO.Storage               → FileSearchObject, StoredFileInfo
 ```
 
 ### Zip a set of files

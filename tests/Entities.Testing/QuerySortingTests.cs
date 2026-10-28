@@ -24,10 +24,12 @@ public class QuerySortingTests
         _dbContext = _serviceProvider.GetRequiredService<ProductContext>();
         await _dbContext.Database.EnsureCreatedAsync();
 
+        // Bravo's date lies between the two Alphas, so ordering by Created alone, either way, differs from
+        // Title then Created: a ThenBy that restarts the ordering cannot pass
         _dbContext.Products.AddRange(
-            new Product { Title = "Bravo", Created = new DateTime(2024, 3, 1) },
+            new Product { Title = "Bravo", Created = new DateTime(2024, 2, 1) },
             new Product { Title = "Alpha", Created = new DateTime(2024, 1, 1) },
-            new Product { Title = "Alpha", Created = new DateTime(2024, 2, 1) }
+            new Product { Title = "Alpha", Created = new DateTime(2024, 3, 1) }
         );
         await _dbContext.SaveChangesAsync();
     }
@@ -58,7 +60,7 @@ public class QuerySortingTests
             .OrderOrThenBy(x => x.Created)
             .ToListAsync();
 
-        Assert.That(items.Select(x => x.Created.Month), Is.EqualTo(new[] { 1, 2, 3 }));
+        Assert.That(items.Select(x => x.Created.Month), Is.EqualTo(new[] { 1, 3, 2 }));
     }
 
     [Test]
@@ -73,7 +75,7 @@ public class QuerySortingTests
             .OrderBy(x => x.Title)
             .OrderOrThenByDescending(x => x.Created)
             .ToListAsync();
-        Assert.That(continued.Select(x => x.Created.Month), Is.EqualTo(new[] { 2, 1, 3 }));
+        Assert.That(continued.Select(x => x.Created.Month), Is.EqualTo(new[] { 3, 1, 2 }));
     }
 
     [Test]

@@ -73,7 +73,10 @@ public class PatchHandler<TEntity, TKey, TDto, TInputDto>(IServiceProvider servi
         }
 
         Services.ThrowIfInvalidInput<TEntity>(mergedInput);
-        return await Services.Save<TEntity, TKey, TDto, TInputDto>(mergedInput, request.Id, token);
+        // the SaveCommand handler the sender would pick, so an app's save override covers PATCH too; called rather
+        // than sent, so the behaviours run once, around the patch
+        var save = EntityRequestHandlers.Resolve<SaveCommand<TEntity, TKey, TDto, TInputDto>, SaveResult<TDto>>(Services);
+        return await save.Handle(new SaveCommand<TEntity, TKey, TDto, TInputDto>(mergedInput, request.Id, ValidateInput: false), token);
     }
 
     // "$.stock" → "Stock", the key a validator gives that property; a deeper path keeps its JSON spelling

@@ -3,6 +3,7 @@ using IO.Testing.Helpers;
 using Regira.IO.Extensions;
 using Regira.IO.Models;
 using Regira.IO.Storage;
+using Regira.IO.Storage.Abstractions;
 using Regira.IO.Storage.Compression;
 
 namespace IO.Testing.Compression;
@@ -109,7 +110,7 @@ public class ZipUtilityTests
         var dir2Files = Directory.GetFiles(Path.Combine(_assetsDir, "dir2"), "*", SearchOption.AllDirectories)
             .Select(path => new BinaryFileItem
             {
-                Identifier = path.Substring(_assetsDir.Length).TrimStart('\\'),
+                Identifier = Path.GetRelativePath(_assetsDir, path),
                 Path = path,
                 FileName = Path.GetFileName(path),
                 Bytes = File.ReadAllBytes(path)
@@ -214,7 +215,7 @@ public class ZipUtilityTests
         zipStream.Position = 0;
         using var zipService = new ZipFileService(new ZipFileCommunicator { SourceFile = zipStream.ToMemoryFile() });
 
-        var all = await zipService.List();
+        var all = await zipService.List(new FileSearchObject { Recursive = true, Type = FileEntryTypes.Files });
         var inFolder = await zipService.List(new FileSearchObject { FolderUri = @"dir1\" });
 
         Assert.Multiple(() =>
@@ -244,6 +245,44 @@ public class ZipUtilityTests
         {
             Assert.That(inFolder, Is.EquivalentTo(new[] { "dir2/dir2.1/a.txt", "dir2/dir2.1/c.txt" }));
             Assert.That(saved, Is.EqualTo("dir2/dir2.1/c.txt"), "Save answers the identifier List gives");
+        });
+    }
+
+    // an archive need not hold an entry per folder: the folders are those its entries lie in, and a folder's own entry
+    // lists it even when it holds nothing
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task ZipFileService_Lists_Folders_Whether_Or_Not_They_Have_Entries(bool folderEntries)
+    {
+        // expandable: ZipFileService opens its archive for update
+        var zipStream = new MemoryStream();
+        using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create, true))
+        {
+            if (folderEntries)
+            {
+                archive.CreateEntry("dir2/");
+                archive.CreateEntry("dir2/dir2.1/");
+                archive.CreateEntry("dir2/empty/");
+            }
+            archive.CreateEntry("file1.txt");
+            archive.CreateEntry("dir2/dir2.1/a.txt");
+            archive.CreateEntry("dir2/dir2.1/dir2.1.1/b.txt");
+        }
+        zipStream.Position = 0;
+        using var zipService = new ZipFileService(new ZipFileCommunicator { SourceFile = zipStream.ToMemoryFile() });
+        string[] empty = folderEntries ? ["dir2/empty"] : [];
+
+        var top = await zipService.List();
+        var folders = await zipService.List(new FileSearchObject { FolderUri = "dir2", Type = FileEntryTypes.Directories });
+        var files = await zipService.List(new FileSearchObject { Recursive = true, Type = FileEntryTypes.Files });
+        var below = await zipService.List(new FileSearchObject { FolderUri = "dir2", Recursive = true });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(top, Is.EquivalentTo(new[] { "dir2", "file1.txt" }), "the top level only, by default");
+            Assert.That(folders, Is.EquivalentTo(empty.Prepend("dir2/dir2.1")));
+            Assert.That(files, Is.EquivalentTo(new[] { "file1.txt", "dir2/dir2.1/a.txt", "dir2/dir2.1/dir2.1.1/b.txt" }));
+            Assert.That(below, Is.EquivalentTo(empty.Concat(["dir2/dir2.1", "dir2/dir2.1/a.txt", "dir2/dir2.1/dir2.1.1", "dir2/dir2.1/dir2.1.1/b.txt"])));
         });
     }
 }

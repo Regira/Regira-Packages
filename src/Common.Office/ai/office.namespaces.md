@@ -16,7 +16,7 @@ the provider only at registration.
 | Namespace | Types |
 |---|---|
 | `Regira.IO.Abstractions` | `IMemoryFile`, `IBinaryFile`, `IMemoryBytesFile`, `IMemoryStreamFile` — **every Office service returns `IMemoryFile`**; assembly `Regira.Common`, not an Office package |
-| `Regira.IO.Extensions` | `MemoryFileExtensions`, `BinaryFileExtensions` — `GetBytes()`, `GetStream()`, `HasPath()`, and the factories `bytes.ToMemoryFile(contentType)` and `bytes.ToBinaryFile(contentType)`. An `IBinaryFile` is an `IMemoryFile`, not the reverse: Excel's `Read` takes an `IBinaryFile`, so convert with `ToBinaryFile()`. Assembly `Regira.Common` |
+| `Regira.IO.Extensions` | `MemoryFileExtensions`, `BinaryFileExtensions` — `GetBytes()`, `GetStream()`, `HasPath()`, and the factories `bytes.ToMemoryFile(contentType)` and `bytes.ToBinaryFile(contentType)`; on an `IMemoryFile`, `file.ToBinaryFile(fileName)` takes the file name instead, so a name passed to the `byte[]` overload becomes the content type. An `IBinaryFile` is an `IMemoryFile`, not the reverse: Excel's `Read` takes an `IBinaryFile`, so convert with `ToBinaryFile()`. Assembly `Regira.Common` |
 | `Regira.Office.Models` | `FileFormat`, `PageSize`, `PageSizes`, `PageOrientation`, `Margins` |
 | `Regira.Office.MimeTypes` | `ContentTypes` |
 | `Regira.Office.Utilities` | `PageSizeUtility` |
@@ -67,7 +67,7 @@ the size or the colours (there is no error-correction option).
 |---|---|
 | `Regira.Office.Excel.Abstractions` | `IExcelService`, `IExcelServiceCore`, `IExcelReader`, `IExcelWriter` |
 | `Regira.Office.Excel.Models` | `ExcelSheet` |
-| **Providers** | `Regira.Office.Excel.MiniExcel` · `…ClosedXML` · `…EPPlus` · `…NpoiMapper` → `ExcelManager`, `Options` |
+| **Providers** | `Regira.Office.Excel.MiniExcel` · `…ClosedXML` · `…EPPlus` · `…NpoiMapper` → `ExcelManager` (options: the nested `ExcelManager.Options`) |
 
 ## Word
 
@@ -121,7 +121,7 @@ Call another host's Office API instead of running the engine in-process.
 
 | Namespace | Types |
 |---|---|
-| `Regira.Office.Clients.Services` | `PdfClient`, `WordClient`, `ExcelClient`, `CsvClient`, `BarcodeClient`, `QRCodeClient`, `OcrClient`, `MessageParserClient`, `LicenseStatusClient` |
+| `Regira.Office.Clients.Services` | `PdfClient`, `WordClient`, `ExcelClient`, `CsvClient`, `BarcodeClient`, `QRCodeClient`, `OcrClient`, `MessageParserClient`, `VCardClient`, `LicenseStatusClient` |
 | `Regira.Office.Clients.Abstractions` | `OfficeClientBase`, `ILicenseStatusClient` |
 | `Regira.Office.Clients.DependencyInjection` | `OfficeClientServiceCollectionExtensions`, `OfficeClientOptions` |
 

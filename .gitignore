@@ -356,8 +356,4 @@ nuget-push.txt
 /.claude/settings.local.json
 /.claude/settings.json
 
-# MCP server generated knowledge base (rebuilt by CI from source)
-/tools/mcp-server/knowledge-base.json
-/tools/mcp-server/knowledge/
 .vscode/settings.json
-/ProjectsCleanerConsole.exe
