@@ -23,6 +23,8 @@ namespace Entities.DependencyInjection.Testing;
 [NonParallelizable]
 public class LicenseEnforcementTests
 {
+    private static readonly int CurrentMajor = typeof(Regira.Entities.DependencyInjection.Extensions.ServiceCollectionExtensions).Assembly.GetName().Version!.Major;
+
     private RSA _testRsa = null!;
 
     // one key for the fixture: generating a 2048-bit key took longer than the test using it
@@ -57,7 +59,7 @@ public class LicenseEnforcementTests
             CustomerId = "test-customer",
             Products = ["regira.entities"],
             Tier = "paid",
-            Version = "5",
+            Version = CurrentMajor.ToString(),
             IssuedAtUnix = DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds(),
             ExpiresAtUnix = DateTimeOffset.UtcNow.AddYears(1).ToUnixTimeSeconds()
             // No Limits = unlimited
@@ -71,7 +73,7 @@ public class LicenseEnforcementTests
         {
             CustomerId = "free",
             Products = ["regira.entities"],
-            Version = "5",
+            Version = CurrentMajor.ToString(),
             IssuedAtUnix = DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds(),
             Limits = new Dictionary<string, int>
             {
@@ -407,7 +409,7 @@ public class LicenseEnforcementTests
         {
             CustomerId = "test-customer",
             Products = ["regira.entities"],
-            Version = "5",
+            Version = CurrentMajor.ToString(),
             IssuedAtUnix = DateTimeOffset.UtcNow.AddYears(-2).ToUnixTimeSeconds(),
             ExpiresAtUnix = DateTimeOffset.UtcNow.AddYears(-1).ToUnixTimeSeconds()
         };
@@ -428,7 +430,7 @@ public class LicenseEnforcementTests
             CustomerId = "test-customer",
             Products = ["regira.services"],
             Tier = "paid",
-            Version = "5",
+            Version = CurrentMajor.ToString(),
             IssuedAtUnix = DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds()
         };
         var services = new ServiceCollection();
@@ -442,6 +444,59 @@ public class LicenseEnforcementTests
                 .For<Instructor>()
                 .For<OfficeAssignment>()
                 .For<Student>());
+    }
+
+    // --- Major version ---
+
+    private string MakeLifetimeKey(string? version) => LicenseSigner.Sign(new License
+    {
+        CustomerId = "test-customer",
+        Products = ["regira.entities"],
+        Tier = "paid",
+        Version = version,
+        IssuedAtUnix = DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds()
+    }, _testRsa);
+
+    [Test]
+    public void UseEntities_WithLifetimeKeyForAnotherMajor_ThrowsLicenseException()
+    {
+        var services = new ServiceCollection();
+        services.UseRegira(MakeLifetimeKey((CurrentMajor - 1).ToString()));
+        var ex = Assert.Throws<LicenseException>(() => services.UseEntities<ContosoContext>().For<Course>());
+        Assert.That(ex!.Message, Does.Contain($"version {CurrentMajor}.x is required"));
+    }
+
+    [Test]
+    public void UseEntities_WithFreeKeyForAnotherMajor_ThrowsLicenseException()
+    {
+        var license = new License
+        {
+            CustomerId = "free",
+            Tier = "free",
+            Products = ["regira.entities"],
+            Version = (CurrentMajor + 1).ToString(),
+            IssuedAtUnix = DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds()
+        };
+        var services = new ServiceCollection();
+        services.UseRegira(LicenseSigner.Sign(license, _testRsa));
+        Assert.Throws<LicenseException>(() => services.UseEntities<ContosoContext>().For<Course>());
+    }
+
+    [Test]
+    public void UseEntities_WithKeyWithoutVersion_DoesNotThrow()
+    {
+        var services = new ServiceCollection();
+        services.UseRegira(MakeLifetimeKey(null));
+        Assert.DoesNotThrow(() => services.UseEntities<ContosoContext>().For<Course>());
+    }
+
+    // the lifetime key for the earlier major sorts first on expiry, so only the version check puts the new key ahead
+    [Test]
+    public void UseEntities_KeyForThisMajorWinsOverLifetimeKeyForAnother_DoesNotThrow()
+    {
+        var services = new ServiceCollection();
+        services.UseRegira(MakeLifetimeKey((CurrentMajor - 1).ToString()), MakeValidLicenseKey());
+        Assert.DoesNotThrow(() => services.UseEntities<ContosoContext>().For<Course>());
     }
 
     // --- Multi-license: paid wins over free ---

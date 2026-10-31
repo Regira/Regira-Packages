@@ -32,7 +32,7 @@ A license key removes the free-tier limits. Keys are validated **fully offline**
 - **Trial** — 30 days, all features, no payment required.
 - **Commercial** — annual, per developer: currently **€99/yr** (Regira Entities) and **€49/yr** (Regira Services), MCP server included. Canonical prices and purchase: [regira.com/licensing](https://regira.com/licensing). Keys are emailed immediately.
 
-One key can cover multiple products; when several keys are registered, the best license per product wins (paid always beats free).
+One key can cover multiple products; when several keys are registered, the best license per product wins (a key for the running major first, then paid over free). A key is valid for the major version it was issued for, a non-expiring key included, so a new major needs a new key. In-process packages refuse a key for another major at startup; the hosted services and the MCP server apply the free tier instead.
 
 ## Registering a key
 

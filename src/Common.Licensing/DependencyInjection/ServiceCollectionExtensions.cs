@@ -31,7 +31,7 @@ public static class ServiceCollectionExtensions
     /// <see cref="LicenseDefaults"/>; calling with no keys registers nothing and the licensed modules
     /// fall back to the free tier automatically.
     /// A single key can cover multiple products; pass several keys to combine them — they coexist and
-    /// the system picks the best (paid over free) license per product.
+    /// the system picks the best license per product (one for the running major first, then paid over free).
     /// </summary>
     public static IServiceCollection UseRegira(this IServiceCollection services, params string?[] licenseKeys)
     {
@@ -48,9 +48,8 @@ public static class ServiceCollectionExtensions
             var limits = license.Limits?.Count > 0
                 ? string.Join(", ", license.Limits.Select(kv => $"{kv.Key}={kv.Value}"))
                 : "(none)";
-            Version.TryParse(license.Version ?? "0.0.0.0", out var version);
 
-            Console.WriteLine($"[Regira] License — Customer: {customerId} | Products: {products} | Version: {version?.Major} | Issued: {issuedAt} | Expires: {expiresAt} | Limits: {limits}");
+            Console.WriteLine($"[Regira] License — Customer: {customerId} | Products: {products} | Version: {(license.Version == null ? "any" : license.MajorVersion?.ToString() ?? "unreadable")} | Issued: {issuedAt} | Expires: {expiresAt} | Limits: {limits}");
 
             var now = DateTimeOffset.UtcNow;
             if (LicenseValidator.IsRefusedAsExpired(license, now))

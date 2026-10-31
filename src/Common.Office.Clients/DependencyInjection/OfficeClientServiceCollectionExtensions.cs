@@ -34,7 +34,7 @@ public static class OfficeClientServiceCollectionExtensions
                 throw new InvalidOperationException($"{nameof(OfficeClientOptions)}.{nameof(OfficeClientOptions.BaseUrl)} is required.");
             }
             c.BaseAddress = new Uri(options.BaseUrl.TrimEnd('/') + "/");
-            var licenseKey = LicenseUtility.Resolve(sp.GetServices<License>(), LicenseDefaults.Products.Services)?.RawKey;
+            var licenseKey = LicenseUtility.ResolveLatest(sp.GetServices<License>(), LicenseDefaults.Products.Services)?.RawKey;
             if (!string.IsNullOrEmpty(licenseKey))
                 c.DefaultRequestHeaders.Add("X-License-Key", licenseKey);
         }

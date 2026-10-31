@@ -150,4 +150,61 @@ public class LicenseUtilityTests
         Assert.That(LicenseUtility.Resolve([free, expired, renewed], LicenseDefaults.Products.Entities), Is.SameAs(renewed));
         Assert.That(LicenseUtility.Resolve([renewed, expired], LicenseDefaults.Products.Entities), Is.SameAs(renewed));
     }
+
+    [Test]
+    public void Resolve_Prefers_A_Key_For_The_Required_Major_Over_A_Lifetime_Key_For_Another()
+    {
+        var lifetimeOld = new License { Tier = "paid", Version = "6", Products = [LicenseDefaults.Products.Entities] };
+        var current = new License { Tier = "paid", Version = "7", Products = [LicenseDefaults.Products.Entities], ExpiresAtUnix = DateTimeOffset.UtcNow.AddYears(1).ToUnixTimeSeconds() };
+
+        Assert.That(LicenseUtility.Resolve([lifetimeOld, current], LicenseDefaults.Products.Entities, 7), Is.SameAs(current));
+        Assert.That(LicenseUtility.Resolve([lifetimeOld, current], LicenseDefaults.Products.Entities), Is.SameAs(lifetimeOld));
+    }
+
+    [Test]
+    public void Resolve_Counts_A_Key_Without_A_Version_As_Valid_And_An_Unreadable_One_As_Not()
+    {
+        var versionless = new License { Tier = "paid", Products = [LicenseDefaults.Products.Entities], ExpiresAtUnix = DateTimeOffset.UtcNow.AddDays(1).ToUnixTimeSeconds() };
+        var unreadable = new License { Tier = "paid", Version = "abc", Products = [LicenseDefaults.Products.Entities] };
+
+        Assert.That(LicenseUtility.Resolve([unreadable, versionless], LicenseDefaults.Products.Entities, 7), Is.SameAs(versionless));
+    }
+
+    // only a matching free key beats a paid key for another major: the paid key would be refused outright
+    [Test]
+    public void Resolve_Prefers_A_Free_Key_For_The_Required_Major_Over_A_Paid_Key_For_Another()
+    {
+        var paidOld = new License { Tier = "paid", Version = "6", Products = [LicenseDefaults.Products.Entities] };
+        var freeCurrent = new License { Tier = "free", Version = "7", Products = [LicenseDefaults.Products.Entities] };
+
+        Assert.That(LicenseUtility.Resolve([paidOld, freeCurrent], LicenseDefaults.Products.Entities, 7), Is.SameAs(freeCurrent));
+    }
+
+    [Test]
+    public void ResolveLatest_Prefers_The_Highest_Major_Over_A_Lifetime_Key_For_An_Earlier_One()
+    {
+        var lifetimeOld = new License { Tier = "paid", Version = "6", Products = [LicenseDefaults.Products.Services] };
+        var current = new License { Tier = "paid", Version = "7", Products = [LicenseDefaults.Products.Services], ExpiresAtUnix = DateTimeOffset.UtcNow.AddYears(1).ToUnixTimeSeconds() };
+
+        Assert.That(LicenseUtility.ResolveLatest([lifetimeOld, current], LicenseDefaults.Products.Services), Is.SameAs(current));
+    }
+
+    [Test]
+    public void ResolveLatest_Ignores_Keys_For_Other_Products_And_Handles_None()
+    {
+        var other = new License { Tier = "paid", Version = "7", Products = [LicenseDefaults.Products.Entities] };
+        var services = new License { Tier = "paid", Version = "6", Products = [LicenseDefaults.Products.Services] };
+
+        Assert.That(LicenseUtility.ResolveLatest([other, services], LicenseDefaults.Products.Services), Is.SameAs(services));
+        Assert.That(LicenseUtility.ResolveLatest([other], LicenseDefaults.Products.Services), Is.Null);
+        Assert.That(LicenseUtility.ResolveLatest([], LicenseDefaults.Products.Services), Is.Null);
+    }
+
+    [Test]
+    public void Resolve_Returns_The_Key_For_Another_Major_When_No_Other_Exists()
+    {
+        var old = new License { Tier = "paid", Version = "6", Products = [LicenseDefaults.Products.Entities] };
+
+        Assert.That(LicenseUtility.Resolve([old], LicenseDefaults.Products.Entities, 7), Is.SameAs(old));
+    }
 }

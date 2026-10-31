@@ -82,7 +82,8 @@ internal class EntityLicenseValidator
                 .Select(d => (License)d.ImplementationInstance!)
                 .ToList();
 
-            var best = LicenseUtility.Resolve(allLicenses, LicenseDefaults.Products.Entities);
+            var majorVersion = typeof(EntityLicenseValidator).Assembly.GetName().Version!.Major;
+            var best = LicenseUtility.Resolve(allLicenses, LicenseDefaults.Products.Entities, majorVersion);
 
             if (best == null || string.IsNullOrWhiteSpace(best.RawKey))
             {
@@ -94,7 +95,7 @@ internal class EntityLicenseValidator
             else
             {
                 _keyLoaded = true;
-                var license = LicenseValidator.Validate(best, LicenseDefaults.Products.Entities);
+                var license = LicenseValidator.Validate(best, LicenseDefaults.Products.Entities, majorVersion);
                 _tier = string.IsNullOrWhiteSpace(license.Tier) ? "paid" : license.Tier;
                 if (license.Limits == null)
                 {

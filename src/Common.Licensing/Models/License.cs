@@ -11,6 +11,7 @@ public class License
     [JsonPropertyName("products")]
     public ICollection<string> Products { get; set; } = new List<string>();
 
+    /// <summary>The major version the key is valid for; a key without one is valid for every major.</summary>
     [JsonPropertyName("v")]
     public string? Version { get; set; }
 
@@ -43,6 +44,13 @@ public class License
         && int.TryParse(parts[0], out var major)
         ? major
         : null;
+
+    /// <summary>
+    /// Whether the key may be used on <paramref name="majorVersion"/>: it carries no version, or that major.
+    /// A version that cannot be read matches nothing. Null asks for no particular major.
+    /// </summary>
+    internal bool IsValidForMajor(int? majorVersion)
+        => majorVersion == null || Version == null || MajorVersion == majorVersion;
 
     /// <summary>
     /// The original signed license key string. Set by <see cref="LicenseParser.Parse"/> and used

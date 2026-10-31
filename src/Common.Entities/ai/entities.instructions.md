@@ -37,7 +37,7 @@ services.UseEntities<AppDbContext>(options =>
 
 Without a key, the **free tier** applies automatically — no configuration for dev/CI: **5 simple + 2 complex registrations**, two independent buckets (counted separately, not a shared pool of 7), one slot per distinct entity type, and one extra *simple* slot per attachment owner (the per-owner join entity via `HasAttachments`; the shared `Attachment` base via `WithAttachments` is free infrastructure, however many owners use it). Exceeding either bucket throws at startup naming the offenders. **Classify each entity and tally the budget before scaffolding — the decision table, the simple/complex definitions, and a worked example live in [§Step 0](#step-0--classify-every-entity-before-scaffolding), the canonical spot.**
 
-Store paid keys under `Regira:LicenseKeys` in configuration: user-secrets in development, the environment or a key vault in production. A single key can cover multiple products; add more keys to the array to combine them — the system picks the best per product (paid always wins over free). Obtain a key at [https://regira.com/licensing](https://regira.com/licensing).
+Store paid keys under `Regira:LicenseKeys` in configuration: user-secrets in development, the environment or a key vault in production. A single key can cover multiple products; add more keys to the array to combine them — the system picks the best per product (a key for the running major first, then paid over free). A key is valid for the major version it was issued for: `UseEntities` refuses a key for another major at startup. Obtain a key at [https://regira.com/licensing](https://regira.com/licensing).
 
 ```json
 { "Regira": { "LicenseKeys": [ "<your-license-key>" ] } }

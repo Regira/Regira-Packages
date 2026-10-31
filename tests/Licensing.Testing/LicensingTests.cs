@@ -382,6 +382,39 @@ public class LicensingTests
     }
 
     [Test]
+    public void Validate_KeyForNewerMajor_ThrowsLicenseException()
+    {
+        var key = LicenseSigner.Sign(ValidLicense(), _rsa); // Version = "5"
+        Assert.Throws<LicenseException>(() => LicenseValidator.Validate(key, "regira.entities", requiredMajorVersion: 4));
+    }
+
+    // a signed version nobody can read must not pass as a key without one
+    [TestCase("abc")]
+    [TestCase("v6")]
+    [TestCase("")]
+    [TestCase("99999999999")]
+    public void Validate_UnreadableVersion_ThrowsLicenseException(string version)
+    {
+        var license = ValidLicense();
+        license.Version = version;
+        var key = LicenseSigner.Sign(license, _rsa);
+        var ex = Assert.Throws<LicenseException>(() => LicenseValidator.Validate(key, "regira.entities", requiredMajorVersion: 6));
+        Assert.That(ex!.Message, Does.Contain("version 6.x is required"));
+    }
+
+    [Test]
+    public void GetStatus_UnreadableVersion_IsAVersionMismatch()
+    {
+        var license = ValidLicense();
+        license.Version = "abc";
+        var key = LicenseSigner.Sign(license, _rsa);
+        var status = LicenseValidator.GetStatus(key, "regira.entities", 6);
+        Assert.That(status.State, Is.EqualTo(LicenseState.VersionMismatch));
+        Assert.That(status.Accepted, Is.False);
+        Assert.That(status.Message, Does.Contain("is for an unreadable version"));
+    }
+
+    [Test]
     public void Validate_NoRequiredVersion_SkipsVersionCheck()
     {
         var key = LicenseSigner.Sign(ValidLicense(), _rsa); // Version = "5"

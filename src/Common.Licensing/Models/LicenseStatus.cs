@@ -19,7 +19,7 @@ public enum LicenseState
     NotAccepted,
     /// <summary>The key expired and is no longer accepted.</summary>
     Expired,
-    /// <summary>The key is genuine and covers the product, but for another major version than the one in use.</summary>
+    /// <summary>The key is genuine and covers the product, but for another major version than the one in use, or a version that cannot be read.</summary>
     VersionMismatch,
     /// <summary>The key expired but is still accepted for a short grace period; renew now.</summary>
     ExpiredInGrace,

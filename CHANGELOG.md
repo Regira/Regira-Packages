@@ -6,6 +6,13 @@ adds one bullet under **Unreleased** in the same change (format: `` `PackageId` 
 and leaves that package's `<Version>` higher than its last published version. At publish time the
 Unreleased block becomes a dated release heading.
 
+## Unreleased
+
+- `Regira.Entities.DependencyInjection` 6.6.2 — **behaviour change:** a license key is valid for the major version it was issued for: Regira Entities refuses a key for another major at startup, a lifetime key included, and a key without a version stays valid on every major.
+- `Regira.Office.Clients` 6.6.2 — `AddOfficeClients` sends the key with the highest major when several are registered, since the hosted API rules on it by its own major.
+- `Regira.Entities` 6.6.2, consumer bootstrap (`ai/AGENTS.md`, served by the MCP), `licensing.md` — a key is valid for the major it was issued for, and the key for the running major is picked first.
+- `Regira.Licensing` 6.6.2 — new `LicenseUtility.Resolve(licenses, productCode, requiredMajorVersion)`: a key valid for that major wins over one that is not, and `LicenseUtility.ResolveLatest` for the highest major among the keys. **Behaviour change:** a key whose version cannot be read is refused wherever a major is required, where it used to skip the check. **Bug fix:** the startup line of `UseRegira` shows the key's major version, or `any`, where a key for `6` left it blank.
+
 ## 6.6.1 — 2026-10-28
 
 - All packages — version aligned at 6.6.1 for a whole-family publish. Twenty-six have a change of their own, in code or guides, in a bullet below. Seven ship only the dependency moves at the end of this block: `Regira.DAL.MongoDB`, `Regira.Office.Mail.MailGun`, `Regira.Office.Mail.MailKit`, `Regira.Office.PDF.MiniPdf`, `Regira.Office.PDF.MsPlaywright`, `Regira.Office.PDF.Puppeteer` and `Regira.Web.Swagger`, whose README names the new `Microsoft.OpenApi` version. Three change only their package description or tags: `Regira.System`, `Regira.Office.PDF.SelectPdf` and `Regira.Invoicing.Billit`. No package is new, and nothing is published outside the aligned number. The other fifty-one are republished unchanged so the family shares one version.
