@@ -13,7 +13,7 @@
     <NoWarn>1701;1702;1591</NoWarn>
     <Version>6.6.1</Version>
     <Description>Abstractions for image and media processing in Regira.</Description>
-    <PackageTags>regira;media;images;drawing</PackageTags>
+    <PackageTags>regira;media;images;drawing;picture;photo;thumbnail;resize</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common\Common.csproj" />

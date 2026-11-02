@@ -49,6 +49,12 @@ public class ServerOwnedTests
         public string? Subject { get; set; }
     }
 
+    public class Picture : IEntity<int>
+    {
+        public int Id { get; set; }
+        [ServerOwned] public byte[]? Thumbnail { get; set; }
+    }
+
     public class ShopContext(DbContextOptions<ShopContext> options) : DbContext(options)
     {
         public DbSet<Order> Orders => Set<Order>();
@@ -401,6 +407,17 @@ public class ServerOwnedTests
                 Is.EquivalentTo(new[] { nameof(Order.Code), nameof(Order.Total) }));
             Assert.That(ServerOwnedProperties.Declared(typeof(Ticket)), Is.Empty);
         });
+    }
+
+    [Test]
+    public async Task A_Binary_Column_Is_Restored_As_A_Scalar()
+    {
+        var stored = new byte[] { 1, 2, 3 };
+        var modified = new Picture { Id = 1, Thumbnail = [9] };
+
+        Assert.That(ServerOwnedProperties.Protected(typeof(Picture)).Select(p => p.Name), Is.EquivalentTo(new[] { nameof(Picture.Thumbnail) }));
+        await new AutoServerOwnedPrepper<Picture>().Prepare(modified, new Picture { Id = 1, Thumbnail = stored });
+        Assert.That(modified.Thumbnail, Is.EqualTo(stored));
     }
 
     [Test]

@@ -49,6 +49,8 @@ dotnet user-secrets set "Regira:LicenseKeys:0" "<key>"   # Regira__LicenseKeys__
 
 The keys are read when the first `For<>()` runs. A key that was not registered by then — `UseRegira()` after `UseEntities()`, a misspelled section, a single string under `LicenseKeys`, which must be an array — leaves the free tier, and the startup error opens with *No Regira license key covering regira.entities was registered*.
 
+`UseRegira` reports each registered key in one line, on the console when it runs and through `ILogger` (category `Regira.Licensing`, `Information`) when the host starts, so a file sink holds it too: `[Regira] License — Customer: … | Products: … | Version: 6 | Issued: … | Expires: … | Limits: …`. `Version` is the major the key is bound to: `any` for a key without a version, `unreadable` for a version that cannot be read. `UseEntities` then logs `Regira.Entities: n simple / n complex registered → tier = …`, the tier the registrations run under.
+
 ---
 
 ## Quick Agent Playbook
@@ -410,8 +412,8 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 > `[ServerOwned]` (namespace `Regira.Entities.Attributes`) is enforced by a prepper `UseDefaults()`
 > registers, so it guards the `IEntityService` write path and leaves a workflow service's raw-`DbContext`
 > write alone. It has no bypass: your own domain action saving through `IEntityService` is reverted like any
-> client. Scalars and FKs only — a navigation and `IArchivable.IsArchived` are rejected (a restore has
-> to be able to clear that flag).
+> client. Scalars and FKs only (a `byte[]` column counts as a scalar) — a navigation, a collection and
+> `IArchivable.IsArchived` are rejected (a restore has to be able to clear that flag).
 >
 > **On create the guard does nothing**: whatever value the entity already carries is inserted as-is, which is
 > what lets a seeder back-date a `Code` or import a historical rating. `e.ServerOwned(x => x.Code, mint)`

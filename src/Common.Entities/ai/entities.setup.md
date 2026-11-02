@@ -504,6 +504,9 @@ using (var scope = app.Services.CreateScope())
 > ⚠️ **This block, and any seeding, must sit between `builder.Build()` and `app.Run()`.** `app.Run()` blocks
 > until shutdown, so anything written after it never executes and the app simply starts up empty — no
 > exception, no log line.
+>
+> Startup validation is a hosted service that runs at `app.Run()`, after this block: a first run seeds before a
+> registration error stops the host, so after fixing one, reseed (delete the database or reset it).
 
 > **⚠️ Reset the database after any model change — `EnsureCreated()` does not migrate.** It creates the
 > schema only when the database is absent, so any model change after the first run stays invisible — a new

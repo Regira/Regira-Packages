@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Regira.Licensing.Models;
 using Regira.Licensing.Services;
 using Regira.Licensing.Utilities;
@@ -10,7 +12,8 @@ public static class ServiceCollectionExtensions
 {
     /// <summary>
     /// Reads license keys from <c>configuration["Regira:LicenseKeys"]</c> and registers each parsed
-    /// <see cref="License"/> as a singleton, writing its settings to the console.
+    /// <see cref="License"/> as a singleton, writing its settings to the console and, once the host starts, to the
+    /// <c>Regira.Licensing</c> logger.
     /// </summary>
     public static IServiceCollection UseRegira(this IServiceCollection services, IConfiguration configuration)
     {
@@ -24,7 +27,8 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
-    /// Parses and registers each Regira license key as a singleton, writing its settings to the console.
+    /// Parses and registers each Regira license key as a singleton, writing its settings to the console and, once the
+    /// host starts, to the <c>Regira.Licensing</c> logger, so a file sink holds the line too.
     /// A key that expires within <see cref="LicenseValidator.RenewalReminderPeriod"/> additionally writes a renewal
     /// reminder to the console; a key past its expiry date writes a warning to the console's error stream.
     /// A null or empty key registers a free-tier <see cref="License"/> with the default limits from
@@ -41,15 +45,9 @@ public static class ServiceCollectionExtensions
                 ? LicenseUtility.CreateFree()
                 : LicenseParser.Parse(licenseKey);
 
-            var customerId = license.CustomerId ?? "(none)";
-            var products = string.Join(", ", license.Products);
-            var issuedAt = license.IssuedAt.ToString("yyyy-MM-dd");
-            var expiresAt = license.ExpiresAt?.ToString("yyyy-MM-dd") ?? "never";
-            var limits = license.Limits?.Count > 0
-                ? string.Join(", ", license.Limits.Select(kv => $"{kv.Key}={kv.Value}"))
-                : "(none)";
+            var (customerId, products, version, issuedAt, expiresAt, limits) = Describe(license);
 
-            Console.WriteLine($"[Regira] License — Customer: {customerId} | Products: {products} | Version: {(license.Version == null ? "any" : license.MajorVersion?.ToString() ?? "unreadable")} | Issued: {issuedAt} | Expires: {expiresAt} | Limits: {limits}");
+            Console.WriteLine($"[Regira] License — Customer: {customerId} | Products: {products} | Version: {version} | Issued: {issuedAt} | Expires: {expiresAt} | Limits: {limits}");
 
             var now = DateTimeOffset.UtcNow;
             if (LicenseValidator.IsRefusedAsExpired(license, now))
@@ -67,6 +65,23 @@ public static class ServiceCollectionExtensions
             services.AddSingleton(license);
         }
 
+        // The console line above is written while services are registered, before any logger exists;
+        // this repeats it through ILogger at host start, so a logging pipeline (a file sink) holds it too.
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHostedService, LicenseStartupLogger>());
+
         return services;
     }
+
+    /// <summary>The fields of the startup line, formatted as the console and the logger both write them.</summary>
+    internal static (string CustomerId, string Products, string Version, string IssuedAt, string ExpiresAt, string Limits) Describe(License license) =>
+    (
+        license.CustomerId ?? "(none)",
+        string.Join(", ", license.Products),
+        license.Version == null ? "any" : license.MajorVersion?.ToString() ?? "unreadable",
+        license.IssuedAt.ToString("yyyy-MM-dd"),
+        license.ExpiresAt?.ToString("yyyy-MM-dd") ?? "never",
+        license.Limits?.Count > 0
+            ? string.Join(", ", license.Limits.Select(kv => $"{kv.Key}={kv.Value}"))
+            : "(none)"
+    );
 }

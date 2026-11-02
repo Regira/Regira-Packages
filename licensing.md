@@ -52,6 +52,14 @@ services.UseRegira(licenseKey);      // pass keys explicitly
 }
 ```
 
+`UseRegira` reports each registered key in one line, on the console when it runs and through `ILogger` (category `Regira.Licensing`) when the host starts:
+
+```text
+[Regira] License — Customer: … | Products: … | Version: 6 | Issued: … | Expires: … | Limits: …
+```
+
+`Version` is the major the key is bound to: `any` for a key without a version, `unreadable` for a version that cannot be read. Regira Entities then logs `Regira.Entities: n simple / n complex registered → tier = …`.
+
 ## FAQ
 
 - **Is the free tier free forever?** Yes — per released version, the shipped free tier is not revocable. Future versions may adjust limits.

@@ -42,7 +42,8 @@ public static class ServerOwnedProperties
         {
             return "it has no public getter and setter to restore through";
         }
-        if (!TypeUtility.IsSimpleType(property.PropertyType))
+        // byte[] is a column, not a collection: EF maps it to a single binary value.
+        if (!TypeUtility.IsSimpleType(property.PropertyType) && property.PropertyType != typeof(byte[]))
         {
             // A navigation carries a tracked graph; copying that reference across Modify()'s detach/attach
             // is not a restore but a second writer for the whole subtree.

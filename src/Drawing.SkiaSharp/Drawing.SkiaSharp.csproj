@@ -13,7 +13,7 @@
     <NoWarn>1701;1702;1591</NoWarn>
     <Version>6.6.1</Version>
     <Description>SkiaSharp-based image processing and drawing utilities for Regira.</Description>
-    <PackageTags>regira;drawing;skiasharp;images</PackageTags>
+    <PackageTags>regira;drawing;skiasharp;images;image;picture;photo;thumbnail;resize</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="SkiaSharp" Version="4.153.1" />

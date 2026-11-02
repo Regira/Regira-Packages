@@ -2242,9 +2242,10 @@ services.UseEntities<AppDbContext>(o => o.UseDefaults())
 - Enforced by a **prepper** (`AutoServerOwnedPrepper`, registered by `UseDefaults()`), so a domain/workflow
   service saving through the raw `DbContext` keeps its write — see *Primer vs prepper when a second writer
   exists* below.
-- **Scalars and FKs only.** A navigation, a property without both accessors, and `IArchivable.IsArchived`
-  cannot be server-owned: the fluent form throws at registration, the attribute is skipped and reported as a
-  startup validation error. Owned child *collections* are governed by `Related()`.
+- **Scalars and FKs only** (a `byte[]` column counts as a scalar). A navigation, a collection, a property
+  without both accessors, and `IArchivable.IsArchived` cannot be server-owned: the fluent form throws at
+  registration, the attribute is skipped and reported as a startup validation error. Owned child *collections* are
+  governed by `Related()`.
 
 Cases the declaration does not cover, and what to use instead:
 
@@ -2385,7 +2386,7 @@ What each write is checked against:
 
 | Write | Checked against |
 |---|---|
-| `PUT` carrying the token, or a `SaveCommand` your own code sends with the token it read | the client's token — a stale one answers 409 |
+| `PUT` carrying the token, a `SaveCommand` your own code sends with the token it read, or `IEntityService.Modify(item)` in a domain action after copying the client's token onto `item` | the client's token — a stale one answers 409 |
 | `PUT` without it (`null`, empty, `Guid.Empty`, `0`) | nothing the client read: it writes, only a write racing it is caught, and the empty value never overwrites the token (the marker's primer still mints a new one). `[VersionStamp(Required = true)]` on the token refuses it instead — 400 naming the token (below), before anything is attached — for a client that must always prove what it read; on the marker, put the attribute on the implementing `ConcurrencyToken` property. An insert is never refused |
 | `PATCH`, or a `PatchCommand` | the token in the body when it carries one; otherwise the merge base supplies the value read at `PATCH` time |
 | `DELETE`, and child rows a save drops | no client token reaches them — only a write racing them is caught |

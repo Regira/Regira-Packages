@@ -444,9 +444,9 @@ public class Order : IEntity<int>
 - It is a **prepper**, not a primer: a domain/workflow service saving through the raw `DbContext` keeps its
   write. That is what lets a second writer legitimately own the same field - and what keeps
   `ArchivablePrimer`'s delete-to-update from being reverted.
-- Scalars and FKs only. A navigation, a property without both accessors, and `IArchivable.IsArchived` (a
-  restore has to be able to clear it) cannot be server-owned: the fluent form throws at registration, the
-  attribute is skipped and reported by startup validation.
+- Scalars and FKs only (a `byte[]` column counts as a scalar). A navigation, a collection, a property without
+  both accessors, and `IArchivable.IsArchived` (a restore has to be able to clear it) cannot be server-owned:
+  the fluent form throws at registration, the attribute is skipped and reported by startup validation.
 
 ### Validators
 

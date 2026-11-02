@@ -12,6 +12,14 @@ Unreleased block becomes a dated release heading.
 - `Regira.Office.Clients` 6.6.2 — `AddOfficeClients` sends the key with the highest major when several are registered, since the hosted API rules on it by its own major.
 - `Regira.Entities` 6.6.2, consumer bootstrap (`ai/AGENTS.md`, served by the MCP), `licensing.md` — a key is valid for the major it was issued for, and the key for the running major is picked first.
 - `Regira.Licensing` 6.6.2 — new `LicenseUtility.Resolve(licenses, productCode, requiredMajorVersion)`: a key valid for that major wins over one that is not, and `LicenseUtility.ResolveLatest` for the highest major among the keys. **Behaviour change:** a key whose version cannot be read is refused wherever a major is required, where it used to skip the check. **Bug fix:** the startup line of `UseRegira` shows the key's major version, or `any`, where a key for `6` left it blank.
+- `Regira.Licensing` 6.6.2 — `UseRegira` also writes each key's `[Regira] License — …` line through `ILogger` (category `Regira.Licensing`, `Information`) when the host starts, so a logging pipeline such as a file sink holds it; the console line is unchanged. The package depends on `Microsoft.Extensions.Hosting.Abstractions`.
+- `Regira.Entities`, `Regira.Licensing` 6.6.2, `licensing.md` — the guides describe the `[Regira] License — …` startup line and its `Version` field: the key's major, `any` for a key without a version, `unreadable` for one that cannot be read.
+- `Regira.Entities` 6.6.2 — **behaviour change:** `[ServerOwned]` and `e.ServerOwned(…)` take a `byte[]` property as a scalar and restore it on update, where startup validation rejected it as a navigation or collection and the fluent form threw. The guides say a `byte[]` column counts as a scalar and a collection does not.
+- `Regira.Entities` 6.6.2 — the *Optimistic concurrency* table lists `IEntityService.Modify(item)` in a domain action, after copying the client's token onto `item`, among the writes that compare the client's token.
+- `Regira.Entities` 6.6.2 — the setup guide says startup validation runs at `app.Run()`, after the seed, so a first run seeds before a registration error stops the host.
+- `Regira.Entities` 6.6.2 — new blueprint *Owned rows with a public subset* (and its `how_to` recipe `public-subset`): a read-scope filter on the owner and its attachment links, an owner prepper and the validators for writes and uploads, with the reads opened anonymously.
+- Consumer bootstrap (`ai/AGENTS.md`, served by the MCP) — *Minimal API endpoints with authentication* maps to `BasicApi` (self-hosted: `SelfHostingApi`) plus the auth registrations from `SelfHostingApiWithAuth`, as `project.setup` says, where it named `SelfHostingApiWithAuth`.
+- `Regira.Drawing.SkiaSharp`, `Regira.Media` 6.6.2 — package tags `image`, `picture`, `photo`, `thumbnail` and `resize`, so a search for pictures resized to a thumbnail finds them.
 
 ## 6.6.1 — 2026-10-28
 

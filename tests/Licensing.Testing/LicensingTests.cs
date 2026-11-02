@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Regira.Licensing.DependencyInjection;
 using Regira.Licensing.Models;
 using Regira.Licensing.Services;
@@ -227,6 +229,24 @@ public class LicensingTests
         var key = LicenseSigner.Sign(ValidLicense(), _rsa);
         var stderr = CaptureConsoleError(() => new ServiceCollection().UseRegira(key));
         Assert.That(stderr, Is.Empty);
+    }
+
+    [Test]
+    public async Task UseRegira_HostStart_LogsTheConsoleLicenseLine()
+    {
+        var key = LicenseSigner.Sign(ValidLicense(), _rsa);
+        var services = new ServiceCollection();
+        var (stdout, _) = CaptureConsole(() => services.UseRegira(key));
+        var loggerFactory = new CapturingLoggerFactory();
+        services.AddSingleton<ILoggerFactory>(loggerFactory);
+
+        await using var provider = services.BuildServiceProvider();
+        foreach (var hostedService in provider.GetServices<IHostedService>())
+            await hostedService.StartAsync(CancellationToken.None);
+
+        var consoleLine = stdout.Split(Environment.NewLine).Single(l => l.StartsWith("[Regira] License"));
+        Assert.That(loggerFactory.Messages, Is.EqualTo(new[] { ("Regira.Licensing", consoleLine) }));
+        Assert.That(consoleLine, Does.Contain("| Version: 5 |"));
     }
 
     [Test]
@@ -510,4 +530,22 @@ public class LicensingTests
         IssuedAtUnix = DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds(),
         ExpiresAtUnix = DateTimeOffset.UtcNow.AddDays(30).ToUnixTimeSeconds()
     };
+}
+
+/// <summary>Collects every message logged through it, with the logger's category.</summary>
+internal sealed class CapturingLoggerFactory : ILoggerFactory, ILoggerProvider
+{
+    public List<(string Category, string Message)> Messages { get; } = [];
+
+    public ILogger CreateLogger(string categoryName) => new CapturingLogger(this, categoryName);
+    public void AddProvider(ILoggerProvider provider) { }
+    public void Dispose() { }
+
+    private sealed class CapturingLogger(CapturingLoggerFactory factory, string category) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => factory.Messages.Add((category, formatter(state, exception)));
+    }
 }
