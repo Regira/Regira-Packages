@@ -373,3 +373,5 @@ IImageFile? frame = await snapshots.Snapshot(video, new ImageSize(640, 360), Tim
 - `SnapshotService` runs `ffmpeg` through an `IProcessHelper`. The default, `ProcessHelper` from `Regira.System`, runs
   it from a batch file, which is Windows only; on another platform, pass an `IProcessHelper` of your own as the
   second constructor argument.
+- Without `ffmpeg`, `Snapshot` throws (without `ffprobe`, so does a snapshot with `size: null`). `IsAvailable()` runs
+  `ffmpeg -version` through the same `IProcessHelper`: check it once at startup and skip snapshots when it is `false`.

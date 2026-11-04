@@ -48,6 +48,25 @@ public class SnapshotServiceTests
         Assert.That(command, Does.StartWith(expected));
     }
 
+    [TestCase(0, true)]
+    [TestCase(1, false)]
+    public void IsAvailable_Asks_FFMpeg_For_Its_Version(int exitCode, bool expected)
+    {
+        var processHelper = new VersionAnswer(exitCode);
+        var service = new SnapshotService(new ImageService(), processHelper);
+
+        Assert.That(service.IsAvailable(), Is.EqualTo(expected));
+        Assert.That(processHelper.Command, Is.EqualTo("ffmpeg -version"));
+    }
+
+    [Test]
+    public void IsAvailable_Is_False_When_The_Process_Cannot_Start()
+    {
+        var service = new SnapshotService(new ImageService(), new VersionAnswer(0) { Throws = true });
+
+        Assert.That(service.IsAvailable(), Is.False);
+    }
+
     [Test]
     public async Task Leaves_No_Temporary_Files()
     {
@@ -86,6 +105,21 @@ public class SnapshotServiceTests
         {
             File.Delete(inputPath);
         }
+    }
+
+    private sealed class VersionAnswer(int exitCode) : IProcessHelper
+    {
+        public bool Throws { get; init; }
+        public string? Command { get; private set; }
+
+        public IProcessOutput ExecuteCommand(string command, bool waitForOutput = false)
+        {
+            Command = command;
+            return Throws ? throw new InvalidOperationException("no shell") : new ProcessOutput { ExitCode = exitCode };
+        }
+
+        public IProcessOutput ExecuteFile(string filename, bool waitForOutput = false, string? arguments = null)
+            => throw new NotSupportedException();
     }
 
     private sealed class FrameWriter : IProcessHelper

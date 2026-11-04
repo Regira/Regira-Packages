@@ -187,6 +187,9 @@ public class LinkPhotoPrepper(IPhotoShrinker photos) : EntityPrepperBase<IEntity
   (`modified is not Product` in the owner's, `modified.ObjectType != nameof(Product)` in the link's). When the
   shrinker changes the format, rename to match — `link.NewFileName = Path.ChangeExtension(link.NewFileName, ".jpg")`,
   or the upload's `file.FileName` — since the stored `ContentType` follows the file name.
+- A value derived from the file and stored on the link (a thumbnail): mark it `[ServerOwned]` and set it in both
+  preppers next to the new bytes. Both routes restore it on a kept link without a new file (the owner's sync too);
+  on a link that brings a new file, it is the value your prepper set from the new bytes.
 
 **See:** `get_package(id: "Regira.Entities", section: "instructions", heading: "Write-pipeline order")`.
 

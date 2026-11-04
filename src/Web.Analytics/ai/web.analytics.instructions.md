@@ -36,7 +36,7 @@ builder's methods no-op, so registration code needs no guards.
 | Hook | Timing | Register | Use for |
 |---|---|---|---|
 | `IVisitFilter` | in-request | `WithFilter<T>()` (replaces default) | `ShouldTrack(HttpRequest)` pre-endpoint (path is pre-rewrite), `ShouldRecord(HttpContext)` post-response (default: 200/304) |
-| `IVisitContributor<TPageView>` | in-request: `OnCapturing` before the endpoint, `OnCapturedAsync` after the response | `AddContributor<T>()` | data only the live HttpContext has — request body (call `Request.EnableBuffering()` in `OnCapturing`, read+rewind in `OnCapturedAsync`), `HttpContext.Items` from other middleware |
+| `IVisitContributor<TPageView>` | in-request: `OnCapturing` before the endpoint, `OnCapturedAsync` after the response; both default to no-ops, so implement only the one you need | `AddContributor<T>()` | data only the live HttpContext has — request body (call `Request.EnableBuffering()` in `OnCapturing`, read+rewind in `OnCapturedAsync`), `HttpContext.Items` from other middleware |
 | `IPageViewEnricher<TPageView>` | background writer, **before** IP masking | `AddEnricher<T>()` | enrichment from the unmasked `PendingPageView.ClientIp` — the geolocation seam. No HttpContext here |
 | `IPageViewStore<TPageView>` | background writer, per batch | `WithStore<T>()` | persistence — file, database, queue; the package does not care |
 | `IPageViewRetentionStore` | background writer, every 24h | auto via `WithStore<T>()` when implemented | purge rows older than `RetentionDays`, scoped to `SiteName` |

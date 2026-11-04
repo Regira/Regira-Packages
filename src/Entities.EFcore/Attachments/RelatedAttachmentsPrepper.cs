@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
 using Regira.Entities.Attachments.Abstractions;
+using Regira.Entities.Attributes;
 using Regira.Entities.Attachments.Extensions;
 using Regira.Entities.EFcore.Extensions;
 using Regira.Entities.Preppers.Abstractions;
@@ -82,6 +83,7 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
             foreach (var entity in relatedItemsToModify)
             {
                 var originalEntity = originalItems.Single(p => p.Id!.Equals(entity.Id));
+                RestoreServerOwned(entity, originalEntity);
                 var replaced = EntityAttachmentContent.PrepareLink(entity, originalEntity);
 
                 if (entity.Attachment != null)
@@ -166,6 +168,23 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
             .FilterId<TEntity, TEntityKey>(id)
             .FirstOrDefaultAsync(token);
         return stored != null ? selectorFunc(stored) : null;
+    }
+
+    /// <summary>
+    /// Restores the <c>[ServerOwned]</c> properties of a kept link from its stored row, as the link's own route does. Not
+    /// on a link that brings a new file: a value derived from the file (a thumbnail) is the one the owner's prepper set
+    /// from the new bytes, before this sync.
+    /// </summary>
+    private static void RestoreServerOwned(TEntityAttachment link, TEntityAttachment stored)
+    {
+        if (EntityAttachmentContent.HasNewContent(link) || link.Attachment?.IsNew() == true)
+        {
+            return;
+        }
+        foreach (var property in ServerOwnedProperties.Protected(link.GetType()))
+        {
+            property.SetValue(link, property.GetValue(stored));
+        }
     }
 
     private static bool IsNew(TEntityAttachment link) => link.Id == null || link.Id.Equals(default(TEntityAttachmentKey));

@@ -14,6 +14,8 @@
   `AccountControllerBase<AppUser>(ITokenHelper, UserManager<AppUser>, IUserClaimsPrincipalFactory<AppUser>, ILogger? logger = null)`;
   `PasswordControllerBase<AppUser>(UserManager<AppUser>)`; `UserControllerBase<AppUser>(UserManager<AppUser>)`.
   **No `ISerializer`** — payloads use `System.Text.Json` internally.
+- **Minimal APIs:** no endpoint mapper. `AccountSignInService<TUser>` (`…Web.Services`, register it scoped) holds
+  what `AccountControllerBase` decides: `CanSignIn`, `CreateSuccessResponse`, `TokenClaims`, `CreateFailedResponse`.
 - **Required services:** `AddIdentityCore<AppUser>().AddEntityFrameworkStores<TCtx>().AddSignInManager().AddDefaultTokenProviders()`,
   `AddJwtAuthentication(…)` (for `ITokenHelper`), and an `IEmailSender` (recover/confirm email).
   **`IEmailSender` is `Microsoft.AspNetCore.Identity.UI.Services.IEmailSender`** (a Microsoft type, not

@@ -1392,9 +1392,11 @@ if (so.AncestorId?.Any() == true)
 ```
 
 Create the functions with `ExecuteSqlRawAsync` after `EnsureCreated()` (or `migrationBuilder.Sql`) —
-SQL Server syntax; other providers need their own dialect. For tree *endpoints*, materialize the rows
-and assemble with `Regira.TreeList`'s `ToTreeList(...)` + `ToTreeView()`. In-memory-only trees skip the
-SQL entirely — see `get_package(id: "Regira.TreeList")`.
+SQL Server syntax; other providers need their own dialect. SQLite (the default starter) has no table-valued
+functions: resolve the subtree's ids first (`Regira.TreeList`) and pass them as an `ICollection<int>` on the
+SearchObject, or keep to direct `ParentId` filters (blueprint → *Which layer? Match your provider*). For tree
+*endpoints*, materialize the rows and assemble with `Regira.TreeList`'s `ToTreeList(...)` + `ToTreeView()`.
+In-memory-only trees skip the SQL entirely — see `get_package(id: "Regira.TreeList")`.
 
 **See:** `get_package(id: "Regira.Entities", section: "blueprints", heading: "Recursive entities")`.
 

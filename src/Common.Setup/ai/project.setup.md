@@ -433,7 +433,8 @@ using Regira.Security.Authentication.Cookie.Models;        // CookieAuthOptions,
 using Regira.Security.Authentication.OpenIdConnect.Models; // OidcAuthOptions, EntraIdSignInOptions
 ```
 
-- **`ApiKeyOwner`** — `{ OwnerId, Key, Roles, Claims }` — registered caller identity
+- **`ApiKeyOwner`** — `{ OwnerId, Key, Roles, Claims }` — registered caller identity; `Claims` holds the nested
+  `ApiKeyOwner.Claim(Type, Value)`, not `System.Security.Claims.Claim`
 - **`ApiKeyDefaults`** — `AuthenticationScheme` + `HeaderName` constants
 - **`JwtTokenOptions`** — `{ Secret, Algorithm, Authority, Audience, LifeSpan, ValidateSecretLength, ... }`
 - **`AuthenticationSections`** — the `Authentication:*` configuration paths
