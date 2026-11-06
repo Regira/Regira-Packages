@@ -176,7 +176,7 @@ public class LinkPhotoPrepper(IPhotoShrinker photos) : EntityPrepperBase<IEntity
         return Task.CompletedTask;
     }
 }
-// services.UseEntities<AppDbContext>(o => o.AddPrepper<OwnerPhotoPrepper>().AddPrepper<LinkPhotoPrepper>())   // before .For<>()
+// services.UseEntities<AppDbContext>(o => o.UseDefaults().AddPrepper<OwnerPhotoPrepper>().AddPrepper<LinkPhotoPrepper>())   // before .For<>()
 // AddPrepper on the options: Regira.Entities.DependencyInjection.Preppers
 ```
 
@@ -187,9 +187,13 @@ public class LinkPhotoPrepper(IPhotoShrinker photos) : EntityPrepperBase<IEntity
   (`modified is not Product` in the owner's, `modified.ObjectType != nameof(Product)` in the link's). When the
   shrinker changes the format, rename to match — `link.NewFileName = Path.ChangeExtension(link.NewFileName, ".jpg")`,
   or the upload's `file.FileName` — since the stored `ContentType` follows the file name.
-- A value derived from the file and stored on the link (a thumbnail): mark it `[ServerOwned]` and set it in both
-  preppers next to the new bytes. Both routes restore it on a kept link without a new file (the owner's sync too);
-  on a link that brings a new file, it is the value your prepper set from the new bytes.
+- A value derived from the file and stored on the link (a thumbnail): mark it `[ServerOwned]` and set it from the
+  new file *after* the restore. Both routes restore every `[ServerOwned]` value of a kept link, a link with a new file
+  included. On the link's own routes, set it in the link's prepper, registered after `UseDefaults()`. On the owner's
+  route, set it in a prepper registered on that owner after `HasAttachments`
+  (`e.HasAttachments(x => x.Photos); e.AddPrepper<ProductThumbnailPrepper>();`), from each link's `NewBytes`, or the
+  `Bytes` of a new `Attachment` the link carries: the sync leaves `NewBytes` on the link, as the owner's prepper shrank
+  them. On a new link, set the value or clear it: a link sent as new is a create, whose values the guard leaves alone.
 
 **See:** `get_package(id: "Regira.Entities", section: "instructions", heading: "Write-pipeline order")`.
 

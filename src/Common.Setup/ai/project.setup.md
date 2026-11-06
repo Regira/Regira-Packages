@@ -304,7 +304,10 @@ public static IHostBuilder AddConfiguration(this IHostBuilder builder)
 ### Windows Service support
 
 - `WindowsServiceHelpers.IsWindowsService()` guards `UseWindowsService()` so the app runs normally outside the service host.
-- `AddWindowsServiceInstaller` generates `install.bat` / `uninstall.bat` on first run (idempotent).
+- `AddWindowsServiceInstaller` writes `install.bat` / `uninstall.bat` next to the entry assembly (the build or publish
+  folder) on the first start: start a published build once before you run `install.bat`. It writes nothing while
+  `install.bat` exists, and writes both files when it does not, over an existing `uninstall.bat`. Not with
+  `PublishSingleFile`: the entry assembly has no file path there, and the call throws at startup.
 - `AddWindowsServiceInstaller` is provided by `Regira.System.Hosting` (`WindowsServiceHostExtensions`).
 
 ### Authentication conventions

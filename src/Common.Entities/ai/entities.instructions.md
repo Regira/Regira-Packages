@@ -415,8 +415,11 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 > client (for a workflow that must write it, see the *Only a gated domain action* row below). Scalars and FKs
 > only (a `byte[]` column counts as a scalar) — a navigation, a collection and `IArchivable.IsArchived` are
 > rejected (a restore has to be able to clear that flag). On an attachment link, the owner's `HasAttachments` sync
-> restores it too, except on a link that brings a new file ([`entities.patterns.md`](./entities.patterns.md) →
-> *Transform uploaded files before they are stored*).
+> restores it too on a kept link, one that brings a new file as well: set a value derived from the file after the sync
+> ([`entities.patterns.md`](./entities.patterns.md) → *Transform uploaded files before they are stored*). A link the
+> client drops and sends again as new is a create, and on the owner's route the link type's own preppers do not run
+> (an `e.ServerOwned(…, mint)` on the link included): a prepper on the owner, registered after `HasAttachments`, sets
+> or clears every `[ServerOwned]` value of a new link.
 >
 > **On create the guard does nothing**: whatever value the entity already carries is inserted as-is, which is
 > what lets a seeder back-date a `Code` or import a historical rating. `e.ServerOwned(x => x.Code, mint)`

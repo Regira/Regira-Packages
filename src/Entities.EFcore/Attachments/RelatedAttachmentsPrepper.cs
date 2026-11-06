@@ -83,6 +83,8 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
             foreach (var entity in relatedItemsToModify)
             {
                 var originalEntity = originalItems.Single(p => p.Id!.Equals(entity.Id));
+                // the client's tokens before the restore: a [ServerOwned] token would otherwise be compared as stored
+                var clientTokens = dbContext.CaptureClientTokens(entity);
                 RestoreServerOwned(entity, originalEntity);
                 var replaced = EntityAttachmentContent.PrepareLink(entity, originalEntity);
 
@@ -105,7 +107,7 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
                     }
                 }
 
-                dbContext.TrackAsUpdateOf(entity, originalEntity, dbContext.CaptureClientTokens(entity));
+                dbContext.TrackAsUpdateOf(entity, originalEntity, clientTokens);
             }
             foreach (var entity in relatedItemsToDelete)
             {
@@ -171,16 +173,12 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
     }
 
     /// <summary>
-    /// Restores the <c>[ServerOwned]</c> properties of a kept link from its stored row, as the link's own route does. Not
-    /// on a link that brings a new file: a value derived from the file (a thumbnail) is the one the owner's prepper set
-    /// from the new bytes, before this sync.
+    /// Restores the <c>[ServerOwned]</c> properties of a kept link from its stored row, as the link's own route does, new
+    /// bytes or not. A value derived from a new file (a thumbnail) is set by a prepper registered after the sync, from
+    /// the link's <c>NewBytes</c>, which the sync leaves in place.
     /// </summary>
     private static void RestoreServerOwned(TEntityAttachment link, TEntityAttachment stored)
     {
-        if (EntityAttachmentContent.HasNewContent(link) || link.Attachment?.IsNew() == true)
-        {
-            return;
-        }
         foreach (var property in ServerOwnedProperties.Protected(link.GetType()))
         {
             property.SetValue(link, property.GetValue(stored));
