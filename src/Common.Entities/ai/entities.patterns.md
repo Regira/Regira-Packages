@@ -2393,7 +2393,7 @@ What each write is checked against:
 
 | Write | Checked against |
 |---|---|
-| `PUT` carrying the token, a `SaveCommand` your own code sends with the token it read, or `IEntityService.Modify(item)` in a domain action after copying the client's token onto `item` | the client's token — a stale one answers 409 |
+| `PUT` carrying the token, a `SaveCommand` your own code sends with the token it read, or `IEntityService.Modify(item)` in a domain action after copying the client's token onto `item` | the client's token — a stale one answers 409, whose detail is always `EntityConcurrencyException.ClientMessage` (the message you throw it with is not sent; a refusal of your own is an `EntityInputException`, 400) |
 | `PUT` without it (`null`, empty, `Guid.Empty`, `0`) | nothing the client read: it writes, only a write racing it is caught, and the empty value never overwrites the token (the marker's primer still mints a new one). `[VersionStamp(Required = true)]` on the token refuses it instead — 400 naming the token (below), before anything is attached — for a client that must always prove what it read; on the marker, put the attribute on the implementing `ConcurrencyToken` property. An insert is never refused |
 | `PATCH`, or a `PatchCommand` | the token in the body when it carries one; otherwise the merge base supplies the value read at `PATCH` time |
 | `DELETE`, and child rows a save drops | no client token reaches them — only a write racing them is caught |

@@ -24,8 +24,12 @@ services.AddSingleton<IImageCreator>(sp =>
 public async Task<byte[]> ProcessProductImage(byte[] uploadedBytes)
 {
     using var original = (await _imageService.Parse(uploadedBytes))!;
-    using var resized  = await _imageService.Resize(original, new ImageSize(800, 800));
-    using var webp     = await _imageService.ChangeFormat(resized, ImageFormat.Webp);
+    var size = await _imageService.GetDimensions(original);
+    // Resize scales up as well as down: only shrink an image larger than 800×800
+    using var resized  = size.Width > 800 || size.Height > 800
+        ? await _imageService.Resize(original, new ImageSize(800, 800))
+        : null;
+    using var webp     = await _imageService.ChangeFormat(resized ?? original, ImageFormat.Webp);
     return webp.GetBytes()!;
 }
 ```

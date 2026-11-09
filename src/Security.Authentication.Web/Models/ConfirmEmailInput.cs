@@ -8,5 +8,7 @@ public record ConfirmEmailInput
     public string Token { get; set; } = null!;
     /// <summary>Not read: the user comes from the token.</summary>
     public string? UserName { get; set; }
+    /// <summary>Not read: confirming an e-mail address sets no password and signs no one in.</summary>
+    [Obsolete("Ignored: confirming an e-mail address sets no password and signs no one in. Will be removed in v7.")]
     public string? Password { get; set; }
 }

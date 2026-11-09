@@ -17,7 +17,8 @@ public interface IImageTransformService
     /// <returns>The size of the image as a <see cref="ImageSize"/>.</returns>
     Task<ImageSize> GetDimensions(IImageFile input, CancellationToken cancellationToken = default);
     /// <summary>
-    /// Resizes the input image to the specified size, with optional quality.
+    /// Scales the input image to fit within the specified size, keeping its aspect ratio, with optional quality;
+    /// a smaller image is scaled up.
     /// </summary>
     /// <param name="input">The source image file.</param>
     /// <param name="wantedSize">The desired size.</param>
