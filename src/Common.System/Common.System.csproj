@@ -11,7 +11,7 @@
     <AssemblyName>Regira.System</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.6.1</Version>
+    <Version>6.6.2</Version>
     <Description>Runs external processes and captures their output (IProcessHelper). Hub of the system guides, which also cover Regira.System.Hosting and Regira.System.Projects.</Description>
     <PackageTags>regira;system;utilities;process</PackageTags>
   </PropertyGroup>

@@ -20,6 +20,6 @@
     <ProjectReference Include="..\Drawing.SkiaSharp\Drawing.SkiaSharp.csproj" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="ZXing.Net.Bindings.SkiaSharp" Version="0.16.24" />
+    <PackageReference Include="ZXing.Net.Bindings.SkiaSharp" Version="0.16.25" />
   </ItemGroup>
 </Project>
