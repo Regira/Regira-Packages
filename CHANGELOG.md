@@ -6,7 +6,7 @@ adds one bullet under **Unreleased** in the same change (format: `` `PackageId` 
 and leaves that package's `<Version>` higher than its last published version. At publish time the
 Unreleased block becomes a dated release heading.
 
-## Unreleased
+## 6.6.2 — 2026-11-11
 
 - All packages — version aligned at 6.6.2 for a whole-family publish. Twelve have a change of their own, in code, guides or package tags, in a bullet below. Twenty-eight ship only the dependency moves at the end of this block, which six of the twelve share. No package is new, and nothing is published outside the aligned number. The other forty-seven are republished unchanged so the family shares one version.
 - `Regira.Media` 6.6.2 — the guide, the README and the `IImageTransformService.Resize` doc comment say `Resize` scales up as well as down, and the *Resize and convert uploaded image* example reads `GetDimensions` first, so it only shrinks an image larger than the wanted size.
