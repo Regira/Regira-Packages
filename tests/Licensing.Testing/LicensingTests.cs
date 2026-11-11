@@ -1,4 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Regira.Licensing.DependencyInjection;
 using Regira.Licensing.Models;
 using Regira.Licensing.Services;
@@ -230,6 +232,24 @@ public class LicensingTests
     }
 
     [Test]
+    public async Task UseRegira_HostStart_LogsTheConsoleLicenseLine()
+    {
+        var key = LicenseSigner.Sign(ValidLicense(), _rsa);
+        var services = new ServiceCollection();
+        var (stdout, _) = CaptureConsole(() => services.UseRegira(key));
+        var loggerFactory = new CapturingLoggerFactory();
+        services.AddSingleton<ILoggerFactory>(loggerFactory);
+
+        await using var provider = services.BuildServiceProvider();
+        foreach (var hostedService in provider.GetServices<IHostedService>())
+            await hostedService.StartAsync(CancellationToken.None);
+
+        var consoleLine = stdout.Split(Environment.NewLine).Single(l => l.StartsWith("[Regira] License"));
+        Assert.That(loggerFactory.Messages, Is.EqualTo(new[] { ("Regira.Licensing", consoleLine) }));
+        Assert.That(consoleLine, Does.Contain("| Version: 5 |"));
+    }
+
+    [Test]
     public void Validate_WrongProduct_ThrowsLicenseException()
     {
         var key = LicenseSigner.Sign(ValidLicense(), _rsa);
@@ -382,6 +402,39 @@ public class LicensingTests
     }
 
     [Test]
+    public void Validate_KeyForNewerMajor_ThrowsLicenseException()
+    {
+        var key = LicenseSigner.Sign(ValidLicense(), _rsa); // Version = "5"
+        Assert.Throws<LicenseException>(() => LicenseValidator.Validate(key, "regira.entities", requiredMajorVersion: 4));
+    }
+
+    // a signed version nobody can read must not pass as a key without one
+    [TestCase("abc")]
+    [TestCase("v6")]
+    [TestCase("")]
+    [TestCase("99999999999")]
+    public void Validate_UnreadableVersion_ThrowsLicenseException(string version)
+    {
+        var license = ValidLicense();
+        license.Version = version;
+        var key = LicenseSigner.Sign(license, _rsa);
+        var ex = Assert.Throws<LicenseException>(() => LicenseValidator.Validate(key, "regira.entities", requiredMajorVersion: 6));
+        Assert.That(ex!.Message, Does.Contain("version 6.x is required"));
+    }
+
+    [Test]
+    public void GetStatus_UnreadableVersion_IsAVersionMismatch()
+    {
+        var license = ValidLicense();
+        license.Version = "abc";
+        var key = LicenseSigner.Sign(license, _rsa);
+        var status = LicenseValidator.GetStatus(key, "regira.entities", 6);
+        Assert.That(status.State, Is.EqualTo(LicenseState.VersionMismatch));
+        Assert.That(status.Accepted, Is.False);
+        Assert.That(status.Message, Does.Contain("is for an unreadable version"));
+    }
+
+    [Test]
     public void Validate_NoRequiredVersion_SkipsVersionCheck()
     {
         var key = LicenseSigner.Sign(ValidLicense(), _rsa); // Version = "5"
@@ -477,4 +530,22 @@ public class LicensingTests
         IssuedAtUnix = DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeSeconds(),
         ExpiresAtUnix = DateTimeOffset.UtcNow.AddDays(30).ToUnixTimeSeconds()
     };
+}
+
+/// <summary>Collects every message logged through it, with the logger's category.</summary>
+internal sealed class CapturingLoggerFactory : ILoggerFactory, ILoggerProvider
+{
+    public List<(string Category, string Message)> Messages { get; } = [];
+
+    public ILogger CreateLogger(string categoryName) => new CapturingLogger(this, categoryName);
+    public void AddProvider(ILoggerProvider provider) { }
+    public void Dispose() { }
+
+    private sealed class CapturingLogger(CapturingLoggerFactory factory, string category) : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => factory.Messages.Add((category, formatter(state, exception)));
+    }
 }

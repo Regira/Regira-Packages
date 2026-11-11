@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Security.Authentication.Web</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.6.1</Version>
+    <Version>6.6.2</Version>
     <Description>ASP.NET Core authentication middleware and OpenAPI integration for Regira.</Description>
     <PackageTags>regira;security;authentication;web;aspnetcore;openapi;identity;accounts;signup;login;password;reset;confirm;users</PackageTags>
   </PropertyGroup>
@@ -21,7 +21,7 @@
     <ProjectReference Include="..\Security.Authentication\Security.Authentication.csproj" />
   </ItemGroup>
   <ItemGroup Condition="$(TargetFramework) == 'net10.0'">
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.13" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.15" />
     <!-- AspNetCore.OpenApi 10.0.10 and earlier declare Microsoft.OpenApi 2.0.0, which carries GHSA-v5pm-xwqc-g5wc
          (10.0.11 floors a patched 2.x itself). Pin it to the 2.x the rest of the solution runs on: projects that
          also reference Swashbuckle resolve that same version and serve the document fine against this

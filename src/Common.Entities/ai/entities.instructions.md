@@ -37,7 +37,7 @@ services.UseEntities<AppDbContext>(options =>
 
 Without a key, the **free tier** applies automatically — no configuration for dev/CI: **5 simple + 2 complex registrations**, two independent buckets (counted separately, not a shared pool of 7), one slot per distinct entity type, and one extra *simple* slot per attachment owner (the per-owner join entity via `HasAttachments`; the shared `Attachment` base via `WithAttachments` is free infrastructure, however many owners use it). Exceeding either bucket throws at startup naming the offenders. **Classify each entity and tally the budget before scaffolding — the decision table, the simple/complex definitions, and a worked example live in [§Step 0](#step-0--classify-every-entity-before-scaffolding), the canonical spot.**
 
-Store paid keys under `Regira:LicenseKeys` in configuration: user-secrets in development, the environment or a key vault in production. A single key can cover multiple products; add more keys to the array to combine them — the system picks the best per product (paid always wins over free). Obtain a key at [https://regira.com/licensing](https://regira.com/licensing).
+Store paid keys under `Regira:LicenseKeys` in configuration: user-secrets in development, the environment or a key vault in production. A single key can cover multiple products; add more keys to the array to combine them — the system picks the best per product (a key for the running major first, then paid over free). A key is valid for the major version it was issued for: `UseEntities` refuses a key for another major at startup. Obtain a key at [https://regira.com/licensing](https://regira.com/licensing).
 
 ```json
 { "Regira": { "LicenseKeys": [ "<your-license-key>" ] } }
@@ -48,6 +48,8 @@ dotnet user-secrets set "Regira:LicenseKeys:0" "<key>"   # Regira__LicenseKeys__
 ```
 
 The keys are read when the first `For<>()` runs. A key that was not registered by then — `UseRegira()` after `UseEntities()`, a misspelled section, a single string under `LicenseKeys`, which must be an array — leaves the free tier, and the startup error opens with *No Regira license key covering regira.entities was registered*.
+
+`UseRegira` reports each registered key in one line, on the console when it runs and through `ILogger` (category `Regira.Licensing`, `Information`) when the host starts, so a file sink holds it too: `[Regira] License — Customer: … | Products: … | Version: 6 | Issued: … | Expires: … | Limits: …`. `Version` is the major the key is bound to: `any` for a key without a version, `unreadable` for a version that cannot be read. `UseEntities` then logs `Regira.Entities: n simple / n complex registered → tier = …`, the tier the registrations run under.
 
 ---
 
@@ -410,8 +412,14 @@ public record SearchObject<TKey> : ISearchObject<TKey>
 > `[ServerOwned]` (namespace `Regira.Entities.Attributes`) is enforced by a prepper `UseDefaults()`
 > registers, so it guards the `IEntityService` write path and leaves a workflow service's raw-`DbContext`
 > write alone. It has no bypass: your own domain action saving through `IEntityService` is reverted like any
-> client. Scalars and FKs only — a navigation and `IArchivable.IsArchived` are rejected (a restore has
-> to be able to clear that flag).
+> client (for a workflow that must write it, see the *Only a gated domain action* row below). Scalars and FKs
+> only (a `byte[]` column counts as a scalar) — a navigation, a collection and `IArchivable.IsArchived` are
+> rejected (a restore has to be able to clear that flag). On an attachment link, the owner's `HasAttachments` sync
+> restores it too on a kept link, one that brings a new file as well: set a value derived from the file after the sync
+> ([`entities.patterns.md`](./entities.patterns.md) → *Transform uploaded files before they are stored*). A link the
+> client drops and sends again as new is a create, and on the owner's route the link type's own preppers do not run
+> (an `e.ServerOwned(…, mint)` on the link included): a prepper on the owner, registered after `HasAttachments`, sets
+> or clears every `[ServerOwned]` value of a new link.
 >
 > **On create the guard does nothing**: whatever value the entity already carries is inserted as-is, which is
 > what lets a seeder back-date a `Code` or import a historical rating. `e.ServerOwned(x => x.Code, mint)`

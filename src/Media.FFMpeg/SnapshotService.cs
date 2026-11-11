@@ -16,6 +16,22 @@ public class SnapshotService(IImageService imageService, IProcessHelper? process
 {
     readonly IProcessHelper _processHelper = processHelper ?? new ProcessHelper();
 
+    /// <summary>
+    /// Whether <c>ffmpeg</c> runs by name, as <see cref="Snapshot"/> runs it: check it once at startup and skip snapshots
+    /// without it, since <see cref="Snapshot"/> throws then. A snapshot without a size also needs <c>ffprobe</c>.
+    /// </summary>
+    public bool IsAvailable()
+    {
+        try
+        {
+            return _processHelper.ExecuteCommand("ffmpeg -version", waitForOutput: true).ExitCode == 0;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     public async Task<IImageFile?> Snapshot(IBinaryFile input, ImageSize? size = null, TimeSpan? time = null, CancellationToken cancellationToken = default)
     {
         // a file without a path is written to a temporary one for ffmpeg, removed again below

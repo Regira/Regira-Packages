@@ -1048,6 +1048,13 @@ credential, and count a failure with `userManager.AccessFailedAsync(user)`, the 
 three-argument overload, which also issues a refresh token when they are on); on failure,
 `Unauthorized(CreateFailedResponse(isLockedOut))`. Allow it only for the roles that need it, and rate-limit the action.
 
+**A minimal-API host** maps its own sign-in endpoints (there is no endpoint mapper) and reuses what the controller
+decides through `AccountSignInService<TUser>` (`Regira.Security.Authentication.Web.Services`), the class
+`AccountControllerBase` delegates to: `CanSignIn(user)` after the password check, `CreateSuccessResponse(claims,
+clientApp, user.Id)` for the token (with a refresh token when they are on), `TokenClaims(claims)` and the static
+`CreateFailedResponse(isLockedOut, lockedOutEnd)`. Register it with `services.AddScoped<AccountSignInService<AppUser>>()`;
+the lockout checks and `AccessFailedAsync` stay in your endpoint, as in `POST auth`.
+
 **An endpoint of your own that mails a token link** — a minimal-API host (there is no endpoint mapper: the
 account endpoints are these controllers), a resend-confirmation action, or an override that does not call the base —
 reuses the request and token models in `Regira.Security.Authentication.Web.Models` (`AuthenticateInput`,

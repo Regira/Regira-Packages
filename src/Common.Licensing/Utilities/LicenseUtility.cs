@@ -47,11 +47,34 @@ public static class LicenseUtility
     /// renewal wins over the key it renews in whatever order they are configured. Returns <c>null</c> when none match.
     /// </summary>
     public static License? Resolve(IEnumerable<License> licenses, string productCode) =>
+        Resolve(licenses, productCode, null);
+
+    /// <summary>
+    /// <see cref="Resolve(IEnumerable{License}, string)"/> for a product running as <paramref name="requiredMajorVersion"/>:
+    /// a key valid for that major wins over one that is not, so a lifetime key for an earlier major never
+    /// shadows the key issued for this one.
+    /// </summary>
+    public static License? Resolve(IEnumerable<License> licenses, string productCode, int? requiredMajorVersion) =>
         licenses
             .Where(l => l.Products.Any(p => string.Equals(p, productCode, StringComparison.OrdinalIgnoreCase)))
-            .OrderByDescending(l => l.IsPaid ? 1 : 0)
+            .OrderByDescending(l => l.IsValidForMajor(requiredMajorVersion))
+            .ThenByDescending(l => l.IsPaid ? 1 : 0)
             .ThenByDescending(l => l.ExpiresAtUnix ?? long.MaxValue)
             .FirstOrDefault();
+
+    /// <summary>
+    /// <see cref="Resolve(IEnumerable{License}, string)"/> for the highest major among the keys covering
+    /// <paramref name="productCode"/>. For a client of a hosted service: the service rules on the key by its own
+    /// major, which the client cannot know and which is the latest one a customer holds a key for.
+    /// </summary>
+    public static License? ResolveLatest(IEnumerable<License> licenses, string productCode)
+    {
+        var candidates = licenses.ToList();
+        var latestMajor = candidates
+            .Where(l => l.Products.Any(p => string.Equals(p, productCode, StringComparison.OrdinalIgnoreCase)))
+            .Max(l => l.MajorVersion);
+        return Resolve(candidates, productCode, latestMajor);
+    }
 
 
     /// <summary>

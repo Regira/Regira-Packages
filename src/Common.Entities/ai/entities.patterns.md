@@ -176,7 +176,7 @@ public class LinkPhotoPrepper(IPhotoShrinker photos) : EntityPrepperBase<IEntity
         return Task.CompletedTask;
     }
 }
-// services.UseEntities<AppDbContext>(o => o.AddPrepper<OwnerPhotoPrepper>().AddPrepper<LinkPhotoPrepper>())   // before .For<>()
+// services.UseEntities<AppDbContext>(o => o.UseDefaults().AddPrepper<OwnerPhotoPrepper>().AddPrepper<LinkPhotoPrepper>())   // before .For<>()
 // AddPrepper on the options: Regira.Entities.DependencyInjection.Preppers
 ```
 
@@ -187,6 +187,13 @@ public class LinkPhotoPrepper(IPhotoShrinker photos) : EntityPrepperBase<IEntity
   (`modified is not Product` in the owner's, `modified.ObjectType != nameof(Product)` in the link's). When the
   shrinker changes the format, rename to match — `link.NewFileName = Path.ChangeExtension(link.NewFileName, ".jpg")`,
   or the upload's `file.FileName` — since the stored `ContentType` follows the file name.
+- A value derived from the file and stored on the link (a thumbnail): mark it `[ServerOwned]` and set it from the
+  new file *after* the restore. Both routes restore every `[ServerOwned]` value of a kept link, a link with a new file
+  included. On the link's own routes, set it in the link's prepper, registered after `UseDefaults()`. On the owner's
+  route, set it in a prepper registered on that owner after `HasAttachments`
+  (`e.HasAttachments(x => x.Photos); e.AddPrepper<ProductThumbnailPrepper>();`), from each link's `NewBytes`, or the
+  `Bytes` of a new `Attachment` the link carries: the sync leaves `NewBytes` on the link, as the owner's prepper shrank
+  them. On a new link, set the value or clear it: a link sent as new is a create, whose values the guard leaves alone.
 
 **See:** `get_package(id: "Regira.Entities", section: "instructions", heading: "Write-pipeline order")`.
 
@@ -2242,9 +2249,10 @@ services.UseEntities<AppDbContext>(o => o.UseDefaults())
 - Enforced by a **prepper** (`AutoServerOwnedPrepper`, registered by `UseDefaults()`), so a domain/workflow
   service saving through the raw `DbContext` keeps its write — see *Primer vs prepper when a second writer
   exists* below.
-- **Scalars and FKs only.** A navigation, a property without both accessors, and `IArchivable.IsArchived`
-  cannot be server-owned: the fluent form throws at registration, the attribute is skipped and reported as a
-  startup validation error. Owned child *collections* are governed by `Related()`.
+- **Scalars and FKs only** (a `byte[]` column counts as a scalar). A navigation, a collection, a property
+  without both accessors, and `IArchivable.IsArchived` cannot be server-owned: the fluent form throws at
+  registration, the attribute is skipped and reported as a startup validation error. Owned child *collections* are
+  governed by `Related()`.
 
 Cases the declaration does not cover, and what to use instead:
 
@@ -2385,7 +2393,7 @@ What each write is checked against:
 
 | Write | Checked against |
 |---|---|
-| `PUT` carrying the token, or a `SaveCommand` your own code sends with the token it read | the client's token — a stale one answers 409 |
+| `PUT` carrying the token, a `SaveCommand` your own code sends with the token it read, or `IEntityService.Modify(item)` in a domain action after copying the client's token onto `item` | the client's token — a stale one answers 409, whose detail is always `EntityConcurrencyException.ClientMessage` (the message you throw it with is not sent; a refusal of your own is an `EntityInputException`, 400) |
 | `PUT` without it (`null`, empty, `Guid.Empty`, `0`) | nothing the client read: it writes, only a write racing it is caught, and the empty value never overwrites the token (the marker's primer still mints a new one). `[VersionStamp(Required = true)]` on the token refuses it instead — 400 naming the token (below), before anything is attached — for a client that must always prove what it read; on the marker, put the attribute on the implementing `ConcurrencyToken` property. An insert is never refused |
 | `PATCH`, or a `PatchCommand` | the token in the body when it carries one; otherwise the merge base supplies the value read at `PATCH` time |
 | `DELETE`, and child rows a save drops | no client token reaches them — only a write racing them is caught |

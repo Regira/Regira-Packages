@@ -11,6 +11,7 @@ Ready-to-copy **feature slices** proven in the Regira reference applications. Ea
 | [Recursive entities](#recursive-entities--whole-subtree-filtering-with-mapped-db-functions) | Ancestor/descendant filters and tree endpoints over self-referencing entities — **trees and multi-parent graphs alike** (the worked example is a category with several parents) |
 | [Identity users as entities](#identity-users-as-framework-entities) | Manage ASP.NET Identity users through the standard entity pipeline |
 | [Virtual entity](#virtual-entity--reference-data-without-a-table) | Read-only reference data (countries, currencies) served like any entity, no table |
+| [Owned rows with a public subset](#owned-rows-with-a-public-subset--read-scope-write-scope-attachments) | Users write their own rows, anonymous visitors read the published ones (posts, listings), attachments included |
 
 Budget note (free tier): each blueprint states what it costs in `.For<>()` slots. Owned children managed via `e.Related()` never cost a slot. **Stakeholders doubles as the standard fix for an over-budget domain** — one role-discriminated party replaces `Customer` + `Supplier` + `Employee`.
 
@@ -1155,6 +1156,171 @@ public class CountryController : EntityControllerBase<Country, string, SearchObj
 
 ---
 
+## Owned rows with a public subset — read scope, write scope, attachments
+
+Rows a signed-in user owns and edits, of which the published ones are public: visitors read them anonymously, an owner
+also reads their own drafts, an administrator reads and writes everything. Four small pieces carry it: a global filter
+for the read scope, the same scope on the attachment links, a prepper that stamps the owner and a validator that checks
+it on every write. Read scope and write scope are kept apart on purpose: a published row is readable by everyone and
+writable by its owner only.
+
+**Budget:** 1 slot for the owner (simple or complex by its registration) + 1 simple for its attachment join.
+
+### Model + current user
+
+<!-- no-compile -->
+```csharp
+public class Article : IEntity<int>, IHasAttachments, IHasAttachments<ArticleAttachment>
+{
+    public int Id { get; set; }
+    [MaxLength(64)] public string OwnerId { get; set; } = null!;   // the account's user id, never read from the body
+    public bool IsPublished { get; set; }
+    // + Title, Body, …
+    public ICollection<ArticleAttachment>? Attachments { get; set; }
+    // + the IHasAttachments members (entities.examples → Attachments)
+}
+
+public class ArticleAttachment : EntityAttachment
+{
+    public ArticleAttachment() => ObjectType = nameof(Article);
+}
+
+public interface ICurrentUser
+{
+    string? UserId { get; }
+    bool IsAdministrator { get; }
+}
+
+// register AddHttpContextAccessor() and AddScoped<ICurrentUser, CurrentUser>()
+public class CurrentUser(IHttpContextAccessor httpContextAccessor) : ICurrentUser
+{
+    private ClaimsPrincipal? Principal => httpContextAccessor.HttpContext?.User;
+    public string? UserId => Principal?.Identity?.IsAuthenticated == true ? Principal.FindUserId() : null;
+    public bool IsAdministrator => UserId != null && Principal!.FindRoles().Contains("Administrator", StringComparer.OrdinalIgnoreCase);
+}
+```
+
+A seeder or job runs without a request, so its `ICurrentUser` answers nobody: give it a scope that counts as an
+administrator (a flag the host sets around the seed), or every seeded write fails the validator below.
+
+### Read scope — the owner and its links
+
+<!-- no-compile -->
+```csharp
+// Every Article query: lists, details and the write endpoints' existence checks
+public class ArticleVisibilityFilter(ICurrentUser currentUser) : GlobalFilteredQueryBuilderBase<Article>
+{
+    public override IQueryable<Article> Build(IQueryable<Article> query, ISearchObject<int>? so)
+    {
+        if (currentUser.IsAdministrator) return query;
+        var userId = currentUser.UserId;
+        return userId != null
+            ? query.Where(x => x.IsPublished || x.OwnerId == userId)
+            : query.Where(x => x.IsPublished);
+    }
+}
+
+// The same scope on the link entity, through the owner's DbSet: the owner's filter never runs on its attachments
+public class ArticleAttachmentScopeFilter(AppDbContext db, ICurrentUser currentUser) : GlobalFilteredQueryBuilderBase<ArticleAttachment>
+{
+    public override IQueryable<ArticleAttachment> Build(IQueryable<ArticleAttachment> query, ISearchObject<int>? so)
+    {
+        if (currentUser.IsAdministrator) return query;
+        var userId = currentUser.UserId;
+        return userId != null
+            ? query.Where(a => db.Articles.Any(x => x.Id == a.ObjectId && (x.IsPublished || x.OwnerId == userId)))
+            : query.Where(a => db.Articles.Any(x => x.Id == a.ObjectId && x.IsPublished));
+    }
+}
+```
+
+Both open with the scope, never with `if (so == null) return query;`: a details read and the write existence checks
+run without a search object.
+
+### Write scope — prepper + validators
+
+<!-- no-compile -->
+```csharp
+// The owner comes from the account: on create the caller, on update the stored row; an administrator may assign one
+public class ArticleOwnerPrepper(ICurrentUser currentUser) : EntityPrepperBase<Article>
+{
+    public override Task Prepare(Article modified, Article? original, CancellationToken token = default)
+    {
+        if (!currentUser.IsAdministrator || string.IsNullOrEmpty(modified.OwnerId))
+            modified.OwnerId = original?.OwnerId ?? currentUser.UserId ?? string.Empty;
+        return Task.CompletedTask;
+    }
+}
+
+// Runs on every write, a delete included (no prepper does): a published row is readable, not writable, by others
+public class ArticleAccessValidator(ICurrentUser currentUser) : EntityValidatorBase<Article>
+{
+    public override Task Validate(IEntityValidatorContext<Article> ctx, CancellationToken token = default)
+    {
+        if (currentUser.IsAdministrator) return Task.CompletedTask;
+        var ownerId = ctx.Operation == EntityWriteOperation.Modify ? ctx.Original!.OwnerId : ctx.Item.OwnerId;
+        if (currentUser.UserId == null || ownerId != currentUser.UserId)
+            ctx.AddError(string.Empty, "You can only manage your own articles.");
+        return Task.CompletedTask;
+    }
+}
+
+// An upload is a create no filter sees: it takes the owner id from the route
+public class ArticleAttachmentAccessValidator(AppDbContext db, ICurrentUser currentUser) : EntityValidatorBase<ArticleAttachment>
+{
+    public override async Task Validate(IEntityValidatorContext<ArticleAttachment> ctx, CancellationToken token = default)
+    {
+        if (currentUser.IsAdministrator) return;
+        var userId = currentUser.UserId;
+        if (userId == null || !await db.Articles.AnyAsync(x => x.Id == ctx.Item.ObjectId && x.OwnerId == userId, token))
+            ctx.AddError(string.Empty, "You can only change the files of your own articles.");
+    }
+}
+```
+
+### Registration
+
+<!-- no-compile -->
+```csharp
+services.AddHttpContextAccessor()
+    .AddScoped<ICurrentUser, CurrentUser>();
+
+services.UseEntities<AppDbContext>(options =>
+{
+    options.UseDefaults();
+    options.AddGlobalFilterQueryBuilder<ArticleVisibilityFilter>();
+    options.AddGlobalFilterQueryBuilder<ArticleAttachmentScopeFilter>();
+})
+.WithAttachments(p => new BinaryFileService(new FileSystemOptions { RootFolder = "uploads" }))
+.For<Article>(e =>
+{
+    e.AddPrepper<ArticleOwnerPrepper>();
+    e.AddValidator<ArticleAccessValidator>();
+    e.HasAttachments<AppDbContext, Article, ArticleAttachment>(x => x.Attachments,
+        a => a.AddValidator<ArticleAttachmentAccessValidator>());
+    // visitors read the published rows and their files; every write stays behind the group's policy
+    e.Endpoints(o => o.AllowAnonymous(EntityEndpoint.List, EntityEndpoint.Search, EntityEndpoint.Details, EntityEndpoint.Download));
+});
+
+app.MapEntityEndpoints().RequireAuthorization();
+```
+
+With controllers, the same reads take `[AllowAnonymous]` overrides, the downloads both overloads (*Public (anonymous)
+attachment downloads* in `entities.patterns`).
+
+### Gotchas
+
+- **The anonymous download is safe only through the link filter.** The download routes are guessable; without
+  `ArticleAttachmentScopeFilter` they serve a draft's files to anyone.
+- **An `Include` is not scoped.** A related collection the owner's DTO includes (comments, a scoped child) loads
+  every row; keep such a child on its own endpoint or repeat the predicate in a filtered include.
+- **The validator answers 400, the read path 404.** A write on another owner's published row passes the existence
+  check (it is visible) and fails the validator; a write on another owner's draft is a 404.
+- **Verify per identity.** Compare `GET /articles/search` totals anonymously, as two owners and as an administrator,
+  and fetch a draft's file by id as a visitor: it answers 404.
+
+---
+
 ## In-code recipes (how_to)
 
 Task-oriented entries served by the MCP `how_to` tool (same marker convention as [`entities.patterns.md`](./entities.patterns.md)).
@@ -1226,9 +1392,11 @@ if (so.AncestorId?.Any() == true)
 ```
 
 Create the functions with `ExecuteSqlRawAsync` after `EnsureCreated()` (or `migrationBuilder.Sql`) —
-SQL Server syntax; other providers need their own dialect. For tree *endpoints*, materialize the rows
-and assemble with `Regira.TreeList`'s `ToTreeList(...)` + `ToTreeView()`. In-memory-only trees skip the
-SQL entirely — see `get_package(id: "Regira.TreeList")`.
+SQL Server syntax; other providers need their own dialect. SQLite (the default starter) has no table-valued
+functions: resolve the subtree's ids first (`Regira.TreeList`) and pass them as an `ICollection<int>` on the
+SearchObject, or keep to direct `ParentId` filters (blueprint → *Which layer? Match your provider*). For tree
+*endpoints*, materialize the rows and assemble with `Regira.TreeList`'s `ToTreeList(...)` + `ToTreeView()`.
+In-memory-only trees skip the SQL entirely — see `get_package(id: "Regira.TreeList")`.
 
 **See:** `get_package(id: "Regira.Entities", section: "blueprints", heading: "Recursive entities")`.
 
@@ -1256,3 +1424,13 @@ services.For<Country, string>(e => e.UseEntityService<CountryRepository>());
 The standard controller and SPA components work unchanged.
 
 **See:** `get_package(id: "Regira.Entities", section: "blueprints", heading: "Virtual entity")`.
+
+### Let users own rows of which the published ones are public
+<!-- how_to: key=public-subset aliases=published,unpublished,draft,drafts,visibility,public-subset,owner-scope,blog,posts -->
+Copy the **Owned rows with a public subset blueprint**: a global filter on the owner for the read scope (published
+rows for everyone, the caller's own drafts, everything for an administrator), the same predicate on the attachment
+link through the owner's `DbSet`, a prepper that stamps `OwnerId` from the account, and validators that check the
+owner on every write and on an upload. Open the reads anonymously with
+`e.Endpoints(o => o.AllowAnonymous(EntityEndpoint.List, EntityEndpoint.Search, EntityEndpoint.Details, EntityEndpoint.Download))`.
+
+**See:** `get_package(id: "Regira.Entities", section: "blueprints", heading: "Owned rows with a public subset")`.

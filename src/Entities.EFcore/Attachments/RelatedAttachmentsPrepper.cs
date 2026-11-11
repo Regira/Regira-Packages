@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query;
 using Regira.Entities.Attachments.Abstractions;
+using Regira.Entities.Attributes;
 using Regira.Entities.Attachments.Extensions;
 using Regira.Entities.EFcore.Extensions;
 using Regira.Entities.Preppers.Abstractions;
@@ -82,6 +83,9 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
             foreach (var entity in relatedItemsToModify)
             {
                 var originalEntity = originalItems.Single(p => p.Id!.Equals(entity.Id));
+                // the client's tokens before the restore: a [ServerOwned] token would otherwise be compared as stored
+                var clientTokens = dbContext.CaptureClientTokens(entity);
+                RestoreServerOwned(entity, originalEntity);
                 var replaced = EntityAttachmentContent.PrepareLink(entity, originalEntity);
 
                 if (entity.Attachment != null)
@@ -103,7 +107,7 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
                     }
                 }
 
-                dbContext.TrackAsUpdateOf(entity, originalEntity, dbContext.CaptureClientTokens(entity));
+                dbContext.TrackAsUpdateOf(entity, originalEntity, clientTokens);
             }
             foreach (var entity in relatedItemsToDelete)
             {
@@ -166,6 +170,19 @@ public class RelatedAttachmentsPrepper<TContext, TEntity, TEntityAttachment, TEn
             .FilterId<TEntity, TEntityKey>(id)
             .FirstOrDefaultAsync(token);
         return stored != null ? selectorFunc(stored) : null;
+    }
+
+    /// <summary>
+    /// Restores the <c>[ServerOwned]</c> properties of a kept link from its stored row, as the link's own route does, new
+    /// bytes or not. A value derived from a new file (a thumbnail) is set by a prepper registered after the sync, from
+    /// the link's <c>NewBytes</c>, which the sync leaves in place.
+    /// </summary>
+    private static void RestoreServerOwned(TEntityAttachment link, TEntityAttachment stored)
+    {
+        foreach (var property in ServerOwnedProperties.Protected(link.GetType()))
+        {
+            property.SetValue(link, property.GetValue(stored));
+        }
     }
 
     private static bool IsNew(TEntityAttachment link) => link.Id == null || link.Id.Equals(default(TEntityAttachmentKey));

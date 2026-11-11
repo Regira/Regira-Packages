@@ -83,7 +83,7 @@ public static class LicenseValidator
             LicenseState.Invalid => throw new LicenseException(BuildInvalidKeyMessage(productCode)),
             LicenseState.NotAccepted => throw new LicenseException($"The Regira license key is not valid for '{productCode}'. Verify your license at {RenewUrl}"),
             LicenseState.Expired => throw new LicenseException($"The Regira license key for '{productCode}' expired on {license!.ExpiresAt!.Value:yyyy-MM-dd}. Renew at {RenewUrl}"),
-            LicenseState.VersionMismatch => throw new LicenseException($"The Regira license key for '{productCode}' is for version {license!.MajorVersion!.Value}.x, but version {requiredMajorVersion!.Value}.x is required. Renew at {RenewUrl}"),
+            LicenseState.VersionMismatch => throw new LicenseException($"The Regira license key for '{productCode}' is for {DescribeVersion(license!)}, but version {requiredMajorVersion!.Value}.x is required. Renew at {RenewUrl}"),
             _ when IsAccepted(state) => license!,
             _ => throw new LicenseException(BuildInvalidKeyMessage(productCode))
         };
@@ -130,7 +130,7 @@ public static class LicenseValidator
         {
             LicenseState.NotAccepted => $"The license key does not cover '{productCode}'. Verify your license at {RenewUrl}",
             LicenseState.Expired => $"The license key expired on {expiry} and is no longer accepted. Renew at {RenewUrl}",
-            LicenseState.VersionMismatch => $"The license key is for version {license.MajorVersion!.Value}.x but version {requiredMajorVersion!.Value}.x is required. Renew at {RenewUrl}",
+            LicenseState.VersionMismatch => $"The license key is for {DescribeVersion(license)} but version {requiredMajorVersion!.Value}.x is required. Renew at {RenewUrl}",
             LicenseState.ExpiredInGrace => $"The license key expired on {expiry}. It is still accepted for a short grace period but will stop working soon. Renew now at {RenewUrl}",
             LicenseState.ExpiringSoon => $"The license key expires in {status.DaysUntilExpiry} day{(status.DaysUntilExpiry == 1 ? "" : "s")}, on {expiry}. Renew now at {RenewUrl}",
             _ => expiry is null
@@ -141,6 +141,9 @@ public static class LicenseValidator
     }
 
     private const string RenewUrl = "https://regira.com/licensing";
+
+    private static string DescribeVersion(License license)
+        => license.MajorVersion is { } major ? $"version {major}.x" : "an unreadable version";
 
     /// <summary>The states a product accepts a key in, the one list both <see cref="Validate(string?, string, int?)"/> and <see cref="GetStatus"/> read.</summary>
     private static bool IsAccepted(LicenseState state)
@@ -170,7 +173,7 @@ public static class LicenseValidator
         var state = !license.Products.Any(p => string.Equals(p, productCode, StringComparison.OrdinalIgnoreCase)) ? LicenseState.NotAccepted
             // a key that only just expired is still accepted for a while; UseRegira warned about it at startup
             : IsRefusedAsExpired(license, now) ? LicenseState.Expired
-            : requiredMajorVersion.HasValue && license.MajorVersion.HasValue && license.MajorVersion.Value != requiredMajorVersion.Value ? LicenseState.VersionMismatch
+            : !license.IsValidForMajor(requiredMajorVersion) ? LicenseState.VersionMismatch
             : IsPastExpiry(license, now) ? LicenseState.ExpiredInGrace
             : IsExpiringSoon(license, now) ? LicenseState.ExpiringSoon
             : LicenseState.Valid;

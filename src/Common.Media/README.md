@@ -152,7 +152,7 @@ Task<IImageFile>  ChangeFormat(IImageFile input, ImageFormat targetFormat)
 <!-- no-compile -->
 ```csharp
 Task<ImageSize>  GetDimensions(IImageFile input)
-Task<IImageFile> Resize(IImageFile input, ImageSize wantedSize, int quality = 100)     // preserves aspect ratio
+Task<IImageFile> Resize(IImageFile input, ImageSize wantedSize, int quality = 100)     // preserves aspect ratio; scales up as well as down: compare GetDimensions first to only shrink
 Task<IImageFile> ResizeFixed(IImageFile input, ImageSize size, int quality = 100)      // ignores aspect ratio
 Task<IImageFile> CropRectangle(IImageFile input, ImageEdgeOffset rect)
 Task<IImageFile> Rotate(IImageFile input, int degrees, Color? background = null)

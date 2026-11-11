@@ -5,11 +5,11 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Regira.Security.Authentication.Jwt.Abstraction;
 using Regira.Security.Authentication.Jwt.Extensions;
 using Regira.Security.Authentication.Web.Constants;
 using Regira.Security.Authentication.Web.Models;
+using Regira.Security.Authentication.Web.Services;
 using Regira.Web.Utilities;
 using System.Security.Claims;
 
@@ -26,31 +26,16 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
     /// </summary>
     private IRefreshTokenService? RefreshTokenService => HttpContext.RequestServices.GetService<IRefreshTokenService>();
 
+    private static readonly IServiceProvider NoServices = new ServiceCollection().BuildServiceProvider();
     /// <summary>
-    /// Whether <see cref="SignInOptions"/> let the user sign in, as <c>SignInManager.CanSignInAsync</c> decides: a
-    /// confirmed email, phone number or account, where the options require one. The account is confirmed when the
-    /// registered <see cref="IUserConfirmation{TUser}"/> says so — resolved per request, like
-    /// <see cref="RefreshTokenService"/>, so the constructor stays unchanged — and by its address otherwise. A sign-in
-    /// action of a subclass (a second credential) checks it before it issues a token, as the actions here do.
+    /// The sign-in checks and token response, shared with a minimal-API host; built per request from its services, so
+    /// the constructor stays unchanged.
     /// </summary>
-    protected async Task<bool> CanSignIn(TUser user)
-    {
-        var options = userManager.Options.SignIn;
-        if (options.RequireConfirmedEmail && !await userManager.IsEmailConfirmedAsync(user))
-        {
-            return false;
-        }
-        if (options.RequireConfirmedPhoneNumber && !await userManager.IsPhoneNumberConfirmedAsync(user))
-        {
-            return false;
-        }
-        if (options.RequireConfirmedAccount)
-        {
-            var confirmation = HttpContext.RequestServices.GetService<IUserConfirmation<TUser>>() ?? new DefaultUserConfirmation<TUser>();
-            return await confirmation.IsConfirmedAsync(userManager, user);
-        }
-        return true;
-    }
+    private AccountSignInService<TUser> SignInService => new(tokenHelper, userManager, HttpContext?.RequestServices ?? NoServices);
+
+    /// <inheritdoc cref="AccountSignInService{TUser}.CanSignIn"/>
+    /// <remarks>A sign-in action of a subclass (a second credential) checks it before it issues a token, as the actions here do.</remarks>
+    protected Task<bool> CanSignIn(TUser user) => SignInService.CanSignIn(user);
 
     [AllowAnonymous]
     [HttpPost]
@@ -200,46 +185,15 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
 
 
     protected AuthenticateResponseDto CreateFailedResponse(bool? isLockedOut = null, DateTimeOffset? lockedOutEnd = null)
-    {
-        return new AuthenticateResponseDto
-        {
-            IsLockedOut = isLockedOut,
-            // datetime without timezone
-            LockedOutEnd = lockedOutEnd.HasValue ? new DateTime(lockedOutEnd.Value.Ticks) : null
-        };
-    }
-    /// <summary>
-    /// Mints the sign-in response, including a refresh token when an <c>IRefreshTokenService</c> is registered.
-    /// Without one, the body is byte-identical to what it was before refresh tokens existed.
-    /// <para>
+        => AccountSignInService<TUser>.CreateFailedResponse(isLockedOut, lockedOutEnd);
+    /// <inheritdoc cref="AccountSignInService{TUser}.CreateSuccessResponse"/>
+    /// <remarks>
     /// <paramref name="userId"/> is deliberately required — a refresh token has to be tied to a user, and an optional
     /// parameter here would make the two overloads ambiguous at two arguments and let a caller silently take the path
     /// that issues no refresh token.
-    /// </para>
-    /// </summary>
-    protected async Task<AuthenticateResponseDto> CreateSuccessResponse(IEnumerable<Claim> claims, string? audience, string userId)
-    {
-        var claimList = TokenClaims(claims).ToArray();
-
-        var refreshTokenService = RefreshTokenService;
-        if (refreshTokenService != null)
-        {
-            var pair = await refreshTokenService.Issue(userId, claimList, audience);
-            return new AuthenticateResponseDto
-            {
-                IsAuthenticated = true,
-                Token = pair.AccessToken,
-                ExpiresAt = pair.AccessTokenExpiresAt,
-                RefreshToken = pair.RefreshToken
-            };
-        }
-
-        return new AuthenticateResponseDto
-        {
-            IsAuthenticated = true,
-            Token = tokenHelper.Create(claimList, audience)
-        };
-    }
+    /// </remarks>
+    protected Task<AuthenticateResponseDto> CreateSuccessResponse(IEnumerable<Claim> claims, string? audience, string userId)
+        => SignInService.CreateSuccessResponse(claims, audience, userId);
 
     /// <summary>
     /// The original signature, kept source-compatible for a subclass that calls it. Issues no refresh token — there is
@@ -252,15 +206,6 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
             Token = tokenHelper.Create(TokenClaims(claims), audience)
         };
 
-    /// <summary>
-    /// The claims a token may carry: the principal's, less Identity's security stamp. A JWT is signed, not encrypted, so
-    /// whoever holds one can read it — and the stamp is the secret Identity's email and phone token providers derive
-    /// their one-time codes from. Nothing validates it on a bearer request either, so leaving it out costs nothing.
-    /// </summary>
-    protected IEnumerable<Claim> TokenClaims(IEnumerable<Claim> claims)
-    {
-        var stampClaimType = HttpContext?.RequestServices.GetService<IOptions<IdentityOptions>>()?.Value.ClaimsIdentity.SecurityStampClaimType
-            ?? new ClaimsIdentityOptions().SecurityStampClaimType;
-        return claims.Where(claim => claim.Type != stampClaimType);
-    }
+    /// <inheritdoc cref="AccountSignInService{TUser}.TokenClaims"/>
+    protected IEnumerable<Claim> TokenClaims(IEnumerable<Claim> claims) => SignInService.TokenClaims(claims);
 }

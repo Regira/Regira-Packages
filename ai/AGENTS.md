@@ -82,7 +82,7 @@ The local file-extraction system (`dotnet build` → `.regira/instructions/`) re
 Run this checklist before any code generation:
 
 - [ ] **The app's `AGENTS.md`:** in an existing app, it was read first. A new app gets one, with `.mcp.json` and `CLAUDE.md`, once its template and packages are chosen (*The app's own AGENTS.md*)
-- [ ] **If using licensed packages (e.g. `Regira.Entities.DependencyInjection`, `Regira.Office.Clients`):** on the **free tier, no `UseRegira()` call is needed** — free limits apply automatically. With license keys, store them under `Regira:LicenseKeys` and call `services.UseRegira(configuration)` **before** any module setup calls (e.g. `UseEntities()`). A single key can cover multiple products; add more keys to the array to combine them — the system picks the best per product (paid always wins over free).
+- [ ] **If using licensed packages (e.g. `Regira.Entities.DependencyInjection`, `Regira.Office.Clients`):** on the **free tier, no `UseRegira()` call is needed** — free limits apply automatically. With license keys, store them under `Regira:LicenseKeys` and call `services.UseRegira(configuration)` **before** any module setup calls (e.g. `UseEntities()`). A single key can cover multiple products; add more keys to the array to combine them — the system picks the best per product (a key for the running major first, then paid over free). A key is valid for the major version it was issued for.
 - [ ] **If MCP is configured:** used `get_package_toc` to discover section keys, `get_section_toc` to list headings, and `get_package` (with `section=` and optional `heading=`) to read the relevant guides for each installed Regira module — no build step required
 - [ ] **If MCP is not configured:** `dotnet restore` and `dotnet build` succeeded so installed Regira packages could extract their embedded `ai/*.md` files into `.regira/instructions/`, and that folder was checked for `*.instructions.md` files and relevant setup references at the solution root (a build of a single project extracts nothing — see *Default workflow* below)
 - [ ] Primary guides relevant to the selected modules (`project.setup.md`, `shared.setup.md`, matching `*.instructions.md`) had their core sections read before writing application code in that area, and deep references were consulted on demand — following the **minimum viable read** in *Guide loading rules* below
@@ -121,7 +121,7 @@ Pick a `projectTemplate` as the starting point before selecting modules when the
 | Must be deployable as a Windows Service | `SelfHostingApi` |
 | Self-hosted API protected by API key and/or JWT Bearer | `SelfHostingApiWithAuth` |
 | Self-hosted, controller-based routing with enforced authorization | `SelfHostingApiWithAuth` |
-| Minimal API endpoints with authentication | `SelfHostingApiWithAuth` |
+| Minimal API endpoints with authentication | `BasicApi` (self-hosted: `SelfHostingApi`) + the auth registrations from `SelfHostingApiWithAuth`, `AddAuthorization()` and `.RequireAuthorization()` on the mapped endpoints (project.setup → Template 2) |
 | Users sign in with a work Microsoft account (Entra ID), or any OpenID Connect provider | `SelfHostingApiWithAuth` + `AddEntraIdSignIn` / `AddOidcAuthentication` |
 | API called with tokens Entra ID (or Auth0 / Keycloak / Okta) issued | `SelfHostingApiWithAuth` + `AddEntraIdBearer` / `AddBearerAuthentication` |
 | Browser session rather than a bearer token (server-rendered, Blazor Server, same-site SPA) | `SelfHostingApiWithAuth` + `AddCookieAuthentication` |

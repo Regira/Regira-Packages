@@ -11,13 +11,12 @@
     <AssemblyName>Regira.Office.Word.Spire</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.6.1</Version>
+    <Version>6.6.2</Version>
     <Description>Word document processing using FreeSpire.Doc for Regira Office.</Description>
     <PackageTags>regira;office;word;spire;docx</PackageTags>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="FreeSpire.Doc" Version="14.4.0" />
-    <!--<ProjectReference Include="..\Drawing.GDI\Drawing.GDI.csproj" />-->
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Common.Office\Common.Office.csproj" />

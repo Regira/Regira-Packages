@@ -11,7 +11,7 @@
     <AssemblyName>Regira.Office.PDF.SelectPdf</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.6.1</Version>
+    <Version>6.6.2</Version>
     <Description>HTML-to-PDF conversion using SelectPdf for Regira Office. Windows only; the free edition drops everything past page five — prefer the Playwright backend: use Regira.Office.PDF.MsPlaywright.</Description>
     <PackageTags>regira;office;pdf;selectpdf;html-to-pdf</PackageTags>
   </PropertyGroup>
@@ -23,7 +23,7 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Upgraded for vulnerabilities -->
-    <PackageReference Include="System.Drawing.Common" Version="10.0.13" />
+    <PackageReference Include="System.Drawing.Common" Version="10.0.15" />
   </ItemGroup>
   <!-- MSBuild targets — auto-imported into consuming builds via NuGet buildTransitive.
        Carries SelectPdf's native Select.Html.dep to the consumer's output; NuGet does not

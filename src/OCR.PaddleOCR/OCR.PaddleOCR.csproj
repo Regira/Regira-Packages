@@ -11,12 +11,12 @@
     <AssemblyName>Regira.Office.OCR.PaddleOCR</AssemblyName>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <NoWarn>1701;1702;1591</NoWarn>
-    <Version>6.6.1</Version>
+    <Version>6.6.2</Version>
     <Description>Optical character recognition using PaddleOCR for Regira Office.</Description>
     <PackageTags>regira;office;ocr;paddleocr</PackageTags>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.13.0.20260627" />
+    <PackageReference Include="OpenCvSharp4.runtime.win" Version="4.13.0.20261107" />
     <PackageReference Include="Sdcb.PaddleInference" Version="3.3.1" />
     <PackageReference Include="Sdcb.PaddleInference.runtime.win64.mkl" Version="3.3.1.70" />
     <PackageReference Include="Sdcb.PaddleOCR" Version="3.3.1" />

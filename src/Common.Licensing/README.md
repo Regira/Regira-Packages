@@ -1,6 +1,6 @@
 # Regira.Licensing
 
-Offline license-key validation for the commercially licensed Regira packages. A key is an RSA-signed token verified against a public key embedded in the package, with no network call. `services.UseRegira(configuration)` (reads `Regira:LicenseKeys`) or `services.UseRegira(licenseKey)` registers each key as a `License`, writes its settings to the console and reminds you when it nears expiry; the licensed packages then take the best license per product and validate it with `LicenseValidator`. With no key registered, the free tier applies.
+Offline license-key validation for the commercially licensed Regira packages. A key is an RSA-signed token verified against a public key embedded in the package, with no network call. `services.UseRegira(configuration)` (reads `Regira:LicenseKeys`) or `services.UseRegira(licenseKey)` registers each key as a `License`, writes its settings to the console (and through `ILogger` when the host starts) and reminds you when it nears expiry; the licensed packages then take the best license per product and validate it with `LicenseValidator`. With no key registered, the free tier applies.
 
 Keep the keys in configuration: user-secrets in development, the environment or a key vault in production. `Regira:LicenseKeys` is an array:
 
