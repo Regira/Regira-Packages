@@ -34,7 +34,8 @@
   `Microsoft.AspNetCore.OpenApi` brings the 2.x its source generator is compatible with (3.x breaks it).
   ⚠️ `dotnet new webapi` pins `Microsoft.AspNetCore.OpenApi` at its SDK's patch (`10.0.11` from SDK
   10.0.400) — raise it **before** referencing this package, or afterwards with
-  `dotnet add package Microsoft.AspNetCore.OpenApi`, which lands even while the downgrade is live.
+  `dotnet add package Microsoft.AspNetCore.OpenApi --version "10.*"` (the TFM's major), which lands even while the downgrade is live. Then pin the `10.*` it writes to the patch
+  restore resolved (`dotnet list package`).
 - **`clientApp` = JWT audience.** Login is `POST auth?clientApp=…` (required query); set the API's
   `Authentication:Jwt:Audience` to the SPA's `clientApp` or authenticated calls 401 (`audience invalid`).
 - **Guarded only if you enforce it:** the bases carry no `[Authorize]` — `MapControllers().RequireAuthorization()`.

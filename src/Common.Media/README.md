@@ -270,7 +270,7 @@ using var img = await imageService.CreateTextImage("Hello World");   // implicit
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `Text` | `string` | *(required)* | Content to render |
+| `Text` | `string` | *(required)* | Content to render, on one line with SkiaSharp (a `\n` renders as a glyph; GDI breaks the line): compose one text layer per line |
 | `FontName` | `string?` | `"Arial"` | Font family |
 | `FontSize` | `int?` | `15` | Size in points |
 | `Padding` | `int?` | `0` | Padding in pixels |

@@ -6,6 +6,14 @@ adds one bullet under **Unreleased** in the same change (format: `` `PackageId` 
 and leaves that package's `<Version>` higher than its last published version. At publish time the
 Unreleased block becomes a dated release heading.
 
+## Unreleased
+
+- `Regira.Entities`, `Regira.Setup`, `Regira.Security.Authentication.Web` 6.6.3 — every `dotnet add package` of a `Microsoft.AspNetCore.*` or `Microsoft.EntityFrameworkCore.*` package names the TFM's major (`--version "10.*"`), as the docs' quickstart does, and the rule covers any EF Core provider: unversioned, it now resolves .NET 11's packages, which restore into `net10.0` silently (OpenApi) or fail with NU1202 (EF Core, Identity).
+- `Regira.Drawing.SkiaSharp`, `Regira.Drawing.GDI` 6.6.3 — an index card each, pointing to the `Regira.Media` guide and its thumbnail recipe: the registration, disposing every `IImageFile`, and SkiaSharp's Linux native library.
+- `Regira.Media` 6.6.3 — the guide and the README say `CreateTextImage` draws `LabelImageOptions.Text` on one line with SkiaSharp, where a `\n` renders as a glyph, while GDI breaks the line. The guide's installation names SkiaSharp's Linux native library.
+- `Regira.Office` 6.6.3 — the PDF guide names `MmToPt`'s default DPI: `DimensionsUtility.DPI.DEFAULT`, 96.
+- `Regira.Entities` 6.6.3 — the `Related()` sync table says a kept child's `Created` keeps its stored value, and the attachment recipe shows registering a link's prepper through `HasAttachments`' `configure`.
+
 ## 6.6.2 — 2026-11-11
 
 - All packages — version aligned at 6.6.2 for a whole-family publish. Twelve have a change of their own, in code, guides or package tags, in a bullet below. Twenty-eight ship only the dependency moves at the end of this block, which six of the twelve share. No package is new, and nothing is published outside the aligned number. The other forty-seven are republished unchanged so the family shares one version.

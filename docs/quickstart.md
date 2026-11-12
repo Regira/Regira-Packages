@@ -10,8 +10,10 @@ This walkthrough goes from an empty folder to a working entity CRUD/REST API on 
 dotnet new webapi -n Shop.Api
 cd Shop.Api
 dotnet add package Regira.Entities.Web
-dotnet add package Microsoft.EntityFrameworkCore.Sqlite
+dotnet add package Microsoft.EntityFrameworkCore.Sqlite --version "10.*"   # the TFM's major (net10.0)
 ```
+
+`--version "10.*"` writes the range `10.*` into the `.csproj`. Replace it with the patch restore resolved (`dotnet list package` shows it), so every restore gets the same version.
 
 `Regira.Entities.Web` transitively brings `Regira.Entities`, `Regira.Entities.DependencyInjection`, and `Regira.Entities.EFcore`.
 

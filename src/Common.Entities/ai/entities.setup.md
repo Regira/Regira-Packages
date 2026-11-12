@@ -301,19 +301,21 @@ Regira.Entities.Validation.FluentValidation ← optional — AbstractValidator r
 **Add them as commands, not as hand-written XML.** Which rows you may type by hand is then structural rather than a rule to remember: only the conditional pin below is XML, and every major-constraint row resolves its own patch.
 
 ```bash
-dotnet add package Microsoft.AspNetCore.OpenApi   # first — lifts the template's pin, so adding auth later can't downgrade (see below)
+dotnet add package Microsoft.AspNetCore.OpenApi --version "10.*"   # first — lifts the template's pin, so adding auth later can't downgrade (see below)
 dotnet add package Regira.Entities.Web            # resolves the newest stable as a concrete pin; check it's a 6.x
 dotnet add package Regira.Entities.Mapping.Mapster    # same version as the row above
-dotnet add package Microsoft.EntityFrameworkCore.Sqlite     # patch resolved at add time; check the major against your TFM
+dotnet add package Microsoft.EntityFrameworkCore.Sqlite --version "10.*"   # the TFM's major; unversioned it takes 11.x → NU1202
 dotnet add package Scalar.AspNetCore
 dotnet add package Serilog.AspNetCore
 dotnet add package Serilog.Settings.Configuration
 ```
 
+A `Microsoft.AspNetCore.*` or `Microsoft.EntityFrameworkCore.*` package, or another EF Core provider (Npgsql, MySql), is added with the TFM's major (`--version "10.*"` on `net10.0`): unversioned, it takes the newest major once that ships, and .NET 11's packages restore into `net10.0` silently (OpenApi) or fail with NU1202 (EF Core, Identity). Then pin the patch restore resolved (`dotnet list package`), so nothing resolves from `*`.
+
 > **⚠️ Adding sign-in later?** `Regira.Security.Authentication.Web` is the only `Regira.*` package that
 > floors `Microsoft.AspNetCore.OpenApi`, so referencing it while `dotnet new webapi`'s stale pin is still in
 > place fails restore with **NU1605**. Raising the pin first (above) avoids it. If you hit it anyway,
-> `dotnet add package Microsoft.AspNetCore.OpenApi` clears it — that command still lands while the downgrade
+> `dotnet add package Microsoft.AspNetCore.OpenApi --version "10.*"` clears it — that command still lands while the downgrade
 > is live, and no hand-editing is needed.
 
 ```xml

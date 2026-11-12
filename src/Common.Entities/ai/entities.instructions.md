@@ -580,7 +580,7 @@ What a prepper works with: `modified` is the mapped incoming entity — the inst
 | Incoming `Id` | Treated as | Note |
 |---|---|---|
 | `0`, `null`, or **any negative number** | **new** → `INSERT` | A negative id is a client temp key (the Vue `useOwnedCollection` mints them so a row added in the session has a stable `:key`); it is cleared before insert, so the store generates the real one — at every depth, in a `Related()` collection and an attachment collection alike, so nothing needs to reset it first |
-| matches an original row | update | fields absent from the child input DTO reset to default |
+| matches an original row | update | fields absent from the child input DTO reset to default, except what a primer stamps: `Created` keeps its stored value, `LastModified` is stamped anew |
 | positive but matching nothing | **new** → `INSERT`, ⚠️ **with that id** | Only temp (negative) keys are cleared, so a store-generated key arrives as an explicit insert: a silently wrong PK on SQLite, and *"Cannot insert explicit value for identity column"* on SQL Server. It means the client is sending a stale id for a row someone else deleted — reload before saving rather than relying on the server to absorb it. (A **client-assigned** key type — `Guid`, `string` — is never cleared, because there a chosen key is the point.) |
 
 The **parent FK needs no stamping**. New children reach the store through the parent's navigation, so EF assigns the FK once the parent's key is generated — this holds for a brand-new parent saved with children in one call. Setting the FK yourself to a parent id that does not exist yet (`0`) is what breaks it.

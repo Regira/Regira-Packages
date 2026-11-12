@@ -189,7 +189,9 @@ public class LinkPhotoPrepper(IPhotoShrinker photos) : EntityPrepperBase<IEntity
   or the upload's `file.FileName` — since the stored `ContentType` follows the file name.
 - A value derived from the file and stored on the link (a thumbnail): mark it `[ServerOwned]` and set it from the
   new file *after* the restore. Both routes restore every `[ServerOwned]` value of a kept link, a link with a new file
-  included. On the link's own routes, set it in the link's prepper, registered after `UseDefaults()`. On the owner's
+  included. On the link's own routes, set it in the link's prepper: on the options after `UseDefaults()` (as
+  `LinkPhotoPrepper` above), or for that link only through `HasAttachments`' `configure`
+  (`a => a.AddPrepper<ProductAttachmentThumbnailPrepper>()`). On the owner's
   route, set it in a prepper registered on that owner after `HasAttachments`
   (`e.HasAttachments(x => x.Photos); e.AddPrepper<ProductThumbnailPrepper>();`), from each link's `NewBytes`, or the
   `Bytes` of a new `Attachment` the link carries: the sync leaves `NewBytes` on the link, as the owner's prepper shrank

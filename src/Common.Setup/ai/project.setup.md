@@ -4,7 +4,7 @@
 >
 > **Boundaries:** Do not use this file for module discovery or package-family routing; use the consumer bootstrap for that — `get_bootstrap_guide(heading: "toc")`, or `./AGENTS.md` at the repo root. For cross-module setup rules reused by multiple guides, use [`shared.setup.md`](./shared.setup.md).
 >
-> **NuGet package versions:** Never guess a specific version number — omit it and let NuGet resolve the **latest stable**, then pin what restored (the numbers in this document are illustrative, not authoritative). Where a package guide ships a known-good list (e.g. `Regira.Entities` → `entities.setup`), start from it so you don't float from `*`.
+> **NuGet package versions:** Never guess a specific version number — omit it and let NuGet resolve the **latest stable**, then pin what restored (the numbers in this document are illustrative, not authoritative). The exception is a package whose major follows the TFM — `Microsoft.AspNetCore.*`, `Microsoft.EntityFrameworkCore.*` and any EF Core provider (Npgsql, MySql): name the major (`--version "10.*"` on `net10.0`). Unversioned, it takes the newest major once that ships: .NET 11's OpenApi installs into `net10.0` without an error, and EF Core fails restore with NU1202. Where a package guide ships a known-good list (e.g. `Regira.Entities` → `entities.setup`), start from it so you don't float from `*`.
 
 This file owns the reusable starter templates. Choose the matching template first, then apply the setup baseline below.
 
@@ -224,7 +224,7 @@ if (app.Environment.IsDevelopment())
 
 **Nuget packages — Web API**
 ```bash
-dotnet add package Microsoft.AspNetCore.OpenApi
+dotnet add package Microsoft.AspNetCore.OpenApi --version "10.*"   # the TFM's major
 dotnet add package Scalar.AspNetCore
 ```
 
@@ -355,7 +355,7 @@ dotnet add package Regira.Security.Authentication.Web
 > ⚠️ `dotnet new webapi` pins the patch its SDK shipped with, which can sit below that floor (SDK 10.0.400
 > writes `10.0.11`), so **raise `Microsoft.AspNetCore.OpenApi` before adding the auth packages**. Hit it anyway and nothing restores or
 > builds until it is cleared — but `dotnet add package` edits still land, so
-> `dotnet add package Microsoft.AspNetCore.OpenApi` fixes it in place; no hand-editing needed.
+> `dotnet add package Microsoft.AspNetCore.OpenApi --version "10.*"` fixes it in place; no hand-editing needed.
 
 **appsettings.json — Authentication block**
 ```json
