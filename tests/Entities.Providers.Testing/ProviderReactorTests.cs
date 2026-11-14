@@ -14,13 +14,15 @@ namespace Entities.Providers.Testing;
 /// Reactors against each provider's own transactions and queries. Npgsql hands the same <c>NpgsqlTransaction</c> to
 /// every <c>BeginTransaction</c> on a pooled physical connection, so what waits on one transaction must not outlive
 /// it: a transaction disposed without committing leaves nothing for the next one on that connection to run. The
-/// stored rows of detached updates are read in one keyed query, which each provider translates in its own way.
+/// stored rows of detached updates are read in one keyed query, which each provider translates in its own way. The
+/// saves of one transaction reach a batch reactor together, at its commit.
 /// </summary>
 [TestFixtureSource(typeof(ProviderFixtureSource))]
 [Category("Containers")]
 public class ProviderReactorTests(DbProvider provider)
 {
     private readonly List<IEntityChange<Widget>> _reacted = [];
+    private readonly List<IReadOnlyList<IEntityChange<Widget>>> _batches = [];
     private ProviderHarness _harness = null!;
     private ServiceProvider _serviceProvider = null!;
 
@@ -30,14 +32,23 @@ public class ProviderReactorTests(DbProvider provider)
         _harness = new ProviderHarness(provider);
         await _harness.InitializeAsync();
 
-        _serviceProvider = _harness.BuildServiceProvider(services => services.AddReactor<Widget>(_ => new EntityReactor<Widget>((change, _) =>
-        {
-            lock (_reacted)
+        _serviceProvider = _harness.BuildServiceProvider(services => services
+            .AddReactor<Widget>(_ => new EntityReactor<Widget>((change, _) =>
             {
-                _reacted.Add(change);
-            }
-            return Task.CompletedTask;
-        })));
+                lock (_reacted)
+                {
+                    _reacted.Add(change);
+                }
+                return Task.CompletedTask;
+            }))
+            .AddReactor<Widget>(_ => new EntityBatchReactor<Widget>((changes, _) =>
+            {
+                lock (_batches)
+                {
+                    _batches.Add(changes);
+                }
+                return Task.CompletedTask;
+            })));
         using var scope = _serviceProvider.CreateScope();
         await scope.ServiceProvider.GetRequiredService<WidgetContext>().Database.EnsureCreatedAsync();
     }
@@ -56,7 +67,36 @@ public class ProviderReactorTests(DbProvider provider)
     }
 
     [SetUp]
-    public void SetUp() => _reacted.Clear();
+    public void SetUp()
+    {
+        _reacted.Clear();
+        _batches.Clear();
+    }
+
+    [Test]
+    public async Task The_Saves_Of_A_Transaction_Are_One_Batch_At_The_Commit()
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<WidgetContext>();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var first = new Widget { Title = "First save" };
+        db.Widgets.Add(first);
+        await db.SaveChangesAsync();
+        first.Title = "Second save";
+        await db.SaveChangesAsync();
+        db.Widgets.Add(new Widget { Title = "Third save" });
+        await db.SaveChangesAsync();
+        Assert.That(_batches, Is.Empty, "nothing is committed yet");
+
+        await transaction.CommitAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_batches, Has.Count.EqualTo(1));
+            Assert.That(_batches[0].Select(c => c.Entity.Title), Is.EqualTo(new[] { "First save", "Second save", "Third save" }));
+            Assert.That(_batches[0].Select(c => c.Kind), Is.EqualTo(new[] { EntityChangeKind.Added, EntityChangeKind.Modified, EntityChangeKind.Added }));
+        });
+    }
 
     [Test]
     public async Task A_Transaction_Disposed_Without_Commit_Does_Not_React_At_The_Next_Commit_On_Its_Connection()

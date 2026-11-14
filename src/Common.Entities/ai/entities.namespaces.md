@@ -84,8 +84,8 @@
 
 | Namespace | Types |
 |---|---|
-| `Regira.Entities.Reactors.Abstractions` | `IEntityReactor`, `IEntityReactor<>`, `EntityReactorBase<>`, `IEntityChange`, `IEntityChange<>`, `EntityChangeKind`, `EntityChangeExtensions` *(`HasChanged()`, `ChangedTo()`)* |
-| `Regira.Entities.Reactors` | `EntityChange<>` *(build one to unit-test a reactor)*, `EntityReactor<>` |
+| `Regira.Entities.Reactors.Abstractions` | `IEntityReactor`, `IEntityReactor<>`, `EntityReactorBase<>`, `IEntityBatchReactor`, `IEntityBatchReactor<>`, `EntityBatchReactorBase<>`, `IEntityChange`, `IEntityChange<>`, `EntityChangeKind`, `EntityChangeExtensions` *(`HasChanged()`, `ChangedTo()`)* |
+| `Regira.Entities.Reactors` | `EntityChange<>` *(build one to unit-test a reactor)*, `EntityReactor<>`, `EntityBatchReactor<>` |
 | `Regira.Entities.EFcore.Reactors` | `EntityReactorInterceptor` |
 | `Regira.Entities.DependencyInjection.Reactors` | `ServiceCollectionReactorExtensions` *(`AddReactor<>()` — on `IServiceCollection` and `EntityServiceCollectionOptions`)* |
 
@@ -304,7 +304,7 @@ Microsoft.EntityFrameworkCore                 → EntityState
 
 ### Creating a reactor
 ```
-Regira.Entities.Reactors.Abstractions         → EntityReactorBase<T>, IEntityChange<T>, EntityChangeKind, HasChanged(), ChangedTo()
+Regira.Entities.Reactors.Abstractions         → EntityReactorBase<T>, EntityBatchReactorBase<T>, IEntityChange<T>, EntityChangeKind, HasChanged(), ChangedTo()
 Regira.Entities.DependencyInjection.Reactors  → AddReactor<T>()  // global: options.AddReactor<T>(); per entity: e.AddReactor<T>() needs no using
 ```
 

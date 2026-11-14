@@ -19,6 +19,8 @@ namespace Regira.Entities.EFcore.Reactors;
 ///     own; when its database transaction commits when the save ran inside one, through whichever context wired with
 ///     this interceptor commits it; when the ambient <see cref="System.Transactions.Transaction"/> completes when there
 ///     is one. A failed or canceled save, a rollback and a transaction that ends without committing run none.</item>
+///   <item>The saves of one transaction are reacted to together, in the order they were saved: one commit, one batch
+///     of changes, one DI scope.</item>
 /// </list>
 /// Both call shapes are hooked: a synchronous <c>SaveChanges()</c> waits for its reactors as the asynchronous one does.
 /// A rollback to a savepoint names no savepoint, so the reactions of every save made before it in that transaction
@@ -31,9 +33,45 @@ namespace Regira.Entities.EFcore.Reactors;
 /// </summary>
 public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveChangesInterceptor, IDbTransactionInterceptor
 {
+    /// <summary>The saves of one transaction, kept until it commits.</summary>
     private sealed class AwaitingCommit
     {
-        public readonly List<(ReactionDispatcher Dispatcher, IReadOnlyList<IEntityChange> Changes)> Batches = [];
+        private readonly List<(ReactionDispatcher Dispatcher, IReadOnlyList<IEntityChange> Changes)> _saves = [];
+
+        /// <summary>Adds a save; <c>true</c> when it is the transaction's first.</summary>
+        public bool Add(ReactionDispatcher dispatcher, IReadOnlyList<IEntityChange> changes)
+        {
+            lock (_saves)
+            {
+                _saves.Add((dispatcher, changes));
+                return _saves.Count == 1;
+            }
+        }
+
+        /// <summary>
+        /// What the commit made durable, in the order it was saved: one batch for the contexts of one application —
+        /// their dispatchers run the same reactors — in the order of each batch's first save.
+        /// </summary>
+        public IReadOnlyList<(ReactionDispatcher Dispatcher, IReadOnlyList<IEntityChange> Changes)> Batches()
+        {
+            var batches = new List<(ReactionDispatcher Dispatcher, List<IEntityChange> Changes)>();
+            lock (_saves)
+            {
+                foreach (var (dispatcher, changes) in _saves)
+                {
+                    var index = batches.FindIndex(batch => batch.Dispatcher.SharesScopesWith(dispatcher));
+                    if (index < 0)
+                    {
+                        batches.Add((dispatcher, [.. changes]));
+                    }
+                    else
+                    {
+                        batches[index].Changes.AddRange(changes);
+                    }
+                }
+            }
+            return batches.Select(batch => (batch.Dispatcher, (IReadOnlyList<IEntityChange>)batch.Changes)).ToArray();
+        }
     }
 
     // what the save in progress captured: replaced by every save, so one that failed leaves nothing to react to
@@ -43,6 +81,9 @@ public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveCh
     // collected with it, or — on a provider that hands the same object to the next transaction on its connection
     // (Npgsql) — dropped when that one starts.
     private static readonly ConditionalWeakTable<DbTransaction, AwaitingCommit> AwaitingCommits = new();
+    // The saves inside an ambient transaction, keyed on the object every scope joining it hands out. A dependent clone
+    // is another object: what was saved under it is a batch of its own.
+    private static readonly ConditionalWeakTable<Transaction, AwaitingCommit> AwaitingCompletions = new();
 
     private readonly Lazy<ReactionDispatcher> _dispatcher = new(() => new ReactionDispatcher(serviceProvider));
 
@@ -121,23 +162,28 @@ public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveCh
 
         if (context.Database.CurrentTransaction is IInfrastructure<DbTransaction> transaction)
         {
-            var awaiting = AwaitingCommits.GetOrCreateValue(transaction.Instance);
-            lock (awaiting)
-            {
-                awaiting.Batches.Add((_dispatcher.Value, changes));
-            }
+            AwaitingCommits.GetOrCreateValue(transaction.Instance).Add(_dispatcher.Value, changes);
         }
         else if (ambient != null)
         {
-            // created now, while the scope that saved is alive — the transaction may complete after it is disposed
-            var dispatcher = _dispatcher.Value;
-            ambient.TransactionCompleted += (_, e) =>
+            var awaiting = AwaitingCompletions.GetOrCreateValue(ambient);
+            // the dispatcher is created now, while the scope that saved is alive — the transaction may complete after it is disposed
+            if (awaiting.Add(_dispatcher.Value, changes))
             {
-                if (e.Transaction?.TransactionInformation.Status == TransactionStatus.Committed)
+                ambient.TransactionCompleted += (_, e) =>
                 {
-                    DispatchOutsideAmbient(dispatcher, changes);
-                }
-            };
+                    // first: a save made under the completed transaction starts over, and its subscription runs at once
+                    AwaitingCompletions.Remove(ambient);
+                    if (e.Transaction?.TransactionInformation.Status != TransactionStatus.Committed)
+                    {
+                        return;
+                    }
+                    foreach (var (dispatcher, batch) in awaiting.Batches())
+                    {
+                        DispatchOutsideAmbient(dispatcher, batch);
+                    }
+                };
+            }
         }
         else
         {
@@ -174,13 +220,7 @@ public class EntityReactorInterceptor(IServiceProvider serviceProvider) : SaveCh
         {
             return;
         }
-        (ReactionDispatcher Dispatcher, IReadOnlyList<IEntityChange> Changes)[] batches;
-        lock (awaiting)
-        {
-            batches = [.. awaiting.Batches];
-        }
-        // in the order they were saved, each by the dispatcher of the context that saved it
-        foreach (var (dispatcher, changes) in batches)
+        foreach (var (dispatcher, changes) in awaiting.Batches())
         {
             await dispatcher.Dispatch(changes);
         }

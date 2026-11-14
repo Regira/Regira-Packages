@@ -798,6 +798,11 @@ public class OrderShippedReactor(IOrderMailer mailer) : EntityReactorBase<Order>
 }
 e.AddReactor<OrderShippedReactor>();   // per entity — reacts to this entity only, even when written against an interface
 options.AddReactor<AuditReactor>();    // global — an EntityReactorBase<IHasTimestamps> reacts to every entity implementing it
+
+// batch form — the changes of one commit in one call: one message, one query or one save for all of them
+e.ReactMany(change => change.ChangedTo(x => x.Status, OrderStatus.Shipped), (changes, services, token) =>
+    services.GetRequiredService<IOrderBus>().PublishShipped(changes.Select(c => c.Entity.Id).Distinct().ToArray(), token));
+// as a class: EntityBatchReactorBase<Order> overriding ReactMany (and CanReact), registered like any reactor
 ```
 
 **What a reactor receives** — `IEntityChange<TEntity>`:
@@ -826,6 +831,11 @@ options.AddReactor<AuditReactor>();    // global — an EntityReactorBase<IHasTi
   rather than through a context `UseEntities` wires (its reactions never run). A transaction begun outside EF and
   handed to `UseTransaction` must also commit or roll back through EF: on Npgsql, one disposed without either leaves
   its reactions to the next such transaction on that pooled connection.
+- **One commit, one batch** — a save that commits on its own is reacted to on its own; the saves of a transaction
+  are reacted to together at its commit, in the order they were saved — `BeginTransaction()`, the contexts sharing
+  it included, and a `TransactionScope` alike (saves made under a dependent clone of the ambient transaction are a
+  batch of their own). A row saved twice in a transaction is listed twice: a reactor that wants one message per row
+  groups by key.
 - **One save, one transaction** — every write the library makes (a generated endpoint, `IEntityService.SaveChanges()`,
   a prepper's related rows, an attachment upload) flushes in a single `SaveChanges`, inside EF's own transaction. A
   unit of work spanning several saves or services is the app's: `BeginTransaction()` inside
@@ -836,15 +846,30 @@ options.AddReactor<AuditReactor>();    // global — an EntityReactorBase<IHasTi
   `SaveChanges()` returns before anything reacts; the `Dispose()` that ends a completed `TransactionScope`, which
   runs them synchronously. Hand slow or retryable work to a job system: the reactor only enqueues it
   (`IBackgroundJobClient.Enqueue(...)`).
-- **In registration order, per changed row; the reactions of one committed save share one DI scope of their own**
-  (a fresh one after a reactor throws), with a fresh `DbContext`: a reactor that writes calls `SaveChanges()` itself, and that save triggers the reactors of what it wrote. Nesting stops at 8
+- **Reactor by reactor, in registration order; the reactions of one commit share one DI scope of their own**
+  (a fresh one after a reactor throws), with a fresh `DbContext`: each reactor gets the changes it covers in the
+  order they were saved — row by row, or in one call for a batch reactor — before the next reactor starts. A reactor
+  that writes calls `SaveChanges()` itself, and that save triggers the reactors of what it wrote. Nesting stops at 8
   levels with a logged error — guard `CanReact` so a chain ends. Within a request, `IHttpContextAccessor.HttpContext`
   and its `User` still reach the reactor's scope, since they run before the call that commits returns; a save from a
   job or seeder has none. So the request user's global filters scope the reactor's reads and its `Modify` too: a
   reactor that must reach rows that user cannot see (a waiting list, a cascade) sets an explicit identity in its own
   scope first (§Security & Authorization → *Scope before any early return*).
+- **Many rows: react to them together** — a reactor per row makes one call, query or enqueue for every changed
+  row, inside the call that commits: an import of 1000 rows makes 1000. A batch reactor (`e.ReactMany(...)`, or a
+  class on `EntityBatchReactorBase<T>`) gets the changes its `CanReact` selects in one call, and none when it
+  selects nothing: it sends one message or job carrying the ids of the commit, or uses the bus's batch send, and
+  reads what it needs in one query (`changes.Chunk(500)` keeps a key list under the provider's parameter limit).
+  Collecting across commits or requests is the bus's or the job system's.
+- **A reactor that writes saves once** — its write is a second commit: not atomic with the first, and a failure is
+  only logged. Keep it for data that may lag behind the row; data that must agree with it belongs in the save (a
+  prepper or primer). Guard `CanReact` (`ChangedTo` / `HasChanged`) so its own save does not trigger it again, and
+  stage every row of the batch before one `SaveChanges()`: the reaction's `DbContext` keeps what it saved, so a save
+  per row rescans a growing change tracker and the time grows with the square of the rows.
 - **A reactor that throws is logged and skipped** — the data is committed, so the save still succeeds and the
-  other reactors still run. The save's `CancellationToken` does not cancel them.
+  other reactors still run: a reactor per row is skipped for that row, a batch reactor for its batch. A scoped
+  service that fails when the reaction's scope is disposed is logged the same way, so a buffer flushed there
+  reports nothing to its caller: flush in a batch reactor. The save's `CancellationToken` does not cancel them.
 - **At most once** — a crash between the commit and the reaction loses it, the enqueue to a job system included,
   and nothing retries a reactor that threw. Work that must happen writes a row of its own in the same save (an
   outbox), and a hosted service delivers each row at least once, the row's id serving the receiver as its

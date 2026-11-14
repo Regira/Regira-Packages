@@ -2455,34 +2455,30 @@ touched — the old one too when the FK moved — so the prepper above re-sums t
 
 <!-- no-compile -->
 ```csharp
-// services.AddScoped<SettledInvoices>(); — the reactions of one committed save share one scope
-public sealed class SettledInvoices : HashSet<int> { }
-
-e.React(
+e.ReactMany(
     change => change.Kind != EntityChangeKind.Modified || change.HasChanged(x => x.InvoiceId) || change.HasChanged(x => x.TotalCost),
-    async (change, services, token) =>
+    async (changes, services, token) =>
     {
         var db = services.GetRequiredService<AppDbContext>();
         var invoices = services.GetRequiredService<IEntityService<Invoice, int>>();
-        var settled = services.GetRequiredService<SettledInvoices>();
-        foreach (var id in new[] { change.Entity.InvoiceId, change.Original?.InvoiceId }.OfType<int>().Distinct())
+        // every invoice the commit touched, once: the changes arrive together, after the whole commit
+        var ids = changes.SelectMany(change => new[] { change.Entity.InvoiceId, change.Original?.InvoiceId }).OfType<int>().Distinct().ToArray();
+        // the bare rows, detached and without navigations: List and Details apply the registered includes, and an
+        // included to-one would ride into Modify as a graph to attach
+        foreach (var invoice in await db.Invoices.AsNoTracking().Where(x => ids.Contains(x.Id)).ToListAsync(token))
         {
-            // re-summed once per committed save: the reactions start after the whole save committed
-            if (!settled.Add(id)) continue;
-            // the bare row, detached and without navigations: List and Details apply the registered includes, and an
-            // included to-one would ride into Modify as a graph to attach
-            var invoice = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, token);
-            if (invoice != null) await invoices.Modify(invoice, token);
+            await invoices.Modify(invoice, token);
         }
         await invoices.SaveChanges(token);
     });
 ```
 
-The reactor runs after the child's save committed, in a scope of its own, so the parent's save is a second
-commit: a failure there is logged and the child's save stands. With it registered, seeding needs no second pass
-over the parents: seed the parents first, and each child wave settles them. Each changed row is one reaction, so
-without `SettledInvoices` a wave of a hundred lines re-saves their invoice a hundred times; with it, once per save.
-A flag the seeder sets in its own scope never reaches the reactor, which runs in another.
+The reactor runs after the child's commit, in a scope of its own, so the parent's save is a second commit: a
+failure there is logged and the child's save stands. With it registered, seeding needs no second pass over the
+parents: seed the parents first, and each child wave settles them. The batch form matters here: a wave of a
+hundred lines is one call, which re-saves each of their invoices once, where a reactor per row (`e.React`) would
+re-save an invoice for every line. A flag the seeder sets in its own scope never reaches the reactor, which runs in
+another.
 
 > ⚠️ **A query filter on the child also hides its rows from this recompute.** A dependent you query directly
 > carries `HasQueryFilter(x => !x.Parent!.IsArchived)` (§Step 11) — and that filter applies here too, while

@@ -17,7 +17,7 @@ namespace Regira.Entities.EFcore.Reactors;
 internal static class StoredRowReader
 {
     // keeps the key list well under the parameter limits of the providers that expand it into one parameter per key
-    private const int BatchSize = 500;
+    internal const int BatchSize = 500;
 
     /// <summary>The stored row of each entry; <c>null</c> for a row that is no longer stored.</summary>
     public static async Task<IReadOnlyDictionary<EntityEntry, PropertyValues?>> Read(DbContext dbContext, IReadOnlyCollection<EntityEntry> entries,

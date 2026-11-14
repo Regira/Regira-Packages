@@ -1180,6 +1180,15 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
         Expression<Func<TEntity, TProp>> property, TProp value,
         Func<IEntityChange<TEntity>, IServiceProvider, CancellationToken, Task> reactFunc);
 
+    // batch form: reactFunc is called once per commit with every change (canReact: those it selects, and not at
+    // all when it selects none), in the order they were saved
+    EntityServiceBuilder<TContext, TEntity, TKey> ReactMany(
+        Func<IReadOnlyList<IEntityChange<TEntity>>, IServiceProvider, CancellationToken, Task> reactFunc);
+
+    EntityServiceBuilder<TContext, TEntity, TKey> ReactMany(
+        Func<IEntityChange<TEntity>, bool> canReact,
+        Func<IReadOnlyList<IEntityChange<TEntity>>, IServiceProvider, CancellationToken, Task> reactFunc);
+
     // reacts to TEntity only — also a reactor written against an interface (options.AddReactor<T>() for all it covers)
     EntityServiceBuilder<TContext, TEntity, TKey> AddReactor<TReactor>()
         where TReactor : class, IEntityReactor<TEntity>;
@@ -1272,7 +1281,7 @@ public partial class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, T
         Func<IQueryable<TEntity>, TSearchObject?, IQueryable<TEntity>> filterFunc);
 
     // Re-declared to keep the builder type through a chain, here and on the complex builders:
-    // Validate(...) and React(...) — every overload — AddValidator<T>(), AddReactor<T>(), ServerOwned(...)
+    // Validate(...), React(...) and ReactMany(...) — every overload — AddValidator<T>(), AddReactor<T>(), ServerOwned(...)
     // and the two int-child Related<TRelated>(...) overloads
 }
 ```
@@ -1303,7 +1312,7 @@ public partial class EntityIntServiceBuilder<TContext, TEntity>
     EntityIntServiceBuilder<TContext, TEntity> Validate(Func<IEntityValidatorContext<TEntity>, TContext, CancellationToken, Task> validate);
     EntityIntServiceBuilder<TContext, TEntity> AddValidator<TValidator>()
         where TValidator : class, IEntityValidator<TEntity>;
-    // React(...) — every overload — and AddReactor<TReactor>() likewise return EntityIntServiceBuilder<TContext, TEntity>
+    // React(...) and ReactMany(...) — every overload — and AddReactor<TReactor>() likewise return EntityIntServiceBuilder<TContext, TEntity>
 
     // Re-declared to keep the builder type through a chain: ServerOwned(...) and the int-child
     // Related<TRelated>(...) overloads (sync only, with prepareFunc/configure, or with configure alone)
@@ -1710,6 +1719,23 @@ public abstract class EntityReactorBase<TEntity> : IEntityReactor<TEntity> where
 {
     public virtual bool CanReact(IEntityChange<TEntity> change) => true;
     public abstract Task React(IEntityChange<TEntity> change, CancellationToken token = default);
+}
+
+// A batch reactor: one call per commit with every change it covers and its CanReact selects — never an empty
+// list, in the order they were saved. Registered like any reactor.
+public interface IEntityBatchReactor : IEntityReactor
+{
+    Task ReactMany(IReadOnlyList<IEntityChange> changes, CancellationToken token = default);
+}
+public interface IEntityBatchReactor<in TEntity> : IEntityReactor<TEntity>, IEntityBatchReactor
+{
+    Task ReactMany(IReadOnlyList<IEntityChange<TEntity>> changes, CancellationToken token = default);
+}
+
+public abstract class EntityBatchReactorBase<TEntity> : EntityReactorBase<TEntity>, IEntityBatchReactor<TEntity> where TEntity : class
+{
+    public abstract Task ReactMany(IReadOnlyList<IEntityChange<TEntity>> changes, CancellationToken token = default);
+    public sealed override Task React(IEntityChange<TEntity> change, CancellationToken token = default);   // a batch of one
 }
 
 public static class EntityChangeExtensions

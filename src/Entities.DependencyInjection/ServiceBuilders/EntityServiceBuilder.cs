@@ -492,6 +492,27 @@ public class EntityServiceBuilder<TContext, TEntity, TKey>(EntityServiceCollecti
         MemberPath.Of(property);
         return React(change => change.ChangedTo(property, value), reactFunc);
     }
+    /// <summary>
+    /// Reacts to the committed changes of this entity <b>together</b>: <paramref name="reactFunc"/> is called once per
+    /// commit with every change — never an empty list, in the order they were saved — and the reaction's own scoped
+    /// <see cref="IServiceProvider"/>. The form for one query, one save or one message where <c>React</c> makes one per row.
+    /// </summary>
+    public EntityServiceBuilder<TContext, TEntity, TKey> ReactMany(Func<IReadOnlyList<IEntityChange<TEntity>>, IServiceProvider, CancellationToken, Task> reactFunc)
+    {
+        Services.AddReactor<TEntity>(p => new EntityBatchReactor<TEntity>((changes, token) => reactFunc(changes, p, token)));
+        return this;
+    }
+    /// <summary>
+    /// Reacts together to the committed changes of this entity that <paramref name="canReact"/> selects:
+    /// <paramref name="reactFunc"/> is called once per commit with those changes — not at all when it selects none — and
+    /// the reaction's own scoped <see cref="IServiceProvider"/>.
+    /// </summary>
+    public EntityServiceBuilder<TContext, TEntity, TKey> ReactMany(Func<IEntityChange<TEntity>, bool> canReact,
+        Func<IReadOnlyList<IEntityChange<TEntity>>, IServiceProvider, CancellationToken, Task> reactFunc)
+    {
+        Services.AddReactor<TEntity>(p => new EntityBatchReactor<TEntity>((changes, token) => reactFunc(changes, p, token), canReact));
+        return this;
+    }
 
     // Preppers
     public EntityServiceBuilder<TContext, TEntity, TKey> AddPrepper<TPrepper>()

@@ -918,6 +918,17 @@ public class OrderShippedReactor(IOrderMailer mailer) : EntityReactorBase<Order>
 // Registration: e.AddReactor<OrderShippedReactor>();   (reacts to Order only, whatever type the reactor is written against)
 // Inline:       e.React(x => x.Status, OrderStatus.Shipped, (change, services, token) => …);
 
+// Batch form: the changes of one commit in one call, so an import of 1000 orders publishes one message
+public class OrderShippedPublisher(IOrderBus bus) : EntityBatchReactorBase<Order>
+{
+    public override bool CanReact(IEntityChange<Order> change) => change.ChangedTo(x => x.Status, OrderStatus.Shipped);
+
+    public override Task ReactMany(IReadOnlyList<IEntityChange<Order>> changes, CancellationToken token = default)
+        => bus.PublishShipped(changes.Select(change => change.Entity.Id).Distinct().ToArray(), token);
+}
+// Registration: e.AddReactor<OrderShippedPublisher>();
+// Inline:       e.ReactMany(change => change.ChangedTo(x => x.Status, OrderStatus.Shipped), (changes, services, token) => …);
+
 // Global reactor: options.AddReactor<YourGlobalReactor>();   (an EntityReactorBase<IHasTimestamps> reacts to every implementing entity)
 // using Regira.Entities.DependencyInjection.Reactors;   ← AddReactor lives here
 ```

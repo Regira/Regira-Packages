@@ -79,7 +79,46 @@ public class ReactorTests
     {
         public List<IEntityChange> Changes { get; } = [];
         public List<string> Events { get; } = [];
+        /// <summary>What each call of a batch reactor received.</summary>
+        public List<IReadOnlyList<IEntityChange>> Batches { get; } = [];
+        /// <summary>The DI scope of each reaction.</summary>
+        public List<IServiceProvider> Scopes { get; } = [];
         public IEntityChange<T> Single<T>() => Changes.OfType<IEntityChange<T>>().Single();
+    }
+
+    public class TimestampBatchReactor(ReactionLog log) : EntityBatchReactorBase<IHasTimestamps>
+    {
+        public override Task ReactMany(IReadOnlyList<IEntityChange<IHasTimestamps>> changes, CancellationToken token = default)
+        {
+            log.Batches.Add(changes);
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>Written against no entity: it receives every change of a commit.</summary>
+    public class EverythingReactor(ReactionLog log) : IEntityBatchReactor
+    {
+        public bool CanReact(IEntityChange change) => true;
+        public Task React(IEntityChange change, CancellationToken token = default) => ReactMany([change], token);
+        public Task ReactMany(IReadOnlyList<IEntityChange> changes, CancellationToken token = default)
+        {
+            log.Batches.Add(changes);
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>Needs a service nothing registers: it cannot be created.</summary>
+    public class UnbuildableReactor(IFormatProvider missing) : EntityBatchReactorBase<Order>
+    {
+        public override Task ReactMany(IReadOnlyList<IEntityChange<Order>> changes, CancellationToken token = default)
+            => Task.FromResult(missing);
+    }
+
+    /// <summary>A scoped service that flushes when its scope ends, and fails doing so.</summary>
+    public sealed class FailingBuffer : IAsyncDisposable
+    {
+        public int Buffered { get; set; }
+        public ValueTask DisposeAsync() => Buffered > 0 ? throw new InvalidOperationException("flush failed") : ValueTask.CompletedTask;
     }
 
     public class TimestampReactor(ReactionLog log) : EntityReactorBase<IHasTimestamps>
@@ -201,6 +240,22 @@ public class ReactorTests
         services.GetRequiredService<ReactionLog>().Changes.Add(change);
         return Task.CompletedTask;
     }
+
+    private static Task RecordBatch(IReadOnlyList<IEntityChange> changes, IServiceProvider services, CancellationToken token)
+    {
+        var log = services.GetRequiredService<ReactionLog>();
+        log.Batches.Add(changes);
+        log.Scopes.Add(services);
+        return Task.CompletedTask;
+    }
+
+    private static Task RecordScope(IEntityChange change, IServiceProvider services, CancellationToken token)
+    {
+        services.GetRequiredService<ReactionLog>().Scopes.Add(services);
+        return Task.CompletedTask;
+    }
+
+    private static string?[] Titles(IEnumerable<IEntityChange> changes) => changes.OfType<IEntityChange<Order>>().Select(c => c.Entity.Title).ToArray();
 
     private static Order NewOrder(string title = "Books", OrderStatus status = OrderStatus.Pending)
         => new() { Title = title, Status = status, Address = new ShippingAddress { City = "Gent" } };
@@ -1051,6 +1106,426 @@ public class ReactorTests
             Assert.That(await db.Invoices.CountAsync(), Is.EqualTo(1 + ReactionDispatcher.MaxDepth));
         }
         Assert.That(_logs.Errors, Has.Some.Contains("nested"));
+    }
+
+    [Test]
+    public async Task A_Scoped_Service_That_Fails_To_Dispose_Does_Not_Fail_The_Save()
+    {
+        Build(s => s.For<Order>(e => e
+                .React((_, sp, _) => { sp.GetRequiredService<FailingBuffer>().Buffered++; return Task.CompletedTask; })
+                .React(Record)),
+            o => o.Services.AddScoped<FailingBuffer>());
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        db.Orders.Add(NewOrder());
+        await db.SaveChangesAsync();
+        var stored = await db.Orders.CountAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(stored, Is.EqualTo(1));
+            Assert.That(_log.Changes, Has.Count.EqualTo(1));
+            Assert.That(_logs.Errors, Has.Some.Contains("flush failed"));
+        });
+    }
+
+    // ── batches ──────────────────────────────────────────────────────────────────
+
+    [Test]
+    public async Task A_Batch_Reactor_Receives_The_Changes_Of_A_Save_In_One_Call()
+    {
+        Build(s => s.For<Order>(e => e.ReactMany(RecordBatch)));
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        db.Orders.AddRange(NewOrder("A"), NewOrder("B"), NewOrder("C"));
+        await db.SaveChangesAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_log.Batches, Has.Count.EqualTo(1));
+            Assert.That(Titles(_log.Batches[0]), Is.EquivalentTo(new[] { "A", "B", "C" }));
+            Assert.That(_log.Batches[0].OfType<IEntityChange<Order>>().All(c => c.Kind == EntityChangeKind.Added && c.Entity.Id > 0), Is.True);
+        });
+    }
+
+    [Test]
+    public async Task A_Batch_Reactor_Receives_The_Changes_It_Selects_And_No_Call_Without_One()
+    {
+        Build(s => s.For<Order>(e => e.ReactMany(change => change.ChangedTo(x => x.Status, OrderStatus.Shipped), RecordBatch)));
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        db.Orders.AddRange(NewOrder("A"), NewOrder("B", OrderStatus.Shipped), NewOrder("C", OrderStatus.Shipped));
+        await db.SaveChangesAsync();
+        db.Orders.Add(NewOrder("D"));
+        await db.SaveChangesAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_log.Batches, Has.Count.EqualTo(1), "a save without a shipped order makes no call");
+            Assert.That(Titles(_log.Batches[0]), Is.EquivalentTo(new[] { "B", "C" }));
+        });
+    }
+
+    [Test]
+    public async Task A_Batch_Reactor_On_An_Interface_Receives_Every_Implementing_Entity_Together()
+    {
+        Build(s => s.For<Order>().For<Invoice>(), o => o.AddReactor<TimestampBatchReactor>());
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        var order = NewOrder();
+        order.Lines = [new OrderLine { Product = "Pen", Quantity = 1 }, new OrderLine { Product = "Ink", Quantity = 2 }];
+        db.Orders.Add(order);
+        db.Invoices.Add(new Invoice { OrderId = 1, Number = "INV-1" });
+        await db.SaveChangesAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_log.Batches, Has.Count.EqualTo(1));
+            Assert.That(_log.Batches[0].Select(c => c.Entity.GetType().Name), Is.EquivalentTo(new[] { nameof(Order), nameof(OrderLine), nameof(OrderLine) }));
+        });
+    }
+
+    [Test]
+    public async Task A_Batch_Reactor_Reacts_To_One_Change_As_A_Batch_Of_One()
+    {
+        IEntityReactor reactor = new TimestampBatchReactor(_log);
+
+        await reactor.React(new EntityChange<Order>(EntityChangeKind.Added, NewOrder()));
+
+        Assert.That(_log.Batches.Single(), Has.Count.EqualTo(1));
+    }
+
+    [Test]
+    public async Task A_Failing_Batch_Reactor_Neither_Fails_The_Save_Nor_Stops_The_Others()
+    {
+        Build(s => s.For<Order>(e => e
+            .ReactMany((_, _, _) => throw new InvalidOperationException("bus is down"))
+            .React(Record)));
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        db.Orders.AddRange(NewOrder("A"), NewOrder("B"));
+        await db.SaveChangesAsync();
+        var stored = await db.Orders.CountAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(stored, Is.EqualTo(2));
+            Assert.That(_log.Changes, Has.Count.EqualTo(2));
+            Assert.That(_logs.Errors, Has.Some.Contains("batch of 2").And.Contains("bus is down"));
+        });
+    }
+
+    // the scope a failed reactor leaves is disposed before the next one runs: a service failing there stops nothing
+    [Test]
+    public async Task A_Scoped_Service_That_Fails_To_Dispose_After_A_Failed_Reactor_Does_Not_Stop_The_Others()
+    {
+        Build(s => s.For<Order>(e => e
+                .React((_, sp, _) =>
+                {
+                    sp.GetRequiredService<FailingBuffer>().Buffered++;
+                    throw new InvalidOperationException("mail server down");
+                })
+                .React(Record)),
+            o => o.Services.AddScoped<FailingBuffer>());
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        db.Orders.Add(NewOrder());
+        await db.SaveChangesAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_log.Changes, Has.Count.EqualTo(1), "the reactor after the failed one still ran");
+            Assert.That(_logs.Errors, Has.Some.Contains("mail server down"));
+            Assert.That(_logs.Errors, Has.Some.Contains("flush failed"));
+        });
+    }
+
+    // the provider is gone before the transaction commits: nothing to react in, and still not the commit's failure
+    [Test]
+    public async Task A_Commit_After_The_Provider_Is_Disposed_Does_Not_Throw()
+    {
+        Build(s => s.For<Order>(e => e.React(Record)));
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        db.Orders.Add(NewOrder());
+        await db.SaveChangesAsync();
+        await _sp.DisposeAsync();
+
+        await transaction.CommitAsync();
+
+        Assert.That(_log.Changes, Is.Empty);
+    }
+
+    // what a failed reaction left staged in its scope must not reach the next one
+    [Test]
+    public async Task A_Failed_Reaction_Leaves_The_Next_One_A_Fresh_Scope()
+    {
+        Build(s => s.For<Order>(e => e
+            .React((_, sp, _) => { sp.GetRequiredService<ReactionLog>().Scopes.Add(sp); throw new InvalidOperationException("row failed"); })
+            .ReactMany((_, sp, _) => { sp.GetRequiredService<ReactionLog>().Scopes.Add(sp); throw new InvalidOperationException("batch failed"); })
+            .React(RecordScope)));
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        db.Orders.Add(NewOrder());
+        await db.SaveChangesAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_log.Scopes, Has.Count.EqualTo(3));
+            Assert.That(_log.Scopes.Distinct().Count(), Is.EqualTo(3), "a scope of its own after the row reactor and after the batch reactor failed");
+        });
+    }
+
+    [Test]
+    public async Task A_Reactor_That_Cannot_Be_Created_Is_Reported_Once_And_Skipped()
+    {
+        Build(s => s.For<Order>(e => e.ReactMany(RecordBatch).AddReactor<UnbuildableReactor>().React(Record).ReactMany(RecordBatch)));
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        db.Orders.AddRange(NewOrder("A"), NewOrder("B"), NewOrder("C"));
+        await db.SaveChangesAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_log.Changes, Has.Count.EqualTo(3), "the reactor after it still reacts to every row");
+            Assert.That(_log.Scopes.Distinct().Count(), Is.EqualTo(2), "the reactors after it start from a fresh scope");
+            Assert.That(_logs.Errors.Count(e => e.Contains(nameof(UnbuildableReactor))), Is.EqualTo(1));
+            Assert.That(_logs.Errors, Has.Some.Contains("could not be created for 3"));
+        });
+    }
+
+    // the failure names the changes the reactor was handed, not the ones its registration covers
+    [Test]
+    public async Task A_Failing_Batch_Reactor_Is_Reported_With_The_Changes_It_Selected()
+    {
+        Build(s => s.For<Order>(e => e.ReactMany(change => change.ChangedTo(x => x.Status, OrderStatus.Shipped),
+            (_, _, _) => throw new InvalidOperationException("bus is down"))));
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        db.Orders.AddRange(NewOrder("A"), NewOrder("B"), NewOrder("C", OrderStatus.Shipped));
+        await db.SaveChangesAsync();
+
+        Assert.That(_logs.Errors, Has.Some.Contains("batch of 1 "));
+    }
+
+    [Test]
+    public async Task A_Batch_Reaction_Chain_That_Never_Ends_Stops_At_The_Maximum_Depth()
+    {
+        Build(s => s.For<Invoice>(e => e.ReactMany(async (changes, sp, token) =>
+        {
+            var invoices = sp.GetRequiredService<IEntityService<Invoice>>();
+            await invoices.Add(new Invoice { OrderId = 1, Number = $"INV-{changes[0].Entity.Id + 1}" });
+            await invoices.SaveChanges(token);
+        })));
+
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+            db.Invoices.Add(new Invoice { OrderId = 1, Number = "INV-1" });
+            await db.SaveChangesAsync();
+        }
+
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+            Assert.That(await db.Invoices.CountAsync(), Is.EqualTo(1 + ReactionDispatcher.MaxDepth));
+        }
+        Assert.That(_logs.Errors, Has.Some.Contains("nested"));
+    }
+
+    // each reactor in turn over the changes it covers: the first has seen every row before the second sees one
+    [Test]
+    public async Task Each_Reactor_Reacts_To_Every_Change_Before_The_Next_Reactor_Starts()
+    {
+        Build(s => s.For<Order>(e => e
+            .React((_, sp, _) => { sp.GetRequiredService<ReactionLog>().Events.Add("first"); return Task.CompletedTask; })
+            .ReactMany((changes, sp, _) => { sp.GetRequiredService<ReactionLog>().Events.Add($"batch of {changes.Count}"); return Task.CompletedTask; })
+            .React((_, sp, _) => { sp.GetRequiredService<ReactionLog>().Events.Add("last"); return Task.CompletedTask; })));
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        db.Orders.AddRange(NewOrder("A"), NewOrder("B"));
+        await db.SaveChangesAsync();
+
+        Assert.That(_log.Events, Is.EqualTo(new[] { "first", "first", "batch of 2", "last", "last" }));
+    }
+
+    // one commit, one batch: the saves of a transaction in the order they were saved, a row saved twice listed twice
+    [Test]
+    public async Task The_Saves_Of_A_Transaction_Are_One_Batch_In_One_Scope()
+    {
+        Build(s => s.For<Order>(e => e.ReactMany(RecordBatch).React(RecordScope)));
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        await using var transaction = await db.Database.BeginTransactionAsync();
+        var first = NewOrder("A");
+        db.Orders.Add(first);
+        await db.SaveChangesAsync();
+        first.Status = OrderStatus.Shipped;
+        await db.SaveChangesAsync();
+        db.Orders.Add(NewOrder("B"));
+        await db.SaveChangesAsync();
+        Assert.That(_log.Batches, Is.Empty, "nothing is committed yet");
+
+        await transaction.CommitAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_log.Batches, Has.Count.EqualTo(1));
+            Assert.That(Titles(_log.Batches[0]), Is.EqualTo(new[] { "A", "A", "B" }));
+            Assert.That(_log.Batches[0].Select(c => c.Kind), Is.EqualTo(new[] { EntityChangeKind.Added, EntityChangeKind.Modified, EntityChangeKind.Added }));
+            Assert.That(_log.Scopes, Has.Count.EqualTo(4), "the batch and three rows");
+            Assert.That(_log.Scopes.Distinct().Count(), Is.EqualTo(1));
+        });
+    }
+
+    [Test]
+    public async Task A_Transaction_Shared_By_Two_Contexts_Is_One_Batch()
+    {
+        Build(s => s.For<Order>().For<Invoice>(), o => o.AddReactor<EverythingReactor>());
+        var id = await SeedOrder();
+        _log.Batches.Clear();
+
+        using var first = _sp.CreateScope();
+        using var second = _sp.CreateScope();
+        var orders = first.ServiceProvider.GetRequiredService<ShopContext>();
+        var invoices = second.ServiceProvider.GetRequiredService<ShopContext>();
+        await using var transaction = await orders.Database.BeginTransactionAsync();
+        await invoices.Database.UseTransactionAsync(transaction.GetDbTransaction());
+
+        (await orders.Orders.SingleAsync(x => x.Id == id)).Status = OrderStatus.Shipped;
+        await orders.SaveChangesAsync();
+        invoices.Invoices.Add(new Invoice { OrderId = id, Number = "INV-1" });
+        await invoices.SaveChangesAsync();
+        Assert.That(_log.Batches, Is.Empty, "nothing is committed yet");
+
+        await transaction.CommitAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_log.Batches, Has.Count.EqualTo(1));
+            Assert.That(_log.Batches[0].Select(c => c.Entity.GetType().Name), Is.EqualTo(new[] { nameof(Order), nameof(Invoice) }));
+        });
+    }
+
+    [Test]
+    public async Task The_Saves_Of_An_Ambient_Transaction_Are_One_Batch()
+    {
+        // SQLite cannot enlist, so the rows are written at once: what is pinned is that the reactions wait for the scope
+        Build(s => s.For<Order>(e => e.ReactMany(RecordBatch)),
+            dbOptions: db => db.ConfigureWarnings(w => w.Ignore(RelationalEventId.AmbientTransactionWarning)));
+
+        using (new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+            db.Orders.Add(NewOrder("Aborted"));
+            await db.SaveChangesAsync();
+        }
+        Assert.That(_log.Batches, Is.Empty, "a scope disposed without Complete() aborts");
+
+        using (var ambient = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+        {
+            using (var scope = _sp.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+                db.Orders.Add(NewOrder("A"));
+                await db.SaveChangesAsync();
+                using (var nested = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+                {
+                    db.Orders.Add(NewOrder("B"));
+                    await db.SaveChangesAsync();
+                    nested.Complete();
+                }
+            }
+            // another context, joining the same ambient transaction
+            using (var scope = _sp.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+                db.Orders.Add(NewOrder("C"));
+                await db.SaveChangesAsync();
+            }
+            Assert.That(_log.Batches, Is.Empty, "nothing is committed before the scope completes");
+            ambient.Complete();
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_log.Batches, Has.Count.EqualTo(1));
+            Assert.That(Titles(_log.Batches[0]), Is.EqualTo(new[] { "A", "B", "C" }));
+        });
+    }
+
+    // a provider that cannot enlist still saves under a transaction that is over: that save is reacted to at once
+    [Test]
+    public async Task A_Save_Under_A_Completed_Ambient_Transaction_Reacts_At_Once()
+    {
+        Build(s => s.For<Order>(e => e.ReactMany(RecordBatch)),
+            dbOptions: db => db.ConfigureWarnings(w => w.Ignore(RelationalEventId.AmbientTransactionWarning)));
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+        using var committable = new CommittableTransaction();
+        Transaction.Current = committable;
+        try
+        {
+            db.Orders.Add(NewOrder("Before"));
+            await db.SaveChangesAsync();
+            Transaction.Current = committable;   // an await does not carry it without a TransactionScope
+            committable.Commit();
+            Assert.That(_log.Batches.Select(Titles), Is.EqualTo(new[] { new[] { "Before" } }));
+
+            db.Orders.Add(NewOrder("After"));
+            Transaction.Current = committable;
+            db.SaveChanges();
+        }
+        finally
+        {
+            Transaction.Current = null;
+        }
+
+        Assert.That(_log.Batches.Select(Titles), Is.EqualTo(new[] { new[] { "Before" }, new[] { "After" } }));
+    }
+
+    [Test]
+    public async Task A_Batch_Reactor_Saves_Once_And_Its_Save_Triggers_Reactors()
+    {
+        Build(s => s
+            .For<Order>(e => e.ReactMany(change => change.ChangedTo(x => x.Status, OrderStatus.Shipped), async (changes, sp, token) =>
+            {
+                var invoices = sp.GetRequiredService<IEntityService<Invoice>>();
+                foreach (var change in changes)
+                {
+                    await invoices.Add(new Invoice { OrderId = change.Entity.Id, Number = $"INV-{change.Entity.Id}" });
+                }
+                await invoices.SaveChanges(token);
+            }))
+            .For<Invoice>(e => e.ReactMany(RecordBatch)));
+
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ShopContext>();
+            db.Orders.AddRange(NewOrder("A", OrderStatus.Shipped), NewOrder("B", OrderStatus.Shipped), NewOrder("C", OrderStatus.Shipped));
+            await db.SaveChangesAsync();
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(_log.Batches, Has.Count.EqualTo(1), "the reactor's one save is one batch");
+            Assert.That(_log.Batches[0].OfType<IEntityChange<Invoice>>().Count(), Is.EqualTo(3));
+        });
     }
 
     // ── wiring ──────────────────────────────────────────────────────────────────

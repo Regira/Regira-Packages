@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Regira.Entities.Attachments.Abstractions;
 using Regira.Entities.Attachments.Models;
+using Regira.Entities.EFcore.Reactors;
 using Regira.Entities.Reactors.Abstractions;
 
 namespace Regira.Entities.EFcore.Attachments;
@@ -24,16 +25,19 @@ public class AttachmentFileReactor : AttachmentFileReactor<Attachment, int>
 }
 /// <summary>
 /// Removes an attachment's file once the save that replaced or deleted it is committed, when the attachment's own row no
-/// longer names it: the file new bytes replaced, and the file of a deleted attachment. It reads that row by key first,
-/// past query filters, and keeps the file the row still names — a save an interceptor suppressed, or one a rollback to a
-/// savepoint undid, changed no row. A save the database refuses, or a transaction rolled back, runs no reactor. A save
-/// that fails leaves the file it wrote, which no row names, and so do a rollback and a context without the reactor
-/// wiring (<c>DbContextWiring.Reactors</c>, part of <c>UseDefaults()</c>): an application that needs a clean store sweeps
-/// it against the stored <c>Path</c> values.
+/// longer names it: the file new bytes replaced, and the file of a deleted attachment. It reads the rows of a commit by
+/// key first — together, one query per 500 attachments, past query filters — and keeps the file a row still names: a
+/// save an interceptor suppressed, or one a rollback to a savepoint undid, changed no row. A file that cannot be removed
+/// does not keep the others: every file is tried, and the failures are reported together. A save the database refuses,
+/// or a transaction rolled back, runs no reactor. A save that fails leaves the file it wrote, which no row names, and so
+/// do a rollback and a context without the reactor wiring (<c>DbContextWiring.Reactors</c>, part of
+/// <c>UseDefaults()</c>): an application that needs a clean store sweeps it against the stored <c>Path</c> values.
 /// </summary>
-public class AttachmentFileReactor<TAttachment, TKey> : EntityReactorBase<TAttachment>
+public class AttachmentFileReactor<TAttachment, TKey> : EntityBatchReactorBase<TAttachment>
     where TAttachment : class, IAttachment<TKey>, new()
 {
+    private const int MaxFilesInMessage = 10;
+
     internal const string WithoutContext = "Removes the file without reading the stored row, so a save an interceptor suppressed, or a rollback to a savepoint, removes a file a row still names. Use the constructor taking the DbContext, which WithAttachments registers. Will be removed in v7.";
 
     private readonly IAttachmentFileService<TAttachment, TKey> _fileService;
@@ -67,17 +71,54 @@ public class AttachmentFileReactor<TAttachment, TKey> : EntityReactorBase<TAttac
         _ => false
     };
 
-    public override async Task React(IEntityChange<TAttachment> change, CancellationToken token = default)
+    public override async Task ReactMany(IReadOnlyList<IEntityChange<TAttachment>> changes, CancellationToken token = default)
     {
-        var file = change.Kind == EntityChangeKind.Deleted ? change.Entity : change.Original!;
-        if (_dbContext != null && await IsNamed(_dbContext, file.Id, file.Path, token))
+        // a file once, however many changes of the commit left it behind
+        var files = changes
+            .Select(change => change.Kind == EntityChangeKind.Deleted ? change.Entity : change.Original!)
+            .DistinctBy(file => (file.Id, Path: Normalize(file.Path)))
+            .ToArray();
+        var named = _dbContext != null ? await NamedFiles(_dbContext, files, token) : [];
+
+        List<(TAttachment File, Exception Exception)>? failures = null;
+        var unnamed = files.Where(file => !named.Contains((file.Id, Normalize(file.Path)))).ToArray();
+        foreach (var file in unnamed)
         {
-            return;
+            try
+            {
+                await _fileService.RemoveFile(file, token);
+            }
+            catch (Exception ex)
+            {
+                (failures ??= []).Add((file, ex));
+            }
         }
-        await _fileService.RemoveFile(file, token);
+        if (failures != null)
+        {
+            // which files: a store's own message need not say
+            var shown = string.Join(", ", failures.Take(MaxFilesInMessage).Select(failure => $"#{failure.File.Id} {failure.File.Path}"));
+            throw new AggregateException(
+                $"Could not remove {failures.Count} of the {unnamed.Length} attachment file(s) a commit left behind: {shown}{(failures.Count > MaxFilesInMessage ? ", …" : "")}",
+                failures.Select(failure => failure.Exception));
+        }
     }
 
-    private static Task<bool> IsNamed(DbContext dbContext, TKey id, string? path, CancellationToken token)
-        => dbContext.Set<TAttachment>().IgnoreQueryFilters().AsNoTracking()
-            .AnyAsync(x => x.Id!.Equals(id) && x.Path == path, token);
+    // the (key, path) pairs the stored rows still name
+    private static async Task<HashSet<(TKey Id, string? Path)>> NamedFiles(DbContext dbContext, TAttachment[] files, CancellationToken token)
+    {
+        var named = new HashSet<(TKey Id, string? Path)>();
+        foreach (var ids in files.Select(file => file.Id).Distinct().Chunk(StoredRowReader.BatchSize))
+        {
+            var rows = await dbContext.Set<TAttachment>().IgnoreQueryFilters().AsNoTracking()
+                .Where(x => ids.Contains(x.Id))
+                .Select(x => new { x.Id, x.Path })
+                .ToListAsync(token);
+            named.UnionWith(rows.Select(row => (row.Id, Normalize(row.Path))));
+        }
+        return named;
+    }
+
+    // Compared without case, as most databases and file stores do: a path the row names in another casing can be the
+    // same file, and keeping one file too many costs less than removing one a row still names.
+    private static string? Normalize(string? path) => path?.ToUpperInvariant();
 }

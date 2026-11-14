@@ -250,8 +250,9 @@ store sweeps it against the stored `Path` values:
 - A save that fails leaves the file it wrote. The attachment keeps naming that file, so a retry of the same instance
   saves it instead of writing another; reloaded, the attachment names its stored file again, and its new content is
   stored again.
-- After the commit, `AttachmentFileReactor` reads the attachment's row by key, past query filters, and removes the
-  replaced or deleted file only when the row no longer names it: a save an interceptor suppressed, or one a rollback to
+- After the commit, `AttachmentFileReactor` reads the attachment's row by key, past query filters — the rows of one
+  commit together, one query per 500 attachments — and removes the replaced or deleted file only when the row no
+  longer names it, comparing the path without case: a save an interceptor suppressed, or one a rollback to
   a savepoint undid, changed no row, and the file stays. Only that row is read: two attachment rows naming one path —
   one added with another's `Path` and no content of its own — share the file, and deleting either removes it.
 - Removing a link, or giving it a new attachment, deletes the attachment it leaves, with its file, unless another link
