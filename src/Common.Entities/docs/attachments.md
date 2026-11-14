@@ -217,8 +217,8 @@ navigation back to the owner. So on an owner scoped per user or tenant, every ot
 details, both downloads, the link's `PUT` and `DELETE` — reads across owners until a global filter on the link entity
 reruns the owner's scope through the owner's `DbSet` (`Owners.Any(o => o.Id == link.ObjectId && …)`). With it those
 routes answer 404 for another owner's file; the upload still runs no query. Add a validator on the link entity that
-re-runs the owner's scope on `Add` and refuses when it resolves nothing — a 400, where the read path answers 404 — or
-override the controller's `Add` to answer 404. Read scope is not write scope either: a read scope widened on purpose,
+re-runs the owner's scope on `Add` and throws `EntityNotFoundException` when it resolves nothing, so the upload
+answers 404, as the read path does. Read scope is not write scope either: a read scope widened on purpose,
 a manager seeing their reports' rows, grants writes and deletes on those rows too, so put a narrower ownership check in
 a validator, which runs on a delete as well. Repeat a link rule, such as the allowed file types or a file that
 must not be deleted, in the owner's validator, or keep `Attachments` off the owner's input DTO.

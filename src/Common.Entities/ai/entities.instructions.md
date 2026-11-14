@@ -642,6 +642,31 @@ options.AddValidator<TenantValidator>();   // global — an EntityValidatorBase<
   far, so a later one can skip an expensive check: no point querying for the customer when `CustomerId` already
   failed.
 
+**A refusal that is no input error answers 403 or 404.** `AddError` is a 400: the input is wrong and the client can
+fix it. A rule about *who* may write a row is no input error; throw `EntityForbiddenException` (403) for a row the
+caller may read but not change, and `EntityNotFoundException` (404) for a row the write needs that the caller cannot see
+(`Regira.Entities.Models`). The write stops at the throw, with the errors added so far discarded, and the message is the
+response's `detail`, so write it for the client; without one, each carries a generic `ClientMessage`. Both answer on
+every write of both surfaces — create, modify, patch, delete and the attachment endpoints (§Error Handling).
+
+<!-- no-compile -->
+```csharp
+// using Regira.Entities.Models;                             ← EntityForbiddenException, EntityNotFoundException
+// a class, so the caller is read per write: ICurrentUser is the app's own scoped service over the request's principal
+public class ShoppingListOwnerValidator(ICurrentUser currentUser) : EntityValidatorBase<ShoppingList>
+{
+    public override Task Validate(IEntityValidatorContext<ShoppingList> ctx, CancellationToken token = default)
+    {
+        // on Modify the stored owner: ctx.Item carries what the client sent, a changed OwnerId included
+        var owner = (ctx.Original ?? ctx.Item).OwnerId;
+        if (owner != currentUser.UserId)                        // a shared list: readable, not writable
+            throw new EntityForbiddenException("Only the list's owner may change it.");
+        return Task.CompletedTask;
+    }
+}
+e.AddValidator<ShoppingListOwnerValidator>();
+```
+
 **The message can be a translation key.** What a validator adds is up to it: a text the client shows as is
 (`"A code is required."`), or a key the client translates (`"ValueTooLarge"`). A Regira front-end looks every
 message up in its translation messages: when it finds one, it shows that translation, each `{name}` placeholder filled
@@ -1039,7 +1064,7 @@ IEntityService<Order, int, OrderSearchObject, OrderSortBy, OrderIncludes>       
 
 ² An `IArchivable` entity has no hard-delete endpoint: `DELETE /{id}` sets `IsArchived = true` and the row survives, with the same 200 and the same affected count. Archived rows then disappear from `GET /` and `GET /search`, and `GET /{id}` 404s — so **restore depends on keeping `IsArchived` on `TInputDto`** (Step 5). Full route contract: [`entities.patterns.md`](./entities.patterns.md) → Soft Delete.
 
-¹ The **body/batch** overloads (accept a `TSearchObject[]`) plus typed `?includes=`/`?sortBy=` exist only on *complex* bases (`EntityControllerBase` with `TSortBy` + `TIncludes`). `GET /search` — single search object, returns `count` — is on **every** base, so a simple entity can page too.
+¹ The **body/batch** overloads (accept a `TSearchObject[]`) plus typed `?includes=`/`?sortBy=` exist only on *complex* bases (`EntityControllerBase` with `TSortBy` + `TIncludes`). `GET /search` — single search object, returns `count` — is on **every** base, so a simple entity can page too. The body's search objects are united (a row matching any of them); an empty array `[]` lists as `GET` does, through the same global filters, and more than 32 search objects answer 400.
 
 > **Response envelope.** Responses are wrapped, not bare DTOs: Details → `{ "item": {…} }`; List → `{ "items": [...] }`; Search → `{ "items": [...], "count": N }` (each also carries `duration` in ms). Unwrap `item`/`items` client-side.
 
@@ -1960,6 +1985,16 @@ always `EntityConcurrencyException.ClientMessage`: the message you pass is not s
 the DTO rules and what each route checks: [`entities.patterns.md`](./entities.patterns.md) → Optimistic
 concurrency.
 
+### EntityForbiddenException and EntityNotFoundException (return HTTP 403 and 404)
+
+Throw `EntityForbiddenException` to refuse a write the caller may not make on a row it can read, and
+`EntityNotFoundException` for a row the write needs that does not exist for the caller (`Regira.Entities.Models`),
+from a validator, a prepper or a custom handler. The write service passes them through as thrown, so every write
+surface answers **403** or **404** through the same filter as the 400 and the 409s, and the mapped endpoints through
+`EntityExceptionEndpointFilter`: a `ProblemDetails` built by the app's `ProblemDetailsFactory`, its `detail` the
+exception's message (`ClientMessage` when none is passed). A row the caller may not see at all belongs out of the query,
+in a global filter: its `PUT`, `PATCH` and `DELETE` then answer 404 by themselves (§Security & Authorization).
+
 ### A client that disconnects
 
 A read — details, list, search, the lookup behind a download — is sent with the request's `RequestAborted`, so its
@@ -2176,7 +2211,7 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 - **Row-level scoping:** register a global filter query builder that applies the caller's scope (tenant/owner) to every query — inject `IHttpContextAccessor` in its constructor and filter on the claim. Register it once, app-wide, with `options.AddGlobalFilterQueryBuilder<OwnerFilter>()` inside `UseEntities(options => …)` (`using Regira.Entities.DependencyInjection.QueryBuilders;`), not per entity: an `e.AddFilter<T>()` filter is bound to that entity's search object and is not a global filter. The claim reaches the principal the same way whichever scheme authenticated the caller (bearer token, cookie session, API key), so the filter needs no knowledge of which one is in use. The filter pipeline runs on **every controller path**: List, Search, `Details(id)` (the id goes through the same filters), and the write endpoints' existence checks — so `PUT`/`PATCH`/`DELETE` on a foreign row 404 as well. Global filters are registered transient and resolved with the entity service, in the scope its `DbContext` comes from, so a filter may inject scoped services (the `DbContext`, a current-user service); a background job resolves the entity service from a scope it creates.
 - **What a scoping filter cannot do:** validate **create** (the client supplies the FK — stamp/verify `OwnerId` from the claim in a prepper, never trust the body) or guard **direct `IEntityService` calls** in custom code, which bypass the controller's filtered existence checks. Two variants of the create hole bite hardest:
   - ⚠️ **An owner's row scope does not reach its attachments.** The per-owner link entity (`ProductAttachment`) has no owner column and no navigation back, so a filter that scopes the owner never runs on it. Every attachment route — `GET attachments`, `attachments/{id}`, `{objectId}/attachments`, both downloads (`files/{id}`, `{objectId}/files/{name}`), and the link's `PUT` and `DELETE` — then reads across owners: any signed-in user lists, downloads, edits and deletes every user's files. Give a row-scoped owner with attachments a second global filter, on the **link** entity, that reruns the owner's scope through the owner's `DbSet` (`db.Products.Any(p => p.Id == link.ObjectId && p.OwnerId == userId)`) with the same exemptions, registered app-wide beside the owner's — the shape is in [`entities.examples.md`](./entities.examples.md) → Attachments. With it, those routes answer 404 for another owner's file; check one by id as a second user.
-  - ⚠️ **An attachment upload is a create no filter sees, the link filter included.** `POST /{owner}/{id}/files` takes the owner id from the **route**, stamps it on a new link row and saves — no query runs, so no global filter applies, and any authenticated caller can attach a file to a row they cannot read. Add a validator on the **link** entity (registered on its `HasAttachments` builder: §Attachments, the link-rule callout after step 7) that re-runs the owner's scope over the owner's `DbSet` on `Add` and adds an error when it resolves nothing — which answers **400**, not the 404 the read path gives a foreign row, since the write pipeline maps only 400 and 409. Override the controller's `virtual Add` and return `NotFound()` instead where the two must agree.
+  - ⚠️ **An attachment upload is a create no filter sees, the link filter included.** `POST /{owner}/{id}/files` takes the owner id from the **route**, stamps it on a new link row and saves — no query runs, so no global filter applies, and any authenticated caller can attach a file to a row they cannot read. Add a validator on the **link** entity (registered on its `HasAttachments` builder: §Attachments, the link-rule callout after step 7) that re-runs the owner's scope over the owner's `DbSet` on `Add` and throws `EntityNotFoundException` when it resolves nothing, so the upload answers **404**, as the read path does for a foreign row (§Error Handling); a row the caller reads but may not change throws `EntityForbiddenException` (403).
   - ⚠️ **A row scope does not reach an `Include`.** A global filter runs on its own entity's queries only: `Include(x => x.Comments)` on the parent loads every child row, the ones the child's filter hides included (internal notes, another tenant's rows). Keep a scoped child off the parent's DTO and includes and read it through its own endpoint, or repeat the predicate in a filtered include. A to-one is no exception: a scoped reference that another entity includes on every row (a staff-only Employee as a ticket's Assignee) reaches every caller of that entity with each column its DTO maps, so map it to a narrow core DTO (Id, Name) there.
   - ⚠️ **Read scope is not write scope.** The write endpoints' existence checks run the *same* filter, so a read scope you widened deliberately — a manager who may see their reports' rows — silently grants that manager `PATCH`/`DELETE` on them too. When the two differ, keep the filter at read width and put the ownership check in a validator, which runs on a delete too (no prepper does).
 - **Scope before any early return.** The idiomatic query-builder shape opens with `if (so == null) return query;` — for a security filter that is a hole, because `Details(id)` and the write existence checks can run with a null search object and would skip the scoping entirely. Derive from `GlobalFilteredQueryBuilderBase<TEntity>` (it runs on every query and takes no search object), apply the ownership predicate unconditionally, and return `query.Where(_ => false)` when no identity resolves — an anonymous or stale-token call must see nothing, not everything. A seeder or hosted job has no request either, so its `IEntityService` reads see nothing too — and so does `Modify`, whose re-read of the stored row then finds none and saves nothing: give it an explicit identity through a context it sets (the shape of `WritableTenantContext` in [`entities.blueprints.md`](./entities.blueprints.md) → Multi-tenancy — IHasTenantId + global filter + primer). Its reads may go to the `DbContext` directly, as §Seeding via IEntityService reads keys, but its writes still go through the service, and a `Modify` there needs the identity. Don't equate "no `HttpContext`" with "system": work started from inside a request inherits that request's context.

@@ -408,7 +408,7 @@ using Microsoft.EntityFrameworkCore;
 
 // HTTP contract: ignore reference cycles + nulls, serialize enums as names, read DateTimes as UTC — applied to BOTH the MVC
 // options and Http.Json.JsonOptions, the set AddOpenApi() and minimal-API results read, so the generated
-// schema matches the wire format — plus the entity-exception filter (400 / 409) for every action.
+// schema matches the wire format — plus the entity-exception filter (400 / 403 / 404 / 409) for every action.
 builder.Services.AddControllers();
 builder.Services.ConfigureDefaultJsonOptions();   // Regira.Entities.Web.DependencyInjection
 
@@ -455,8 +455,9 @@ builder.Services.AddEntityServices(builder.Configuration);
 > re-creates the mismatch).
 >
 > **The second reason to call it: the entity exceptions.** It also registers `EntityExceptionFilter`, which
-> maps `EntityInputException` → **400** (its `Errors` as a `ValidationProblemDetails`), `EntityConstraintException` →
-> **409** and `EntityConcurrencyException` → **409** ("Concurrency conflict") for *every* MVC action. The entity controller bases carry the same mapping (`[EntityConstraintConflict]`),
+> maps `EntityInputException` → **400** (its `Errors` as a `ValidationProblemDetails`), `EntityForbiddenException` →
+> **403**, `EntityNotFoundException` → **404**, `EntityConstraintException` → **409** and `EntityConcurrencyException` →
+> **409** ("Concurrency conflict") for *every* MVC action. The entity controller bases carry the same mapping (`[EntityConstraintConflict]`),
 > so their actions answer a rule breach with a 400 without it, a hand-written domain action such as
 > `POST {id}/approve` included; on any other controller, a `ControllerExtensions` helper (`this.Save(…)`) answers it
 > with a 500 and a stack trace unless the filter is registered. `MapEntityExceptions()` registers the filter on its

@@ -8,8 +8,9 @@ namespace Regira.Entities.Web.Endpoints;
 /// Gives a minimal-API endpoint the entity write pipeline's status mapping, with the bodies the controllers answer with:
 /// <see cref="EntityInputException"/> → <b>400</b>, a <c>ValidationProblemDetails</c> with <c>errorDetails</c>;
 /// <see cref="EntityConstraintException"/> → <b>409</b> with <see cref="EntityConstraintProblem"/>;
-/// <see cref="EntityConcurrencyException"/> → <b>409</b> with <see cref="EntityConcurrencyProblem"/>.
-/// <c>MapEntityEndpoints()</c> puts it on its group; an app's own endpoint that sends entity requests takes it with
+/// <see cref="EntityConcurrencyException"/> → <b>409</b> with <see cref="EntityConcurrencyProblem"/>;
+/// <see cref="EntityForbiddenException"/> → <b>403</b> and <see cref="EntityNotFoundException"/> → <b>404</b>, each a
+/// problem whose detail is the exception's message. <c>MapEntityEndpoints()</c> puts it on its group; an app's own endpoint that sends entity requests takes it with
 /// <c>.AddEndpointFilter&lt;EntityExceptionEndpointFilter&gt;()</c>. The minimal-API counterpart of
 /// <see cref="EntityExceptionFilter"/>.
 /// </summary>
@@ -32,6 +33,10 @@ public sealed class EntityExceptionEndpointFilter : IEndpointFilter
         catch (EntityConcurrencyException)
         {
             return Results.Problem(EntityConcurrencyProblem.Create());
+        }
+        catch (Exception ex) when (ex is EntityForbiddenException or EntityNotFoundException)
+        {
+            return Results.Problem(EntityExceptionMapping.RefusalProblem(ex)!);
         }
     }
 }

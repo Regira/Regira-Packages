@@ -10,7 +10,8 @@ public interface IEntityRequestHandler<in TRequest, TResponse>
 {
     /// <summary>
     /// <c>null</c> when the entity does not exist. A refused write throws: <c>EntityInputException</c>,
-    /// <c>EntityConstraintException</c> and <c>EntityConcurrencyException</c> reach the caller.
+    /// <c>EntityForbiddenException</c>, <c>EntityNotFoundException</c>, <c>EntityConstraintException</c> and
+    /// <c>EntityConcurrencyException</c> reach the caller.
     /// </summary>
     Task<TResponse?> Handle(TRequest request, CancellationToken token = default);
 }

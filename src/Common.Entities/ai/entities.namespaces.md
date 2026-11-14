@@ -10,7 +10,7 @@
 
 | Namespace | Types |
 |---|---|
-| `Regira.Entities.Models` | `SearchObject<>`, `EntitySortBy`, `EntityInputException<>`, `EntityConstraintException`, `EntityConcurrencyException`, `EntityIncludes`, `ArchivedFilter` *(`Excluded`/`Included`/`Only` — `ISearchObject.Archived`, bound from `?archived=`)* |
+| `Regira.Entities.Models` | `SearchObject<>`, `EntitySortBy`, `EntityInputException<>`, `EntityForbiddenException`, `EntityNotFoundException`, `EntityConstraintException`, `EntityConcurrencyException`, `EntityIncludes`, `ArchivedFilter` *(`Excluded`/`Included`/`Only` — `ISearchObject.Archived`, bound from `?archived=`)* |
 | `Regira.Entities.Models.Abstractions` | `IEntity<>`, `IEntityWithSerial`, `ISearchObject<>`, `IHasTimestamps`, `IHasCreated`, `IHasLastModified`, `IHasTitle`, `IHasNormalizedTitle`, `IHasDescription`, `IHasCode`, `IHasNormalizedContent`, `IHasLastNormalized`, `IArchivable`, `IHasConcurrencyToken`, `ISortable`, `IHasObjectId<>`, `IHasAggregateKey`, `IHasDefault<>`, `IHasParentEntity<>`, `IHasPassword`, `IHasEncryptedPassword`, `IHasSlug`, `IHasStartDate`, `IHasEndDate`, `IHasStartEndDate`, `IHasUri`, `IHasUserId` |
 
 ---

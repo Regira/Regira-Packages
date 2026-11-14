@@ -461,7 +461,8 @@ instead, and the mapped-endpoint counterpart: `entities.patterns` → *Replacing
 
 > **Complex only** = bases with `TSortBy` + `TIncludes`. Simple bases omit `POST /list` and `POST /search`
 > (the body/array variants), but do expose `GET /search` (single search object, with count for paging)
-> alongside basic list via `GET /?q=…`. For response envelope shapes
+> alongside basic list via `GET /?q=…`. The body's search objects are united; `[]` lists as `GET` does, global filters included,
+> and more than 32 answer 400 (an `EntityInputException`, the mapped endpoints' `POST list`/`POST search` too). For response envelope shapes
 > (`item` / `items,count`) see `entities.instructions.md` §Step 13.
 
 A write a validator refuses — save, create, modify, patch or delete — answers 400 with a `ValidationProblemDetails`.
@@ -1955,7 +1956,8 @@ public enum EntityEndpoint
 // on every mapped endpoint: the entity (the owner, for an attachment route) and the endpoint
 public sealed record EntityEndpointMetadata(Type EntityType, EntityEndpoint Endpoint) { public bool IsWrite { get; } }
 
-// EntityInputException → 400, EntityConstraintException / EntityConcurrencyException → 409, the controllers' bodies
+// EntityInputException → 400, EntityForbiddenException → 403, EntityNotFoundException → 404,
+// EntityConstraintException / EntityConcurrencyException → 409, the controllers' bodies
 public sealed class EntityExceptionEndpointFilter : IEndpointFilter;
 ```
 
@@ -2092,11 +2094,27 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
 {
     public const string ClientMessage = "The record was changed or removed since it was read. Reload it and try again.";
 }
+
+// HTTP 403, ProblemDetails title "Forbidden", detail = the message: the caller may not change this row.
+// Thrown by the app from a validator, a prepper or a handler.
+public class EntityForbiddenException(string message = EntityForbiddenException.ClientMessage, Exception? innerException = null)
+    : Exception(message, innerException)
+{
+    public const string ClientMessage = "You may not change this record.";
+}
+
+// HTTP 404, ProblemDetails title "Not Found", detail = the message: a row the write needs does not exist for the
+// caller. Thrown by the app from a validator, a prepper or a handler.
+public class EntityNotFoundException(string message = EntityNotFoundException.ClientMessage, Exception? innerException = null)
+    : Exception(message, innerException)
+{
+    public const string ClientMessage = "The record was not found.";
+}
 ```
 
 `ConfigureDefaultJsonOptions()` registers the filter that maps them — 400 with `Errors` as a
-`ValidationProblemDetails` (`errors`, and `errorDetails` with each error's args), 409 for
-`EntityConstraintException` and `EntityConcurrencyException` — so a **hand-written** action returns
+`ValidationProblemDetails` (`errors`, and `errorDetails` with each error's args), 403 for `EntityForbiddenException`,
+404 for `EntityNotFoundException`, 409 for `EntityConstraintException` and `EntityConcurrencyException` — so a **hand-written** action returns
 what the generated ones do.
 Catch the non-generic base if you handle it yourself: a `catch` on one closed generic misses the one a prepper
 threw for a related entity (`EntityInputException<Product>` inside an `Order` write).

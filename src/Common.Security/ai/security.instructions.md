@@ -1039,9 +1039,12 @@ public class UsersController(UserManager<AppUser> userManager)
 **Required services:** `AddIdentityCore<TUser>().AddEntityFrameworkStores<…>().AddDefaultTokenProviders()` (`AddDefaultTokenProviders` is mandatory — recover/confirm generate Identity tokens); `AddJwtAuthentication(…)` for `ITokenHelper`; an `IEmailSender` (Regira's `IdentityMailer`); `AccountEmailOptions` listing the origins the mailed links may point at (*Mailed links: allowed origins* below). Token payloads use `System.Text.Json` internally — no serializer registration needed.
 
 **A second credential** (a PIN, a one-time code) goes in your `AccountControllerBase<TUser>` subclass, so it shares
-the `auth` route and the response the SPA reads. Check `userManager.IsLockedOutAsync(user)` first, verify the
-credential, and count a failure with `userManager.AccessFailedAsync(user)`, the lockout the password uses; check the
-`IdentityResult` it returns, since an uncounted failure lets parallel guesses through. Once the credential checks,
+the `auth` route and the response the SPA reads. Check `await IsBlocked(user)` first, verify the
+credential, and count a failure with `await OnPasswordRejected(user)`, the step the password uses, so a lockout policy
+of the controller's own covers the credential too. Make sure the failure is counted, since an uncounted one lets
+parallel guesses through: the default step, `userManager.AccessFailedAsync(user)`, discards its `IdentityResult`, so
+override `OnPasswordRejected` to check it (throw when it did not succeed), and an override that counts in a store of
+its own checks its write the same way. Once the credential checks,
 `await CanSignIn(user)` applies the `SignIn.RequireConfirmed*` options, as `POST auth` does: refuse with
 `StatusCode(401, CreateFailedResponse(false) with { IsNotAllowed = true })` when it is `false`. On success,
 `return Ok(await CreateSuccessResponse((await claimsFactory.CreateAsync(user)).Claims, clientApp, user.Id));` (the
@@ -1118,13 +1121,14 @@ public class UsersController : UserControllerBase<AppUser>
     public override async Task<IActionResult> Create(UserInput model, [FromServices] IEmailSender mailer)
     {
         // The base creates the account before it mails the link, so a failed mail throws past any check on the
-        // result. Assign in finally, and only to an account this call created: a taken name answers 400.
+        // result. Assign in finally, and only to an account this call created.
         var isNew = await _userManager.FindByNameAsync(model.Username) == null;
         IActionResult? result = null;
         try
         {
             result = await base.Create(model, mailer);
-            return result;
+            // a taken name answers as a new one does, so a stranger does not learn the address is registered
+            return ModelState.ContainsKey("DuplicateUserName") || ModelState.ContainsKey("DuplicateEmail") ? Ok() : result;
         }
         finally
         {
@@ -1149,18 +1153,29 @@ public class UsersController : UserControllerBase<AppUser>
 public class AppUser : IdentityUser;   // stands for your app's own Identity user — don't declare a second one
 ```
 
-Open sign-up means anyone can create an account, and its `400` for a taken name tells a caller that the account
-exists, as any sign-up form does: rate-limit it, and keep any role/tenant assignment server-side rather than reading it
-from the payload.
+Open sign-up means anyone can create an account. The base's `400` with `DuplicateUserName` for a taken name would
+tell any caller that the account exists, so the override answers `200` for it, creating and mailing nothing; a new
+name still answers more slowly, since it waits for the mail (*Sign-up with profile fields*). Rate-limit it, and keep
+any role/tenant assignment server-side rather than reading it from the payload.
 
 ### Sign-up with profile fields
 
-`Create` binds `UserInput` only. A sign-up that also takes profile fields gets an action of its own with its own
-input: it hands the account part to `base.Create` and adds the rest in the same guarded `finally`, while `POST users`
-stays open to every signed-in user (⚠️ above). Close it with a role-gated override:
+`Create` binds `UserInput` only and saves `new TUser { UserName, Email }`, so on a user type with a required column
+that has no default it fails with a database error. A sign-up that takes profile fields gets an action of its own with
+its own input: it builds the user with every column filled and saves it through the protected
+`Create(TUser user, string password, string? confirmEmailUrl, IEmailSender mailer)` overload, which validates the page,
+creates the user and mails the link exactly as `POST users` does. `POST users` stays open to every signed-in user
+(⚠️ above); close it with a role-gated override:
 `[Authorize(Roles = "Administrator")] public override Task<IActionResult> Create(UserInput model, [FromServices] IEmailSender mailer) => base.Create(model, mailer);`
-(the sign-up action calls `base.Create` directly and keeps working). The SPA posts to `users/sign-up` and lists it in
-its `credentialUrls`.
+(the sign-up action calls the overload and keeps working). The SPA posts to `users/sign-up` and lists it in its
+`credentialUrls`.
+
+The action answers `200` for an address that already has an account, without creating or mailing anything: its
+anonymous caller is anyone, and `Create`'s `400` with `DuplicateUserName` would tell them the address is registered.
+The duplicate is found by `CreateAsync` itself, after the password is hashed, where a check with `FindByNameAsync`
+first would answer at once. The timing still differs: a new address also gets its confirmation token and waits for the
+mail to be sent, so it answers more slowly unless the app's `IEmailSender` queues the mail. Rate-limit the action, as
+for `POST auth`.
 
 <!-- no-compile -->
 ```csharp
@@ -1172,52 +1187,43 @@ public record SignUpInput
     [Required, MaxLength(100)] public string DisplayName { get; set; } = null!;
 }
 
-// in a UsersController whose Create is role-gated (above), with _userManager and
-// _db (the app's DbContext) injected; Profile is the app's own row
+// in a UsersController whose Create is role-gated (above), with _userManager injected;
+// AppUser.DisplayName is a required column without a default
 [AllowAnonymous]   // the class carries [EnableRateLimiting("account")] (Rate-limiting the anonymous actions)
 [HttpPost("sign-up")]
 public async Task<IActionResult> SignUp(SignUpInput input, [FromServices] IEmailSender mailer)
 {
-    var isNew = await _userManager.FindByNameAsync(input.Username) == null;
+    var user = new AppUser { UserName = input.Username, Email = input.Username, DisplayName = input.DisplayName };
     IActionResult? result = null;
     try
     {
-        result = await base.Create(new UserInput
-        {
-            Username = input.Username,
-            Password = input.Password,
-            ConfirmEmailUrl = input.ConfirmEmailUrl
-        }, mailer);
-        return result;
+        result = await Create(user, input.Password, input.ConfirmEmailUrl, mailer);
+        // a taken address answers as a new one does (above); Identity's other refusals, such as a weak password, stay 400
+        return ModelState.ContainsKey("DuplicateUserName") || ModelState.ContainsKey("DuplicateEmail") ? Ok() : result;
     }
     finally
     {
-        if (isNew && (result is null || result is OkResult))
+        // also when the mail failed: the account exists by then
+        if (result is null or OkResult)
         {
-            await EnsureProfile(input);
+            await EnsureRole(user.Id);
         }
     }
 }
 
 // adds only what is missing
-private async Task EnsureProfile(SignUpInput input)
+private async Task EnsureRole(string userId)
 {
-    var user = await _userManager.FindByNameAsync(input.Username);
-    if (user == null)
-    {
-        return;
-    }
-    if (!await _userManager.IsInRoleAsync(user, "Customer"))
+    var user = await _userManager.FindByIdAsync(userId);
+    if (user != null && !await _userManager.IsInRoleAsync(user, "Customer"))
     {
         await _userManager.AddToRoleAsync(user, "Customer");
     }
-    if (!await _db.Profiles.AnyAsync(p => p.UserId == user.Id))
-    {
-        _db.Profiles.Add(new Profile { UserId = user.Id, DisplayName = input.DisplayName });
-        await _db.SaveChangesAsync();
-    }
 }
 ```
+
+Profile data in a row of the app's own, beside the user, is added the same way as the role: after the account exists,
+in the guarded `finally`, and only when it is missing.
 
 A domain row that is the account's party is linked as `Regira.Entities` → `entities.blueprints` → *Linking a party to
 a user account* describes. ⚠️ Link a new account to an existing record (a customer, an employee, a speaker) only by an
@@ -1239,7 +1245,14 @@ user's `EmailConfirmed` is `true` (it answers `200` for an unknown user too), or
 
 `clientApp` = token audience — **set the API's `Jwt:Audience` (or `Audiences`) equal to the SPA's `clientApp`**,
 or every authenticated call 401s with `audience invalid`. Success resets the failed-access count; failure
-increments it (Identity lockout). An unknown user name answers as a wrong password does (`isLockedOut: false`); a
+increments it (Identity lockout). Both lockout steps are protected virtuals of the controller: `IsBlocked(user)`
+(default `userManager.IsLockedOutAsync`) refuses an account before its password is checked, in `POST auth`,
+`auth/refresh` and `auth/refresh-token`, and `OnPasswordRejected(user)` (default `userManager.AccessFailedAsync`) runs
+on a wrong password. Override both in your subclass for a policy of the app's own, such as slowing sign-ins down
+instead of locking the account; the rest of each action is unchanged. Two parts stay Identity's: a blocked account's
+`401` carries Identity's `lockedOutEnd` (and logs it), empty unless Identity locked the account, and a successful
+sign-in resets Identity's failed count only, so a policy that counts failures in a store of its own lets them expire
+with time. An unknown user name answers as a wrong password does (`isLockedOut: false`); a
 locked-out account (`isLockedOut: true`) and the response time — an unknown name skips the password hash — still tell
 a name exists, so rate-limit `auth` by client.
 

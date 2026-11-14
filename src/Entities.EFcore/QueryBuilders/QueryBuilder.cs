@@ -109,14 +109,20 @@ public class QueryBuilder<TEntity, TKey, TSearchObject, TSortBy, TIncludes>(
                     return filter.Build(filteredQuery, so);
                 }) ?? globallyFilteredQuery;
     }
+    /// <summary>
+    /// The union of <see cref="Filter"/> over each search object. An empty or <c>null</c> list filters as one
+    /// <c>null</c> search object, so the global filters (row scopes, the archived filter) always run.
+    /// </summary>
     public virtual IQueryable<TEntity> FilterList(IQueryable<TEntity> query, IList<TSearchObject?>? searchObjects)
-        => searchObjects
-            ?.Aggregate(
-                (IQueryable<TEntity>?)null,
-                (r, so) => r == null
-                    ? Filter(query, so)
-                    : r.Union(Filter(query, so))
-            ) ?? query;
+    {
+        if (searchObjects == null || searchObjects.Count == 0)
+        {
+            return Filter(query, default);
+        }
+        return searchObjects
+            .Skip(1)
+            .Aggregate(Filter(query, searchObjects[0]), (r, so) => r.Union(Filter(query, so)));
+    }
 
     public virtual IQueryable<TEntity> SortBy(IQueryable<TEntity> query, IList<TSearchObject?>? so, TSortBy? sortBy, TIncludes? includes)
         => sortedQueryBuilder?.SortBy(query, sortBy) ?? query;

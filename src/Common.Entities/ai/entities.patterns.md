@@ -1132,7 +1132,7 @@ public class PriceImporter(IEntitySender sender)
   sort and includes types too. A list that matches no `For<>()` registration fails at its first send, naming what
   was registered.
 - **`null` means not found.** A refused write throws, as the write pipeline does: `EntityInputException`,
-  `EntityConstraintException`, `EntityConcurrencyException`.
+  `EntityForbiddenException`, `EntityNotFoundException`, `EntityConstraintException`, `EntityConcurrencyException`.
 - **`SaveCommand` checks the input DTO first**, by the rules MVC judges a request body by — DataAnnotations and
   `IValidatableObject`, nested objects and collection items too, and the implicit `[Required]` on a non-nullable
   reference — and refuses with an `EntityInputException`. `[ValidateNever]` leaves a property out; MVC validator
@@ -1381,8 +1381,8 @@ public static class ShopConfiguration
 - **Exclude first.** Without `o.Exclude(…)` two endpoints share the route, and every request to it fails as ambiguous.
   `EntityEndpoint.List` covers `GET` and, on a complex entity, `POST list`; `EntityEndpoint.Search` covers both
   searches.
-- **The group's exception filter applies**, so the endpoint answers a refused write with the 400 and 409 bodies the
-  mapped ones use, without an `AddEndpointFilter` of its own.
+- **The group's exception filter applies**, so the endpoint answers a refused write with the 400, 403, 404 and 409 bodies
+  the mapped ones use, without an `AddEndpointFilter` of its own.
 - **Add the metadata.** A write-authorization policy keys on `EntityEndpointMetadata` (§Role-gated write
   authorization filter → *On mapped endpoints*); without it the policy cannot tell the endpoint's entity, and refuses
   it unless it is a `GET`.
@@ -1751,8 +1751,8 @@ public static class EntityMediatR
   app's licence key; an app without one pins **MediatR 12.5.0**, the last Apache-2.0 release — the one package where
   "install the latest stable" does not apply.
 - ⚠️ **Let the entity exceptions through.** A behaviour that rethrows `EntityInputException`,
-  `EntityConstraintException` or `EntityConcurrencyException` wrapped in an exception of its own turns the endpoint's
-  400 and 409s into 500s.
+  `EntityConstraintException`, `EntityConcurrencyException`, `EntityForbiddenException` or `EntityNotFoundException`
+  wrapped in an exception of its own turns the endpoint's 400, 403, 404 and 409s into 500s.
 - A behaviour that opens a transaction around a write defers the reactors to its commit — the reactor rule
   (entities.instructions §Step 9 → Reactors).
 
@@ -1839,8 +1839,8 @@ app.MapEntityEndpoints().RequireAuthorization();   // GET/POST products, PUT/PAT
   type is logged and keeps an attachment controller. `UseAttachmentUris()` links the DTO `Uri` to the mapped download —
   for an owner mapped twice, to its first mapping, since endpoint names are global.
 - **An endpoint of the app's own** sends its request through `IEntitySender`. Mapped outside the entity groups — on
-  `app` itself — it takes `.AddEndpointFilter<EntityExceptionEndpointFilter>()` for the 400 and 409 bodies the mapped
-  endpoints answer with. Mapped inside one, through `ConfigureGroup<TEntity>()`, it already has the filter, which the
+  `app` itself — it takes `.AddEndpointFilter<EntityExceptionEndpointFilter>()` for the 400, 403, 404 and 409 bodies
+  the mapped endpoints answer with. Mapped inside one, through `ConfigureGroup<TEntity>()`, it already has the filter, which the
   group `MapEntityEndpoints()` returns carries.
 - **Write authorization** is a policy on the group, not a controller filter: §Role-gated write authorization filter →
   *On mapped endpoints*.
@@ -2164,6 +2164,39 @@ public async Task<IActionResult> Sort([FromBody] int[] ids, [FromServices] IEnti
     return NoContent();
 }
 ```
+
+Each `Modify` is a full write of its row: preppers, validators and the re-read run per row, and in the save every
+primer and reactor sees every row. An `IHasConcurrencyToken` row gets a new token, so a client still holding the row
+answers 409 on its next write of it; `LastModified` moves on every row; and a reactor (an audit trail, a push to other
+clients) runs for a change of position only: a per-row reactor (`e.React`) once per row, a batch reactor
+(`e.ReactMany`) once with every row. That is right when those rules must see a reorder. When
+they must not — a long list, an order changed on every drag — write only the positions, with `ExecuteUpdate`:
+
+<!-- no-compile -->
+```csharp
+[HttpPost("sort")]
+public async Task<IActionResult> Sort([FromBody] int[] ids, [FromServices] IEntityService<Category, int> service,
+    [FromServices] AppDbContext db, CancellationToken token)
+{
+    if (ids.Length > 500 || ids.Distinct().Count() != ids.Length) return BadRequest();
+    var visible = await service.Count(new SearchObject<int> { Ids = ids }, token);   // row security, through the service
+    if (visible != ids.Length) return NotFound();
+    await using var transaction = await db.Database.BeginTransactionAsync(token);
+    for (var i = 0; i < ids.Length; i++)
+    {
+        var (id, position) = (ids[i], i);                                            // from 0, as SetSortOrder numbers
+        await db.Categories.Where(x => x.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.SortOrder, position), token);
+    }
+    await transaction.CommitAsync(token);
+    return NoContent();
+}
+```
+
+What it gives up: the statements bypass the change tracker, so no prepper, validator, primer or reactor sees them,
+the concurrency token and `LastModified` stay as they were, and a client that shows the order learns of it only by
+reading again. Row security is the caller's: the `DbContext` applies none of the global filters, which is why the ids
+are counted through the service first.
 
 ## Renamed DTO property
 
