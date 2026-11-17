@@ -1,14 +1,17 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using Regira.Security.Authentication.Web.Constants;
+using System.ComponentModel.DataAnnotations;
 
 namespace Regira.Security.Authentication.Web.Models;
 
 public record ConfirmEmailInput
 {
-    [Required]
+    [Required, MaxLength(AccountInputLimits.Token)]
     public string Token { get; set; } = null!;
     /// <summary>Not read: the user comes from the token.</summary>
+    [MaxLength(AccountInputLimits.UserName)]
     public string? UserName { get; set; }
     /// <summary>Not read: confirming an e-mail address sets no password and signs no one in.</summary>
     [Obsolete("Ignored: confirming an e-mail address sets no password and signs no one in. Will be removed in v7.")]
+    [MaxLength(AccountInputLimits.Password)]
     public string? Password { get; set; }
 }

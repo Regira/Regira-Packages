@@ -30,6 +30,7 @@ public abstract class UserControllerBase<TUser>(UserManager<TUser> userManager) 
     /// </para>
     /// </summary>
     [HttpPost]
+    [RequestSizeLimit(AccountInputLimits.RequestBody)]
     public virtual Task<IActionResult> Create(UserInput model, [FromServices] IEmailSender mailer)
         => Create(new TUser { UserName = model.Username, Email = model.Username }, model.Password, model.ConfirmEmailUrl, mailer);
 
@@ -75,6 +76,7 @@ Token: {token}
 
     [AllowAnonymous]
     [HttpPost("confirm-email", Name = RouteNames.ConfirmEmail)]
+    [RequestSizeLimit(AccountInputLimits.RequestBody)]
     public virtual async Task<IActionResult> ConfirmEmail([FromBody] ConfirmEmailInput model)
     {
         UserTokenModel? tokenModel;

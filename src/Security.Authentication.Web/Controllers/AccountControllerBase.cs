@@ -37,6 +37,10 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
     /// <remarks>A sign-in action of a subclass (a second credential) checks it before it issues a token, as the actions here do.</remarks>
     protected Task<bool> CanSignIn(TUser user) => SignInService.CanSignIn(user);
 
+    /// <inheritdoc cref="AccountSignInService{TUser}.IsAllowedAudience"/>
+    /// <remarks>A sign-in action of a subclass that takes <c>clientApp</c> checks it first, as <c>Authenticate</c> does.</remarks>
+    protected bool IsAllowedAudience(string? audience) => SignInService.IsAllowedAudience(audience);
+
     /// <summary>
     /// Whether the account is refused before its password is checked: <c>Authenticate</c> answers it as locked out, and
     /// <c>Refresh</c> and <c>RefreshToken</c> renew nothing for it. Identity's lockout by default
@@ -56,8 +60,16 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
     [AllowAnonymous]
     [HttpPost]
     [Route("", Name = RouteNames.Authenticate)]
+    [RequestSizeLimit(AccountInputLimits.RequestBody)]
     public virtual async Task<IActionResult> Authenticate([FromBody] AuthenticateInput model, [FromQuery] string clientApp)
     {
+        // checked before the user is looked up, so the answer says nothing about the account
+        if (!IsAllowedAudience(clientApp))
+        {
+            ModelState.AddModelError(nameof(clientApp), "The client application is not an audience of this API.");
+            return BadRequest(ModelState);
+        }
+
         bool? isLockedOut = null;
         DateTimeOffset? lockedOutEnd = null;
 
@@ -145,6 +157,7 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
     /// </summary>
     [AllowAnonymous]
     [HttpPost("refresh-token")]
+    [RequestSizeLimit(AccountInputLimits.RequestBody)]
     public virtual async Task<IActionResult> RefreshToken([FromBody] RefreshTokenInput model)
     {
         var refreshTokenService = RefreshTokenService;
@@ -184,7 +197,9 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
     [HttpGet("personal-data")]
     public virtual async Task<IActionResult> GetPersonalData()
     {
-        var user = await userManager.FindByIdAsync(User.FindUserId()!);
+        // a host without a global authorization requirement lets a request in that carries no user
+        var userId = User.Identity?.IsAuthenticated == true ? User.FindUserId() : null;
+        var user = string.IsNullOrEmpty(userId) ? null : await userManager.FindByIdAsync(userId);
         if (user == null)
         {
             return Unauthorized();

@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Regira.Security.Authentication.Jwt.Extensions;
+using Regira.Security.Authentication.Jwt.Models;
 using Regira.Security.Authentication.Web.Services;
 using Shouldly;
 using Web.Security.Testing.Infrastructure;
@@ -52,6 +54,52 @@ public class AccountSignInServiceTests : IClassFixture<TestingWebApplicationFact
         response.Token.ShouldNotBeNullOrWhiteSpace();
         claims.ShouldContain(x => x.Type == stampType);
         service.TokenClaims(claims).ShouldNotContain(x => x.Type == stampType);
+    }
+
+    // The audience a sign-in may name is one the registered JWT scheme accepts: the token helper writes whatever
+    // audience it is given, and applications that share a signing secret are told apart by nothing else.
+    [Fact]
+    public void IsAllowedAudience_FollowsTheConfiguredAudiences()
+    {
+        var none = WithJwtSchemes(_ => { });
+        var single = WithJwtSchemes(o => o.Audience = "spa");
+        var list = WithJwtSchemes(o =>
+        {
+            o.Audience = "ignored";
+            o.Audiences = ["spa", "mobile"];
+        });
+        var twoSchemes = WithJwtSchemes(o => o.Audience = "spa", o =>
+        {
+            o.AuthenticationScheme = "Admin";
+            o.Audience = "admin";
+        });
+
+        none.IsAllowedAudience("anything").ShouldBeTrue();
+        single.IsAllowedAudience("spa").ShouldBeTrue();
+        single.IsAllowedAudience("SPA").ShouldBeFalse();
+        single.IsAllowedAudience("admin").ShouldBeFalse();
+        single.IsAllowedAudience("").ShouldBeFalse();
+        single.IsAllowedAudience(null).ShouldBeTrue("the token then carries the configured audience");
+        list.IsAllowedAudience("mobile").ShouldBeTrue();
+        list.IsAllowedAudience("ignored").ShouldBeFalse("an Audiences list replaces the single Audience");
+        twoSchemes.IsAllowedAudience("spa").ShouldBeTrue();
+        twoSchemes.IsAllowedAudience("admin").ShouldBeTrue();
+        twoSchemes.IsAllowedAudience("mobile").ShouldBeFalse();
+    }
+
+    // The service over a host that registered these JWT schemes; the audience check reads nothing else.
+    private static AccountSignInService<TestUser> WithJwtSchemes(params Action<JwtTokenOptions>[] schemes)
+    {
+        var services = new ServiceCollection();
+        foreach (var configure in schemes)
+        {
+            services.AddJwtAuthentication(o =>
+            {
+                o.Secret = "sign-in-service-tests-secret-long-enough-for-the-hs512-default-0123";
+                configure(o);
+            });
+        }
+        return new AccountSignInService<TestUser>(null!, null!, services.BuildServiceProvider());
     }
 
     [Fact]

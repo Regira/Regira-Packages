@@ -168,10 +168,10 @@ registered scheme authenticates a given request. Claims differ per scheme — re
 
 | Property | Type | Default | Description |
 |---|---|---|---|
-| `Secret` | `string` | *(required)* | HMAC signing key — **length must fit the algorithm**: `HS256` ≥ 32 bytes, `HS384` ≥ 48, the `HS512` default ≥ 64. Enforced at registration |
+| `Secret` | `string` | *(required)* | HMAC signing key, ASCII characters only — **length must fit the algorithm**: `HS256` ≥ 32 bytes, `HS384` ≥ 48, the `HS512` default ≥ 64. Both enforced at registration |
 | `Algorithm` | `string?` | `null` | Signing algorithm as a JWA id; `HS512` when unset |
 | `ValidateSecretLength` | `bool` | `true` | Whether registration rejects a `Secret` too short for `Algorithm` |
-| `Authority` | `string?` | `null` | Token issuer: written into each token and checked on the way in. Optional — unset, no issuer is written or checked |
+| `Authority` | `string?` | `null` | Token issuer: written into each token and checked on the way in. Optional — unset, no issuer is written or checked, and the secret alone tells this application's tokens from another's (below) |
 | `Audience` | `string?` | `null` | Single audience |
 | `Audiences` | `ICollection<string>?` | `null` | Multiple audiences |
 | `LifeSpan` | `int` | `7200` | Token lifetime in seconds |
@@ -190,6 +190,19 @@ A missing or empty `Secret` throws `InvalidOperationException` from `AddJwtAuthe
 is not set: configure Authentication:Jwt:Secret (user-secrets in Development)."). In Development that means the
 user-secrets were not loaded: the project has no `UserSecretsId`, or the assembly was built before
 `dotnet user-secrets init` (rebuild; `dotnet run --no-build` keeps the old assembly).
+
+A `Secret` holding a character outside ASCII throws `InvalidOperationException` from `AddJwtAuthentication` as well,
+whatever `ValidateSecretLength` says. The signing key is the secret's ASCII bytes, where every other character becomes
+`?`: such a secret signs with less than it appears to hold, and one made only of such characters is a key anyone can
+guess from its length. Use an ASCII secret, such as the Base64 of 64 random bytes. `AddBearerAuthentication` holds its
+`Secret` to the same rule.
+
+**Give each application its own `Secret`.** No issuer is written or checked unless `Authority` is set, and no audience
+is checked unless `Audience` (or `Audiences`) is set, so with neither, a token that another application signed with the
+same secret is accepted here. Set `Authority` to any string of the application's own (a URL is customary; nothing is
+fetched from it) and `Audience` to the SPA's `clientApp`, and a token from another application is refused even where a
+secret is shared. Setting `Authority` on a running application refuses the tokens issued before it, which carry no
+issuer, so its users sign in again.
 
 ### `ITokenHelper` — `Regira.Security.Authentication.Jwt.Abstraction`
 
@@ -557,7 +570,7 @@ services.AddEntraIdBearer(configuration);
 | `AuthenticationScheme` | `string` | `"Bearer"` | |
 | `Authority` | `string?` | `null` | Issuer base URL; signing keys discovered and refreshed from it |
 | `MetadataAddress` | `string?` | `null` | Overrides the derived metadata URL |
-| `Secret` | `string?` | `null` | Shared symmetric key, for an issuer that signs with HMAC |
+| `Secret` | `string?` | `null` | Shared symmetric key, for an issuer that signs with HMAC. ASCII characters only, or registration throws |
 | `Audience` / `Audiences` | | `null` | `Audiences` wins when both are set |
 | `ValidIssuers` | `ICollection<string>?` | `null` | Null ⇒ the discovery document's issuer |
 | `RequireHttpsMetadata` | `bool` | `true` | |
@@ -916,11 +929,11 @@ Users in the same DB, no roles — the happy path (details in the sections below
 
 1. `AppUser : IdentityUser`; make the app `DbContext : IdentityDbContext<AppUser>` (users in the same DB).
 2. `services.AddIdentityCore<AppUser>().AddEntityFrameworkStores<AppDbContext>().AddSignInManager().AddDefaultTokenProviders();`
-3. `services.AddJwtAuthentication(o => configuration.GetSection(AuthenticationSections.Jwt).Bind(o));` — set `Authentication:Jwt:Secret` (**≥ 64 bytes for the HS512 default**, or startup throws — counted as ASCII, so a non-ASCII character is one byte, not the two or three UTF-8 would give it) and **`Authentication:Jwt:Audience` = the SPA's `clientApp`**. `Authentication:Jwt:Authority` is optional for these self-issued tokens: it is written into each token as its issuer and checked on the way in, and left unset, tokens carry no issuer and none is checked. Leave `Algorithm` unset (or `"HS512"`). Add `.AddRefreshTokens()` only for a client that calls `auth/refresh-token` (`@regira/modules` does not: it renews through `auth/refresh`), and `.AddSchemeSelector()` last if more than one scheme is registered.
+3. `services.AddJwtAuthentication(o => configuration.GetSection(AuthenticationSections.Jwt).Bind(o));` — set `Authentication:Jwt:Secret` (**≥ 64 ASCII characters for the HS512 default**, such as the Base64 of 64 random bytes: startup throws for a shorter one, and for a character outside ASCII) and **`Authentication:Jwt:Audience` = the SPA's `clientApp`**. `Authentication:Jwt:Authority` is optional for these self-issued tokens: it is written into each token as its issuer and checked on the way in, and left unset, tokens carry no issuer and none is checked. Give each application a secret of its own, and set `Authority` (any string of the application's own) so a token from another application is refused even where a secret is shared (*JWT Authentication* → `JwtTokenOptions`). Leave `Algorithm` unset (or `"HS512"`). Add `.AddRefreshTokens()` only for a client that calls `auth/refresh-token` (`@regira/modules` does not: it renews through `auth/refresh`), and `.AddSchemeSelector()` last if more than one scheme is registered.
 4. Register an `IEmailSender` — the interface is **`Microsoft.AspNetCore.Identity.UI.Services.IEmailSender`** (ASP.NET Core shared framework, no package to add; not a Regira type). Use Regira's `IdentityMailer`, which needs a registered Regira `IMailService` and an `IdentityMailerOptions` (`Regira.Office` → `office.mail.instructions` → *ASP.NET Identity Integration*), or, **in Development only**, a logger that prints the link: the body carries a live reset or confirmation token, so register it under `builder.Environment.IsDevelopment()` and give every other environment `IdentityMailer`. No `ISerializer` needed.
 5. List the SPA's origin for the mailed links: bind `AccountEmailOptions` from `Authentication:AccountEmails`, validated on start, with `AllowedOrigins: [ "https://app.example.com" ]` and the app's `SiteName` — the snippet is in *Mailed links: allowed origins* below. ⚠️ Without an origin, password recovery throws.
 6. Subclass the three base controllers with forwarding ctors (below).
-7. `app.UseAuthentication()` **before** `app.UseAuthorization()`; `MapControllers().RequireAuthorization()` — the bases carry no `[Authorize]`.
+7. `app.UseAuthentication()` **before** `app.UseAuthorization()`; `MapControllers().RequireAuthorization()` — the bases carry no `[Authorize]`, and without it `POST users` creates an account for any caller.
 8. Seed the first user via `UserManager<AppUser>`, with its password from user-secrets (`Seeding:AdminPassword`), never from an `appsettings*.json` file, and never seed a known password outside Development.
 9. **Front-end:** install `authPlugin` after router + axios and pass `clientApp: "<your audience>"` — the SPA's `login()` appends it as `?clientApp=`, so it must equal the API's `Jwt:Audience`. Leave `loginUrl` unset unless the login endpoint isn't `auth`.
 10. **Dev cross-origin:** either proxy the SPA's `/api` through Vite (no CORS needed) or point the SPA straight at the API origin and add a CORS policy allowing that origin. The full recipe (proxy config, URL alignment, HTTPS-redirect trap) is in the front-end guide: `regira_modules.vue.entities` → `entities.setup` → *Calling the API in dev* / *The URL contract*.
@@ -1039,7 +1052,9 @@ public class UsersController(UserManager<AppUser> userManager)
 **Required services:** `AddIdentityCore<TUser>().AddEntityFrameworkStores<…>().AddDefaultTokenProviders()` (`AddDefaultTokenProviders` is mandatory — recover/confirm generate Identity tokens); `AddJwtAuthentication(…)` for `ITokenHelper`; an `IEmailSender` (Regira's `IdentityMailer`); `AccountEmailOptions` listing the origins the mailed links may point at (*Mailed links: allowed origins* below). Token payloads use `System.Text.Json` internally — no serializer registration needed.
 
 **A second credential** (a PIN, a one-time code) goes in your `AccountControllerBase<TUser>` subclass, so it shares
-the `auth` route and the response the SPA reads. Check `await IsBlocked(user)` first, verify the
+the `auth` route and the response the SPA reads. An action that takes `clientApp` checks `IsAllowedAudience(clientApp)`
+before it looks the user up and answers `400` when it is `false`, as `POST auth` does: `CreateSuccessResponse` writes
+the audience it is given into the token. Then check `await IsBlocked(user)`, verify the
 credential, and count a failure with `await OnPasswordRejected(user)`, the step the password uses, so a lockout policy
 of the controller's own covers the credential too. Make sure the failure is counted, since an uncounted one lets
 parallel guesses through: the default step, `userManager.AccessFailedAsync(user)`, discards its `IdentityResult`, so
@@ -1053,7 +1068,8 @@ three-argument overload, which also issues a refresh token when they are on); on
 
 **A minimal-API host** maps its own sign-in endpoints (there is no endpoint mapper) and reuses what the controller
 decides through `AccountSignInService<TUser>` (`Regira.Security.Authentication.Web.Services`), the class
-`AccountControllerBase` delegates to: `CanSignIn(user)` after the password check, `CreateSuccessResponse(claims,
+`AccountControllerBase` delegates to: `IsAllowedAudience(clientApp)` before the user is looked up (answer `400` when it
+is `false`), `CanSignIn(user)` after the password check, `CreateSuccessResponse(claims,
 clientApp, user.Id)` for the token (with a refresh token when they are on), `TokenClaims(claims)` and the static
 `CreateFailedResponse(isLockedOut, lockedOutEnd)`. Register it with `services.AddScoped<AccountSignInService<AppUser>>()`;
 the lockout checks and `AccessFailedAsync` stay in your endpoint, as in `POST auth`.
@@ -1080,7 +1096,7 @@ Check the page before looking the user up, so the answer reveals no account.
 
 ### Authorization: guarded by default
 
-**Rule: every endpoint requires an authenticated user unless it declares `[AllowAnonymous]`.** The controllers carry no per-action `[Authorize]` — the host MUST apply a global requirement when mapping them, or the non-anonymous endpoints are silently public:
+**Rule: every endpoint requires an authenticated user unless it declares `[AllowAnonymous]`.** The controllers carry no `[Authorize]` — the host MUST apply a global requirement when mapping them:
 
 ```csharp
 app.UseEndpoints(endpoints =>
@@ -1091,6 +1107,12 @@ app.UseEndpoints(endpoints =>
 
 `[AllowAnonymous]` endpoints (the only public ones): `POST auth`, `POST auth/refresh-token`,
 `POST auth/password/recover`, `POST auth/password/reset`, `POST users/confirm-email`.
+
+⚠️ **Without the global requirement `POST users` creates an account for any caller**, and so does every action an
+app adds to a subclass without an attribute of its own. The routes that act on the signed-in user (`auth/validate`,
+`auth/refresh`, `auth/personal-data`, `POST auth/password`) answer `401` themselves for a request without one. The
+bases stay without `[Authorize]` on purpose: the attribute would take these routes out of an app's fallback policy and
+put them under its default policy, which is the weaker one where the fallback is stricter.
 
 `auth/refresh-token` is public only when refresh tokens are registered — otherwise it answers `404` — and it is the
 one that most needs rate-limiting, since the refresh token it accepts is itself the credential.
@@ -1181,9 +1203,9 @@ for `POST auth`.
 ```csharp
 public record SignUpInput
 {
-    [Required] public string Username { get; set; } = null!;
-    [Required] public string Password { get; set; } = null!;
-    public string? ConfirmEmailUrl { get; set; }
+    [Required, MaxLength(256)] public string Username { get; set; } = null!;
+    [Required, MaxLength(1024)] public string Password { get; set; } = null!;
+    [MaxLength(2048)] public string? ConfirmEmailUrl { get; set; }
     [Required, MaxLength(100)] public string DisplayName { get; set; } = null!;
 }
 
@@ -1237,14 +1259,20 @@ user's `EmailConfirmed` is `true` (it answers `200` for an unknown user too), or
 
 | Endpoint | Anon | Request | Success | Failure |
 |---|:---:|---|---|---|
-| `POST auth?clientApp=…` | ✅ | `{ username, password }` | `200 { isAuthenticated, token }` — plus `refreshToken`, `expiresAt` when refresh tokens are registered | `401 { isLockedOut, lockedOutEnd }`; `401 { isNotAllowed: true }` for an unconfirmed address or account (below) |
+| `POST auth?clientApp=…` | ✅ | `{ username, password }` | `200 { isAuthenticated, token }` — plus `refreshToken`, `expiresAt` when refresh tokens are registered | `400` for a `clientApp` the API does not accept; `401 { isLockedOut, lockedOutEnd }`; `401 { isNotAllowed: true }` for an unconfirmed address or account (below) |
 | `POST auth/validate` |  | *(bearer)* | `204` | `401` / `403` (user gone) |
 | `POST auth/refresh` |  | *(bearer, **still valid**)* | `200 { isAuthenticated, token }` — plus `refreshToken`, `expiresAt` when refresh tokens are registered: a new rotation chain | `401`, also for a locked-out account or one the sign-in options refuse |
 | `POST auth/refresh-token` | ✅ | `{ refreshToken }` | `200 { isAuthenticated, token, refreshToken, expiresAt }` | `401`, also for a locked-out account or one the sign-in options refuse; `404` when refresh tokens are not registered |
 | `GET auth/personal-data` |  | *(bearer)* | `200 { given_name, family_name }` | `401` |
 
-`clientApp` = token audience — **set the API's `Jwt:Audience` (or `Audiences`) equal to the SPA's `clientApp`**,
-or every authenticated call 401s with `audience invalid`. Success resets the failed-access count; failure
+`clientApp` = token audience — **set the API's `Jwt:Audience` (or `Audiences`) equal to the SPA's `clientApp`**.
+Sign-in answers `400`, a field error on `clientApp` as the body, for a value that is not one of the configured
+audiences: compared case-sensitively and before the user is looked up, so the answer says nothing about the account,
+and applications that share a signing secret cannot have this one mint a token for another. With no audience
+configured, any `clientApp` is written into the token and none is checked. A token issued for an audience the API no
+longer accepts (before `Audience` was set or changed) 401s on every call with `audience invalid`. Only sign-in checks
+it: `ITokenHelper.Create(claims, audience)` writes the audience it is given, for code that mints a token for another
+audience on purpose. Success resets the failed-access count; failure
 increments it (Identity lockout). Both lockout steps are protected virtuals of the controller: `IsBlocked(user)`
 (default `userManager.IsLockedOutAsync`) refuses an account before its password is checked, in `POST auth`,
 `auth/refresh` and `auth/refresh-token`, and `OnPasswordRejected(user)` (default `userManager.AccessFailedAsync`) runs
@@ -1267,14 +1295,35 @@ set (Identity's default confirmation checks the address). A user you seed, or cr
 
 | Endpoint | Anon | Request | Success | Failure |
 |---|:---:|---|---|---|
-| `POST auth/password` |  | `{ currentPassword, newPassword }` | `200`; the user's refresh tokens are revoked | `400` / `404` |
+| `POST auth/password` |  | `{ currentPassword, newPassword }` | `200`; the user's refresh tokens are revoked | `400` identity errors, or `UserLockedOut` for a locked-out account; `401` without a signed-in user; `404` (user gone) |
 | `POST auth/password/recover` | ✅ | `{ username, siteUrl }` | `200`, whether or not the user exists | `400` `siteUrl` not on an allowed origin |
 | `POST auth/password/reset` | ✅ | `{ token, password }` | `200`; the user's refresh tokens are revoked | `400` malformed token / identity errors |
+
+`POST auth/password` guards the current password as `POST auth` guards a sign-in. A wrong one answers `400` with
+Identity's `PasswordMismatch` and counts toward Identity's lockout; a locked-out account is refused before its password
+is checked, with a `400` whose one error is keyed `UserLockedOut` (not a `401`, which a client reads as the end of its
+session); a change that succeeds resets the count. A new password Identity refuses is no guess and counts for nothing.
+The controller has the two protected virtuals of the account controller, `IsBlocked(user)` (default
+`userManager.IsLockedOutAsync`) and `OnPasswordRejected(user)` (default `userManager.AccessFailedAsync`), so an app with
+a lockout policy of its own overrides them in both subclasses.
+
+**A password change or reset ends the user's refresh tokens, not the access tokens.** Both revoke every refresh token
+of the user, so nothing renews through `auth/refresh-token` after it. An access token issued before the change stays
+valid until it expires (`JwtTokenOptions.LifeSpan`, 2 hours by default), and `auth/refresh` renews a still-valid token
+for as long as its holder keeps calling it: a stolen access token outlives the change. Keep `LifeSpan` short and
+register refresh tokens, so a client renews through the token a change revokes and a stolen access token has minutes
+to be used or renewed. To end every session at the change itself, the app adds a claim of its own that holds a
+fingerprint of Identity's security stamp (*A claim of your own in the token*) and compares it with the user's current
+stamp in the JWT bearer scheme's `OnTokenValidated` event, behind a short cache: a new password changes the stamp, so
+every token issued before it fails, that of the user who changed it included, who signs in again. The claim holds a
+hash, never the stamp itself, which `TokenClaims` strips: a token is readable by whoever holds it, and the stamp is
+the secret the email and phone token providers derive their codes from.
 
 `recover` answers an unknown user alike; for a known one it emails a link — `siteUrl`, the reset **page**, with its query string set to `?token=<Base64 of the reset token and user name>` (a query `siteUrl` carried is dropped) — the Base64 of the UTF-8 JSON of a `UserTokenModel` (`{"Token":"…","Username":"…"}`, `System.Text.Json` defaults, so PascalCase keys; `reset` reads them case-sensitively), percent-encoded so any query parser (`URLSearchParams`, vue-router's `route.query`) reads it back intact. `reset` returns `400` on a malformed token. The body is plain English text, though `IEmailSender` calls it `htmlMessage`: `Follow link below to reset password`, the link, a blank line, `Token: <token>`. `POST users` sends `Welcome <username>,`, `Please follow link below to confirm email`, the link and the token, subject `Welcome`. By default `IdentityMailer` passes the body on unchanged as an HTML message (`MessageObject.IsHtml` defaults to `true`): it encodes nothing, and the line breaks collapse. The only user value in it is the welcome mail's user name, which Identity's default `UserOptions.AllowedUserNameCharacters` keeps free of `<`, `>`, `&` and `"`. Set `IdentityMailerOptions.FormatPlainText = true` to send the body as the plain text it is: `IdentityMailer` then HTML-encodes it, links the URL and keeps the line breaks, so a user name with wider characters writes no markup (`Regira.Office` → `office.mail.instructions` → *ASP.NET Identity Integration*).
 
 `recover` is anonymous and mails the named account on every call, so a caller can flood that inbox and spend the app's mail quota: rate-limit it like `refresh-token`. Limit by client, not by account, so a `429` reveals no more than the `200` does. The
-response time still tells a name exists, as `auth`'s does: a known user waits on the reset token and the mail send.
+response time still tells a name exists, as `auth`'s does: a known user waits on the reset token and the mail send, so
+it answers more slowly unless the app's `IEmailSender` queues the mail.
 
 #### Rate-limiting the anonymous actions
 
@@ -1349,7 +1398,14 @@ signed-in `POST users` from a user without the role answers `403`.
 
 If the confirmation mail fails, `POST users` answers `500` with the user already created, and a repeat answers `400` (`DuplicateUserName`) without mailing. To resend, the app adds an endpoint of its own that mails a fresh link for the existing user (`UserManager.GenerateEmailConfirmationTokenAsync`), checking the page against `AllowedOrigins` with `AccountLinks.FindAllowedPage`, as the base action does.
 
-A `400` comes in one of three bodies: an input that fails model validation gets ASP.NET Core's `ValidationProblemDetails` (errors under `errors`); identity errors and a page on another origin get the field errors as the body itself, an identity error keyed by its code (`{ "PasswordTooShort": ["..."] }`); a malformed token gets a `ProblemDetails` without field errors. A client reads `errors` when present, else the body.
+A `400` comes in one of three bodies: an input that fails model validation gets ASP.NET Core's `ValidationProblemDetails` (errors under `errors`); identity errors, a page on another origin and a `clientApp` the API does not accept get the field errors as the body itself, an identity error keyed by its code (`{ "PasswordTooShort": ["..."] }`), as a locked-out account's `UserLockedOut` is; a malformed token gets a `ProblemDetails` without field errors. A client reads `errors` when present, else the body.
+
+**Input limits.** Every string the three controllers read has a maximum length, and a longer one answers `400` from
+model validation, before the action runs: 256 characters for a user name, 1024 for a password, 2048 for `siteUrl` and
+`confirmEmailUrl`, 4096 for a token. A request body over 16 KB answers `413` before it is read: each base action that
+takes a body carries `[RequestSizeLimit(16 * 1024)]`, which an override inherits and can replace with an attribute of
+its own, and which the server applies (Kestrel, IIS, HTTP.sys; `TestServer` applies none). An action of the app's own,
+such as a sign-up with profile fields, sets its own limits.
 
 ### Mailed links: allowed origins
 

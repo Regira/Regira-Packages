@@ -55,7 +55,7 @@ app.UseEndpoints(endpoints =>
 });
 ```
 
-Without this global requirement the non-anonymous endpoints (change-password, user creation, refresh, personal-data) would be exposed. The endpoints that opt out with `[AllowAnonymous]` are:
+Without this global requirement `POST users` creates an account for any caller, and so does every action a subclass adds without an attribute of its own. The routes that act on the signed-in user (`auth/validate`, `auth/refresh`, `auth/personal-data`, `POST auth/password`) answer `401` themselves for a request without one. The base classes stay without `[Authorize]` on purpose: the attribute would take these routes out of an application's fallback policy and put them under its default policy, which is the weaker one where the fallback is stricter. The endpoints that opt out with `[AllowAnonymous]` are:
 
 | Endpoint | Why anonymous |
 |----------|---------------|
@@ -69,7 +69,7 @@ Without this global requirement the non-anonymous endpoints (change-password, us
 
 | Endpoint | Anon | Request body | Success | Failure |
 |----------|:----:|--------------|---------|---------|
-| `POST auth?clientApp=…` | ✅ | `{ username, password }` | `200` `{ isAuthenticated: true, token }`, plus `refreshToken` and `expiresAt` when refresh tokens are registered | `401` `{ isLockedOut, lockedOutEnd }`; `401` `{ isNotAllowed: true }` for an unconfirmed address or account (below) |
+| `POST auth?clientApp=…` | ✅ | `{ username, password }` | `200` `{ isAuthenticated: true, token }`, plus `refreshToken` and `expiresAt` when refresh tokens are registered | `400` for a `clientApp` the API does not accept; `401` `{ isLockedOut, lockedOutEnd }`; `401` `{ isNotAllowed: true }` for an unconfirmed address or account (below) |
 | `POST auth/validate` | | *(bearer)* | `204` | `401`, or `403` if the token is valid but the user is gone |
 | `POST auth/refresh` | | *(bearer, **still valid**)* | `200` `{ isAuthenticated: true, token }`, plus `refreshToken` and `expiresAt` (a new rotation chain) when refresh tokens are registered | `401`, also for a locked-out account or one the sign-in options refuse |
 | `POST auth/refresh-token` | ✅ | `{ refreshToken }` | `200` `{ isAuthenticated: true, token, refreshToken, expiresAt }` | `401`, also for a locked-out account or one the sign-in options refuse; `404` when refresh tokens are not registered |
@@ -78,7 +78,9 @@ Without this global requirement the non-anonymous endpoints (change-password, us
 `auth/refresh` needs a **still-valid** bearer token, so it cannot renew an expired one — use `auth/refresh-token` for
 that. See *Refresh Tokens* above.
 
-`clientApp` becomes the token audience. A successful authenticate resets the user's failed-access count; a failed one increments it and can trigger Identity lockout. Both steps are protected virtuals a subclass overrides for a policy of its own, such as slowing sign-ins down instead of locking the account: `IsBlocked(user)` (default `UserManager.IsLockedOutAsync`) refuses an account before its password is checked, in `auth`, `auth/refresh` and `auth/refresh-token`, and `OnPasswordRejected(user)` (default `UserManager.AccessFailedAsync`) runs on a wrong password. A blocked account's `401` still carries Identity's `lockedOutEnd`, and a successful sign-in resets Identity's failed count only.
+`clientApp` becomes the token audience. When the JWT scheme configures `Audience` or `Audiences`, it must be one of them: any other value answers `400` with a field error on `clientApp`, compared case-sensitively and before the user is looked up, so the answer says nothing about the account and applications that share a signing secret cannot have this one mint a token for another. With no audience configured, any value is written into the token and none is checked. A token issued for an audience the API no longer accepts answers `401` (`audience invalid`) on every call. `ITokenHelper.Create(claims, audience)` writes the audience it is given, for code that mints a token for another audience on purpose.
+
+A successful authenticate resets the user's failed-access count; a failed one increments it and can trigger Identity lockout. Both steps are protected virtuals a subclass overrides for a policy of its own, such as slowing sign-ins down instead of locking the account: `IsBlocked(user)` (default `UserManager.IsLockedOutAsync`) refuses an account before its password is checked, in `auth`, `auth/refresh` and `auth/refresh-token`, and `OnPasswordRejected(user)` (default `UserManager.AccessFailedAsync`) runs on a wrong password. A blocked account's `401` still carries Identity's `lockedOutEnd`, and a successful sign-in resets Identity's failed count only.
 
 An account the sign-in options refuse answers `401` `{ isNotAllowed: true }` once its password checks: an address not confirmed under `SignIn.RequireConfirmedEmail`, a phone number under `RequireConfirmedPhoneNumber`, or an account the registered `IUserConfirmation<TUser>` does not confirm under `RequireConfirmedAccount`, which the Identity templates set (Identity's default confirmation checks the address). A user you seed, or create through `POST users` without `confirmEmailUrl`, then needs `EmailConfirmed = true`, and `PhoneNumberConfirmed = true` under `RequireConfirmedPhoneNumber`, or it can never sign in.
 
@@ -86,11 +88,15 @@ An account the sign-in options refuse answers `401` `{ isNotAllowed: true }` onc
 
 | Endpoint | Anon | Request body | Success | Failure |
 |----------|:----:|--------------|---------|---------|
-| `POST auth/password` | | `{ currentPassword, newPassword }` | `200`; the user's refresh tokens are revoked | `400` identity errors / `404` |
+| `POST auth/password` | | `{ currentPassword, newPassword }` | `200`; the user's refresh tokens are revoked | `400` identity errors, or `UserLockedOut` for a locked-out account; `401` without a signed-in user; `404` when the user is gone |
 | `POST auth/password/recover` | ✅ | `{ username, siteUrl }` | `200`, whether or not the user exists | `400` when `siteUrl` is not on an allowed origin |
 | `POST auth/password/reset` | ✅ | `{ token, password }` | `200`; the user's refresh tokens are revoked | `400` malformed token or identity errors |
 
-`recover` answers the same for an unknown user, though a known one answers later: it waits on the reset token and the mail send, so rate-limit `recover` by client. A known user is emailed a link: `siteUrl`, the reset page, with its query string set to `?token=…`, percent-encoded so any query parser (`URLSearchParams`, vue-router's `route.query`) reads it back intact; a query `siteUrl` carried is dropped. The token is a Base64 payload of the Identity reset token plus the username. `reset` decodes that payload and returns `400` when it is malformed.
+`POST auth/password` guards the current password as `POST auth` guards a sign-in. A wrong one answers `400` with Identity's `PasswordMismatch` and counts toward Identity's lockout. A locked-out account is refused before its password is checked, with a `400` whose one error is keyed `UserLockedOut` rather than a `401`, which a client reads as the end of its session. A change that succeeds resets the count, and a new password Identity refuses counts for nothing. The controller has the two protected virtuals of the account controller, `IsBlocked(user)` and `OnPasswordRejected(user)`, so an application with a lockout policy of its own overrides them in both subclasses.
+
+A password change or reset ends the user's refresh tokens, not the access tokens. Both revoke every refresh token of the user, so nothing renews through `auth/refresh-token` after it. An access token issued before the change stays valid until it expires (`JwtTokenOptions.LifeSpan`, 2 hours by default), and `auth/refresh` renews a still-valid token for as long as its holder keeps calling it, so a stolen access token outlives the change. Keep `LifeSpan` short and register refresh tokens: a client then renews through the token a change revokes, and a stolen access token has minutes to be used or renewed. To end every session at the change itself, the application adds a claim of its own holding a fingerprint of Identity's security stamp and compares it with the user's current stamp in the JWT bearer scheme's `OnTokenValidated` event, behind a short cache. A new password changes the stamp, so every token issued before it fails, that of the user who changed it included, who signs in again. The claim holds a hash, never the stamp itself: a token is readable by whoever holds it, and the stamp is the secret Identity's email and phone token providers derive their codes from, which is why the controllers leave it out of every token.
+
+`recover` answers the same for an unknown user, though a known one answers later: it waits on the reset token and the mail send, unless the application's `IEmailSender` queues the mail. Rate-limit `recover` by client. A known user is emailed a link: `siteUrl`, the reset page, with its query string set to `?token=…`, percent-encoded so any query parser (`URLSearchParams`, vue-router's `route.query`) reads it back intact; a query `siteUrl` carried is dropped. The token is a Base64 payload of the Identity reset token plus the username. `reset` decodes that payload and returns `400` when it is malformed.
 
 ### `UserControllerBase<TUser>` — route `users`
 
@@ -105,7 +111,21 @@ An account the sign-in options refuse answers `401` `{ isNotAllowed: true }` onc
 
 If the confirmation mail fails, `POST users` answers `500` with the user already created, and a repeat answers `400` (`DuplicateUserName`) without mailing. To resend, the app adds an endpoint of its own that mails a fresh link for the existing user (`UserManager.GenerateEmailConfirmationTokenAsync`), checking the page against `AllowedOrigins` with `AccountLinks.FindAllowedPage`, as the base action does.
 
-A `400` comes in one of three bodies: an input that fails model validation gets ASP.NET Core's `ValidationProblemDetails` (errors under `errors`); identity errors and a page on another origin get the field errors as the body itself, an identity error keyed by its code (`{ "PasswordTooShort": ["..."] }`); a malformed token gets a `ProblemDetails` without field errors. A client reads `errors` when present, else the body.
+A `400` comes in one of three bodies: an input that fails model validation gets ASP.NET Core's `ValidationProblemDetails` (errors under `errors`); identity errors, a page on another origin and a `clientApp` the API does not accept get the field errors as the body itself, an identity error keyed by its code (`{ "PasswordTooShort": ["..."] }`), as a locked-out account's `UserLockedOut` is; a malformed token gets a `ProblemDetails` without field errors. A client reads `errors` when present, else the body.
+
+### Input limits
+
+Several of these endpoints are anonymous, so what they read is bounded before anything is done with it.
+
+| Input | Limit | Over it |
+|-------|-------|---------|
+| `username`, `userName` | 256 characters | `400` from model validation |
+| `password`, `currentPassword`, `newPassword` | 1024 characters | `400` from model validation |
+| `siteUrl`, `confirmEmailUrl` | 2048 characters | `400` from model validation |
+| `token`, `refreshToken` | 4096 characters | `400` from model validation |
+| request body | 16 KB | `413`, before the body is read |
+
+The body limit is a `[RequestSizeLimit(16 * 1024)]` on each base action that takes a body, so an action a subclass adds keeps the server's own limit. An override inherits the attribute and can replace it with one of its own. The server applies it (Kestrel, IIS, HTTP.sys); `TestServer` applies none.
 
 ### Mailed links: allowed origins
 
@@ -178,10 +198,12 @@ used, and a guarded operation for which no scheme resolves is logged as a warnin
 
 ### Security notes
 
-- **Apply the global auth requirement** when mapping the controllers (above) — they do not self-guard with per-action `[Authorize]`, so without it the non-anonymous endpoints are exposed.
+- **Apply the global auth requirement** when mapping the controllers (above) — they carry no `[Authorize]`, so without it `POST users` creates an account for any caller.
+- **Give each application its own signing secret**, and set `Authority` and `Audience`: sign-in refuses a `clientApp` that is not a configured audience, and a token from another application is refused even where a secret is shared — see [JWT Authentication](jwt.md#jwttokenoptions).
+- **A password change does not end issued access tokens** — keep `LifeSpan` short with refresh tokens registered (above).
 - The authenticate failure response reads the same for an unknown user name as for a wrong password (`isLockedOut: false`). Two things still tell a name exists, trade-offs to weigh against username enumeration: a locked-out account answers `isLockedOut: true`, and an unknown name skips the password hash, so it answers faster. Rate-limit `auth` by client.
 - **List only your own front-end origins** in `AccountEmailOptions.AllowedOrigins`: a mailed link hands its token to the page it opens.
-- **Rate-limit the anonymous endpoints that cost something:** `auth/refresh-token` (its token is the credential) and `auth/password/recover` (it mails the named account on every call). Limit by client, not by account, so a `429` reveals no more than the `200` does.
+- **Rate-limit the anonymous endpoints that cost something:** `auth/refresh-token` (its token is the credential) and `auth/password/recover` (it mails the named account on every call, and answers a known name more slowly unless the `IEmailSender` queues the mail). Limit by client, not by account, so a `429` reveals no more than the `200` does.
 - Recover / confirm tokens travel in the email body and in the `siteUrl` / `confirmEmailUrl` query string; query strings can surface in server logs, browser history and referrers, so prefer short token lifetimes.
 
 ---

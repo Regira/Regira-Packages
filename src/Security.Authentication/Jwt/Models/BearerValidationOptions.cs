@@ -27,7 +27,8 @@ public class BearerValidationOptions
 
     /// <summary>
     /// A shared symmetric key, for an issuer that signs with HMAC instead of publishing a JWKS. Mutually
-    /// exclusive with <see cref="Authority"/> / <see cref="MetadataAddress"/>.
+    /// exclusive with <see cref="Authority"/> / <see cref="MetadataAddress"/>. ASCII characters only: the key is the
+    /// secret's ASCII bytes, and registration refuses a secret holding any other character.
     /// </summary>
     public string? Secret { get; set; }
 

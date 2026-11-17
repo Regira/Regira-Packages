@@ -38,7 +38,7 @@ services.AddEntraIdBearer(o =>
 | `AuthenticationScheme` | `string` | `"Bearer"` | |
 | `Authority` | `string?` | `null` | Issuer base URL; signing keys discovered and refreshed from it |
 | `MetadataAddress` | `string?` | `null` | Overrides the derived metadata URL |
-| `Secret` | `string?` | `null` | Shared symmetric key, for an HMAC-signing issuer |
+| `Secret` | `string?` | `null` | Shared symmetric key, for an HMAC-signing issuer. ASCII characters only, or registration throws |
 | `Audience` / `Audiences` | | `null` | `Audiences` wins when both are set |
 | `ValidIssuers` | `ICollection<string>?` | `null` | Null ⇒ the discovery document's issuer |
 | `RequireHttpsMetadata` | `bool` | `true` | |

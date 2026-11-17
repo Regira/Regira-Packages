@@ -5,6 +5,11 @@ namespace Regira.Security.Authentication.Jwt.Models;
 
 public class JwtTokenOptions
 {
+    /// <summary>
+    /// The HMAC signing key, long enough for <see cref="Algorithm"/> (see <see cref="ValidateSecretLength"/>). ASCII
+    /// characters only: the key is the secret's ASCII bytes, and registration refuses a secret holding any other
+    /// character.
+    /// </summary>
     public string Secret { get; set; } = null!;
     public string? Algorithm { get; set; }
 
