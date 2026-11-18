@@ -69,7 +69,7 @@ public IActionResult StartReport([FromServices] IBackgroundTaskQueue queue)
 public async Task<IActionResult> Download(int id)
 {
     var pdf = await _invoiceService.GetPdf(id);
-    return this.File(pdf, inline: false);   // ControllerExtensions
+    return this.File(pdf.ToBinaryFile($"invoice-{id}.pdf"), inline: false);   // an Office IMemoryFile gets its name from ToBinaryFile (Regira.IO.Extensions)
 }
 ```
 

@@ -1894,7 +1894,9 @@ DbContext options; without `UseDefaults()`, select `e.WireDbContext(DbContextWir
 
 > **`FileName` carries the client's virtual folders; storage never does.** `FileName` is the client's own
 > value and may be a path (`folder1/folder2/report.pdf`) — that is how attachments are organised. The
-> identifier is generated independently (`{Owner}/Attachments/{ObjectId}/{slug}-{guid}{ext}`; a file sent inline
+> identifier is generated independently (`{Owner}/Attachments/{ObjectId}/{slug}-{guid}{ext}`, where `{Owner}` is the
+> link class's name without `Attachment`: `ProductAttachment` → `Product/`; list an owner's files with
+> `GET {objectId}/attachments`, not the folder; a file sent inline
 > with an owner that is still being created lands under `0`, the id it had then, and the guid keeps it apart), so **re-filing
 > is just writing a different `FileName`**: the download URL changes, the bytes never move. Downloads use a
 > catch-all (`{objectId}/files/{*fileName}`) so a multi-segment name resolves. Empty and relative segments

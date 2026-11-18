@@ -6,6 +6,12 @@ adds one bullet under **Unreleased** in the same change (format: `` `PackageId` 
 and leaves that package's `<Version>` higher than its last published version. At publish time the
 Unreleased block becomes a dated release heading.
 
+## Unreleased
+
+- `Regira.Web` 6.6.4 — the *Return a file from a controller* example turns the Office service's `IMemoryFile` into a named file with `ToBinaryFile(name)`, which `this.File(...)` takes; it passed the `IMemoryFile` as it was, which does not compile.
+- `Regira.Entities` 6.6.4 — the attachment guide defines `{Owner}` in a stored file's identifier: the link class's name without `Attachment` (`ProductAttachment` → `Product/`), not the owner's, and lists an owner's files through `GET {objectId}/attachments` rather than the folder. The attachment route list says `{id}` in `GET files/{id}` is the link id. *Transform uploaded files* also answers to *profile*, *avatar* and *picture*.
+- `Regira.Office` 6.6.4 — the Word quick lookup names `IWordCreator`, `IWordConverter` and `FileFormat` (`Regira.Office.Models`), which `Convert(input, FileFormat.Pdf)` needs.
+
 ## 6.6.3 — 2026-11-18
 
 - All packages — version aligned at 6.6.3 for a whole-family publish. Thirteen have a change of their own, in code or guides, in a bullet below. No package moves an upstream dependency, no package is new, and nothing is published outside the aligned number. The other seventy-four are republished unchanged so the family shares one version.
