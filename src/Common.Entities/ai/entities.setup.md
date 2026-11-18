@@ -289,7 +289,7 @@ Regira.Entities.Validation.FluentValidation ← optional — AbstractValidator r
 
 | Package | Version |
 |---|---|
-| `Regira.Entities.*` | major **6**; resolve the patch at add time. Keep the `Regira.*` packages you reference **directly** on the same version, or restore reports NU1605 |
+| `Regira.Entities.*` | major **6**; resolve the patch at add time. Take the version `dotnet add package` resolves for each `Regira.*` package: a release ships only the packages it changes, so `Regira.Entities.Web` and `Regira.Entities.Mapping.Mapster` may differ by patch. Never pin one below what another `Regira.*` package requires, or restore reports NU1605 |
 | `Microsoft.OpenApi` | **no direct reference** — it arrives through `Microsoft.AspNetCore.OpenApi`, whose range is the compatible one by definition — from **10.0.11** on it is past the 2.x advisory (10.0.12 → `[2.12.0, 3.0.0)`); 10.0.10 and earlier pull the vulnerable 2.0.0, one more reason that package is added first (below). It must stay on **2.x**: 3.x breaks the .NET 10 OpenAPI source generator, and `dotnet add package Microsoft.OpenApi` resolves 3.x with at most an NU1608 warning. Overriding it anyway? Pin by hand the version restore already resolves (`dotnet list package --include-transitive`) — anything lower fails restore with NU1605 |
 | `SQLitePCLRaw.bundle_e_sqlite3` | **no direct reference** on EF Core Sqlite **10.0.11** or later, which brings 2.1.12, past GHSA-2m69-gcr7-jv3q; on net8 or 10.0.10 and earlier pin **2.1.12** (the advisory note above) |
 | `System.Security.Cryptography.Pkcs` | **10.0.13** for an app on `Microsoft.EntityFrameworkCore.SqlServer` 10.0.x: the provider's `Microsoft.Data.SqlClient` 6.1.7 brings 9.0.11 (GHSA-846f-f764-76mx, NU1903). **No direct reference** beside `Regira.DAL.SqlServer` or `Regira.Office.Mail.MailKit`, which bring 10.0.13 |
@@ -303,9 +303,9 @@ Regira.Entities.Validation.FluentValidation ← optional — AbstractValidator r
 ```bash
 dotnet add package Microsoft.AspNetCore.OpenApi --version "10.*"   # first — lifts the template's pin, so adding auth later can't downgrade (see below)
 dotnet add package Regira.Entities.Web            # resolves the newest stable as a concrete pin; check it's a 6.x
-dotnet add package Regira.Entities.Mapping.Mapster    # same version as the row above
+dotnet add package Regira.Entities.Mapping.Mapster    # its own newest 6.x; the patch may differ from the row above
 dotnet add package Microsoft.EntityFrameworkCore.Sqlite --version "10.*"   # the TFM's major; unversioned it takes 11.x → NU1202
-dotnet add package Scalar.AspNetCore
+dotnet add package Scalar.AspNetCore --version "2.*"   # the table's major; unversioned it takes 3.x
 dotnet add package Serilog.AspNetCore
 dotnet add package Serilog.Settings.Configuration
 ```

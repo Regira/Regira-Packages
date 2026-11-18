@@ -225,7 +225,7 @@ if (app.Environment.IsDevelopment())
 **Nuget packages — Web API**
 ```bash
 dotnet add package Microsoft.AspNetCore.OpenApi --version "10.*"   # the TFM's major
-dotnet add package Scalar.AspNetCore
+dotnet add package Scalar.AspNetCore --version "2.*"   # the known-good major; unversioned it takes 3.x
 ```
 
 > **⚠️ On the native `Microsoft.AspNetCore.OpenApi`/Scalar path, `Microsoft.OpenApi` must stay on 2.x** _(while on .NET 10 — remove once the OpenAPI source generator supports 3.x)_. (A `Regira.Web.Swagger` setup stays on 2.x too: it and `Regira.Security.Authentication.Web` reference `Microsoft.OpenApi` 2.13.0.)

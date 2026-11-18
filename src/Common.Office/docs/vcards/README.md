@@ -61,6 +61,6 @@ V2_1   V3_0 (default)   V4_0
 
 ## Notes
 
-- The `VCard` type is `Regira.Office.VCards.Models.VCard`, a backend-agnostic model with properties such as `Name` (`VCardName`), `FormattedName`, `Emails` (`ICollection<VCardEmail>`), `Tels` (`ICollection<VCardTel>`), `Organization`, `Photo`, `Addresses`, `BirthDay`, `Gender`, and `Homepage`. `VCardManager` converts to and from the FolkerKinzel representation internally.
+- The `VCard` type is `Regira.Office.VCards.Models.VCard`, a backend-agnostic model with properties such as `Name` (`VCardName`), `FormattedName`, `Emails` (`ICollection<VCardEmail>`), `Tels` (`ICollection<VCardTel>`), `Organization`, `Title`, `Photo`, `Addresses`, `BirthDay`, `Gender`, and `Homepage`. `VCardManager` converts to and from the FolkerKinzel representation internally. It carries `Name`, `FormattedName`, `Emails`, `Tels`, `Organization` and `Addresses` only: `Title`, `Homepage`, `Photo`, `BirthDay` and `Gender` are neither written nor read.
 - Version 3.0 is the most widely compatible and is used as the default.
 - `VCardClient`, in `Regira.Office.Clients`, implements `IVCardService` against a Regira Office API, registered with `AddOfficeClients`; content the API cannot read throws `InvalidCardException`, as `VCardManager` does. `AddOfficeClients` registers `VCardClient` as the `IVCardService`, and the registration made last is the one resolved: an app that registers `VCardManager` as its `IVCardService` does so after `AddOfficeClients` to keep the contacts local.

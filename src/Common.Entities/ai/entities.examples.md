@@ -1099,7 +1099,7 @@ public class Product : IEntityWithSerial, IHasAttachments, IHasAttachments<Produ
 // (`{objectId}/attachments`, `attachments/{id}`, `{objectId}/files`, ...).
 [ApiController, Route("products")]
 public class ProductAttachmentsController : EntityAttachmentControllerBase<ProductAttachment> { }
-// Endpoints exposed: POST {objectId}/files (upload), PUT {objectId}/files/{id} (replace),
+// Endpoints exposed: POST {objectId}/files (upload, multipart field "file"), PUT {objectId}/files/{id} (replace, same field),
 // GET {objectId}/attachments (list), GET attachments/{id}, PUT {objectId}/attachments/{id} (metadata),
 // DELETE attachments/{id}, GET files/{id} and GET {objectId}/files/{fileName} (download).
 

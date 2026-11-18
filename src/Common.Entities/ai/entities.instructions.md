@@ -519,7 +519,7 @@ on every edit, and the response is a 200. Restoring a value is the same move as 
 that *is* on the DTO reaches the database unchecked: an existence check in a validator turns its `409` into
 a field-level `400` (§Validators below).
 
-⚠️ **A prepper enforcing a cap must count the change tracker's pending rows too.** A capacity, quota or
+⚠️ **A cap, quota or duplicate rule (usually a validator that refuses, sometimes a prepper) must count the change tracker's pending rows too.** A capacity, quota or
 duplicate check written as a `dbContext.Set<T>().CountAsync(...)`/`AnyAsync(...)` cannot see rows queued in
 the same `SaveChanges()` batch, so every row in a bulk wave sees the last-flushed count and the cap is never
 reached — no error, just collectively wrong data. Add `dbContext.ChangeTracker.Entries<T>()` entries in
@@ -593,7 +593,7 @@ whatever the registration order — and inside `Remove`, where no prepper runs. 
 adds to one list; when any error was added, the write service throws one `EntityInputException<TEntity>` of the
 entity it saves, before the entity is tracked, and the client gets every error in one **400** (§Error Handling).
 Validators read and never write: `ctx.Item` is the instance that gets saved, so a value a validator sets is still
-written — changing the entity is a prepper's job.
+written — changing the entity is a prepper's job. A capacity, quota or duplicate rule counts the pending rows of the same save too (the ⚠️ cap rule above).
 
 <!-- no-compile -->
 ```csharp
