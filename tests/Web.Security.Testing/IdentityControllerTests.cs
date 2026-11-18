@@ -1,12 +1,19 @@
 using Duende.IdentityModel.Client;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Regira.Security.Authentication.Jwt.Models;
+using Regira.Security.Authentication.Web.Controllers;
 using Regira.Security.Authentication.Web.Models;
 using Regira.Utilities;
 using Shouldly;
+using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -19,8 +26,8 @@ namespace Web.Security.Testing;
 
 // Exercises the AccountControllerBase / PasswordControllerBase / UserControllerBase endpoints over a
 // real Identity + EF-in-memory stack. Covers the guarded-by-default authorization model, the
-// malformed-token guards, the lockout-counter reset, the recover/reset & create/confirm flows, and the origins
-// their mailed links may point at.
+// malformed-token guards, the lockout-counter reset, the audience a sign-in may name, the input limits, the guard on
+// the current password, the recover/reset & create/confirm flows, and the origins their mailed links may point at.
 public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactory<IdentityStartup>>
 {
     private readonly WebApplicationFactory<IdentityStartup> _factory;
@@ -210,6 +217,178 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
         public Task<bool> IsConfirmedAsync(UserManager<TestUser> manager, TestUser user) => Task.FromResult(true);
     }
 
+    // --- client application (token audience) ----------------------------------------------------
+
+    // Applications that share a signing secret are told apart by the audience, so a sign-in may not name one the
+    // application does not accept. Checked before the user is looked up: the refusal says nothing about the account.
+    [Fact]
+    public async Task Authenticate_ForAnotherAudience_AnswersBadRequest_BeforeTheUserIsLookedUp()
+    {
+        var factory = WithJwtOptions(o => o.Audience = "spa");
+        const string username = "audience-other@test.local";
+        await SeedUser(username, "pass1", factory);
+        var client = factory.CreateClient();
+
+        var rightPassword = await client.PostAsJsonAsync("auth?clientApp=admin", new { username, password = "pass1" });
+        var wrongPassword = await client.PostAsJsonAsync("auth?clientApp=admin", new { username, password = "wrong" });
+        var unknownUser = await client.PostAsJsonAsync("auth?clientApp=admin", new { username = "audience-nobody@test.local", password = "wrong" });
+
+        rightPassword.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var refusal = await rightPassword.Content.ReadAsStringAsync();
+        using var body = JsonDocument.Parse(refusal);
+        body.RootElement.TryGetProperty("clientApp", out _).ShouldBeTrue("BadRequest(ModelState) answers the field errors as the body");
+        body.RootElement.TryGetProperty("token", out _).ShouldBeFalse();
+        (await wrongPassword.Content.ReadAsStringAsync()).ShouldBe(refusal);
+        (await unknownUser.Content.ReadAsStringAsync()).ShouldBe(refusal);
+        (await GetAccessFailedCount(username, factory)).ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData("spa")]
+    [InlineData("mobile")]
+    public async Task Authenticate_ForAConfiguredAudience_ReturnsATokenForIt(string clientApp)
+    {
+        // an Audiences list replaces the single Audience, as it does when a token is validated
+        var factory = WithJwtOptions(o =>
+        {
+            o.Audience = "ignored";
+            o.Audiences = ["spa", "mobile"];
+        });
+        const string username = "audience-own@test.local";
+        await SeedUser(username, "pass1", factory);
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync($"auth?clientApp={clientApp}", new { username, password = "pass1" });
+        var ignored = await client.PostAsJsonAsync("auth?clientApp=ignored", new { username, password = "pass1" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var token = (await response.Content.ReadFromJsonAsync<AuthResult>())!.Token!;
+        new JwtSecurityTokenHandler().ReadJwtToken(token).Audiences.ShouldBe([clientApp]);
+        client.SetBearerToken(token);
+        (await client.PostAsync("auth/validate", null)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        ignored.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Authenticate_ComparesTheAudienceOrdinally()
+    {
+        var factory = WithJwtOptions(o => o.Audience = "spa");
+        const string username = "audience-casing@test.local";
+        await SeedUser(username, "pass1", factory);
+        var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("auth?clientApp=SPA", new { username, password = "pass1" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+    }
+
+    // --- input limits ---------------------------------------------------------------------------
+
+    // The sign-in is anonymous, so its input is bounded before anything is done with it: a name longer than Identity
+    // stores is refused by model validation, and the user store is never asked for it.
+    [Fact]
+    public async Task Authenticate_WithAnOverlongUserName_AnswersBadRequest_WithoutLookingTheUserUp()
+    {
+        var lookups = new RecordingNormalizer();
+        var factory = _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            services.AddSingleton<ILookupNormalizer>(lookups)));
+        var client = factory.CreateClient();
+        var longest = new string('a', 256);
+
+        var atTheLimit = await client.PostAsJsonAsync("auth?clientApp=test", new { username = longest, password = "pass1" });
+        var overTheLimit = await client.PostAsJsonAsync("auth?clientApp=test", new { username = longest + "a", password = "pass1" });
+
+        atTheLimit.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        overTheLimit.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        using var body = JsonDocument.Parse(await overTheLimit.Content.ReadAsStringAsync());
+        body.RootElement.GetProperty("errors").TryGetProperty("Username", out _).ShouldBeTrue();
+        lookups.Names.ShouldBe([longest]);
+    }
+
+    [Theory]
+    [InlineData("auth?clientApp=test", "Password", 1025)]
+    [InlineData("auth/password/recover", "Username", 257)]
+    [InlineData("auth/password/recover", "SiteUrl", 2049)]
+    [InlineData("auth/password/reset", "Token", 4097)]
+    [InlineData("auth/password/reset", "Password", 1025)]
+    [InlineData("users/confirm-email", "Token", 4097)]
+    [InlineData("auth/refresh-token", "RefreshToken", 4097)]
+    public async Task AnonymousInput_OverItsLimit_AnswersBadRequest(string url, string field, int length)
+    {
+        var client = _factory.CreateClient();
+        var input = new Dictionary<string, string>
+        {
+            ["Username"] = "limits@test.local",
+            ["Password"] = "pass1",
+            ["SiteUrl"] = "https://app.example.com/reset-password",
+            ["Token"] = "x",
+            ["RefreshToken"] = "x",
+            [field] = new string('a', length)
+        };
+
+        var response = await client.PostAsJsonAsync(url, input);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.GetProperty("errors").TryGetProperty(field, out _).ShouldBeTrue();
+        SentEmails().ShouldBeEmpty();
+    }
+
+    // A body over 16 KB is refused before it is read. The test server applies no request size limit, so this host
+    // listens on a loopback port with Kestrel, which does.
+    [Fact]
+    public async Task Authenticate_WithABodyOverTheLimit_AnswersPayloadTooLarge()
+    {
+        using var host = Host.CreateDefaultBuilder()
+            .UseEnvironment(Environments.Production)
+            .ConfigureWebHostDefaults(web => web.UseStartup<IdentityStartup>().UseKestrel().UseUrls("http://127.0.0.1:0"))
+            .Build();
+        await host.StartAsync();
+        var address = host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First();
+        using var client = new HttpClient { BaseAddress = new Uri(address) };
+
+        var underTheLimit = await client.PostAsJsonAsync("auth?clientApp=test",
+            new { username = "body-limit@test.local", password = "pass1", filler = new string('a', 15 * 1024) });
+        var overTheLimit = await client.PostAsJsonAsync("auth?clientApp=test",
+            new { username = "body-limit@test.local", password = "pass1", filler = new string('a', 17 * 1024) });
+        await host.StopAsync();
+
+        underTheLimit.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+        overTheLimit.StatusCode.ShouldBe(HttpStatusCode.RequestEntityTooLarge);
+    }
+
+    // The mailed token wraps Identity's token and the user name, so the longest name Identity stores has to fit the
+    // limit on a token, with room to spare.
+    [Fact]
+    public async Task RecoverAndResetPassword_WithTheLongestUserName_FitsTheTokenLimit()
+    {
+        var username = new string('u', 256 - "@test.local".Length) + "@test.local";
+        await SeedUser(username, "OldPass1");
+        var client = _factory.CreateClient();
+
+        var recover = await client.PostAsJsonAsync("auth/password/recover",
+            new { username, siteUrl = "https://app.example.com/reset-password" });
+        recover.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var token = ExtractToken(SentEmails().Last(x => x.Email == username).Body);
+        var reset = await client.PostAsJsonAsync("auth/password/reset", new { token, password = "NewPass2" });
+
+        token.Length.ShouldBeLessThan(2048);
+        reset.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    private class RecordingNormalizer : ILookupNormalizer
+    {
+        public List<string?> Names { get; } = [];
+
+        public string? NormalizeName(string? name)
+        {
+            Names.Add(name);
+            return name?.ToUpperInvariant();
+        }
+
+        public string? NormalizeEmail(string? email) => email?.ToUpperInvariant();
+    }
+
     // --- refresh --------------------------------------------------------------------------------
 
     // a client that renews its still-valid token before each expiry must not outlive the lockout of its account
@@ -298,6 +477,72 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
             .StatusCode.ShouldBe(HttpStatusCode.OK);
         (await fresh.PostAsJsonAsync("auth?clientApp=test", new { username, password = "OldPass1" }))
             .StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    // The current password is a credential: guessing it is slowed down as guessing it at sign-in is. A locked-out
+    // account is refused before the password is checked, in the 400 the other identity errors have.
+    [Fact]
+    public async Task ChangePassword_WrongCurrentPasswords_LockTheAccount_WhichThenRefusesTheRightOne()
+    {
+        const string username = "change-guess@test.local";
+        await SeedUser(username, "OldPass1");
+        var client = _factory.CreateClient();
+        client.SetBearerToken(await Authenticate(client, username, "OldPass1"));
+
+        // IdentityStartup locks an account after five failed attempts
+        for (var attempt = 1; attempt <= 5; attempt++)
+        {
+            (await IsLockedOut(username)).ShouldBeFalse();
+            var guess = await client.PostAsJsonAsync("auth/password",
+                new { currentPassword = $"guess{attempt}", newPassword = "NewPass2" });
+            guess.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+            using var mismatch = JsonDocument.Parse(await guess.Content.ReadAsStringAsync());
+            mismatch.RootElement.TryGetProperty("PasswordMismatch", out _).ShouldBeTrue();
+        }
+        (await IsLockedOut(username)).ShouldBeTrue();
+
+        var locked = await client.PostAsJsonAsync("auth/password",
+            new { currentPassword = "OldPass1", newPassword = "NewPass2" });
+
+        locked.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        using var body = JsonDocument.Parse(await locked.Content.ReadAsStringAsync());
+        body.RootElement.EnumerateObject().Select(x => x.Name).ShouldBe([PasswordControllerBase<TestUser>.UserLockedOut]);
+        (await CheckPassword(username, "OldPass1")).ShouldBeTrue("a locked-out account keeps its password");
+    }
+
+    // a new password Identity refuses is no guess at the current one
+    [Fact]
+    public async Task ChangePassword_ARefusedNewPassword_CountsNoFailure()
+    {
+        const string username = "change-weak@test.local";
+        await SeedUser(username, "OldPass1");
+        var client = _factory.CreateClient();
+        client.SetBearerToken(await Authenticate(client, username, "OldPass1"));
+
+        var response = await client.PostAsJsonAsync("auth/password", new { currentPassword = "OldPass1", newPassword = "abc" });
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        body.RootElement.TryGetProperty("PasswordTooShort", out _).ShouldBeTrue();
+        (await GetAccessFailedCount(username)).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task ChangePassword_OnSuccess_ResetsAccessFailedCount()
+    {
+        const string username = "change-reset-count@test.local";
+        await SeedUser(username, "OldPass1");
+        var client = _factory.CreateClient();
+        client.SetBearerToken(await Authenticate(client, username, "OldPass1"));
+
+        var wrong = await client.PostAsJsonAsync("auth/password", new { currentPassword = "guess", newPassword = "NewPass2" });
+        wrong.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await GetAccessFailedCount(username)).ShouldBe(1);
+
+        var changed = await client.PostAsJsonAsync("auth/password", new { currentPassword = "OldPass1", newPassword = "NewPass2" });
+
+        changed.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await GetAccessFailedCount(username)).ShouldBe(0);
     }
 
     // --- reset password -------------------------------------------------------------------------
@@ -673,6 +918,12 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
         return result!.Token!;
     }
 
+    // A host whose JWT options are changed after the startup configured them: the instance AddJwtAuthentication
+    // registered, which the scheme and the token helper read.
+    private WebApplicationFactory<IdentityStartup> WithJwtOptions(Action<JwtTokenOptions> change)
+        => _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+            change((JwtTokenOptions)services.Single(x => x.ServiceType == typeof(JwtTokenOptions)).ImplementationInstance!)));
+
     // A host whose AccountEmailOptions are changed after the startup configured them.
     private WebApplicationFactory<IdentityStartup> WithAccountEmails(Action<AccountEmailOptions> change)
         => _factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
@@ -706,6 +957,20 @@ public class IdentityControllerTests : IClassFixture<TestingWebApplicationFactor
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<TestUser>>();
         var user = await userManager.FindByNameAsync(username);
         return await userManager.GetAccessFailedCountAsync(user!);
+    }
+
+    private async Task<bool> IsLockedOut(string username)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<TestUser>>();
+        return await userManager.IsLockedOutAsync((await userManager.FindByNameAsync(username))!);
+    }
+
+    private async Task<bool> CheckPassword(string username, string password)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<TestUser>>();
+        return await userManager.CheckPasswordAsync((await userManager.FindByNameAsync(username))!, password);
     }
 
     private async Task<TestUser?> FindUser(string username, WebApplicationFactory<IdentityStartup>? factory = null)

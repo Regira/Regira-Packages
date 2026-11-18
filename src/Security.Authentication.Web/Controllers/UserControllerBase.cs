@@ -23,23 +23,36 @@ public abstract class UserControllerBase<TUser>(UserManager<TUser> userManager) 
     /// nothing is created or sent. Throws <see cref="InvalidOperationException"/> when a page is given and no origin is
     /// configured.
     /// </para>
+    /// <para>
+    /// Saves <c>new TUser { UserName, Email }</c>, both the input's <see cref="UserInput.Username"/>. A user type with a
+    /// required column that has no default calls the protected
+    /// <see cref="Create(TUser, string, string?, IEmailSender)"/> overload with a user it filled itself.
+    /// </para>
     /// </summary>
     [HttpPost]
-    public virtual async Task<IActionResult> Create(UserInput model, [FromServices] IEmailSender mailer)
+    [RequestSizeLimit(AccountInputLimits.RequestBody)]
+    public virtual Task<IActionResult> Create(UserInput model, [FromServices] IEmailSender mailer)
+        => Create(new TUser { UserName = model.Username, Email = model.Username }, model.Password, model.ConfirmEmailUrl, mailer);
+
+    /// <summary>
+    /// <see cref="Create(UserInput, IEmailSender)"/> for a user the caller built: a sign-up action that fills the user
+    /// type's own columns before it is saved. <paramref name="user"/> carries at least its <c>UserName</c> and
+    /// <c>Email</c>; the confirmation mail goes to that address, and the answers are those of the public action.
+    /// </summary>
+    protected async Task<IActionResult> Create(TUser user, string password, string? confirmEmailUrl, IEmailSender mailer)
     {
         Uri? confirmPage = null;
-        if (!string.IsNullOrWhiteSpace(model.ConfirmEmailUrl))
+        if (!string.IsNullOrWhiteSpace(confirmEmailUrl))
         {
-            confirmPage = HttpContext.GetAccountEmailOptions().FindAllowedPage(model.ConfirmEmailUrl);
+            confirmPage = HttpContext.GetAccountEmailOptions().FindAllowedPage(confirmEmailUrl);
             if (confirmPage == null)
             {
-                ModelState.AddModelError(nameof(model.ConfirmEmailUrl), AccountLinks.NotAllowed);
+                ModelState.AddModelError(nameof(UserInput.ConfirmEmailUrl), AccountLinks.NotAllowed);
                 return BadRequest(ModelState);
             }
         }
 
-        var user = new TUser { UserName = model.Username, Email = model.Username };
-        var response = await userManager.CreateAsync(user, model.Password);
+        var response = await userManager.CreateAsync(user, password);
         if (!response.Succeeded)
         {
             ModelState.AddIdentityErrors(response.Errors);
@@ -49,13 +62,13 @@ public abstract class UserControllerBase<TUser>(UserManager<TUser> userManager) 
         {
             var confirmToken = await userManager.GenerateEmailConfirmationTokenAsync(user);
             var token = System.Text.Json.JsonSerializer.Serialize(new UserTokenModel { Token = confirmToken, Username = user.UserName! }).Base64Encode();
-            var body = $@"Welcome {model.Username},
+            var body = $@"Welcome {user.UserName},
 Please follow link below to confirm email
 {confirmPage.WithToken(token)}
 
 Token: {token}
 ";
-            await mailer.SendEmailAsync(user.Email, "Welcome", body);
+            await mailer.SendEmailAsync(user.Email!, "Welcome", body);
         }
 
         return Ok();
@@ -63,6 +76,7 @@ Token: {token}
 
     [AllowAnonymous]
     [HttpPost("confirm-email", Name = RouteNames.ConfirmEmail)]
+    [RequestSizeLimit(AccountInputLimits.RequestBody)]
     public virtual async Task<IActionResult> ConfirmEmail([FromBody] ConfirmEmailInput model)
     {
         UserTokenModel? tokenModel;

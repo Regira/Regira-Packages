@@ -3,7 +3,10 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
 using Regira.DAL.Paging;
+using Regira.Entities.DependencyInjection.QueryBuilders;
 using Regira.Entities.Models;
+using Regira.Entities.Models.Abstractions;
+using Regira.Entities.QueryBuilders.Abstractions;
 using Regira.Entities.Services.Abstractions;
 
 namespace Entities.Providers.Testing;
@@ -203,6 +206,41 @@ public class ProviderQueryPipelineTests(DbProvider provider)
         var items = await complex.List(searchObjects, new List<EntitySortBy>());
 
         Assert.That(items.Select(x => x.Id), Is.EqualTo(new[] { _alphaId }));
+    }
+
+    // An empty or null list filters as List(null): the global filters run, so the archived row stays out.
+    [Test]
+    public async Task Empty_Or_Null_SearchObject_List_Runs_The_Global_Filters()
+    {
+        var readService = _serviceProvider.GetRequiredService<IEntityReadService<Widget, int, SearchObject<int>>>();
+        var complex = (IEntityReadService<Widget, int, SearchObject<int>, EntitySortBy, EntityIncludes>)readService;
+
+        var expected = (await Service.List((SearchObject?)null)).Select(x => x.Id).ToArray();
+        Assert.That(expected, Is.EquivalentTo(new[] { _alphaId, _charlieId }));
+
+        var empty = await complex.List(new List<SearchObject<int>?>(), new List<EntitySortBy>());
+        var nullList = await complex.List(null!, new List<EntitySortBy>());
+
+        Assert.That(empty.Select(x => x.Id), Is.EquivalentTo(expected));
+        Assert.That(nullList.Select(x => x.Id), Is.EquivalentTo(expected));
+        Assert.That(await complex.Count(new List<SearchObject<int>?>()), Is.EqualTo(expected.Length));
+
+        // a row scope of Regira's own (EF hides the archived row by itself on net10.0): the empty list keeps it
+        await using var scoped = _harness.BuildServiceProvider(services => services.AddGlobalFilterQueryBuilder<CharlieOnlyScope>());
+        var scopedService = (IEntityReadService<Widget, int, SearchObject<int>, EntitySortBy, EntityIncludes>)
+            scoped.GetRequiredService<IEntityReadService<Widget, int, SearchObject<int>>>();
+        var scopedEmpty = await scopedService.List(new List<SearchObject<int>?>(), new List<EntitySortBy>());
+        var scopedNull = await scopedService.List(null!, new List<EntitySortBy>());
+        Assert.That(scopedEmpty.Select(x => x.Id), Is.EqualTo(new[] { _charlieId }));
+        Assert.That(scopedNull.Select(x => x.Id), Is.EqualTo(new[] { _charlieId }));
+        Assert.That(await scopedService.Count(new List<SearchObject<int>?>()), Is.EqualTo(1));
+    }
+
+    // stands for a caller's row scope: the caller sees Charlie only
+    private sealed class CharlieOnlyScope : GlobalFilteredQueryBuilderBase<Widget>
+    {
+        public override IQueryable<Widget> Build(IQueryable<Widget> query, ISearchObject<int>? so)
+            => query.Where(x => x.Title == "Charlie widget");
     }
 
     // ------------------------------------------------------------------

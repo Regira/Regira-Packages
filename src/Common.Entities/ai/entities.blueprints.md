@@ -1051,10 +1051,11 @@ public class AppUserRepository(AccountsDbContext dbContext, UserManager<AppIdent
         return item == null ? null : mapper.Map<AppUserEntity>(item);
     }
 
-    // each search object filters on its own and the results are united, as the framework's query builder does
+    // each search object filters on its own and the results are united, as the framework's query builder does;
+    // an empty list filters as one null search object, so a filter that scopes the rows always runs
     private IQueryable<AppIdentityUser> Filter(IQueryable<AppIdentityUser> query, IList<AppUserSearchObject?> searchObjects)
-        => searchObjects.Count == 0 ? query
-            : searchObjects.Select(so => queryFilters.Aggregate(query, (q, f) => f.Build(q, so))).Aggregate((a, b) => a.Union(b));
+        => (searchObjects.Count == 0 ? new List<AppUserSearchObject?> { null } : searchObjects)
+            .Select(so => queryFilters.Aggregate(query, (q, f) => f.Build(q, so))).Aggregate((a, b) => a.Union(b));
 
     public async Task Add(AppUserEntity model, CancellationToken token = default)
     {
@@ -1252,7 +1253,7 @@ public class ArticleOwnerPrepper(ICurrentUser currentUser) : EntityPrepperBase<A
     }
 }
 
-// Runs on every write, a delete included (no prepper does): a published row is readable, not writable, by others
+// Runs on every write, a delete included (no prepper does): a published row is readable, not writable, by others (403)
 public class ArticleAccessValidator(ICurrentUser currentUser) : EntityValidatorBase<Article>
 {
     public override Task Validate(IEntityValidatorContext<Article> ctx, CancellationToken token = default)
@@ -1260,20 +1261,25 @@ public class ArticleAccessValidator(ICurrentUser currentUser) : EntityValidatorB
         if (currentUser.IsAdministrator) return Task.CompletedTask;
         var ownerId = ctx.Operation == EntityWriteOperation.Modify ? ctx.Original!.OwnerId : ctx.Item.OwnerId;
         if (currentUser.UserId == null || ownerId != currentUser.UserId)
-            ctx.AddError(string.Empty, "You can only manage your own articles.");
+            throw new EntityForbiddenException("You can only manage your own articles.");
         return Task.CompletedTask;
     }
 }
 
-// An upload is a create no filter sees: it takes the owner id from the route
+// An upload is a create no filter sees: it takes the owner id from the route. An owner the caller cannot read is a
+// 404, as on the read path; a published one of another owner is a 403
 public class ArticleAttachmentAccessValidator(AppDbContext db, ICurrentUser currentUser) : EntityValidatorBase<ArticleAttachment>
 {
     public override async Task Validate(IEntityValidatorContext<ArticleAttachment> ctx, CancellationToken token = default)
     {
         if (currentUser.IsAdministrator) return;
         var userId = currentUser.UserId;
-        if (userId == null || !await db.Articles.AnyAsync(x => x.Id == ctx.Item.ObjectId && x.OwnerId == userId, token))
-            ctx.AddError(string.Empty, "You can only change the files of your own articles.");
+        var article = await db.Articles.Where(x => x.Id == ctx.Item.ObjectId)
+            .Select(x => new { x.OwnerId, x.IsPublished }).FirstOrDefaultAsync(token);
+        if (article == null || (!article.IsPublished && article.OwnerId != userId))
+            throw new EntityNotFoundException();
+        if (userId == null || article.OwnerId != userId)
+            throw new EntityForbiddenException("You can only change the files of your own articles.");
     }
 }
 ```
@@ -1314,8 +1320,9 @@ attachment downloads* in `entities.patterns`).
   `ArticleAttachmentScopeFilter` they serve a draft's files to anyone.
 - **An `Include` is not scoped.** A related collection the owner's DTO includes (comments, a scoped child) loads
   every row; keep such a child on its own endpoint or repeat the predicate in a filtered include.
-- **The validator answers 400, the read path 404.** A write on another owner's published row passes the existence
-  check (it is visible) and fails the validator; a write on another owner's draft is a 404.
+- **Another owner's published row answers 403, a draft 404.** A write on another owner's published row passes the
+  existence check (it is visible) and the validator refuses it with 403; a write on another owner's draft is a 404,
+  from the existence check or, for an upload, from the link validator.
 - **Verify per identity.** Compare `GET /articles/search` totals anonymously, as two owners and as an administrator,
   and fetch a draft's file by id as a visitor: it answers 404.
 

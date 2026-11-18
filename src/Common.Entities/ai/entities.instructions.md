@@ -519,7 +519,7 @@ on every edit, and the response is a 200. Restoring a value is the same move as 
 that *is* on the DTO reaches the database unchecked: an existence check in a validator turns its `409` into
 a field-level `400` (§Validators below).
 
-⚠️ **A prepper enforcing a cap must count the change tracker's pending rows too.** A capacity, quota or
+⚠️ **A cap, quota or duplicate rule (usually a validator that refuses, sometimes a prepper) must count the change tracker's pending rows too.** A capacity, quota or
 duplicate check written as a `dbContext.Set<T>().CountAsync(...)`/`AnyAsync(...)` cannot see rows queued in
 the same `SaveChanges()` batch, so every row in a bulk wave sees the last-flushed count and the cap is never
 reached — no error, just collectively wrong data. Add `dbContext.ChangeTracker.Entries<T>()` entries in
@@ -580,7 +580,7 @@ What a prepper works with: `modified` is the mapped incoming entity — the inst
 | Incoming `Id` | Treated as | Note |
 |---|---|---|
 | `0`, `null`, or **any negative number** | **new** → `INSERT` | A negative id is a client temp key (the Vue `useOwnedCollection` mints them so a row added in the session has a stable `:key`); it is cleared before insert, so the store generates the real one — at every depth, in a `Related()` collection and an attachment collection alike, so nothing needs to reset it first |
-| matches an original row | update | fields absent from the child input DTO reset to default |
+| matches an original row | update | fields absent from the child input DTO reset to default, except what a primer stamps: `Created` keeps its stored value, `LastModified` is stamped anew |
 | positive but matching nothing | **new** → `INSERT`, ⚠️ **with that id** | Only temp (negative) keys are cleared, so a store-generated key arrives as an explicit insert: a silently wrong PK on SQLite, and *"Cannot insert explicit value for identity column"* on SQL Server. It means the client is sending a stale id for a row someone else deleted — reload before saving rather than relying on the server to absorb it. (A **client-assigned** key type — `Guid`, `string` — is never cleared, because there a chosen key is the point.) |
 
 The **parent FK needs no stamping**. New children reach the store through the parent's navigation, so EF assigns the FK once the parent's key is generated — this holds for a brand-new parent saved with children in one call. Setting the FK yourself to a parent id that does not exist yet (`0`) is what breaks it.
@@ -593,7 +593,7 @@ whatever the registration order — and inside `Remove`, where no prepper runs. 
 adds to one list; when any error was added, the write service throws one `EntityInputException<TEntity>` of the
 entity it saves, before the entity is tracked, and the client gets every error in one **400** (§Error Handling).
 Validators read and never write: `ctx.Item` is the instance that gets saved, so a value a validator sets is still
-written — changing the entity is a prepper's job.
+written — changing the entity is a prepper's job. A capacity, quota or duplicate rule counts the pending rows of the same save too (the ⚠️ cap rule above).
 
 <!-- no-compile -->
 ```csharp
@@ -641,6 +641,31 @@ options.AddValidator<TenantValidator>();   // global — an EntityValidatorBase<
   entity as a whole; a key may carry several messages. `Errors` holds what every validator of this write added so
   far, so a later one can skip an expensive check: no point querying for the customer when `CustomerId` already
   failed.
+
+**A refusal that is no input error answers 403 or 404.** `AddError` is a 400: the input is wrong and the client can
+fix it. A rule about *who* may write a row is no input error; throw `EntityForbiddenException` (403) for a row the
+caller may read but not change, and `EntityNotFoundException` (404) for a row the write needs that the caller cannot see
+(`Regira.Entities.Models`). The write stops at the throw, with the errors added so far discarded, and the message is the
+response's `detail`, so write it for the client; without one, each carries a generic `ClientMessage`. Both answer on
+every write of both surfaces — create, modify, patch, delete and the attachment endpoints (§Error Handling).
+
+<!-- no-compile -->
+```csharp
+// using Regira.Entities.Models;                             ← EntityForbiddenException, EntityNotFoundException
+// a class, so the caller is read per write: ICurrentUser is the app's own scoped service over the request's principal
+public class ShoppingListOwnerValidator(ICurrentUser currentUser) : EntityValidatorBase<ShoppingList>
+{
+    public override Task Validate(IEntityValidatorContext<ShoppingList> ctx, CancellationToken token = default)
+    {
+        // on Modify the stored owner: ctx.Item carries what the client sent, a changed OwnerId included
+        var owner = (ctx.Original ?? ctx.Item).OwnerId;
+        if (owner != currentUser.UserId)                        // a shared list: readable, not writable
+            throw new EntityForbiddenException("Only the list's owner may change it.");
+        return Task.CompletedTask;
+    }
+}
+e.AddValidator<ShoppingListOwnerValidator>();
+```
 
 **The message can be a translation key.** What a validator adds is up to it: a text the client shows as is
 (`"A code is required."`), or a key the client translates (`"ValueTooLarge"`). A Regira front-end looks every
@@ -798,6 +823,11 @@ public class OrderShippedReactor(IOrderMailer mailer) : EntityReactorBase<Order>
 }
 e.AddReactor<OrderShippedReactor>();   // per entity — reacts to this entity only, even when written against an interface
 options.AddReactor<AuditReactor>();    // global — an EntityReactorBase<IHasTimestamps> reacts to every entity implementing it
+
+// batch form — the changes of one commit in one call: one message, one query or one save for all of them
+e.ReactMany(change => change.ChangedTo(x => x.Status, OrderStatus.Shipped), (changes, services, token) =>
+    services.GetRequiredService<IOrderBus>().PublishShipped(changes.Select(c => c.Entity.Id).Distinct().ToArray(), token));
+// as a class: EntityBatchReactorBase<Order> overriding ReactMany (and CanReact), registered like any reactor
 ```
 
 **What a reactor receives** — `IEntityChange<TEntity>`:
@@ -826,6 +856,11 @@ options.AddReactor<AuditReactor>();    // global — an EntityReactorBase<IHasTi
   rather than through a context `UseEntities` wires (its reactions never run). A transaction begun outside EF and
   handed to `UseTransaction` must also commit or roll back through EF: on Npgsql, one disposed without either leaves
   its reactions to the next such transaction on that pooled connection.
+- **One commit, one batch** — a save that commits on its own is reacted to on its own; the saves of a transaction
+  are reacted to together at its commit, in the order they were saved — `BeginTransaction()`, the contexts sharing
+  it included, and a `TransactionScope` alike (saves made under a dependent clone of the ambient transaction are a
+  batch of their own). A row saved twice in a transaction is listed twice: a reactor that wants one message per row
+  groups by key.
 - **One save, one transaction** — every write the library makes (a generated endpoint, `IEntityService.SaveChanges()`,
   a prepper's related rows, an attachment upload) flushes in a single `SaveChanges`, inside EF's own transaction. A
   unit of work spanning several saves or services is the app's: `BeginTransaction()` inside
@@ -836,15 +871,30 @@ options.AddReactor<AuditReactor>();    // global — an EntityReactorBase<IHasTi
   `SaveChanges()` returns before anything reacts; the `Dispose()` that ends a completed `TransactionScope`, which
   runs them synchronously. Hand slow or retryable work to a job system: the reactor only enqueues it
   (`IBackgroundJobClient.Enqueue(...)`).
-- **In registration order, per changed row; the reactions of one committed save share one DI scope of their own**
-  (a fresh one after a reactor throws), with a fresh `DbContext`: a reactor that writes calls `SaveChanges()` itself, and that save triggers the reactors of what it wrote. Nesting stops at 8
+- **Reactor by reactor, in registration order; the reactions of one commit share one DI scope of their own**
+  (a fresh one after a reactor throws), with a fresh `DbContext`: each reactor gets the changes it covers in the
+  order they were saved — row by row, or in one call for a batch reactor — before the next reactor starts. A reactor
+  that writes calls `SaveChanges()` itself, and that save triggers the reactors of what it wrote. Nesting stops at 8
   levels with a logged error — guard `CanReact` so a chain ends. Within a request, `IHttpContextAccessor.HttpContext`
   and its `User` still reach the reactor's scope, since they run before the call that commits returns; a save from a
   job or seeder has none. So the request user's global filters scope the reactor's reads and its `Modify` too: a
   reactor that must reach rows that user cannot see (a waiting list, a cascade) sets an explicit identity in its own
   scope first (§Security & Authorization → *Scope before any early return*).
+- **Many rows: react to them together** — a reactor per row makes one call, query or enqueue for every changed
+  row, inside the call that commits: an import of 1000 rows makes 1000. A batch reactor (`e.ReactMany(...)`, or a
+  class on `EntityBatchReactorBase<T>`) gets the changes its `CanReact` selects in one call, and none when it
+  selects nothing: it sends one message or job carrying the ids of the commit, or uses the bus's batch send, and
+  reads what it needs in one query (`changes.Chunk(500)` keeps a key list under the provider's parameter limit).
+  Collecting across commits or requests is the bus's or the job system's.
+- **A reactor that writes saves once** — its write is a second commit: not atomic with the first, and a failure is
+  only logged. Keep it for data that may lag behind the row; data that must agree with it belongs in the save (a
+  prepper or primer). Guard `CanReact` (`ChangedTo` / `HasChanged`) so its own save does not trigger it again, and
+  stage every row of the batch before one `SaveChanges()`: the reaction's `DbContext` keeps what it saved, so a save
+  per row rescans a growing change tracker and the time grows with the square of the rows.
 - **A reactor that throws is logged and skipped** — the data is committed, so the save still succeeds and the
-  other reactors still run. The save's `CancellationToken` does not cancel them.
+  other reactors still run: a reactor per row is skipped for that row, a batch reactor for its batch. A scoped
+  service that fails when the reaction's scope is disposed is logged the same way, so a buffer flushed there
+  reports nothing to its caller: flush in a batch reactor. The save's `CancellationToken` does not cancel them.
 - **At most once** — a crash between the commit and the reaction loses it, the enqueue to a job system included,
   and nothing retries a reactor that threw. Work that must happen writes a row of its own in the same save (an
   outbox), and a hosted service delivers each row at least once, the row's id serving the receiver as its
@@ -1014,7 +1064,7 @@ IEntityService<Order, int, OrderSearchObject, OrderSortBy, OrderIncludes>       
 
 ² An `IArchivable` entity has no hard-delete endpoint: `DELETE /{id}` sets `IsArchived = true` and the row survives, with the same 200 and the same affected count. Archived rows then disappear from `GET /` and `GET /search`, and `GET /{id}` 404s — so **restore depends on keeping `IsArchived` on `TInputDto`** (Step 5). Full route contract: [`entities.patterns.md`](./entities.patterns.md) → Soft Delete.
 
-¹ The **body/batch** overloads (accept a `TSearchObject[]`) plus typed `?includes=`/`?sortBy=` exist only on *complex* bases (`EntityControllerBase` with `TSortBy` + `TIncludes`). `GET /search` — single search object, returns `count` — is on **every** base, so a simple entity can page too.
+¹ The **body/batch** overloads (accept a `TSearchObject[]`) plus typed `?includes=`/`?sortBy=` exist only on *complex* bases (`EntityControllerBase` with `TSortBy` + `TIncludes`). `GET /search` — single search object, returns `count` — is on **every** base, so a simple entity can page too. The body's search objects are united (a row matching any of them); an empty array `[]` lists as `GET` does, through the same global filters, and more than 32 search objects answer 400.
 
 > **Response envelope.** Responses are wrapped, not bare DTOs: Details → `{ "item": {…} }`; List → `{ "items": [...] }`; Search → `{ "items": [...], "count": N }` (each also carries `duration` in ms). Unwrap `item`/`items` client-side.
 
@@ -1935,6 +1985,16 @@ always `EntityConcurrencyException.ClientMessage`: the message you pass is not s
 the DTO rules and what each route checks: [`entities.patterns.md`](./entities.patterns.md) → Optimistic
 concurrency.
 
+### EntityForbiddenException and EntityNotFoundException (return HTTP 403 and 404)
+
+Throw `EntityForbiddenException` to refuse a write the caller may not make on a row it can read, and
+`EntityNotFoundException` for a row the write needs that does not exist for the caller (`Regira.Entities.Models`),
+from a validator, a prepper or a custom handler. The write service passes them through as thrown, so every write
+surface answers **403** or **404** through the same filter as the 400 and the 409s, and the mapped endpoints through
+`EntityExceptionEndpointFilter`: a `ProblemDetails` built by the app's `ProblemDetailsFactory`, its `detail` the
+exception's message (`ClientMessage` when none is passed). A row the caller may not see at all belongs out of the query,
+in a global filter: its `PUT`, `PATCH` and `DELETE` then answer 404 by themselves (§Security & Authorization).
+
 ### A client that disconnects
 
 A read — details, list, search, the lookup behind a download — is sent with the request's `RequestAborted`, so its
@@ -2151,7 +2211,7 @@ Generated endpoints ship **anonymous** — no controller base carries `[Authoriz
 - **Row-level scoping:** register a global filter query builder that applies the caller's scope (tenant/owner) to every query — inject `IHttpContextAccessor` in its constructor and filter on the claim. Register it once, app-wide, with `options.AddGlobalFilterQueryBuilder<OwnerFilter>()` inside `UseEntities(options => …)` (`using Regira.Entities.DependencyInjection.QueryBuilders;`), not per entity: an `e.AddFilter<T>()` filter is bound to that entity's search object and is not a global filter. The claim reaches the principal the same way whichever scheme authenticated the caller (bearer token, cookie session, API key), so the filter needs no knowledge of which one is in use. The filter pipeline runs on **every controller path**: List, Search, `Details(id)` (the id goes through the same filters), and the write endpoints' existence checks — so `PUT`/`PATCH`/`DELETE` on a foreign row 404 as well. Global filters are registered transient and resolved with the entity service, in the scope its `DbContext` comes from, so a filter may inject scoped services (the `DbContext`, a current-user service); a background job resolves the entity service from a scope it creates.
 - **What a scoping filter cannot do:** validate **create** (the client supplies the FK — stamp/verify `OwnerId` from the claim in a prepper, never trust the body) or guard **direct `IEntityService` calls** in custom code, which bypass the controller's filtered existence checks. Two variants of the create hole bite hardest:
   - ⚠️ **An owner's row scope does not reach its attachments.** The per-owner link entity (`ProductAttachment`) has no owner column and no navigation back, so a filter that scopes the owner never runs on it. Every attachment route — `GET attachments`, `attachments/{id}`, `{objectId}/attachments`, both downloads (`files/{id}`, `{objectId}/files/{name}`), and the link's `PUT` and `DELETE` — then reads across owners: any signed-in user lists, downloads, edits and deletes every user's files. Give a row-scoped owner with attachments a second global filter, on the **link** entity, that reruns the owner's scope through the owner's `DbSet` (`db.Products.Any(p => p.Id == link.ObjectId && p.OwnerId == userId)`) with the same exemptions, registered app-wide beside the owner's — the shape is in [`entities.examples.md`](./entities.examples.md) → Attachments. With it, those routes answer 404 for another owner's file; check one by id as a second user.
-  - ⚠️ **An attachment upload is a create no filter sees, the link filter included.** `POST /{owner}/{id}/files` takes the owner id from the **route**, stamps it on a new link row and saves — no query runs, so no global filter applies, and any authenticated caller can attach a file to a row they cannot read. Add a validator on the **link** entity (registered on its `HasAttachments` builder: §Attachments, the link-rule callout after step 7) that re-runs the owner's scope over the owner's `DbSet` on `Add` and adds an error when it resolves nothing — which answers **400**, not the 404 the read path gives a foreign row, since the write pipeline maps only 400 and 409. Override the controller's `virtual Add` and return `NotFound()` instead where the two must agree.
+  - ⚠️ **An attachment upload is a create no filter sees, the link filter included.** `POST /{owner}/{id}/files` takes the owner id from the **route**, stamps it on a new link row and saves — no query runs, so no global filter applies, and any authenticated caller can attach a file to a row they cannot read. Add a validator on the **link** entity (registered on its `HasAttachments` builder: §Attachments, the link-rule callout after step 7) that re-runs the owner's scope over the owner's `DbSet` on `Add` and throws `EntityNotFoundException` when it resolves nothing, so the upload answers **404**, as the read path does for a foreign row (§Error Handling); a row the caller reads but may not change throws `EntityForbiddenException` (403).
   - ⚠️ **A row scope does not reach an `Include`.** A global filter runs on its own entity's queries only: `Include(x => x.Comments)` on the parent loads every child row, the ones the child's filter hides included (internal notes, another tenant's rows). Keep a scoped child off the parent's DTO and includes and read it through its own endpoint, or repeat the predicate in a filtered include. A to-one is no exception: a scoped reference that another entity includes on every row (a staff-only Employee as a ticket's Assignee) reaches every caller of that entity with each column its DTO maps, so map it to a narrow core DTO (Id, Name) there.
   - ⚠️ **Read scope is not write scope.** The write endpoints' existence checks run the *same* filter, so a read scope you widened deliberately — a manager who may see their reports' rows — silently grants that manager `PATCH`/`DELETE` on them too. When the two differ, keep the filter at read width and put the ownership check in a validator, which runs on a delete too (no prepper does).
 - **Scope before any early return.** The idiomatic query-builder shape opens with `if (so == null) return query;` — for a security filter that is a hole, because `Details(id)` and the write existence checks can run with a null search object and would skip the scoping entirely. Derive from `GlobalFilteredQueryBuilderBase<TEntity>` (it runs on every query and takes no search object), apply the ownership predicate unconditionally, and return `query.Where(_ => false)` when no identity resolves — an anonymous or stale-token call must see nothing, not everything. A seeder or hosted job has no request either, so its `IEntityService` reads see nothing too — and so does `Modify`, whose re-read of the stored row then finds none and saves nothing: give it an explicit identity through a context it sets (the shape of `WritableTenantContext` in [`entities.blueprints.md`](./entities.blueprints.md) → Multi-tenancy — IHasTenantId + global filter + primer). Its reads may go to the `DbContext` directly, as §Seeding via IEntityService reads keys, but its writes still go through the service, and a `Modify` there needs the identity. Don't equate "no `HttpContext`" with "system": work started from inside a request inherits that request's context.

@@ -189,7 +189,9 @@ public class LinkPhotoPrepper(IPhotoShrinker photos) : EntityPrepperBase<IEntity
   or the upload's `file.FileName` — since the stored `ContentType` follows the file name.
 - A value derived from the file and stored on the link (a thumbnail): mark it `[ServerOwned]` and set it from the
   new file *after* the restore. Both routes restore every `[ServerOwned]` value of a kept link, a link with a new file
-  included. On the link's own routes, set it in the link's prepper, registered after `UseDefaults()`. On the owner's
+  included. On the link's own routes, set it in the link's prepper: on the options after `UseDefaults()` (as
+  `LinkPhotoPrepper` above), or for that link only through `HasAttachments`' `configure`
+  (`a => a.AddPrepper<ProductAttachmentThumbnailPrepper>()`). On the owner's
   route, set it in a prepper registered on that owner after `HasAttachments`
   (`e.HasAttachments(x => x.Photos); e.AddPrepper<ProductThumbnailPrepper>();`), from each link's `NewBytes`, or the
   `Bytes` of a new `Attachment` the link carries: the sync leaves `NewBytes` on the link, as the owner's prepper shrank
@@ -1130,7 +1132,7 @@ public class PriceImporter(IEntitySender sender)
   sort and includes types too. A list that matches no `For<>()` registration fails at its first send, naming what
   was registered.
 - **`null` means not found.** A refused write throws, as the write pipeline does: `EntityInputException`,
-  `EntityConstraintException`, `EntityConcurrencyException`.
+  `EntityForbiddenException`, `EntityNotFoundException`, `EntityConstraintException`, `EntityConcurrencyException`.
 - **`SaveCommand` checks the input DTO first**, by the rules MVC judges a request body by — DataAnnotations and
   `IValidatableObject`, nested objects and collection items too, and the implicit `[Required]` on a non-nullable
   reference — and refuses with an `EntityInputException`. `[ValidateNever]` leaves a property out; MVC validator
@@ -1379,8 +1381,8 @@ public static class ShopConfiguration
 - **Exclude first.** Without `o.Exclude(…)` two endpoints share the route, and every request to it fails as ambiguous.
   `EntityEndpoint.List` covers `GET` and, on a complex entity, `POST list`; `EntityEndpoint.Search` covers both
   searches.
-- **The group's exception filter applies**, so the endpoint answers a refused write with the 400 and 409 bodies the
-  mapped ones use, without an `AddEndpointFilter` of its own.
+- **The group's exception filter applies**, so the endpoint answers a refused write with the 400, 403, 404 and 409 bodies
+  the mapped ones use, without an `AddEndpointFilter` of its own.
 - **Add the metadata.** A write-authorization policy keys on `EntityEndpointMetadata` (§Role-gated write
   authorization filter → *On mapped endpoints*); without it the policy cannot tell the endpoint's entity, and refuses
   it unless it is a `GET`.
@@ -1749,8 +1751,8 @@ public static class EntityMediatR
   app's licence key; an app without one pins **MediatR 12.5.0**, the last Apache-2.0 release — the one package where
   "install the latest stable" does not apply.
 - ⚠️ **Let the entity exceptions through.** A behaviour that rethrows `EntityInputException`,
-  `EntityConstraintException` or `EntityConcurrencyException` wrapped in an exception of its own turns the endpoint's
-  400 and 409s into 500s.
+  `EntityConstraintException`, `EntityConcurrencyException`, `EntityForbiddenException` or `EntityNotFoundException`
+  wrapped in an exception of its own turns the endpoint's 400, 403, 404 and 409s into 500s.
 - A behaviour that opens a transaction around a write defers the reactors to its commit — the reactor rule
   (entities.instructions §Step 9 → Reactors).
 
@@ -1837,8 +1839,8 @@ app.MapEntityEndpoints().RequireAuthorization();   // GET/POST products, PUT/PAT
   type is logged and keeps an attachment controller. `UseAttachmentUris()` links the DTO `Uri` to the mapped download —
   for an owner mapped twice, to its first mapping, since endpoint names are global.
 - **An endpoint of the app's own** sends its request through `IEntitySender`. Mapped outside the entity groups — on
-  `app` itself — it takes `.AddEndpointFilter<EntityExceptionEndpointFilter>()` for the 400 and 409 bodies the mapped
-  endpoints answer with. Mapped inside one, through `ConfigureGroup<TEntity>()`, it already has the filter, which the
+  `app` itself — it takes `.AddEndpointFilter<EntityExceptionEndpointFilter>()` for the 400, 403, 404 and 409 bodies
+  the mapped endpoints answer with. Mapped inside one, through `ConfigureGroup<TEntity>()`, it already has the filter, which the
   group `MapEntityEndpoints()` returns carries.
 - **Write authorization** is a policy on the group, not a controller filter: §Role-gated write authorization filter →
   *On mapped endpoints*.
@@ -2163,6 +2165,39 @@ public async Task<IActionResult> Sort([FromBody] int[] ids, [FromServices] IEnti
 }
 ```
 
+Each `Modify` is a full write of its row: preppers, validators and the re-read run per row, and in the save every
+primer and reactor sees every row. An `IHasConcurrencyToken` row gets a new token, so a client still holding the row
+answers 409 on its next write of it; `LastModified` moves on every row; and a reactor (an audit trail, a push to other
+clients) runs for a change of position only: a per-row reactor (`e.React`) once per row, a batch reactor
+(`e.ReactMany`) once with every row. That is right when those rules must see a reorder. When
+they must not — a long list, an order changed on every drag — write only the positions, with `ExecuteUpdate`:
+
+<!-- no-compile -->
+```csharp
+[HttpPost("sort")]
+public async Task<IActionResult> Sort([FromBody] int[] ids, [FromServices] IEntityService<Category, int> service,
+    [FromServices] AppDbContext db, CancellationToken token)
+{
+    if (ids.Length > 500 || ids.Distinct().Count() != ids.Length) return BadRequest();
+    var visible = await service.Count(new SearchObject<int> { Ids = ids }, token);   // row security, through the service
+    if (visible != ids.Length) return NotFound();
+    await using var transaction = await db.Database.BeginTransactionAsync(token);
+    for (var i = 0; i < ids.Length; i++)
+    {
+        var (id, position) = (ids[i], i);                                            // from 0, as SetSortOrder numbers
+        await db.Categories.Where(x => x.Id == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.SortOrder, position), token);
+    }
+    await transaction.CommitAsync(token);
+    return NoContent();
+}
+```
+
+What it gives up: the statements bypass the change tracker, so no prepper, validator, primer or reactor sees them,
+the concurrency token and `LastModified` stay as they were, and a client that shows the order learns of it only by
+reading again. Row security is the caller's: the `DbContext` applies none of the global filters, which is why the ids
+are counted through the service first.
+
 ## Renamed DTO property
 
 Mapster maps by name only — a DTO property renamed from its entity counterpart (e.g. `OrderDto.Lines` for `Order.OrderLines`) is silently left `null` in both directions. Wire both directions inline on the **typed** mapping builder:
@@ -2453,34 +2488,30 @@ touched — the old one too when the FK moved — so the prepper above re-sums t
 
 <!-- no-compile -->
 ```csharp
-// services.AddScoped<SettledInvoices>(); — the reactions of one committed save share one scope
-public sealed class SettledInvoices : HashSet<int> { }
-
-e.React(
+e.ReactMany(
     change => change.Kind != EntityChangeKind.Modified || change.HasChanged(x => x.InvoiceId) || change.HasChanged(x => x.TotalCost),
-    async (change, services, token) =>
+    async (changes, services, token) =>
     {
         var db = services.GetRequiredService<AppDbContext>();
         var invoices = services.GetRequiredService<IEntityService<Invoice, int>>();
-        var settled = services.GetRequiredService<SettledInvoices>();
-        foreach (var id in new[] { change.Entity.InvoiceId, change.Original?.InvoiceId }.OfType<int>().Distinct())
+        // every invoice the commit touched, once: the changes arrive together, after the whole commit
+        var ids = changes.SelectMany(change => new[] { change.Entity.InvoiceId, change.Original?.InvoiceId }).OfType<int>().Distinct().ToArray();
+        // the bare rows, detached and without navigations: List and Details apply the registered includes, and an
+        // included to-one would ride into Modify as a graph to attach
+        foreach (var invoice in await db.Invoices.AsNoTracking().Where(x => ids.Contains(x.Id)).ToListAsync(token))
         {
-            // re-summed once per committed save: the reactions start after the whole save committed
-            if (!settled.Add(id)) continue;
-            // the bare row, detached and without navigations: List and Details apply the registered includes, and an
-            // included to-one would ride into Modify as a graph to attach
-            var invoice = await db.Invoices.AsNoTracking().SingleOrDefaultAsync(x => x.Id == id, token);
-            if (invoice != null) await invoices.Modify(invoice, token);
+            await invoices.Modify(invoice, token);
         }
         await invoices.SaveChanges(token);
     });
 ```
 
-The reactor runs after the child's save committed, in a scope of its own, so the parent's save is a second
-commit: a failure there is logged and the child's save stands. With it registered, seeding needs no second pass
-over the parents: seed the parents first, and each child wave settles them. Each changed row is one reaction, so
-without `SettledInvoices` a wave of a hundred lines re-saves their invoice a hundred times; with it, once per save.
-A flag the seeder sets in its own scope never reaches the reactor, which runs in another.
+The reactor runs after the child's commit, in a scope of its own, so the parent's save is a second commit: a
+failure there is logged and the child's save stands. With it registered, seeding needs no second pass over the
+parents: seed the parents first, and each child wave settles them. The batch form matters here: a wave of a
+hundred lines is one call, which re-saves each of their invoices once, where a reactor per row (`e.React`) would
+re-save an invoice for every line. A flag the seeder sets in its own scope never reaches the reactor, which runs in
+another.
 
 > ⚠️ **A query filter on the child also hides its rows from this recompute.** A dependent you query directly
 > carries `HasQueryFilter(x => !x.Parent!.IsArchived)` (§Step 11) — and that filter applies here too, while

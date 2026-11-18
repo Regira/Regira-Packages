@@ -26,6 +26,9 @@ public static class JwtAuthenticationServiceCollectionExtensions
             throw new InvalidOperationException($"{nameof(JwtTokenOptions)}.{nameof(options.Secret)} is not set: configure Authentication:Jwt:Secret (user-secrets in Development).");
         }
 
+        // whatever ValidateSecretLength says: a scheme that only validates derives its key the same way
+        JwtSigningKeyRules.EnsureAsciiSecret(options.Secret, $"{nameof(JwtTokenOptions)}.{nameof(options.Secret)}");
+
         if (options.ValidateSecretLength)
         {
             JwtSigningKeyRules.EnsureSecretLength(options.Secret, options.Algorithm);

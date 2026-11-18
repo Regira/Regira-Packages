@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Regira.Security.Authentication.Jwt.Abstraction;
+using Regira.Security.Authentication.Jwt.Models;
 using Regira.Security.Authentication.Web.Models;
 using System.Security.Claims;
 
@@ -42,6 +43,28 @@ public class AccountSignInService<TUser>(ITokenHelper tokenHelper, UserManager<T
             return await confirmation.IsConfirmedAsync(userManager, user);
         }
         return true;
+    }
+
+    /// <summary>
+    /// Whether a sign-in may name <paramref name="audience"/> for its token: one of the audiences the registered JWT
+    /// scheme accepts (<see cref="JwtTokenOptions.Audiences"/>, or else <see cref="JwtTokenOptions.Audience"/>),
+    /// compared ordinally; with several schemes registered, one of any of them. Any value passes when no audience is
+    /// configured, and <c>null</c> always does: the token then carries the configured audience. Check it before the
+    /// user is looked up, so a refusal says nothing about the account. <c>ITokenHelper.Create</c> itself writes
+    /// whatever audience it is given, so a caller's value that skips this check can name another application's.
+    /// </summary>
+    public bool IsAllowedAudience(string? audience)
+    {
+        if (audience == null)
+        {
+            return true;
+        }
+
+        // as AddJwtAuthentication validates: an Audiences list replaces the single Audience
+        var audiences = services.GetServices<JwtTokenOptions>()
+            .SelectMany(options => options.Audiences ?? (!string.IsNullOrWhiteSpace(options.Audience) ? [options.Audience] : []))
+            .ToArray();
+        return audiences.Length == 0 || audiences.Contains(audience, StringComparer.Ordinal);
     }
 
     /// <summary>

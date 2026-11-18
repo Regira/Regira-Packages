@@ -248,6 +248,7 @@ internal sealed class EntityEndpointMapper
                 .ProducesValidationProblem();
             group.MapPost("list", async (TSearchObject?[] searchObjects, HttpContext http) =>
                 {
+                    SearchObjectListLimit.ThrowIfTooLong<TEntity, TSearchObject?>(searchObjects);
                     var (_, paging, includes, sortBy) = BindComplexQuery<TEntity, TSearchObject, TSortBy, TIncludes>(http, bindSearchObject: false);
                     return Ok(await Sender(http).Send(new ListQuery<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto>(searchObjects, paging, includes, sortBy), http.RequestAborted));
                 })
@@ -267,6 +268,7 @@ internal sealed class EntityEndpointMapper
                 .ProducesValidationProblem();
             group.MapPost("search", async (TSearchObject?[] searchObjects, HttpContext http) =>
                 {
+                    SearchObjectListLimit.ThrowIfTooLong<TEntity, TSearchObject?>(searchObjects);
                     var (_, paging, includes, sortBy) = BindComplexQuery<TEntity, TSearchObject, TSortBy, TIncludes>(http, bindSearchObject: false);
                     return Ok(await Sender(http).Send(new SearchQuery<TEntity, TKey, TSearchObject, TSortBy, TIncludes, TDto>(searchObjects, paging, includes, sortBy), http.RequestAborted));
                 })

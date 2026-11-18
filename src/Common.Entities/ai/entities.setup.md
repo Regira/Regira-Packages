@@ -289,7 +289,7 @@ Regira.Entities.Validation.FluentValidation ← optional — AbstractValidator r
 
 | Package | Version |
 |---|---|
-| `Regira.Entities.*` | major **6**; resolve the patch at add time. Keep the `Regira.*` packages you reference **directly** on the same version, or restore reports NU1605 |
+| `Regira.Entities.*` | major **6**; resolve the patch at add time. Take the version `dotnet add package` resolves for each `Regira.*` package: a release ships only the packages it changes, so `Regira.Entities.Web` and `Regira.Entities.Mapping.Mapster` may differ by patch. Never pin one below what another `Regira.*` package requires, or restore reports NU1605 |
 | `Microsoft.OpenApi` | **no direct reference** — it arrives through `Microsoft.AspNetCore.OpenApi`, whose range is the compatible one by definition — from **10.0.11** on it is past the 2.x advisory (10.0.12 → `[2.12.0, 3.0.0)`); 10.0.10 and earlier pull the vulnerable 2.0.0, one more reason that package is added first (below). It must stay on **2.x**: 3.x breaks the .NET 10 OpenAPI source generator, and `dotnet add package Microsoft.OpenApi` resolves 3.x with at most an NU1608 warning. Overriding it anyway? Pin by hand the version restore already resolves (`dotnet list package --include-transitive`) — anything lower fails restore with NU1605 |
 | `SQLitePCLRaw.bundle_e_sqlite3` | **no direct reference** on EF Core Sqlite **10.0.11** or later, which brings 2.1.12, past GHSA-2m69-gcr7-jv3q; on net8 or 10.0.10 and earlier pin **2.1.12** (the advisory note above) |
 | `System.Security.Cryptography.Pkcs` | **10.0.13** for an app on `Microsoft.EntityFrameworkCore.SqlServer` 10.0.x: the provider's `Microsoft.Data.SqlClient` 6.1.7 brings 9.0.11 (GHSA-846f-f764-76mx, NU1903). **No direct reference** beside `Regira.DAL.SqlServer` or `Regira.Office.Mail.MailKit`, which bring 10.0.13 |
@@ -301,19 +301,21 @@ Regira.Entities.Validation.FluentValidation ← optional — AbstractValidator r
 **Add them as commands, not as hand-written XML.** Which rows you may type by hand is then structural rather than a rule to remember: only the conditional pin below is XML, and every major-constraint row resolves its own patch.
 
 ```bash
-dotnet add package Microsoft.AspNetCore.OpenApi   # first — lifts the template's pin, so adding auth later can't downgrade (see below)
+dotnet add package Microsoft.AspNetCore.OpenApi --version "10.*"   # first — lifts the template's pin, so adding auth later can't downgrade (see below)
 dotnet add package Regira.Entities.Web            # resolves the newest stable as a concrete pin; check it's a 6.x
-dotnet add package Regira.Entities.Mapping.Mapster    # same version as the row above
-dotnet add package Microsoft.EntityFrameworkCore.Sqlite     # patch resolved at add time; check the major against your TFM
-dotnet add package Scalar.AspNetCore
+dotnet add package Regira.Entities.Mapping.Mapster    # its own newest 6.x; the patch may differ from the row above
+dotnet add package Microsoft.EntityFrameworkCore.Sqlite --version "10.*"   # the TFM's major; unversioned it takes 11.x → NU1202
+dotnet add package Scalar.AspNetCore --version "2.*"   # the table's major; unversioned it takes 3.x
 dotnet add package Serilog.AspNetCore
 dotnet add package Serilog.Settings.Configuration
 ```
 
+A `Microsoft.AspNetCore.*` or `Microsoft.EntityFrameworkCore.*` package, or another EF Core provider (Npgsql, MySql), is added with the TFM's major (`--version "10.*"` on `net10.0`): unversioned, it takes the newest major once that ships, and .NET 11's packages restore into `net10.0` silently (OpenApi) or fail with NU1202 (EF Core, Identity). Then pin the patch restore resolved (`dotnet list package`), so nothing resolves from `*`.
+
 > **⚠️ Adding sign-in later?** `Regira.Security.Authentication.Web` is the only `Regira.*` package that
 > floors `Microsoft.AspNetCore.OpenApi`, so referencing it while `dotnet new webapi`'s stale pin is still in
 > place fails restore with **NU1605**. Raising the pin first (above) avoids it. If you hit it anyway,
-> `dotnet add package Microsoft.AspNetCore.OpenApi` clears it — that command still lands while the downgrade
+> `dotnet add package Microsoft.AspNetCore.OpenApi --version "10.*"` clears it — that command still lands while the downgrade
 > is live, and no hand-editing is needed.
 
 ```xml
@@ -406,7 +408,7 @@ using Microsoft.EntityFrameworkCore;
 
 // HTTP contract: ignore reference cycles + nulls, serialize enums as names, read DateTimes as UTC — applied to BOTH the MVC
 // options and Http.Json.JsonOptions, the set AddOpenApi() and minimal-API results read, so the generated
-// schema matches the wire format — plus the entity-exception filter (400 / 409) for every action.
+// schema matches the wire format — plus the entity-exception filter (400 / 403 / 404 / 409) for every action.
 builder.Services.AddControllers();
 builder.Services.ConfigureDefaultJsonOptions();   // Regira.Entities.Web.DependencyInjection
 
@@ -453,8 +455,9 @@ builder.Services.AddEntityServices(builder.Configuration);
 > re-creates the mismatch).
 >
 > **The second reason to call it: the entity exceptions.** It also registers `EntityExceptionFilter`, which
-> maps `EntityInputException` → **400** (its `Errors` as a `ValidationProblemDetails`), `EntityConstraintException` →
-> **409** and `EntityConcurrencyException` → **409** ("Concurrency conflict") for *every* MVC action. The entity controller bases carry the same mapping (`[EntityConstraintConflict]`),
+> maps `EntityInputException` → **400** (its `Errors` as a `ValidationProblemDetails`), `EntityForbiddenException` →
+> **403**, `EntityNotFoundException` → **404**, `EntityConstraintException` → **409** and `EntityConcurrencyException` →
+> **409** ("Concurrency conflict") for *every* MVC action. The entity controller bases carry the same mapping (`[EntityConstraintConflict]`),
 > so their actions answer a rule breach with a 400 without it, a hand-written domain action such as
 > `POST {id}/approve` included; on any other controller, a `ControllerExtensions` helper (`this.Save(…)`) answers it
 > with a 500 and a stack trace unless the filter is registered. `MapEntityExceptions()` registers the filter on its

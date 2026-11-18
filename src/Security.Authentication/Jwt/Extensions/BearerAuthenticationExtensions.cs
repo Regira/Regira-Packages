@@ -7,6 +7,7 @@ using Regira.Security.Authentication.Core.Abstraction;
 using Regira.Security.Authentication.Core.Models;
 using Regira.Security.Authentication.Core.Services;
 using Regira.Security.Authentication.Jwt.Models;
+using Regira.Security.Authentication.Jwt.Services;
 using System.Security.Claims;
 using System.Text;
 
@@ -40,6 +41,11 @@ public static class BearerAuthenticationExtensions
     {
         var options = new BearerValidationOptions();
         configure(options);
+
+        if (!string.IsNullOrWhiteSpace(options.Secret))
+        {
+            JwtSigningKeyRules.EnsureAsciiSecret(options.Secret, $"{nameof(BearerValidationOptions)}.{nameof(options.Secret)}");
+        }
 
         builder.Services.AddSingleton<ISecuritySchemeDescriptor>(
             SecuritySchemeDescriptor.Bearer(options.AuthenticationScheme));

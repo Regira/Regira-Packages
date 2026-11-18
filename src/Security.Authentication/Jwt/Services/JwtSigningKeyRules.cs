@@ -28,10 +28,32 @@ internal static class JwtSigningKeyRules
     };
 
     /// <summary>
+    /// Throws when <paramref name="secret"/> holds a character outside ASCII. The signing key is the secret's
+    /// <see cref="Encoding.ASCII"/> bytes, where every such character becomes <c>?</c>: the key is weaker than the
+    /// secret looks, and a secret made only of such characters is a key anyone can guess from its length. Reading
+    /// the secret in another encoding would change the key of every secret in use, so the secret is refused instead.
+    /// </summary>
+    /// <param name="secret">The configured secret.</param>
+    /// <param name="optionName">The option that holds it, as the message names it, e.g. <c>JwtTokenOptions.Secret</c>.</param>
+    public static void EnsureAsciiSecret(string secret, string optionName)
+    {
+        if (secret.All(char.IsAscii))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"{optionName} contains a character outside ASCII. The signing key is made of the secret's ASCII bytes, " +
+            "where every other character becomes '?', so this secret never signed with the strength it appears to " +
+            "have. Replace it with an ASCII secret, e.g. the Base64 of 64 random bytes; tokens signed with the " +
+            "replaced secret stop validating.");
+    }
+
+    /// <summary>
     /// Throws when <paramref name="secret"/> is too short for <paramref name="algorithm"/>.
     /// <para>
     /// Counted in <see cref="Encoding.ASCII"/> bytes because that is the encoding the signing key is actually
-    /// derived from — a secret padded with non-ASCII characters is not as long as it looks.
+    /// derived from: one byte per character.
     /// </para>
     /// An unrecognised <paramref name="algorithm"/> is left alone: asymmetric and future algorithms carry
     /// different rules, and inventing one here would reject a configuration that works.

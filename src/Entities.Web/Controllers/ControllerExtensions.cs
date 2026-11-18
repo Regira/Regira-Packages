@@ -8,6 +8,7 @@ using Regira.Entities.Mediator.Requests;
 using Regira.Entities.Models;
 using Regira.Entities.Models.Abstractions;
 using Regira.Entities.Web.Models;
+using Regira.Entities.Web.Validation;
 using System.Text.Json;
 
 namespace Regira.Entities.Web.Controllers;
@@ -17,7 +18,8 @@ namespace Regira.Entities.Web.Controllers;
 /// <c>Regira.Entities.Mediator</c> through the <see cref="IEntitySender"/> and answers with its result — <c>null</c> when
 /// the entity does not exist, so the caller picks the 404. A write helper throws what the write pipeline refuses:
 /// <see cref="EntityConstraintConflictAttribute"/> on the entity controller bases, or <see cref="EntityExceptionFilter"/>
-/// application-wide, answers a refused write with 400 and a constraint or concurrency conflict with 409.
+/// application-wide, answers a refused write with 400, an <c>EntityForbiddenException</c> with 403, an
+/// <c>EntityNotFoundException</c> with 404, and a constraint or concurrency conflict with 409.
 /// A read helper sends with the request's <c>RequestAborted</c>, so a client that leaves cancels its query; a write runs
 /// to its end whatever the client does, since one cancelled around its commit leaves the client unable to tell whether it
 /// was saved.
@@ -55,7 +57,10 @@ public static class ControllerExtensions
         where TSo : class, ISearchObject<TKey>, new()
         where TSortBy : struct, Enum
         where TIncludes : struct, Enum
-        => Ok(await ctrl.Sender().Send(new ListQuery<TEntity, TKey, TSo, TSortBy, TIncludes, TDto>(so, pagingInfo, includes, sortBy), ctrl.HttpContext.RequestAborted))!;
+    {
+        SearchObjectListLimit.ThrowIfTooLong<TEntity, TSo>(so);
+        return Ok(await ctrl.Sender().Send(new ListQuery<TEntity, TKey, TSo, TSortBy, TIncludes, TDto>(so, pagingInfo, includes, sortBy), ctrl.HttpContext.RequestAborted))!;
+    }
 
     // Search
     public static OkObjectResult SearchResult<TDto>(this ControllerBase _, IList<TDto> items, long count, long? duration = null) =>
@@ -76,7 +81,10 @@ public static class ControllerExtensions
         where TSo : class, ISearchObject<TKey>, new()
         where TSortBy : struct, Enum
         where TIncludes : struct, Enum
-        => Ok(await ctrl.Sender().Send(new SearchQuery<TEntity, TKey, TSo, TSortBy, TIncludes, TDto>(so, pagingInfo, includes, sortBy), ctrl.HttpContext.RequestAborted))!;
+    {
+        SearchObjectListLimit.ThrowIfTooLong<TEntity, TSo>(so);
+        return Ok(await ctrl.Sender().Send(new SearchQuery<TEntity, TKey, TSo, TSortBy, TIncludes, TDto>(so, pagingInfo, includes, sortBy), ctrl.HttpContext.RequestAborted))!;
+    }
 
     // Save
     public static OkObjectResult SaveResult<TDto>(this ControllerBase _, TDto item, int affected, bool isNew, long? duration = null) =>

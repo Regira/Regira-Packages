@@ -50,9 +50,9 @@ dotnet user-secrets set "Authentication:ApiKeys:0:Key" "<a new GUID>"
 ```
 
 `Authentication:Jwt:Secret` must be ≥ 64 bytes for the `HS512` default (≥ 48 for `HS384`, ≥ 32 for `HS256`) — a
-shorter one throws from `AddJwtAuthentication` at startup. Length is counted as ASCII, the encoding the signing key is
-derived from, so a non-ASCII character contributes one byte rather than the two or three UTF-8 would give it.
-`Authentication:Jwt:Audience` must equal the SPA's `clientApp`.
+shorter one throws from `AddJwtAuthentication` at startup, and so does one holding a character outside ASCII: the
+signing key is the secret's ASCII bytes. `Authentication:Jwt:Audience` must equal the SPA's `clientApp`, or sign-in
+answers `400`.
 
 ## Register a new staff member
 

@@ -187,6 +187,32 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
   `Related()` child — which is compared as a data column. A data column needs no DTO property. An initializer on the
   token answers 409 to every write, loudly, so it is not checked.
 
+### Forbidden and not-found exceptions
+
+**EntityForbiddenException** and **EntityNotFoundException** refuse a write for a reason that is no input error: the
+caller may read the row but not change it (403), or a row the write needs does not exist for the caller (404). The app
+throws them from a validator, a prepper or a request handler; the write service passes them through, and every web
+write surface answers with a `ProblemDetails` whose `detail` is the exception's message, through the same
+`[EntityConstraintConflict]` attribute, `EntityExceptionFilter` and `EntityExceptionEndpointFilter` as the 400 and the
+409s. Without a message, each sends its `ClientMessage`.
+
+```csharp
+public class EntityForbiddenException(string message = EntityForbiddenException.ClientMessage, Exception? innerException = null)
+    : Exception(message, innerException)
+{
+    public const string ClientMessage = "You may not change this record.";
+}
+
+public class EntityNotFoundException(string message = EntityNotFoundException.ClientMessage, Exception? innerException = null)
+    : Exception(message, innerException)
+{
+    public const string ClientMessage = "The record was not found.";
+}
+```
+
+A row the caller may not see at all belongs out of the query, in a global filter, where its writes answer 404 by
+themselves; an attachment upload runs no query, so its link validator throws `EntityNotFoundException` instead.
+
 
 ## DbContext
 

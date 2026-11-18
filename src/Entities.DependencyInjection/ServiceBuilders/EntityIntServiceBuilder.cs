@@ -181,6 +181,19 @@ public class EntityIntServiceBuilder<TContext, TEntity>(EntityServiceCollectionO
         base.React(property, value, reactFunc);
         return this;
     }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.ReactMany(Func{IReadOnlyList{IEntityChange{TEntity}},IServiceProvider,CancellationToken,Task})" />
+    public new EntityIntServiceBuilder<TContext, TEntity> ReactMany(Func<IReadOnlyList<IEntityChange<TEntity>>, IServiceProvider, CancellationToken, Task> reactFunc)
+    {
+        base.ReactMany(reactFunc);
+        return this;
+    }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.ReactMany(Func{IEntityChange{TEntity},bool},Func{IReadOnlyList{IEntityChange{TEntity}},IServiceProvider,CancellationToken,Task})" />
+    public new EntityIntServiceBuilder<TContext, TEntity> ReactMany(Func<IEntityChange<TEntity>, bool> canReact,
+        Func<IReadOnlyList<IEntityChange<TEntity>>, IServiceProvider, CancellationToken, Task> reactFunc)
+    {
+        base.ReactMany(canReact, reactFunc);
+        return this;
+    }
     // Server-owned fields
     /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.ServerOwned{TProp}" />
     public new EntityIntServiceBuilder<TContext, TEntity> ServerOwned<TProp>(Expression<Func<TEntity, TProp>> selector, Func<TEntity, TProp>? mintOnCreate = null)

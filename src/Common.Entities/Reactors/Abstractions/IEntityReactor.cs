@@ -5,7 +5,8 @@ namespace Regira.Entities.Reactors.Abstractions;
 /// not happen for a write that fails or rolls back: sending mail, calling another system, enqueueing a background
 /// job, starting a follow-up workflow.
 /// <para>
-/// Reactors run in registration order, once per changed row, in a DI scope of their own with a fresh
+/// Reactors run one after the other in registration order, each once per changed row it covers — an
+/// <see cref="IEntityBatchReactor"/> once for all of them — in a DI scope of their own with a fresh
 /// <c>DbContext</c>: a reactor that writes saves its own unit of work, and that save can trigger reactors in turn.
 /// A reactor that throws is logged and skipped — the data is committed, so the save still succeeds and the other
 /// reactors still run.

@@ -25,13 +25,18 @@ namespace Web.Security.Testing;
 /// </summary>
 public class JwtOptionsCharacterizationTests
 {
+    /// <summary>A 66-character ASCII secret, over the 64 bytes HS512 requires.</summary>
+    private const string Secret = "regira-jwt-options-characterization-secret-for-hs512-0123456789-ab";
+
     /// <summary>A 66-character secret — over the 64 bytes HS512 requires — carrying non-ASCII letters.</summary>
     private const string AccentedSecret = "régira-caractères-non-ascii-secret-pour-signature-hs512-0123456789";
 
     /// <summary>
     /// ⚠️ The secret is read with <see cref="Encoding.ASCII"/>, which maps every non-ASCII character to
     /// <c>?</c> (0x3F). Two secrets differing only outside ASCII therefore produce the *same* signing key, and
-    /// a token issued under one validates under the other.
+    /// a token issued under one validates under the other. Registration refuses such a secret for that reason
+    /// (<see cref="Test_Secret_With_A_Non_Ascii_Character_Throws_At_Registration"/>); a <see cref="JwtTokenHelper"/>
+    /// built by hand still folds it.
     /// <para>
     /// This test exists to make the obvious "fix" — switching to UTF-8 — fail loudly. That change is not
     /// backward compatible: it derives a different key from the same configured secret, so every token already
@@ -65,7 +70,7 @@ public class JwtOptionsCharacterizationTests
     {
         var options = ResolveJwtBearerOptions(o =>
         {
-            o.Secret = AccentedSecret;
+            o.Secret = Secret;
             o.LifeSpan = lifeSpan;
         });
 
@@ -80,7 +85,7 @@ public class JwtOptionsCharacterizationTests
     [Fact]
     public void Test_ClockSkew_Is_Zero()
     {
-        var options = ResolveJwtBearerOptions(o => o.Secret = AccentedSecret);
+        var options = ResolveJwtBearerOptions(o => o.Secret = Secret);
 
         options.TokenValidationParameters.ClockSkew.ShouldBe(TimeSpan.Zero);
     }
@@ -93,14 +98,14 @@ public class JwtOptionsCharacterizationTests
     [Fact]
     public void Test_Issuer_And_Audience_Validation_Are_Off_Until_Configured()
     {
-        var bare = ResolveJwtBearerOptions(o => o.Secret = AccentedSecret);
+        var bare = ResolveJwtBearerOptions(o => o.Secret = Secret);
 
         bare.TokenValidationParameters.ValidateIssuer.ShouldBeFalse();
         bare.TokenValidationParameters.ValidateAudience.ShouldBeFalse();
 
         var configured = ResolveJwtBearerOptions(o =>
         {
-            o.Secret = AccentedSecret;
+            o.Secret = Secret;
             o.Authority = "https://issuer.example";
             o.Audience = "spa";
         });
@@ -120,7 +125,7 @@ public class JwtOptionsCharacterizationTests
     {
         var options = ResolveJwtBearerOptions(o =>
         {
-            o.Secret = AccentedSecret;
+            o.Secret = Secret;
             o.Audience = "ignored";
             o.Audiences = ["spa", "mobile"];
         });
@@ -224,18 +229,50 @@ public class JwtOptionsCharacterizationTests
     }
 
     /// <summary>
-    /// Length is counted in the encoding the key is derived from. An accent costs two bytes in UTF-8 but one in the
-    /// ASCII the key uses, so the count must agree with
-    /// <see cref="Test_Secret_Is_Read_As_Ascii_So_Non_Ascii_Characters_Collapse"/>: 62 characters and one accent are
-    /// 64 bytes in UTF-8, yet make a 63-byte key, too short for HS512.
+    /// A character outside ASCII becomes <c>?</c> in the key
+    /// (<see cref="Test_Secret_Is_Read_As_Ascii_So_Non_Ascii_Characters_Collapse"/>), so the secret is weaker than it
+    /// looks, and one made only of such characters is a key anyone can guess from its length. Registration refuses
+    /// it, naming the option, whatever its length.
+    /// </summary>
+    [Theory]
+    [InlineData(AccentedSecret)]
+    [InlineData("ééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééééé")]
+    [InlineData("short-é")]
+    public void Test_Secret_With_A_Non_Ascii_Character_Throws_At_Registration(string secret)
+    {
+        var exception = Should.Throw<InvalidOperationException>(() =>
+            new ServiceCollection().AddJwtAuthentication(o => o.Secret = secret));
+
+        exception.Message.ShouldContain($"{nameof(JwtTokenOptions)}.{nameof(JwtTokenOptions.Secret)}");
+        exception.Message.ShouldContain("ASCII");
+    }
+
+    /// <summary>A scheme that only validates derives its key the same way, so opting out of the length check keeps this one.</summary>
+    [Fact]
+    public void Test_Non_Ascii_Secret_Is_Refused_Without_The_Length_Check_Too()
+    {
+        Should.Throw<InvalidOperationException>(() => new ServiceCollection().AddJwtAuthentication(o =>
+        {
+            o.Secret = AccentedSecret;
+            o.ValidateSecretLength = false;
+        })).Message.ShouldContain("ASCII");
+    }
+
+    /// <summary>
+    /// A bearer scheme validating an issuer's shared key reads it the same way, so its secret is held to the same
+    /// rule, at registration. A scheme that discovers its keys from an authority has no secret to check.
     /// </summary>
     [Fact]
-    public void Test_Secret_Length_Is_Counted_In_The_Encoding_The_Key_Uses()
+    public void Test_Bearer_Secret_With_A_Non_Ascii_Character_Throws_At_Registration()
     {
-        var secret = new string('k', 62) + "é";
+        var exception = Should.Throw<InvalidOperationException>(() =>
+            new ServiceCollection().AddBearerAuthentication(o => o.Secret = AccentedSecret));
 
-        Should.Throw<InvalidOperationException>(() => new ServiceCollection().AddJwtAuthentication(o => o.Secret = secret))
-            .Message.ShouldContain("is 63 bytes");
+        exception.Message.ShouldContain($"{nameof(BearerValidationOptions)}.{nameof(BearerValidationOptions.Secret)}");
+        exception.Message.ShouldContain("ASCII");
+
+        Should.NotThrow(() => new ServiceCollection().AddBearerAuthentication(o => o.Secret = Secret));
+        Should.NotThrow(() => new ServiceCollection().AddBearerAuthentication(o => o.Authority = "https://issuer.example"));
     }
 
     /// <summary>
@@ -246,7 +283,7 @@ public class JwtOptionsCharacterizationTests
     [Fact]
     public void Test_Name_And_Role_Claim_Types_Keep_Their_Jwt_Spelling()
     {
-        var options = ResolveJwtBearerOptions(o => o.Secret = AccentedSecret);
+        var options = ResolveJwtBearerOptions(o => o.Secret = Secret);
 
         options.TokenValidationParameters.NameClaimType.ShouldBe("name");
         options.TokenValidationParameters.RoleClaimType.ShouldBe("role");
@@ -258,7 +295,7 @@ public class JwtOptionsCharacterizationTests
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddJwtAuthentication(o => o.Secret = AccentedSecret);
+        services.AddJwtAuthentication(o => o.Secret = Secret);
 
         var descriptor = services.Single(x => x.ServiceType == typeof(ITokenHelper));
         descriptor.Lifetime.ShouldBe(ServiceLifetime.Transient);

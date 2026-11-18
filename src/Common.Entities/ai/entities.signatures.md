@@ -461,7 +461,8 @@ instead, and the mapped-endpoint counterpart: `entities.patterns` → *Replacing
 
 > **Complex only** = bases with `TSortBy` + `TIncludes`. Simple bases omit `POST /list` and `POST /search`
 > (the body/array variants), but do expose `GET /search` (single search object, with count for paging)
-> alongside basic list via `GET /?q=…`. For response envelope shapes
+> alongside basic list via `GET /?q=…`. The body's search objects are united; `[]` lists as `GET` does, global filters included,
+> and more than 32 answer 400 (an `EntityInputException`, the mapped endpoints' `POST list`/`POST search` too). For response envelope shapes
 > (`item` / `items,count`) see `entities.instructions.md` §Step 13.
 
 A write a validator refuses — save, create, modify, patch or delete — answers 400 with a `ValidationProblemDetails`.
@@ -1180,6 +1181,15 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
         Expression<Func<TEntity, TProp>> property, TProp value,
         Func<IEntityChange<TEntity>, IServiceProvider, CancellationToken, Task> reactFunc);
 
+    // batch form: reactFunc is called once per commit with every change (canReact: those it selects, and not at
+    // all when it selects none), in the order they were saved
+    EntityServiceBuilder<TContext, TEntity, TKey> ReactMany(
+        Func<IReadOnlyList<IEntityChange<TEntity>>, IServiceProvider, CancellationToken, Task> reactFunc);
+
+    EntityServiceBuilder<TContext, TEntity, TKey> ReactMany(
+        Func<IEntityChange<TEntity>, bool> canReact,
+        Func<IReadOnlyList<IEntityChange<TEntity>>, IServiceProvider, CancellationToken, Task> reactFunc);
+
     // reacts to TEntity only — also a reactor written against an interface (options.AddReactor<T>() for all it covers)
     EntityServiceBuilder<TContext, TEntity, TKey> AddReactor<TReactor>()
         where TReactor : class, IEntityReactor<TEntity>;
@@ -1272,7 +1282,7 @@ public partial class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, T
         Func<IQueryable<TEntity>, TSearchObject?, IQueryable<TEntity>> filterFunc);
 
     // Re-declared to keep the builder type through a chain, here and on the complex builders:
-    // Validate(...) and React(...) — every overload — AddValidator<T>(), AddReactor<T>(), ServerOwned(...)
+    // Validate(...), React(...) and ReactMany(...) — every overload — AddValidator<T>(), AddReactor<T>(), ServerOwned(...)
     // and the two int-child Related<TRelated>(...) overloads
 }
 ```
@@ -1303,7 +1313,7 @@ public partial class EntityIntServiceBuilder<TContext, TEntity>
     EntityIntServiceBuilder<TContext, TEntity> Validate(Func<IEntityValidatorContext<TEntity>, TContext, CancellationToken, Task> validate);
     EntityIntServiceBuilder<TContext, TEntity> AddValidator<TValidator>()
         where TValidator : class, IEntityValidator<TEntity>;
-    // React(...) — every overload — and AddReactor<TReactor>() likewise return EntityIntServiceBuilder<TContext, TEntity>
+    // React(...) and ReactMany(...) — every overload — and AddReactor<TReactor>() likewise return EntityIntServiceBuilder<TContext, TEntity>
 
     // Re-declared to keep the builder type through a chain: ServerOwned(...) and the int-child
     // Related<TRelated>(...) overloads (sync only, with prepareFunc/configure, or with configure alone)
@@ -1712,6 +1722,23 @@ public abstract class EntityReactorBase<TEntity> : IEntityReactor<TEntity> where
     public abstract Task React(IEntityChange<TEntity> change, CancellationToken token = default);
 }
 
+// A batch reactor: one call per commit with every change it covers and its CanReact selects — never an empty
+// list, in the order they were saved. Registered like any reactor.
+public interface IEntityBatchReactor : IEntityReactor
+{
+    Task ReactMany(IReadOnlyList<IEntityChange> changes, CancellationToken token = default);
+}
+public interface IEntityBatchReactor<in TEntity> : IEntityReactor<TEntity>, IEntityBatchReactor
+{
+    Task ReactMany(IReadOnlyList<IEntityChange<TEntity>> changes, CancellationToken token = default);
+}
+
+public abstract class EntityBatchReactorBase<TEntity> : EntityReactorBase<TEntity>, IEntityBatchReactor<TEntity> where TEntity : class
+{
+    public abstract Task ReactMany(IReadOnlyList<IEntityChange<TEntity>> changes, CancellationToken token = default);
+    public sealed override Task React(IEntityChange<TEntity> change, CancellationToken token = default);   // a batch of one
+}
+
 public static class EntityChangeExtensions
 {
     // Modified with a committed value that differs from the stored one; a complex property matches any member
@@ -1929,7 +1956,8 @@ public enum EntityEndpoint
 // on every mapped endpoint: the entity (the owner, for an attachment route) and the endpoint
 public sealed record EntityEndpointMetadata(Type EntityType, EntityEndpoint Endpoint) { public bool IsWrite { get; } }
 
-// EntityInputException → 400, EntityConstraintException / EntityConcurrencyException → 409, the controllers' bodies
+// EntityInputException → 400, EntityForbiddenException → 403, EntityNotFoundException → 404,
+// EntityConstraintException / EntityConcurrencyException → 409, the controllers' bodies
 public sealed class EntityExceptionEndpointFilter : IEndpointFilter;
 ```
 
@@ -2066,11 +2094,27 @@ public class EntityConcurrencyException(string message, Exception? innerExceptio
 {
     public const string ClientMessage = "The record was changed or removed since it was read. Reload it and try again.";
 }
+
+// HTTP 403, ProblemDetails title "Forbidden", detail = the message: the caller may not change this row.
+// Thrown by the app from a validator, a prepper or a handler.
+public class EntityForbiddenException(string message = EntityForbiddenException.ClientMessage, Exception? innerException = null)
+    : Exception(message, innerException)
+{
+    public const string ClientMessage = "You may not change this record.";
+}
+
+// HTTP 404, ProblemDetails title "Not Found", detail = the message: a row the write needs does not exist for the
+// caller. Thrown by the app from a validator, a prepper or a handler.
+public class EntityNotFoundException(string message = EntityNotFoundException.ClientMessage, Exception? innerException = null)
+    : Exception(message, innerException)
+{
+    public const string ClientMessage = "The record was not found.";
+}
 ```
 
 `ConfigureDefaultJsonOptions()` registers the filter that maps them — 400 with `Errors` as a
-`ValidationProblemDetails` (`errors`, and `errorDetails` with each error's args), 409 for
-`EntityConstraintException` and `EntityConcurrencyException` — so a **hand-written** action returns
+`ValidationProblemDetails` (`errors`, and `errorDetails` with each error's args), 403 for `EntityForbiddenException`,
+404 for `EntityNotFoundException`, 409 for `EntityConstraintException` and `EntityConcurrencyException` — so a **hand-written** action returns
 what the generated ones do.
 Catch the non-generic base if you handle it yourself: a `catch` on one closed generic misses the one a prepper
 threw for a related entity (`EntityInputException<Product>` inside an `Order` write).

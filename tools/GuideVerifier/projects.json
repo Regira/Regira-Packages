@@ -369,7 +369,7 @@
         "Regira.Security.Authentication.OpenIdConnect.Extensions"
       ],
       "frameworkReferences": ["Microsoft.AspNetCore.App"],
-      "packages": { "Microsoft.AspNetCore.OpenApi": "10.0.13" }
+      "packages": { "Microsoft.AspNetCore.OpenApi": "10.0.15" }
     },
     {
       "name": "storage",

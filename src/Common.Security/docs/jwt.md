@@ -10,7 +10,7 @@ Self-issued JWT bearer tokens and their refresh tokens, from `Regira.Security.Au
 
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
-| `Secret` | `string` | *(required)* | HMAC signing key — `HS256` needs ≥ 32 bytes, `HS384` ≥ 48, the `HS512` default ≥ 64. Enforced at registration |
+| `Secret` | `string` | *(required)* | HMAC signing key, ASCII characters only — `HS256` needs ≥ 32 bytes, `HS384` ≥ 48, the `HS512` default ≥ 64. Both enforced at registration |
 | `Algorithm` | `string?` | `null` | Signing algorithm as a JWA id; HS512 when unset (applied as `SecurityAlgorithms.HmacSha512Signature`, the XML-dsig URI spelling) |
 | `ValidateSecretLength` | `bool` | `true` | Whether registration rejects a `Secret` too short for `Algorithm` |
 | `AuthenticationScheme` | `string` | `"Bearer"` | Name of the JwtBearer scheme |
@@ -22,6 +22,11 @@ Self-issued JWT bearer tokens and their refresh tokens, from `Regira.Security.Au
 | `NameClaimType` | `string` | `"name"` | Claim used as user name |
 | `RoleClaimType` | `string` | `"role"` | Claim used as role |
 | `UseJwtClaimTypes` | `bool` | `true` | Configure the token handlers' claim-type maps to the short JWT spellings (`sub`, `name`, `email`) instead of the WS-2008 URIs |
+
+The signing key is the secret's ASCII bytes, where every other character becomes `?`. A secret holding a character
+outside ASCII would sign with less than it appears to hold, and one made only of such characters would be a key anyone
+can guess from its length, so `AddJwtAuthentication` throws `InvalidOperationException` for it, whatever
+`ValidateSecretLength` says. Use an ASCII secret, such as the Base64 of 64 random bytes.
 
 ### ITokenHelper
 
@@ -52,6 +57,13 @@ services.AddJwtAuthentication(options =>
 
 `Authority` is optional for these self-issued tokens: it is written into each token as its issuer and checked when a
 token comes in. Left unset, tokens carry no issuer and none is checked.
+
+Give each application its own `Secret`. With neither `Authority` nor an audience set, the secret alone tells this
+application's tokens from another's, so a token that another application signed with the same secret is accepted here.
+Set `Authority` to any string of the application's own (a URL is customary; nothing is fetched from it) and `Audience`
+to the client application's name, and a token from another application is refused even where a secret is shared.
+Setting `Authority` on a running application refuses the tokens issued before it, which carry no issuer, so its users
+sign in again.
 
 ### ClaimsPrincipal extensions
 

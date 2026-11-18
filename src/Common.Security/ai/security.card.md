@@ -9,10 +9,10 @@
   and `Hasher` (PBKDF2); BCrypt lives in `Regira.Security.Hashing.BCryptNet`. Everything token/scheme-shaped lives in
   `Regira.Security.Authentication` — but is documented here.
 - **JWT wiring one-liner:** `AddJwtAuthentication(o => configuration.GetSection(AuthenticationSections.Jwt).Bind(o))` —
-  `Secret` **≥ 64 bytes** (HS512 default, counted as ASCII) or startup throws; `Algorithm` is a JWA id
+  `Secret` **≥ 64 ASCII characters** (HS512 default) or startup throws; `Algorithm` is a JWA id
   (`"HS512"`), leave unset for the default.
-- **`Audience` = the SPA's `clientApp`.** Login is `POST auth?clientApp=…`; a mismatch 401s every
-  authenticated call with `audience invalid`.
+- **`Audience` = the SPA's `clientApp`.** Login is `POST auth?clientApp=…`; a `clientApp` that is not a configured
+  audience answers `400`. Give each application its own `Secret`.
 - **Roles end-to-end** (Identity → JWT → SPA) is a dedicated recipe: `security.instructions` →
   *Roles end-to-end* (`how_to` key `roles-end-to-end`). The two load-bearing lines: `.AddRoles<IdentityRole>()`
   and `o.ClaimsIdentity.RoleClaimType = RegiraClaimTypes.Role` — without them, Identity emits no role claims /

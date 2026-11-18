@@ -530,6 +530,8 @@ public abstract class EntityPrimerBase<T> : IEntityPrimer<T>
   `BeginTransaction()` — also for contexts sharing that transaction through `UseTransaction`, whichever of them
   commits it — and when an ambient `TransactionScope` completes. A failed save, a rollback, or a transaction
   disposed without committing reacts to nothing
+- One commit is one batch: the saves of a transaction are reacted to together at its commit, in the order they
+  were saved. A row saved twice in a transaction is listed twice
 - One save is one transaction. Every write the library makes — a generated endpoint, `IEntityService.SaveChanges()`,
   the related rows a prepper changes, an attachment upload — flushes in a single `SaveChanges`, which EF wraps in a
   transaction of its own. A unit of work that spans several saves or several services is the application's:
@@ -554,10 +556,18 @@ public abstract class EntityPrimerBase<T> : IEntityPrimer<T>
   commits on its own; `Commit()` / `CommitAsync()` for the saves inside `BeginTransaction()`, whose own
   `SaveChanges()` returns before anything reacts; the `Dispose()` that ends a completed `TransactionScope`, which
   runs them synchronously
-- Run in registration order, in a DI scope of their own with a fresh `DbContext` — a reactor that writes saves its
-  own unit of work, and that save runs the reactors of what it wrote (up to 8 levels deep). Hand slow work to a job
-  system
-- A reactor that throws is logged and skipped: the save still succeeds and the other reactors still run
+- Run one after the other in registration order, each over the changes it covers, in a DI scope of their own with
+  a fresh `DbContext` that the reactions of one commit share — a reactor that writes saves its own unit of work, and
+  that save runs the reactors of what it wrote (up to 8 levels deep). Hand slow work to a job system
+- React row by row, or to the changes of a commit together: a **batch reactor** (`e.ReactMany(...)`, or a class on
+  `EntityBatchReactorBase<T>`) gets the changes its `CanReact` selects in one call. Use it wherever many rows can
+  change at once — an import, a bulk update — so the reaction is one message, one enqueued job, one query or one
+  save, where a reactor per row makes one for each, inside the call that commits
+- A reactor that writes makes a second commit: not atomic with the first, and a failure is only logged. Keep it for
+  data that may lag behind the row, guard its `CanReact` so its own save does not trigger it again, and save once
+  for the batch: the reaction's `DbContext` keeps what it saved, so a save per row slows down with every row
+- A reactor that throws is logged and skipped — for that row, or for its batch: the save still succeeds and the
+  other reactors still run. A scoped service that fails when the reaction's scope is disposed is logged the same way
 - A reaction happens at most once: a crash between the commit and the reaction loses it, the enqueue to a job
   system included, and nothing retries a reactor that threw. Work that must happen writes a row of its own in the
   same save (an outbox), and a hosted service delivers each row at least once, the row's id serving the receiver as
@@ -576,6 +586,8 @@ services.UseEntities<MyDbContext>(e => e.UseDefaults())
             services.GetRequiredService<IOrderMailer>().SendShipped(change.Entity.Id, token));
         // class-based
         e.AddReactor<OrderInvoicingReactor>();
+        // batch: the changes of one commit in one call
+        e.AddReactor<OrderShippedPublisher>();
     });
 
 public class OrderInvoicingReactor(IOrderInvoicer invoicer) : EntityReactorBase<Order>
@@ -583,6 +595,13 @@ public class OrderInvoicingReactor(IOrderInvoicer invoicer) : EntityReactorBase<
     public override bool CanReact(IEntityChange<Order> change) => change.ChangedTo(x => x.Status, OrderStatus.Delivered);
     public override Task React(IEntityChange<Order> change, CancellationToken token = default)
         => invoicer.CreateFor(change.Entity.Id, token);   // IOrderInvoicer: the app's own service
+}
+
+public class OrderShippedPublisher(IOrderBus bus) : EntityBatchReactorBase<Order>
+{
+    public override bool CanReact(IEntityChange<Order> change) => change.ChangedTo(x => x.Status, OrderStatus.Shipped);
+    public override Task ReactMany(IReadOnlyList<IEntityChange<Order>> changes, CancellationToken token = default)
+        => bus.PublishShipped(changes.Select(change => change.Entity.Id).Distinct().ToArray(), token);   // IOrderBus: the app's own service
 }
 ```
 
@@ -602,7 +621,7 @@ Every helper service registers per entity, on the `For<>()` builder; most also r
 | Validator | `AddValidator<T>()`, `AddValidator<TScope>(ctx => …)` | `Validate(...)`, `AddValidator<T>()` |
 | Primer | `AddPrimer<T>()` | `AddPrimer<T>()` |
 | Normalizer | `AddNormalizer<T>()` | `AddNormalizer<T>()` |
-| Reactor | `AddReactor<T>()` | `React(...)`, `AddReactor<T>()` |
+| Reactor | `AddReactor<T>()` | `React(...)`, `ReactMany(...)`, `AddReactor<T>()` |
 | AfterMapper | `AddAfterMapper<T>()`, `AfterMap<TSource, TTarget>(...)` | `UseMapping<TDto, TInputDto>().After(...)`, `.AfterInput(...)` |
 
 This example uses each of them:

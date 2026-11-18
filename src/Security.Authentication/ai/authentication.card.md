@@ -6,10 +6,13 @@
 
 - **`AddJwtAuthentication(o => …)`** registers `ITokenHelper` + the JwtBearer scheme. Set `Secret` and
   `Audience`; `Authority` is optional (written as the issuer and checked when set). **`Algorithm` is a JWA id
-  (`HS512`)** and defaults to `HS512` when unset.
+  (`HS512`)** and defaults to `HS512` when unset. Without `Authority` and `Audience` the secret alone tells this
+  application's tokens from another's: give each application its own secret, and set both.
 - **`Secret` must be ≥ 64 bytes for the HS512 default** (≥ 48 for HS384, ≥ 32 for HS256). A shorter key
   throws `InvalidOperationException` from `AddJwtAuthentication`, naming the byte count it got and the one it
   needs. `ValidateSecretLength = false` opts out — only correct for a scheme that never issues tokens.
+  **ASCII characters only:** the key is the secret's ASCII bytes, so a secret holding any other character throws at
+  registration, in `AddJwtAuthentication` and in `AddBearerAuthentication` with a `Secret`, with no opt-out.
 - **`ITokenHelper.Create(claims, audience?, lifeSpan?)`** / `Validate(token)` —
   `Regira.Security.Authentication.Jwt.Abstraction`.
 - **`ClaimsPrincipal` extensions** `FindUserId()` / `FindUserName()` / `FindEmail()` / `FindRoles()` /

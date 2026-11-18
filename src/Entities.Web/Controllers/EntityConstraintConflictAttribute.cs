@@ -10,7 +10,8 @@ namespace Regira.Entities.Web.Controllers;
 /// <see cref="EntityExceptionFilter"/> does application-wide: an <see cref="EntityInputException"/> to a 400 with its
 /// errors, an <see cref="EntityConstraintException"/> to a 409 with the generic
 /// <see cref="EntityConstraintException.ClientMessage"/> (the provider's constraint message is logged by the write
-/// service), and an <see cref="EntityConcurrencyException"/> to a 409 with <see cref="EntityConcurrencyProblem"/>.
+/// service), an <see cref="EntityConcurrencyException"/> to a 409 with <see cref="EntityConcurrencyProblem"/>, an
+/// <see cref="EntityForbiddenException"/> to a 403 and an <see cref="EntityNotFoundException"/> to a 404.
 /// The entity and attachment controller bases carry it, so their actions, hand-written ones included, answer the same in
 /// a host that registers no filter.
 /// </summary>

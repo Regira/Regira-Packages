@@ -6,10 +6,12 @@ using System.Diagnostics;
 namespace Regira.Entities.EFcore.Reactors;
 
 /// <summary>
-/// Runs the reactors for the changes of a committed save: in registration order, per change, in a DI scope of their
-/// own. A reactor is instantiated in that scope the first time a change of a type it reacts to needs it. Each reactor
-/// is isolated — the data is already committed, so a failure is logged instead of thrown, and the reactors after it
-/// start from a fresh scope rather than inherit the half-staged changes it may have left tracked.
+/// Runs the reactors for the changes of a commit, in a DI scope of their own: reactor by reactor in registration
+/// order, each with the changes it covers in the order they were saved — one call for an
+/// <see cref="IEntityBatchReactor"/>, row by row for any other. A reactor is instantiated in that scope only when a
+/// change of a type it reacts to is among them. Each reaction is isolated — the data is already committed, so a failure
+/// is logged instead of thrown, and what runs after it starts from a fresh scope rather than inherit the half-staged
+/// changes it may have left tracked.
 /// </summary>
 internal sealed class ReactionDispatcher(IServiceProvider serviceProvider)
 {
@@ -27,6 +29,12 @@ internal sealed class ReactionDispatcher(IServiceProvider serviceProvider)
 
     private static readonly AsyncLocal<int> Depth = new();
 
+    /// <summary>
+    /// Whether <paramref name="other"/> creates its scopes from the same provider, and so runs the same reactors: the
+    /// saves of contexts sharing a transaction are then one batch.
+    /// </summary>
+    public bool SharesScopesWith(ReactionDispatcher other) => ReferenceEquals(_scopeFactory, other._scopeFactory);
+
     public async Task Dispatch(IReadOnlyList<IEntityChange> changes)
     {
         if (changes.Count == 0)
@@ -40,36 +48,88 @@ internal sealed class ReactionDispatcher(IServiceProvider serviceProvider)
             return;
         }
 
+        AsyncServiceScope scope;
+        try
+        {
+            scope = _scopeFactory.CreateAsyncScope();
+        }
+        catch (Exception ex)
+        {
+            // the provider is gone (disposed while a transaction was still open): nothing to run the reactors in
+            Report(ex, "Could not run the reactors for {Count} committed change(s)", changes.Count);
+            return;
+        }
+
         Depth.Value++;
-        var scope = _scopeFactory.CreateAsyncScope();
         try
         {
             var reactors = InScope(scope.ServiceProvider);
-            foreach (var change in changes)
+            // what runs after a failure starts clean
+            async Task Renew()
             {
-                var entityType = change.Entity.GetType();
-                for (var i = 0; i < reactors.Count; i++)
+                await Dispose(scope);
+                scope = _scopeFactory.CreateAsyncScope();
+                reactors = InScope(scope.ServiceProvider);
+            }
+
+            for (var i = 0; i < reactors.Count; i++)
+            {
+                var covered = changes.Where(change => reactors.Handles(i, change.Entity.GetType())).ToArray();
+                if (covered.Length == 0)
                 {
-                    if (!reactors.Handles(i, entityType))
-                    {
-                        continue;
-                    }
+                    continue;
+                }
+
+                IEntityReactor? reactor;
+                try
+                {
+                    reactor = reactors.Get(i);
+                }
+                catch (Exception ex)
+                {
+                    Report(ex, "Reactor {Reactor} could not be created for {Count} committed change(s) — the save stands; the other reactors still run",
+                        reactors.NameOf(i), covered.Length);
+                    await Renew();
+                    continue;
+                }
+
+                // not the save's token: the data is committed, and a client that goes away must not cancel what follows from it
+                if (reactor is IEntityBatchReactor batchReactor)
+                {
+                    var selected = covered.Length;
                     try
                     {
-                        // instantiated here, so a reactor that cannot be built fails like one that throws
-                        if (reactors.Get(i) is { } reactor && reactor.CanReact(change))
+                        var changesOfBatch = covered.Where(reactor.CanReact).ToArray();
+                        selected = changesOfBatch.Length;
+                        if (selected > 0)
                         {
-                            // not the save's token: the data is committed, and a client that goes away must not cancel what follows from it
-                            await reactor.React(change, CancellationToken.None);
+                            await batchReactor.ReactMany(changesOfBatch, CancellationToken.None);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Report(ex, "Reactor {Reactor} failed for a committed batch of {Count} change(s) — the save stands; the other reactors still run",
+                            reactors.NameOf(i), selected);
+                        await Renew();
+                    }
+                    continue;
+                }
+
+                foreach (var change in covered)
+                {
+                    try
+                    {
+                        // the reactor of the current scope: a fresh one after a row that failed
+                        if (reactors.Get(i) is { } rowReactor && rowReactor.CanReact(change))
+                        {
+                            await rowReactor.React(change, CancellationToken.None);
                         }
                     }
                     catch (Exception ex)
                     {
                         Report(ex, "Reactor {Reactor} failed for a committed {Kind} of {EntityType} #{Id} — the save stands; the other reactors still run",
-                            reactors.NameOf(i), change.Kind, entityType.FullName, IdOf(change.Entity));
-                        await scope.DisposeAsync();
-                        scope = _scopeFactory.CreateAsyncScope();
-                        reactors = InScope(scope.ServiceProvider);
+                            reactors.NameOf(i), change.Kind, change.Entity.GetType().FullName, IdOf(change.Entity));
+                        await Renew();
                     }
                 }
             }
@@ -81,8 +141,22 @@ internal sealed class ReactionDispatcher(IServiceProvider serviceProvider)
         }
         finally
         {
-            await scope.DisposeAsync();
+            await Dispose(scope);
             Depth.Value--;
+        }
+    }
+
+    // A scoped service that fails to dispose — a buffer flushing what the reactors handed it — is one more failure
+    // after the commit: logged, never the save's.
+    private async Task Dispose(AsyncServiceScope scope)
+    {
+        try
+        {
+            await scope.DisposeAsync();
+        }
+        catch (Exception ex)
+        {
+            Report(ex, "A service of the reactors' scope failed when the scope was disposed — the save stands");
         }
     }
 

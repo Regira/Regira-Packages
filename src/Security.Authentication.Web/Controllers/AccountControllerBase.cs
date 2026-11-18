@@ -37,18 +37,46 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
     /// <remarks>A sign-in action of a subclass (a second credential) checks it before it issues a token, as the actions here do.</remarks>
     protected Task<bool> CanSignIn(TUser user) => SignInService.CanSignIn(user);
 
+    /// <inheritdoc cref="AccountSignInService{TUser}.IsAllowedAudience"/>
+    /// <remarks>A sign-in action of a subclass that takes <c>clientApp</c> checks it first, as <c>Authenticate</c> does.</remarks>
+    protected bool IsAllowedAudience(string? audience) => SignInService.IsAllowedAudience(audience);
+
+    /// <summary>
+    /// Whether the account is refused before its password is checked: <c>Authenticate</c> answers it as locked out, and
+    /// <c>Refresh</c> and <c>RefreshToken</c> renew nothing for it. Identity's lockout by default
+    /// (<c>UserManager.IsLockedOutAsync</c>). Override it, with <see cref="OnPasswordRejected"/>, for a policy of the
+    /// app's own, such as slowing sign-ins down instead of locking the account. The refusal still answers and logs
+    /// Identity's lockout end (<c>GetLockoutEndDateAsync</c>), and a successful sign-in resets Identity's failed count
+    /// only, so a policy that counts failures in a store of its own lets them expire with time.
+    /// </summary>
+    protected virtual Task<bool> IsBlocked(TUser user) => userManager.IsLockedOutAsync(user);
+
+    /// <summary>
+    /// Runs when <c>Authenticate</c> receives a wrong password for an account that is not blocked. Counts a failed
+    /// attempt toward Identity's lockout by default (<c>UserManager.AccessFailedAsync</c>).
+    /// </summary>
+    protected virtual Task OnPasswordRejected(TUser user) => userManager.AccessFailedAsync(user);
+
     [AllowAnonymous]
     [HttpPost]
     [Route("", Name = RouteNames.Authenticate)]
+    [RequestSizeLimit(AccountInputLimits.RequestBody)]
     public virtual async Task<IActionResult> Authenticate([FromBody] AuthenticateInput model, [FromQuery] string clientApp)
     {
+        // checked before the user is looked up, so the answer says nothing about the account
+        if (!IsAllowedAudience(clientApp))
+        {
+            ModelState.AddModelError(nameof(clientApp), "The client application is not an audience of this API.");
+            return BadRequest(ModelState);
+        }
+
         bool? isLockedOut = null;
         DateTimeOffset? lockedOutEnd = null;
 
         var user = await userManager.FindByNameAsync(model.Username);
         if (user != null)
         {
-            isLockedOut = await userManager.IsLockedOutAsync(user);
+            isLockedOut = await IsBlocked(user);
             if (isLockedOut == false)
             {
                 bool isAuthenticated = await userManager.CheckPasswordAsync(user, model.Password);
@@ -65,7 +93,7 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
                     return Ok(await CreateSuccessResponse(principal.Claims, clientApp, user.Id));
                 }
                 // authentication failed
-                await userManager.AccessFailedAsync(user);
+                await OnPasswordRejected(user);
             }
             else
             {
@@ -102,8 +130,8 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
             });
         }
         var user = await userManager.FindByIdAsync(userId);
-        // a locked-out account, or one the sign-in options refuse, renews nothing: Authenticate would refuse it a token
-        if (user == null || await userManager.IsLockedOutAsync(user) || !await CanSignIn(user))
+        // a blocked account, or one the sign-in options refuse, renews nothing: Authenticate would refuse it a token
+        if (user == null || await IsBlocked(user) || !await CanSignIn(user))
         {
             return Unauthorized(new
             {
@@ -129,6 +157,7 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
     /// </summary>
     [AllowAnonymous]
     [HttpPost("refresh-token")]
+    [RequestSizeLimit(AccountInputLimits.RequestBody)]
     public virtual async Task<IActionResult> RefreshToken([FromBody] RefreshTokenInput model)
     {
         var refreshTokenService = RefreshTokenService;
@@ -142,7 +171,7 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
         var pair = await refreshTokenService.Refresh(model.RefreshToken, async userId =>
         {
             var user = await userManager.FindByIdAsync(userId);
-            if (user == null || await userManager.IsLockedOutAsync(user) || !await CanSignIn(user))
+            if (user == null || await IsBlocked(user) || !await CanSignIn(user))
             {
                 return null;
             }
@@ -168,7 +197,9 @@ public abstract class AccountControllerBase<TUser>(ITokenHelper tokenHelper, Use
     [HttpGet("personal-data")]
     public virtual async Task<IActionResult> GetPersonalData()
     {
-        var user = await userManager.FindByIdAsync(User.FindUserId()!);
+        // a host without a global authorization requirement lets a request in that carries no user
+        var userId = User.Identity?.IsAuthenticated == true ? User.FindUserId() : null;
+        var user = string.IsNullOrEmpty(userId) ? null : await userManager.FindByIdAsync(userId);
         if (user == null)
         {
             return Unauthorized();

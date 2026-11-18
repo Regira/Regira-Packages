@@ -52,6 +52,9 @@ public class AttachmentPrimerTests
         public List<(string Identifier, string? ContentType)> Saves { get; } = [];
         /// <summary>The 1-based number of the save that throws; <c>null</c> = none.</summary>
         public int? FailSave { get; set; }
+        /// <summary>A delete of an identifier containing this throws; <c>null</c> = none.</summary>
+        public string? FailDelete { get; set; }
+        public List<string> Deletes { get; } = [];
 
         public string Root => _inner.Root;
         public Task<bool> Exists(string identifier) => _inner.Exists(identifier);
@@ -66,7 +69,11 @@ public class AttachmentPrimerTests
             => Record(identifier, contentType, () => _inner.Save(identifier, bytes, contentType));
         public Task<string> Save(string identifier, Stream stream, string? contentType = null)
             => Record(identifier, contentType, () => _inner.Save(identifier, stream, contentType));
-        public Task Delete(string identifier) => _inner.Delete(identifier);
+        public Task Delete(string identifier)
+        {
+            Deletes.Add(identifier);
+            return FailDelete != null && identifier.Contains(FailDelete) ? throw new IOException("The store refused the delete") : _inner.Delete(identifier);
+        }
         public string GetAbsoluteUri(string identifier) => _inner.GetAbsoluteUri(identifier);
         public string GetIdentifier(string uri) => _inner.GetIdentifier(uri);
         public string? GetRelativeFolder(string identifier) => _inner.GetRelativeFolder(identifier);
@@ -103,6 +110,22 @@ public class AttachmentPrimerTests
         _sp?.Dispose();
         _connection.Close();
         Directory.Delete(_root, true);
+    }
+
+    /// <summary>Counts the queries on the connection.</summary>
+    private sealed class SelectCounter : DbCommandInterceptor
+    {
+        public int Count { get; set; }
+
+        public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command, CommandEventData eventData,
+            InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.TrimStart().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
+            {
+                Count++;
+            }
+            return ValueTask.FromResult(result);
+        }
     }
 
     /// <summary>Answers every save without writing a row, as an interceptor may.</summary>
@@ -613,6 +636,107 @@ public class AttachmentPrimerTests
 
         Assert.That(StoredRows(), Is.Empty);
         Assert.That(StoredFiles(), Is.Empty);
+    }
+
+    // the rows of a commit are read together, whatever the number of attachments it deleted
+    [Test]
+    public async Task Deleted_Attachments_Read_Their_Rows_In_One_Query()
+    {
+        var selects = new SelectCounter();
+        Build(interceptor: selects);
+        var kept = await AddAttachment("kept.txt", "kept");
+        var ids = new List<int>();
+        for (var i = 0; i < 20; i++)
+        {
+            ids.Add((await AddAttachment($"report-{i}.txt", "content")).Id);
+        }
+
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FileContext>();
+            db.Attachments.RemoveRange(ids.Select(id => new Attachment { Id = id }));
+            selects.Count = 0;
+            await db.SaveChangesAsync();
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(selects.Count, Is.EqualTo(2), "the stored rows of the deletes, then the rows that still name a file");
+            Assert.That(StoredFiles(), Has.Length.EqualTo(1));
+            Assert.That(ReadFile(Stored(kept.Id).Path), Is.EqualTo("kept"));
+        });
+    }
+
+    // a path left twice inside one transaction is one file to remove
+    [Test]
+    public async Task A_File_Left_Behind_Twice_In_One_Transaction_Is_Removed_Once()
+    {
+        Build();
+        var stored = await AddAttachment("report.txt", "content");
+
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FileContext>();
+            await using var transaction = await db.Database.BeginTransactionAsync();
+            var attachment = db.Attachments.Single(x => x.Id == stored.Id);
+            foreach (var path in new[] { "moved/report.txt", stored.Path, "moved/report.txt" })
+            {
+                attachment.Path = path;
+                await db.SaveChangesAsync();
+            }
+            await transaction.CommitAsync();
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Stored(stored.Id).Path, Is.EqualTo("moved/report.txt"));
+            Assert.That(_store.Deletes, Has.Count.EqualTo(1));
+            Assert.That(StoredFiles(), Is.Empty, "the file the row left twice");
+        });
+    }
+
+    // a path the row names in another casing can be the same file: it is kept
+    [Test]
+    public async Task A_Path_Renamed_In_Casing_Alone_Keeps_Its_File()
+    {
+        Build();
+        var stored = await AddAttachment("report.txt", "content");
+
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FileContext>();
+            var attachment = db.Attachments.Single(x => x.Id == stored.Id);
+            attachment.Path = attachment.Path!.ToUpperInvariant();
+            await db.SaveChangesAsync();
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Stored(stored.Id).Path, Is.EqualTo(stored.Path!.ToUpperInvariant()).And.Not.EqualTo(stored.Path));
+            Assert.That(StoredFiles(), Has.Length.EqualTo(1));
+        });
+    }
+
+    [Test]
+    public async Task A_File_That_Cannot_Be_Removed_Does_Not_Keep_The_Others()
+    {
+        Build();
+        var ids = new[] { (await AddAttachment("first.txt", "1")).Id, (await AddAttachment("locked.txt", "2")).Id, (await AddAttachment("last.txt", "3")).Id };
+        _store.FailDelete = "locked";
+
+        using (var scope = _sp.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FileContext>();
+            db.Attachments.RemoveRange(ids.Select(id => new Attachment { Id = id }));
+            await db.SaveChangesAsync();
+        }
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(StoredRows(), Is.Empty);
+            Assert.That(StoredFiles(), Has.Length.EqualTo(1));
+            Assert.That(StoredFiles().Select(Path.GetFileName), Has.One.Contains("locked"));
+        });
     }
 
     [Test]

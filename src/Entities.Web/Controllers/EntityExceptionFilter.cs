@@ -8,7 +8,8 @@ namespace Regira.Entities.Web.Controllers;
 /// Gives every MVC action the entity write pipeline's status mapping: <see cref="EntityInputException"/> →
 /// <b>400</b> with its errors as a <see cref="ValidationProblemDetails"/>, <see cref="EntityConstraintException"/> → <b>409</b>
 /// with <see cref="EntityConstraintProblem"/>, <see cref="EntityConcurrencyException"/> → <b>409</b> with
-/// <see cref="EntityConcurrencyProblem"/>. Registered application-wide by
+/// <see cref="EntityConcurrencyProblem"/>, <see cref="EntityForbiddenException"/> → <b>403</b> and
+/// <see cref="EntityNotFoundException"/> → <b>404</b>. Registered application-wide by
 /// <c>ConfigureDefaultJsonOptions()</c> (see <c>MapEntityExceptions()</c>).
 /// <para>
 /// The entity controller bases carry the same mapping as <see cref="EntityConstraintConflictAttribute"/>, so their

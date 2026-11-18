@@ -87,7 +87,7 @@ List([FromBody] searchObject[], pagingInfo, includes[], sortBy[]) -> ListResult
 Search([FromBody] searchObject[], pagingInfo, includes[], sortBy[]) -> SearchResult
 ```
 
-*The SearchObject items return queries that are inclusive (using Union).*
+*The SearchObject items return queries that are inclusive (using Union). An empty array lists as `GET` does, through the same global filters, and a body of more than 32 search objects answers 400.*
 
 #### Paging
 
@@ -184,8 +184,10 @@ Delete(id) -> DeleteResult
 - **Error status codes:** `EntityInputException` → **400** with the field errors as a `ValidationProblemDetails`; a database
   constraint violation (`EntityConstraintException`) → **409 Conflict** with a generic `ProblemDetails`
   detail (the provider message is logged server-side, and the response's `traceId` finds it); a write built on a stale read
-  (`EntityConcurrencyException`) → **409 Conflict** with a `ProblemDetails` titled "Concurrency conflict"; a
-  missing entity → **404**. The first three are not endpoint-scoped: the controller bases carry
+  (`EntityConcurrencyException`) → **409 Conflict** with a `ProblemDetails` titled "Concurrency conflict";
+  `EntityForbiddenException` → **403** and `EntityNotFoundException` → **404**, thrown by the app's own validator,
+  prepper or handler, with the exception's message as the `detail`; a missing entity → **404**. The exceptions are not
+  endpoint-scoped: the controller bases carry
   `[EntityConstraintConflict]`, so a hand-written action added beside the generated ones answers a rule breach the
   same way, and `ConfigureDefaultJsonOptions()` registers `EntityExceptionFilter` for every other controller. See [Built-in Features → Constraint Exceptions](built-in-features.md#constraint-exceptions)
   and [Concurrency Exceptions](built-in-features.md#concurrency-exceptions)
@@ -297,7 +299,7 @@ public class ProductImporter(IEntitySender sender)
   mapped endpoints keep it. A patch's merged input is always checked, so `PATCH` answers an invalid result with the
   same 400 a validator's refusal has.
 - **`null` means not found.** A refused write throws, as the write pipeline does: `EntityInputException`,
-  `EntityConstraintException` or `EntityConcurrencyException`.
+  `EntityForbiddenException`, `EntityNotFoundException`, `EntityConstraintException` or `EntityConcurrencyException`.
 
 ### Replacing one operation
 
@@ -495,8 +497,8 @@ public static class ShopConfiguration
 - **Exclude first.** Without `o.Exclude(…)` two endpoints share the route, and every request to it fails as
   ambiguous. `EntityEndpoint.List` covers `GET` and, on a complex entity, `POST list`; `EntityEndpoint.Search` covers
   both searches.
-- **The group's exception filter applies**, so the endpoint answers a refused write with the 400 and 409 bodies the
-  mapped ones use.
+- **The group's exception filter applies**, so the endpoint answers a refused write with the 400, 403, 404 and 409
+  bodies the mapped ones use.
 - **Add the metadata.** An authorization policy that gates writes per entity reads `EntityEndpointMetadata`.
 - **The endpoint binds its own parameters**: the mapped endpoints' query binder is not public, so take what the
   endpoint needs as parameters, or `[AsParameters]` of a type of your own.
@@ -652,8 +654,8 @@ public static class EntityMediatR
 - **MediatR's version is a licence choice.** MediatR 13 and later need a licence key; MediatR 12.5.0 is the last
   Apache-2.0 release.
 - ⚠️ **Let the entity exceptions through.** A behaviour that rethrows `EntityInputException`,
-  `EntityConstraintException` or `EntityConcurrencyException` wrapped in an exception of its own turns the endpoints'
-  400 and 409s into 500s.
+  `EntityConstraintException`, `EntityConcurrencyException`, `EntityForbiddenException` or `EntityNotFoundException`
+  wrapped in an exception of its own turns the endpoints' 400, 403, 404 and 409s into 500s.
 
 ---
 

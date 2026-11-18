@@ -255,6 +255,19 @@ public class ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject,
         base.React(property, value, reactFunc);
         return this;
     }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.ReactMany(Func{IReadOnlyList{IEntityChange{TEntity}},IServiceProvider,CancellationToken,Task})" />
+    public new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> ReactMany(Func<IReadOnlyList<IEntityChange<TEntity>>, IServiceProvider, CancellationToken, Task> reactFunc)
+    {
+        base.ReactMany(reactFunc);
+        return this;
+    }
+    /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.ReactMany(Func{IEntityChange{TEntity},bool},Func{IReadOnlyList{IEntityChange{TEntity}},IServiceProvider,CancellationToken,Task})" />
+    public new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> ReactMany(Func<IEntityChange<TEntity>, bool> canReact,
+        Func<IReadOnlyList<IEntityChange<TEntity>>, IServiceProvider, CancellationToken, Task> reactFunc)
+    {
+        base.ReactMany(canReact, reactFunc);
+        return this;
+    }
 
     // Related
     /// <inheritdoc cref="EntityServiceBuilder{TContext,TEntity,TKey}.Related{TRelated}(Expression{Func{TEntity,ICollection{TRelated}}},Action{TEntity},Action{RelatedEntityBuilder{TContext,TRelated,int}})" />

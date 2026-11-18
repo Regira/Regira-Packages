@@ -217,8 +217,8 @@ navigation back to the owner. So on an owner scoped per user or tenant, every ot
 details, both downloads, the link's `PUT` and `DELETE` — reads across owners until a global filter on the link entity
 reruns the owner's scope through the owner's `DbSet` (`Owners.Any(o => o.Id == link.ObjectId && …)`). With it those
 routes answer 404 for another owner's file; the upload still runs no query. Add a validator on the link entity that
-re-runs the owner's scope on `Add` and refuses when it resolves nothing — a 400, where the read path answers 404 — or
-override the controller's `Add` to answer 404. Read scope is not write scope either: a read scope widened on purpose,
+re-runs the owner's scope on `Add` and throws `EntityNotFoundException` when it resolves nothing, so the upload
+answers 404, as the read path does. Read scope is not write scope either: a read scope widened on purpose,
 a manager seeing their reports' rows, grants writes and deletes on those rows too, so put a narrower ownership check in
 a validator, which runs on a delete as well. Repeat a link rule, such as the allowed file types or a file that
 must not be deleted, in the owner's validator, or keep `Attachments` off the owner's input DTO.
@@ -250,8 +250,9 @@ store sweeps it against the stored `Path` values:
 - A save that fails leaves the file it wrote. The attachment keeps naming that file, so a retry of the same instance
   saves it instead of writing another; reloaded, the attachment names its stored file again, and its new content is
   stored again.
-- After the commit, `AttachmentFileReactor` reads the attachment's row by key, past query filters, and removes the
-  replaced or deleted file only when the row no longer names it: a save an interceptor suppressed, or one a rollback to
+- After the commit, `AttachmentFileReactor` reads the attachment's row by key, past query filters — the rows of one
+  commit together, one query per 500 attachments — and removes the replaced or deleted file only when the row no
+  longer names it, comparing the path without case: a save an interceptor suppressed, or one a rollback to
   a savepoint undid, changed no row, and the file stays. Only that row is read: two attachment rows naming one path —
   one added with another's `Path` and no content of its own — share the file, and deleting either removes it.
 - Removing a link, or giving it a new attachment, deletes the attachment it leaves, with its file, unless another link

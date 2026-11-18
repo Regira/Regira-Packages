@@ -34,12 +34,22 @@
   `Microsoft.AspNetCore.OpenApi` brings the 2.x its source generator is compatible with (3.x breaks it).
   ⚠️ `dotnet new webapi` pins `Microsoft.AspNetCore.OpenApi` at its SDK's patch (`10.0.11` from SDK
   10.0.400) — raise it **before** referencing this package, or afterwards with
-  `dotnet add package Microsoft.AspNetCore.OpenApi`, which lands even while the downgrade is live.
+  `dotnet add package Microsoft.AspNetCore.OpenApi --version "10.*"` (the TFM's major), which lands even while the downgrade is live. Then pin the `10.*` it writes to the patch
+  restore resolved (`dotnet list package`).
 - **`clientApp` = JWT audience.** Login is `POST auth?clientApp=…` (required query); set the API's
-  `Authentication:Jwt:Audience` to the SPA's `clientApp` or authenticated calls 401 (`audience invalid`).
+  `Authentication:Jwt:Audience` to the SPA's `clientApp`, or sign-in answers `400`: a `clientApp` that is not a
+  configured audience is refused before the user is looked up. A sign-in action of your own checks it with
+  `IsAllowedAudience(clientApp)` (also on `AccountSignInService<TUser>`).
 - **Guarded only if you enforce it:** the bases carry no `[Authorize]` — `MapControllers().RequireAuthorization()`.
+  Without it `POST users` creates an account for any caller; the signed-in routes answer `401` themselves.
   `[AllowAnonymous]`: `POST auth`, **`POST auth/refresh-token`**, `auth/password/recover`, `auth/password/reset`,
   `users/confirm-email`.
+- **`POST auth/password` guards the current password like a sign-in:** a wrong one counts toward lockout, and a
+  locked-out account answers `400` with the error `UserLockedOut`. `PasswordControllerBase` has the same
+  `IsBlocked` / `OnPasswordRejected` virtuals as `AccountControllerBase`. A change or reset revokes refresh tokens;
+  issued access tokens stay valid until they expire.
+- **Input limits:** user name 256, password 1024, URL 2048, token 4096 characters (`400`); a body over 16 KB
+  answers `413`.
 - **⚠️ `auth/refresh` ≠ `auth/refresh-token`.** `auth/refresh` needs a **still-valid** bearer token, so it cannot
   renew an expired one — it is for picking up role changes mid-session. `auth/refresh-token` is anonymous (the
   refresh token **is** the credential, so **rate-limit it**) and answers `404` unless `.AddRefreshTokens()` was
