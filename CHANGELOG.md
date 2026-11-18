@@ -6,7 +6,9 @@ adds one bullet under **Unreleased** in the same change (format: `` `PackageId` 
 and leaves that package's `<Version>` higher than its last published version. At publish time the
 Unreleased block becomes a dated release heading.
 
-## Unreleased
+## 6.6.3 — 2026-11-18
+
+- All packages — version aligned at 6.6.3 for a whole-family publish. Thirteen have a change of their own, in code or guides, in a bullet below. No package moves an upstream dependency, no package is new, and nothing is published outside the aligned number. The other seventy-four are republished unchanged so the family shares one version.
 
 - `Regira.Entities`, `Regira.Entities.EFcore`, `Regira.Entities.DependencyInjection` 6.6.3 — new **batch reactors**: an `IEntityBatchReactor<TEntity>` (base class `EntityBatchReactorBase<TEntity>`, inline `e.ReactMany(...)`, delegate class `EntityBatchReactor<TEntity>`) receives the committed changes it covers in one call, so a save of many rows makes one message, one enqueued job, one query or one save where a reactor per row makes one for each. It registers like any reactor, and one that throws is logged and skipped for its batch.
 - `Regira.Entities.EFcore` 6.6.3 — **behaviour change:** the saves of one transaction are reacted to as one batch at its commit, in the order they were saved and in one DI scope — an explicit `BeginTransaction()`, the contexts sharing it through `UseTransaction` included, and a `TransactionScope` alike (saves under a dependent clone of the ambient transaction are a batch of their own) — where each save was dispatched on its own, in a scope of its own. Reactors run one after the other in registration order, each over every change it covers, where every row went through all the reactors before the next row: with reactors A and B and rows 1 and 2, A1 A2 B1 B2 where it was A1 B1 A2 B2. A reactor that relies on a scope per save, or on that interleaving, is affected. A reactor that cannot be created is logged once per commit, where it was logged for every row.
