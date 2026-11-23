@@ -4,7 +4,18 @@ As of 2026-11-18. Revised from the 2026-11-12 version after two changes: 6.6.3 w
 
 Sources: the `Regira-Packages` repository, `main` at `2aff410` (*Release 6.6.3*); the nuget.org version indexes and nuspecs of `Microsoft.EntityFrameworkCore`, `Microsoft.AspNetCore.OpenApi`, `Microsoft.AspNetCore.Authentication.JwtBearer`, `Microsoft.Extensions.Hosting`, `Microsoft.OpenApi`, `Swashbuckle.AspNetCore(.Swagger/.SwaggerGen)`, `Npgsql.EntityFrameworkCore.PostgreSQL`, `MySql.EntityFrameworkCore` and `Pomelo.EntityFrameworkCore.MySql`, read 2026-11-18. The Microsoft release pages (*Announcing .NET 11*, *What's new in C# 15*, *What's new in EF Core 11* and its breaking changes, the runtime, libraries and ASP.NET Core 11 pages) were read on 2026-11-12 and not again. The C# 15 claims come from the 2026-11-12 spike (*Spike results*), run with SDK 11.0.100 beside SDK 10.0.402. That SDK is no longer installed on this machine (only 9.0.319 and 10.0.402 are), so nothing in this revision was built or run.
 
-**Status: proposal, not scheduled. Four decisions are open (see *Decisions*). Decided 2026-11-18: 6.7.0 is held until `Npgsql.EntityFrameworkCore.PostgreSQL` 11.0.0 is stable.**
+Checked again on 2026-11-23, against `wip` at `4b55647`: the nuget.org version indexes of the packages above; the nuspecs of all 95 package versions that the projects under `src` reference, for the frameworks each one ships; the .NET release index; and the project references between the 87 projects under `src`. Nothing was built. The machine that checked has no .NET SDK, so every "builds" and "compiles" below is still a reading.
+
+**Status: proposal, not scheduled. Four decisions are open (see *Decisions*). Decided 2026-11-18: 6.7.0 is held until `Npgsql.EntityFrameworkCore.PostgreSQL` 11.0.0 is stable. That condition was met on 2026-11-20, so no other project's release holds 6.7.0 any more.**
+
+## What changed since 2026-11-18
+
+- **The Npgsql provider is stable.** `Npgsql.EntityFrameworkCore.PostgreSQL` 11.0.0 was published on 2026-11-20, with `Npgsql` 11.0.0 and a 10.0.4 of the provider on the same day. Decision 4's hold is lifted. A PostgreSQL app on `net11.0` can follow the guides' "TFM's major" rule.
+- **MySQL is as it was.** `MySql.EntityFrameworkCore` is at 11.0.0-preview (2026-10-21) and `Pomelo.EntityFrameworkCore.MySql` at 9.0.0.
+- **Microsoft's packages have not moved.** The 11.x line is at 11.0.0 and the 10.x line at 10.0.15, `Microsoft.OpenApi` at 3.11.1 and 2.13.1, Swashbuckle at 11.0.1. The release index gives SDK 11.0.100, and 8.0.34 and 9.0.23 as the last releases of .NET 8 and 9, which are the versions the `net8.0` build references.
+- **The repository has not moved either.** Since `2aff410`, `src` changed in guides and in two version numbers. No package reference, TFM list or `#if` site changed, and the counts and line references below hold.
+- **A correction.** The 2026-11-18 text said that the packages reaching `DAL.EFcore`, `Security.Authentication*` or `Web.Swagger` through a project reference are "most of the repository". They are 8 of 87, so the set that needs `net11.0` for correctness is 11 packages. *Recommendation*, the options table and decision 1 now say so; the recommendation itself stands on other grounds.
+- **A list per package**, of what a `net11.0` target needs and what cannot have one yet: *Which packages can take `net11.0` today*.
 
 ## What changed since 2026-11-12
 
@@ -20,8 +31,8 @@ Sources: the `Regira-Packages` repository, `main` at `2aff410` (*Release 6.6.3*)
 Add `net11.0` to every package in **6.7.0**, so the TFM list becomes **`net8.0;net10.0;net11.0`** (`net8.0-windows;net10.0-windows;net11.0-windows` for `PDF.PockyBum522`). Keep every `net8.0` and `net10.0` path as it is. Drop `net8.0` in 7.0 (see *Later: 7.0*).
 
 - **Adding a TFM is additive.** A `net8.0` or `net10.0` consumer gets the same assets and the same dependencies as in 6.6.3. Only a .NET 11 app changes: it moves from the `net10.0` build to a `net11.0` build on EF Core 11, ASP.NET Core 11 and `Microsoft.OpenApi` 3.x. That is the build the guides' "TFM's major" rule assumes, so a minor version fits.
-- **The one consumer it does break** is a `net11.0` app that pinned EF Core 10 or `Microsoft.AspNetCore.OpenApi` 10 against the guide. After the update, the Regira `net11.0` build requires 11.0.0, and restore fails with NU1605 (package downgrade). That is loud, at restore time, and the fix is to follow the guide. It earns a ⚠️ in the changelog bullet. A PostgreSQL app in that position cannot follow the guide yet, because the Npgsql EF Core 11 provider is still an RC (decision 4).
-- **Every package gets `net11.0`, not only the EF Core and ASP.NET Core ones.** With three TFMs the build-time argument for option C (below) is stronger, but a partial set is a correctness trap here, not just a fact to remember: if `DAL.EFcore` has `net11.0` and `Entities.EFcore` does not, a .NET 11 app runs `Entities.EFcore`'s `net10.0` build, compiled against EF Core 10, on top of the EF Core 11 that `DAL.EFcore`'s `net11.0` dependency brings in. Every package that reaches `DAL.EFcore`, `Security.Authentication*` or `Web.Swagger` through a project reference would need `net11.0` as well, and that set is most of the repository.
+- **The one consumer it does break** is a `net11.0` app that pinned EF Core 10 or `Microsoft.AspNetCore.OpenApi` 10 against the guide. After the update, the Regira `net11.0` build requires 11.0.0, and restore fails with NU1605 (package downgrade). That is loud, at restore time, and the fix is to follow the guide. It earns a ⚠️ in the changelog bullet. A PostgreSQL app in that position can follow the guide since 2026-11-20, when the Npgsql EF Core 11 provider became stable (decision 4). A MySQL app cannot yet.
+- **Every package gets `net11.0`, not only the EF Core and ASP.NET Core ones.** A partial set is a correctness trap, not just a fact to remember: if `DAL.EFcore` has `net11.0` and `Entities.EFcore` does not, a .NET 11 app runs `Entities.EFcore`'s `net10.0` build, compiled against EF Core 10, on top of the EF Core 11 that `DAL.EFcore`'s `net11.0` dependency brings in. Every package that reaches `DAL.EFcore` or `Security.Authentication` through a project reference needs `net11.0` as well. That set is small: seven Entities packages and `Security.Authentication.Web`, so eleven packages with the four that pin a framework major (*Which packages can take `net11.0` today*). The other 76 gain nothing a consumer can see from a `net11.0` asset, since a .NET 11 app takes their `net10.0` asset and no code branches on `net11.0`. So the case for all 87 is not correctness. It is that one central TFM list covers every project, and that the trap cannot reopen when a later package references one of the eleven. Option C with a build check that enforces the set is the cheaper alternative (decision 1).
 - **`Microsoft.Extensions.*` and `System.*` stay on 10.x for all three TFMs.** The 10.0.15 packages ship a `net8.0` asset (checked for `Microsoft.Extensions.Hosting` 10.0.15: `net462`, `netstandard2.0`, `netstandard2.1`, `net8.0`, `net9.0`, `net10.0`), and the 11.x packages do not. A `net11.0` build uses their `net10.0` asset, which runs on .NET 11, and an app that references 11.x itself resolves 11.x, because NuGet takes the highest minimum. Moving them to 11.x on `net11.0` only would add a conditional `ItemGroup` to about 20 projects and gain nothing in 6.x.
 
 Adopt C# 15 where it removes code, not where it adds API. That verdict is unchanged, and keeping `net8.0` makes it firmer: **no union types in the public API in 6.x** (it would be breaking anyway) **nor in 7.0** while `net10.0` is a target. A consumer on the .NET 10 SDK cannot switch on or convert to a library union, and a serialized union has a different JSON shape per runtime (*Spike results*). Pilot unions and closed hierarchies on internal code only, with an internal polyfill that now covers `net8.0` as well as `net10.0`.
@@ -44,8 +55,8 @@ Keep the consumer guides on `net10.0`. .NET 11 is an STS release with two years 
 
 | Option | TFMs | EF Core per TFM | Cost |
 |---|---|---|---|
-| **B (recommended, follows the owner's decision)** | `net8.0;net10.0;net11.0` everywhere | 9.x / 10.x / 11.x | A third build per package and a third leg in the three multi-target test projects. `net11.0` reference groups in the four packages and three test projects that pin framework majors (below). No code branch removed |
-| C | `net8.0;net10.0` everywhere, `net11.0` added only where a framework major is pinned | 9.x / 10.x / 11.x | Less build time, but every package that depends on those four packages through a project reference needs `net11.0` too, or a .NET 11 app mixes a `net10.0` build with EF Core 11 (see *Recommendation*). Not recommended |
+| **B (recommended, follows the owner's decision)** | `net8.0;net10.0;net11.0` everywhere | 9.x / 10.x / 11.x | A third build of all 87 packages and a third leg in the three multi-target test projects. `net11.0` reference groups in the four packages and three test projects that pin framework majors (below). No code branch removed |
+| C | `net8.0;net10.0` everywhere, `net11.0` added to the eleven packages that pin a framework major or reference one that does | 9.x / 10.x / 11.x | A third build of 11 packages instead of 87. The eleven have to stay the complete set: a package that later references one of them without `net11.0` gives a .NET 11 app a `net10.0` build on EF Core 11 (see *Recommendation*). A check in `Directory.Build.targets` that fails such a build would hold it. Not recommended, for the two TFM lists and the rule it adds |
 
 ### What the `net11.0` target needs
 
@@ -74,11 +85,46 @@ Nothing that the 2026-11-12 version removed is removed in 6.x: the EF Core 9 pat
 
 `SECURITY.md` says "the latest 6.x release line receives security fixes". With `net8.0` kept past its end of support, that holds for Regira's own code on every target, but not for the Microsoft packages the `net8.0` build is frozen on: JwtBearer and OpenIdConnect 8.0.34 and EF Core 9.0.23 are final. A future advisory in them cannot be fixed on `net8.0` in 6.x, and the remedy is for the consumer to move to `net10.0`. `SECURITY.md` and `README.md:103` should say this in one sentence each, so it is stated before it is needed.
 
+## Which packages can take `net11.0` today
+
+As of 2026-11-23, from package metadata and the project graph. Nothing was built, so "can" means two things only: the target restores with stable packages, and no code in the package is known to need a port.
+
+What the metadata says for all 87:
+
+- **Every dependency restores.** Each of the 95 package versions referenced under `src` ships a `netstandard2.0` asset or a `net` asset no newer than `net10.0`, and a `net11.0` project takes either. Two already ship a `net11.0` asset (`Syncfusion.DocIO.Net.Core` and its renderer).
+- **One version ceiling matters.** `Microsoft.AspNetCore.OpenApi` 10.0.15 caps `Microsoft.OpenApi` below 3.0, which is why the OpenAPI packages need their own `net11.0` references. The other ceilings in the set (`DocumentFormat.OpenXml` below 4.0 under ClosedXML and MiniWord, the SqlClient parts, `starkbank-ecdsa`) have nothing to do with the framework.
+- **Keeping `Microsoft.Extensions.*` at 10.0.15 raises no downgrade.** EF Core 11.0.0 requires `Microsoft.Extensions.Caching.Memory` and `Microsoft.Extensions.Logging` 11.0.0. None of the eight projects on the EF Core chain references one of those, or a package they bring, directly at 10.0.15, so restore takes 11.0.0 without NU1605.
+
+| | Packages | What the `net11.0` target needs | Can it be added today? |
+|---|---|---|---|
+| 1 | **75 packages**, listed below | The TFM in the list. No reference and no code changes; the build is the `net10.0` one against newer reference assemblies | Yes |
+| 2 | `Regira.Office.PDF.PockyBum522` | `net11.0-windows`: its `SimpleFreePdfPrinter` dependency is Windows-only | Yes |
+| 3 | `Regira.DAL.EFcore`, `Regira.Security.Authentication` | A `net11.0` reference group: EF Core and Relational 11.0.0; JwtBearer and OpenIdConnect 11.0.0. All four are stable | Yes. That the code compiles against EF Core 11 and ASP.NET Core 11 is unverified |
+| 4 | `Regira.Entities.EFcore`, `Regira.Entities.DependencyInjection`, `Regira.Entities.Web`, `Regira.Entities.Mediator`, `Regira.Entities.Mapping.Mapster`, `Regira.Entities.Mapping.AutoMapper`, `Regira.Entities.Validation.FluentValidation` | The TFM, in the same change as `Regira.DAL.EFcore`: they take EF Core 11 through it. These hold the code that touches EF Core's conventions, interceptors and metadata | Yes, together with row 3 and not before or after it. Step 3 is their verification |
+| 5 | `Regira.Security.Authentication.Web`, `Regira.Web.Swagger` | `Microsoft.AspNetCore.OpenApi` 11.0.0 and Swashbuckle 11.0.1, and a port of seven files to the `Microsoft.OpenApi` 3.x object model (*ASP.NET Core 11*) | **No, not until that port is written.** The packages they need are stable; the code is not there |
+
+So 85 of 87 can take the target now, and the two that cannot are waiting on work in this repository, not on anyone else's release. No package under `src` depends on either of the two, so they hold nothing else back: with the central TFM list of decision 2, they keep `net8.0;net10.0` by an override until step 4.
+
+Row 1, by family:
+
+- **Common and hubs (13):** `Regira.Common`, `Regira.Entities`, `Regira.IO.Storage`, `Regira.Invoicing`, `Regira.Licensing`, `Regira.Media`, `Regira.Office`, `Regira.Office.Clients`, `Regira.Payments`, `Regira.Security`, `Regira.Setup`, `Regira.System`, `Regira.Web`.
+- **Office (32):** the four Barcodes backends, `Regira.Office.Csv.CsvHelper`, the four Excel backends, the five Mail packages, the two OCR backends, nine of the ten PDF backends, `Regira.Office.VCards.FolkerKinzel`, the five Word backends and `Regira.Printing.GDI`.
+- **Data and storage (10):** `Regira.DAL.MongoDB`, `Regira.DAL.MySQL`, `Regira.DAL.MySQL.MySqlBackup`, `Regira.DAL.PostgreSQL`, `Regira.DAL.SqlServer`, `Regira.IO.Storage.Azure`, `Regira.IO.Storage.GitHub`, `Regira.IO.Storage.SSH`, `Regira.IO.Storage.SimpleTCP`, `Regira.IO.Compression.SharpZipLib`.
+- **Web (5):** `Regira.Web.Analytics`, `Regira.Web.Analytics.GeoIP2`, `Regira.Web.HTML.RazorComponents`, `Regira.Web.HTML.RazorEngineCore`, `Regira.Web.HTML.RazorLight`.
+- **Invoicing and payments (5):** `Regira.Invoicing.Billit`, `Regira.Invoicing.UblSharp`, `Regira.Invoicing.ViaAdValvas`, `Regira.Payments.Mollie`, `Regira.Payments.Pom`.
+- **The rest (10):** `Regira.Caching.Runtime`, `Regira.Drawing.GDI`, `Regira.Drawing.SkiaSharp`, `Regira.Globalization.LibPhoneNumber`, `Regira.Media.FFMpeg`, `Regira.Security.Hashing.BCryptNet`, `Regira.Serializing.Newtonsoft`, `Regira.System.Hosting`, `Regira.System.Projects`, `Regira.TreeList`.
+
+What the table does not cover:
+
+- **A MySQL consumer.** `Regira.Entities.EFcore` takes the target, but a MySQL app on `net11.0` has no stable EF Core 11 provider to pair with it (*EF Core 11*).
+- **Behaviour at run time.** A package whose dependency has only a `netstandard2.0` asset (Docnet, EPPlus 4, FreeSpire.Doc, Tesseract, PaddleOCR, Select.HtmlToPdf, UblSharp, SimpleTCP and others) restores as it does for `net10.0`. Whether each behaves on the .NET 11 runtime is what the test projects answer, and under decision 3 only the three multi-target ones run a `net11.0` leg.
+- **The test and tool projects.** Three need `net11.0` reference groups (*What the `net11.0` target needs*); the 37 single-target ones stay on `net10.0`.
+
 ## EF Core 11
 
 **Reference shape.** `DAL.EFcore` references EF Core 9.x on `net8.0`, 10.x on `net10.0` and 11.x on `net11.0`. Everything else in the Entities stack inherits that through its project references.
 
-**Providers.** Of the providers the guides name, only Microsoft's (Sqlite, SqlServer) have a stable 11.0.0. Npgsql's EF provider is at 11.0.0-rc.3, `MySql.EntityFrameworkCore` at 11.0.0-preview, and Pomelo stops at 9.0.0. This repo references none of them (`DAL.PostgreSQL` uses ADO.NET `Npgsql` 10.0.3, `DAL.MySQL` uses `MySqlConnector` with Dapper), but a consumer on PostgreSQL or MySQL cannot run a `net11.0` app on a stable provider after 6.7. Before 6.7 they could, with EF Core 10 pinned. That decides decision 4.
+**Providers.** Of the providers the guides name, Microsoft's (Sqlite, SqlServer) and, since 2026-11-20, Npgsql's have a stable 11.0.0. `MySql.EntityFrameworkCore` is at 11.0.0-preview, and Pomelo stops at 9.0.0. No package under `src` references any of them (`DAL.PostgreSQL` uses ADO.NET `Npgsql` 10.0.3, `DAL.MySQL` uses `MySqlConnector` with Dapper); `tests/Entities.Providers.Testing` references the Npgsql provider at 10.0.3 and stays on `net10.0`. A consumer on MySQL cannot run a `net11.0` app on a stable provider after 6.7. Before 6.7 they could, with EF Core 10 pinned. The same was true of PostgreSQL until 2026-11-20, which is what decision 4 waited for.
 
 **Breaking changes that reach this repo** (from the 2026-11-12 reading):
 
@@ -175,10 +221,10 @@ Not part of this proposal's steps; recorded so 6.7 does not have to decide it.
 
 ## Decisions
 
-1. **TFM set in 6.x:** `net8.0;net10.0;net11.0` on every package (recommended), or `net11.0` only where needed (option C, not recommended: a .NET 11 app would mix a `net10.0` build with EF Core 11).
+1. **TFM set in 6.x:** `net8.0;net10.0;net11.0` on every package (recommended), or `net11.0` on the eleven packages that need it (option C). C is correct as long as the set stays complete, and builds 76 fewer targets. B needs no rule and no second TFM list. A .NET 11 consumer sees no difference between the two.
 2. **Central TFMs:** move `<TargetFrameworks>` into `Directory.Build.props` with `PDF.PockyBum522` overriding it, and set `CheckEolTargetFramework` to `false` there (recommended), or keep the list per `.csproj`.
 3. **Test projects:** keep the 37 single-target test and tool projects on `net10.0` and give the three multi-target ones a `net11.0` leg (recommended), or move the single-target ones to `net11.0`, which tests EF Core 11 and OpenAPI 3.x everywhere but `net10.0` only in those three.
-4. **Release timing — decided 2026-11-18:** 6.7.0 is held until `Npgsql.EntityFrameworkCore.PostgreSQL` 11.0.0 is stable (11.0.0-rc.3 on 2026-11-18). A PostgreSQL app on `net11.0` that runs on EF Core 10 today would otherwise have no stable provider after updating. The work can be done and merged before then; only the publish waits.
+4. **Release timing — decided 2026-11-18, condition met 2026-11-20:** 6.7.0 is held until `Npgsql.EntityFrameworkCore.PostgreSQL` 11.0.0 is stable (11.0.0-rc.3 on 2026-11-18). A PostgreSQL app on `net11.0` that runs on EF Core 10 today would otherwise have no stable provider after updating. 11.0.0 was published on 2026-11-20, so 6.7.0 can be published when its own work is done. MySQL was not part of the condition: a MySQL app on `net11.0` has to stay on 6.6.x with EF Core 10 until a provider ships, and the changelog bullet says so.
 5. **Internal unions and `closed`:** add the internal polyfill (`#if !NET11_0_OR_GREATER`, covering `net8.0` and `net10.0`) to `Common.Office` and pilot `TemplateBlocks.Node` (recommended), or wait until 7.0 or later. No public unions either way.
 
 The 2026-11-12 decisions on the version line (7.0.0) and on dropping `net8.0` are settled by the owner: 6.7.0, `net8.0` kept.
@@ -193,12 +239,13 @@ The 2026-11-12 decisions on the version line (7.0.0) and on dropping `net8.0` ar
 6. **Internal C# 15 pilot** (decision 5). Polyfill in `Common.Office`, `TemplateBlocks.Node` as `closed` or a union, built for all three targets. Nothing public.
 7. **Docs and guides.** A `net11.0` → 11.x row in `entities.setup.md`'s EF Core table and Checklist 0.5, with provider availability (Npgsql, MySQL, Pomelo); the `--version "10.*"` rule extended to "11.* on `net11.0`" in `entities.setup.md` and `project.setup.md`; `project.setup.md`'s OpenAPI 2.x/3.x note per TFM and the x86-64-v2 line, with new projects still on `net10.0`; `README.md:103` ("All packages target `net8.0`, `net10.0` and `net11.0`"); `SECURITY.md`'s sentence on the frozen `net8.0` dependencies; `ai/AGENTS.md` (.NET 10 is the LTS, and when to pick `net11.0`); the IO guide's CRC note. Run `tools/GuideVerifier`.
 8. **Version and changelog.** 6.7.0 on every package. One bullet for the `net11.0` target with what a .NET 11 consumer gets, a ⚠️ for an app that pinned 10.x packages on `net11.0` (NU1605 until it follows the guide), the PostgreSQL/MySQL provider status, and the `ZipArchive` CRC difference; one for the OpenAPI 3.x path; one saying `net8.0` stays, is out of support upstream and is dropped in 7.0.
-9. **Publish** once `Npgsql.EntityFrameworkCore.PostgreSQL` 11.0.0 is stable on nuget.org (decision 4). Before publishing, update the guide's provider row from "RC" to the stable version, and re-check `MySql.EntityFrameworkCore` and Pomelo for an 11.x release.
+9. **Publish.** `Npgsql.EntityFrameworkCore.PostgreSQL` 11.0.0 is stable since 2026-11-20 (decision 4), so nothing outside this repository holds it. Before publishing, re-check `MySql.EntityFrameworkCore` and Pomelo for an 11.x release, and write the guide's provider row from what nuget.org says that day.
 
 ## Risks
 
 - **Three TFMs triple the matrix that can drift.** The OpenAPI documents of `net10.0` and `net11.0` come from two object models, and the archived filter has two semantics (`net8.0` against `net10.0`/`net11.0`). `Web.Security.Testing` and the Entities suites have to run every target, not only the newest.
 - **`net8.0` ships on frozen dependencies.** See *Security on `net8.0`*. The longer 6.x lasts, the likelier a Microsoft advisory that 6.x cannot fix on `net8.0`. That is the argument for not leaving 7.0 too long.
 - **Union and `closed` behaviour on older targets is undocumented**, and the spike never built `net8.0`. A later SDK band could change it. Re-run the probes before relaxing the public-API verdict.
-- **Provider availability.** Npgsql's EF provider is at RC, MySQL's official one at preview, Pomelo at 9.0. Holding 6.7.0 for a stable Npgsql 11 (decision 4) covers PostgreSQL, at the cost of a release date set by another project. MySQL on `net11.0` has no stable option yet either way.
+- **Provider availability.** Npgsql's EF provider is stable since 2026-11-20. MySQL's official one is at preview and Pomelo at 9.0, so MySQL on `net11.0` has no stable option yet, and 6.7 takes away the unsupported one (EF Core 10 pinned under a `net10.0` build).
+- **Nothing here has been built since the spike.** Restoring is checked from package metadata; compiling against EF Core 11, ASP.NET Core 11 and the .NET 11 reference assemblies is not. Step 2's first build of all three targets is where a source break in any of the 87 projects would show, and C# 15 compiles every target, `net8.0` included.
 - **Microsoft's pages were partly summarised** on 2026-11-12 and not re-read. Step 4 reads the ASP.NET Identity changes in full before relying on the list above.

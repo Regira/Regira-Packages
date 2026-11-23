@@ -3,7 +3,55 @@
 
 As of 2026-10-23. Sources: the `Regira-Packages` repository, branch `wip` at `4d3d479`, all 37 test projects under `tests/` plus `Entities.TestApi` and `Testing.Library` (about 70k lines). Seven read-only reviews, one per area, read every test file and the source each test calls. A sample of their claims, every security claim among them, was rechecked against the code, and one was proven by a probe (W2). Timings were measured on a snapshot of the tree built from scratch: `dotnet test --no-build --filter "TestCategory!=Network"`, Docker and LocalDB up, a local MongoDB service running.
 
-**Status: phase 1 (W1–W57) built and committed (`5e0f75f`); see *Outcome (phase 1)*. Phase 2 built as easy wins and committed (`850445e`); see *Outcome (phase 2)*. Phases 3–5 are proposals.**
+**Status: phase 1 (W1–W57) built and committed (`5e0f75f`); see *Outcome (phase 1)*. Phase 2 built as easy wins and committed (`850445e`); see *Outcome (phase 2)*. Phases 3–5 are proposals, and none has started; see *Where it stands*.**
+
+File and line references in sections 1–5 are those of `4d3d479`. Phases 1 and 2 and the releases since moved many of them, so find a test by its name.
+
+## Where it stands
+
+As of 2026-11-23, on `wip` at `796991f`. Checked by reading the tree and its history. This machine has no .NET SDK, so nothing was built or run, and no count or timing on this page was measured again. The commits this page names are not in the branch's history: phases 1 and 2 arrived squashed in *Release 6.6.1* (`bd1adef`, 2026-10-28).
+
+**Done.**
+
+- Phase 1: the 57 wrong tests, checked and fixed (*Outcome (phase 1)*).
+- Phase 2: P1, P2, P7, P8 and P12, and P4, P6 and P9 in part (*Outcome (phase 2)*).
+- The ten library defects, S1 to S10, shipped as fixes in 6.6.1. One test is still ignored on a library gap: PaddleOCR's `Read_Dutch`.
+
+**Not started: sections 2, 3 and 4, and P10.** Every item sampled from them is as the review found it:
+
+- U5: the three empty `GlobalTestSetup.cs` files, `DAL.EFcore.Testing/QueryBuilderTests.cs`, `Testing.Library`'s `Blogs/` and `Farm/`, and the unused helpers it names are all present.
+- U4: 18 commented-out test attributes remain, in the Barcodes, Excel, Mollie, Skia builder and `DictionaryUtilityTests` files.
+- C1: 56 calls to the classic assert classes. `CONTRIBUTING.md` still names two xUnit projects; the third is `Entities.Mediator.Testing`.
+- C3 and C4: no `tests/Shared` folder and no `TestAssets` helper; the asset-path spellings are all in use; `Office.Word.testing/Abstractions/Facts.cs` still reads PDFs with Docnet.
+- C6: `[Platform]` is on two fixtures, neither of them a GDI, Spire, SelectPdf or UziGranot one. `LicenseStatusClientTests` and `WordClientRequestTests` are still tagged `Network`.
+- C7: `DAL.MySQL.Testing` and `Media.Testing` have no `Properties/AssemblyInfo.cs`. `DbContextNormalizerTests` is still `ParallelScope.None` and `UseDefaultsAutoWiringTests` still `[NonParallelizable]`.
+
+**Closed already inside those sections.** Phases 1 and 2 and the work after them took these along; each is marked where it stands below:
+
+- U1: `Convert_To(Html)` went in P2.
+- U4: the commented-out `RegexTests` cases run again since S1 and S7, and the SSH fixtures lost their `[Ignore]` when they moved to an SFTP container.
+- U8: W51 rewrote the hierarchy check of `TimerTests`. Its timing is still recorded and never asserted.
+- M1: W35 built the magic-byte, crop and alpha checks. `Resize` and `GdiImageTests.cs:20` are open. No red test is expected any more: S2 and S3 are fixed.
+- C6: the MongoDB fixture has its own category, `MongoDb`. It still needs a server on localhost.
+- C9: SSH has a container per fixture. Azure is open.
+
+**Changed around it since 6.6.1.**
+
+- **The categories.** `CONTRIBUTING.md` now gives the inner loop as `TestCategory!=Containers&TestCategory!=LocalDb&TestCategory!=MongoDb&TestCategory!=Network`, with `Browser` as a fifth to leave out. In the tree: `Network` on 17 fixtures, `Containers` on 8, `License` on 3, `Browser` on 2, and `LocalDb`, `MongoDb` and `FFMpeg` on one each. "Offline" on this page still means what it measured: `TestCategory!=Network`, with Docker, LocalDB and a local MongoDB up.
+- **Tests this review never read.** Under `tests/`, 16 test files changed since `bd1adef`, by about 2,300 added lines, beside the package bumps in 38 project files. Five files are new: `AttachmentLinkServerOwnedTests`, `EntityRefusalTests`, `SearchObjectListTests`, `AccountControllerHookTests` and `AccountSignInServiceTests`. `ReactorTests` grew by 475 lines and `IdentityControllerTests` by 269. None of it was read under the five lenses or run against a mutant.
+- **One of them repeats M3.** `EntityRefusalTests` asserts the status and the detail of a 403 or 404 on every write of both surfaces, through an `AssertProblem` of its own, and never reads the row back. Its helper is where M3's shared one can start.
+- **A third target framework.** `proposals/dotnet-11.md` adds `net11.0` in 6.7.0 and recommends a third leg for the multi-target test projects: `Entities.Testing`, `Web.Security.Testing`, and the `Testing.Library` they share. Their share of a run grows by about half, and P6's host counts are per target framework.
+
+**What is left, in order.**
+
+1. **Measurable results** (M1–M10, step 3), with the typed `SortBy` case W22 left open and the read-backs for `EntityRefusalTests`.
+2. **Useless tests and consistency** (U1–U9, C1–C10, step 4), with D2 and D4.
+3. **The parallel run** (step 5). Phase 2 found that its length is set by the PDF renders, the SQL Server containers and Word. So P10 goes together with the half of P4 that phase 2 skipped, one container per provider per assembly, and the final measurement is taken after the `net11.0` leg exists.
+4. **A pass over the tests added since 6.6.1**, under the *Wrong* lens first.
+
+The other items phase 2 skipped (P3, P5, P11, and the rest of P6 and P9) stay skipped for the reasons its table gives.
+
+**Decisions.** D1 and D6 are settled by what was built, and D3 needs no action. D2, D4 and D5 are open (see *Decisions*).
 
 ## Answer
 
@@ -163,7 +211,7 @@ Delete or merge. None of these carries a check that another test lacks, unless t
     - The fixture pairs NonIntKeyed/SoftDeleteLeak and AttachmentSync/ArchivedOwnerSync: merge each into one fixture.
   - Entities.Web: `Update_FileName`, `Update_File`, `Update_Entity_And_Replace_Attachment` and `Update_FileName_By_ObjectEntity_Update` are covered by the newer route tests; fold `Update_File`'s new-id check into `New_Bytes_Replace_The_File("file")`. Also `EntityValidatorWebTests.cs:209` = `:237`, and the `Get_404` tests ≈ `Insert_And_Force_404` (one `Details_Of_A_Missing_Id_Is_404` theory per controller).
   - Word and PDF:
-    - `Convert_To(Html)` = `Convert_To_Html_Is_Self_Contained` (byte-identical outputs).
+    - `Convert_To(Html)` = `Convert_To_Html_Is_Self_Contained` (byte-identical outputs). Done in phase 2 (P2).
     - `Page_Takes_Format_And_Orientation(A4, Portrait)` = the default test: make it `(A4, Landscape)`, which is untested.
   - Office:
     - `OcrClientTests.Read_Returns_Text`.
@@ -189,8 +237,8 @@ Delete or merge. None of these carries a check that another test lacks, unless t
   - `TestWithoutDbContext.cs:130`.
   - `ConcurrencyTokenMarkerTests.cs:244`.
 - **U4. Permanently ignored or commented-out tests with no stated reason.**
-  - Commented out: `ZXingQRCodeTests.cs:30`, `SpireBarcodeTests.cs:34`, the EPPlus/ClosedXML typed tests, `MollieTests.cs:30`, `SkiaImageBuilderTests.cs:19`, `RegexTests.cs:145, 154`, `DictionaryUtilityTests.cs:460–501`.
-  - Ignored with a reason that no longer holds: `SshStorageTests`/`SshFileProcessorTests` `[Ignore("wait for proper config")]`. Do not just remove the attribute: the dispose deletes everything it can list on the SFTP account (C9).
+  - Commented out: `ZXingQRCodeTests.cs:30`, `SpireBarcodeTests.cs:34`, the EPPlus/ClosedXML typed tests, `MollieTests.cs:30`, `SkiaImageBuilderTests.cs:19`, `DictionaryUtilityTests.cs:460–501`. The `RegexTests` cases (`:145, 154`) run again since S1 and S7.
+  - Ignored with a reason that no longer holds: `SshStorageTests`/`SshFileProcessorTests` `[Ignore("wait for proper config")]`. Done after phase 1: the fixtures run against an SFTP container of their own.
   - Per AGENTS.md, a backend gap becomes an ignored test that says why; everything else is deleted.
 - **U5. Dead files.**
   - Empty `[SetUpFixture]`: `Entities.Testing/GlobalTestSetup.cs`, `Entities.DependencyInjection.Testing/GlobalTestSetup.cs`.
@@ -207,7 +255,7 @@ Delete or merge. None of these carries a check that another test lacks, unless t
   - `WordClientTests`/`PdfClientTests` create an Output folder and never write to it.
   - `transparent-400x300.jpg` is identical to `white-400x300.jpg` and never used.
 - **U7. `Testing.Library`.** `People.All` (`Data/People.cs:14`) omits David, so `DbContextNormalizerTests` never checks him. `Contoso/Diagram.cd` is stale.
-- **U8. Timing measured and never asserted.** `TreeList.Testing/TimerTests` records Min/Max/Avg with `DateTime.Now`. Keep the hierarchy check (W51) and drop the timing, or mark it `[Explicit, Category("Perf")]`.
+- **U8. Timing measured and never asserted.** `TreeList.Testing/TimerTests` records Min/Max/Avg with `DateTime.Now`. The hierarchy check is W51's, done in phase 1. Drop the timing, or mark it `[Explicit, Category("Perf")]`.
 - **U9. EF premises.**
   - `DeleteCycleTests.cs:185, 200, 217, 429`.
   - `AttachmentForeignKeyValidatorTests.cs:135`.
@@ -227,7 +275,7 @@ Each item gets an independent check: a read-back through a separate reader, an e
   - `Resize` gives a long side of exactly 1024 with the aspect ratio kept to within 1 px.
   - `GdiImageTests.cs:20`: width and height `Within(1)` of 42.4.
 
-  Expect red tests for S2 and S3.
+  The magic bytes, the crops and the alpha checks were built in phase 1 (W35). `Resize` and `GdiImageTests.cs:20` are open. S2 and S3 are fixed, so none of these is expected to turn red.
 - **M2. Barcode and QR writers** (`BarcodeTestsBase.cs:38–56`, `QRCodeTestsBase.cs:38–50`, Clients `Create_*`). These check only that the byte array is not empty. Decode with ZXing as an independent oracle and compare with the input; assert both width and height.
 - **M3. Refused writes are never re-read** (Entities.Web):
   - `ConcurrencyTokenControllerTests.cs:55, 106`.
@@ -236,7 +284,9 @@ Each item gets an independent check: a read-back through a separate reader, an e
   - `PersonControllerTests.cs:233`.
   - `EntityEndpointTests.cs:278`.
 
-  After every 400 or 409, read back through a fresh context and assert the row and the stored file are unchanged: "refused but partly written" is exactly the bug class the write pipeline guards against. Problem bodies get one shared `AssertProblem` (key, message, title, type) instead of key-only checks (`DomainActionExceptionTests.cs:33`, `ConcurrencyTokenControllerTests.cs:172`).
+  - `EntityRefusalTests` (added in 6.6.3): the 403 and 404 on every write, an attachment upload among them.
+
+  After every 400, 403, 404 or 409, read back through a fresh context and assert the row and the stored file are unchanged: "refused but partly written" is exactly the bug class the write pipeline guards against. Problem bodies get one shared `AssertProblem` (key, message, title, type) instead of key-only checks (`DomainActionExceptionTests.cs:33`, `ConcurrencyTokenControllerTests.cs:172`). `EntityRefusalTests` has one for status and detail, which the shared one can grow from.
 - **M4. Status-only refusals** (Web.Security). One helper asserts the 401 status plus the `WWW-Authenticate` `error_description`. The malformed-token 400s (`IdentityControllerTests.cs:306–382`) check the body shape, as `BadRequest_Bodies_Take_Three_Shapes` does. Parse cookie attributes with `SetCookieHeaderValue` (`CookieAuthenticationTests.cs:56`).
 - **M5. Word conversions.**
   - `Convert_To` (`WordTestsBase.cs:2175`, 18 cases) checks only the format: read the content per format (PDF text and page count, the DOCX facts, HTML with tags stripped, ODT/EPub text).
@@ -324,7 +374,7 @@ The dominant pattern is already good. These rules write it down, and the list af
   - `[Platform("Win")]` on the GDI, Spire PDF, SelectPdf and UziGranot fixtures, so a Linux run skips them.
   - The Providers' `Containers` category goes on the PostgreSQL and SQL Server instances only, so the SQLite run stays in the fast loop.
   - `LicenseStatusClientTests` and `WordClientRequestTests` use canned handlers but are tagged `Network`, so the offline run drops them; untag them.
-  - MongoDB `RepositoryTests` needs a local server with no gate: a Testcontainers MongoDB behind `REGIRA_PROVIDER_TESTS`, as PostgreSQL does.
+  - MongoDB `RepositoryTests` needs a server on localhost. It has a category of its own, `MongoDb`, which the inner loop in `CONTRIBUTING.md` leaves out. Still open: a Testcontainers MongoDB behind `REGIRA_PROVIDER_TESTS`, as PostgreSQL does.
   - A `License` category on `GotenbergUnitTests`.
 - **C7. Parallelism declarations.**
   - CONTRIBUTING wants `Properties/AssemblyInfo.cs` in every project; DAL.MySQL and Media lack it.
@@ -339,7 +389,7 @@ The dominant pattern is already good. These rules write it down, and the list af
   - Excel writes `Output/TestData.xlsx` from two backends that run in parallel, and `countries-output.xlsx` from two tests: give each its own name.
 - **C9. Remote fixtures.**
   - Azure re-seeds and empties the shared real container around every test, and is `[NonParallelizable]` for it. Give each fixture its own `regira-test-{guid}` container: seed once, delete it in one call.
-  - SSH needs the same before its `[Ignore]` can go.
+  - SSH: done after phase 1, with an SFTP container per fixture.
 - **C10. Smaller items.**
   - Expected and actual swapped: `NumberTests.cs:22, 38`, `DictionaryUtilityTests`, `DrawingImageExtensions.cs:50`, `MessageObjectTests.cs:174`, `CourseControllerTests.cs:274`, `PersonControllerTests.cs:447`.
   - `Assert.That(x == y, Is.True)` hides values (about 25 sites).
@@ -354,6 +404,8 @@ The dominant pattern is already good. These rules write it down, and the list af
 ## 5. Performance
 
 Ranked by cost. Seconds are measured (summed test time per class, or wall time where it says "alone"). Counts of hosts, requests and keys come from reading the code. None of these changes weakens an assertion, and several strengthen one.
+
+The table is the plan as written. *Outcome (phase 2)* says what was built: P1, P2, P7, P8 and P12 in full, P4, P6 and P9 in part, and P3, P5 and P11 not, each with its reason. P10 and P13 are open.
 
 | # | Change | Cost today | Expected effect |
 |---|---|---|---|
@@ -373,7 +425,7 @@ Ranked by cost. Seconds are measured (summed test time per class, or wall time w
 
 ## 6. Library defects found in passing
 
-These are product changes, separate from the test work (D1).
+These are product changes, separate from the test work (D1). All eight are fixed, and so are S9 and S10, which phase 1 found: the fixes shipped in 6.6.1, and *Outcome (phase 1)* gives each one's change and the test that shows it.
 
 | # | Defect | Evidence | Size |
 |---|---|---|---|
@@ -394,34 +446,36 @@ These are product changes, separate from the test work (D1).
 - **A lower `NestedDocumentGuard.MaxDepth` for tests.** It would need a product hook. The 100-level self-inclusion test stays.
 - **One browser shared across PDF tests.** The backends launch per call on purpose (no leaked `chrome.exe`). P10 parallelises the calls instead.
 - **A mass rename to one naming style, and Contoso to the guide's names.** Churn without a defect (C2, C10).
-- **Multi-targeting the six net10-only projects that test net8 packages** (Security, Licensing, Hosting, Web.Analytics, GeoIP2, Web.HTML). This is a real coverage gap, but a separate piece of work. Web.Analytics' test store needs `System.Threading.Lock` replaced first.
+- **Multi-targeting the six net10-only projects that test net8 packages** (Security, Licensing, Hosting, Web.Analytics, GeoIP2, Web.HTML). This is a real coverage gap, but a separate piece of work. Web.Analytics' test store needs `System.Threading.Lock` replaced first. `proposals/dotnet-11.md` keeps `net8.0` through 6.x and recommends leaving the single-target test projects on `net10.0`. The gap then stays as long as `net8.0` does, and from 6.7.0 the `net11.0` builds of those packages are untested in the same way.
 
 ## Decisions
 
-| # | Question | Recommendation |
-|---|---|---|
-| D1 | The library defects: in this work or apart from it? | Fix S1, S2, S4 and S5 now, each with the test that exposes it. S3, S6 and S7 need a semantics choice; until then, an ignored test that says why and a docs line. Check S8 before deciding |
-| D2 | xUnit in the three ASP.NET-hosting projects | Keep it; name all three in CONTRIBUTING and give the rule (xUnit where a project hosts ASP.NET in process). Migrating fixes nothing |
-| D3 | Naming | Sentence style for new and touched tests; no mass rename |
-| D4 | Where shared test support lives (C3, C4) | Linked source files from a `tests/Shared/` folder, included by the projects that need them. That keeps Testcontainers and PdfPig out of `Testing.Library`, which the Entities suites share. Alternative: a small `Testing.Support` project |
-| D5 | Within-fixture parallelism (P10) | Trial it fixture by fixture with repeated runs; keep it only where five runs stay green |
-| D6 | Output files | Keep writing them (P1 and P2 shrink them); attach only on failure (P12) |
+| # | Question | Recommendation | Where it stands |
+|---|---|---|---|
+| D1 | The library defects: in this work or apart from it? | Fix S1, S2, S4 and S5 now, each with the test that exposes it. S3, S6 and S7 need a semantics choice; until then, an ignored test that says why and a docs line. Check S8 before deciding | Settled, and further than recommended: the semantics were chosen for S3, S6 and S7 too, and all ten shipped in 6.6.1 |
+| D2 | xUnit in the three ASP.NET-hosting projects | Keep it; name all three in CONTRIBUTING and give the rule (xUnit where a project hosts ASP.NET in process). Migrating fixes nothing | Open: `CONTRIBUTING.md` names two |
+| D3 | Naming | Sentence style for new and touched tests; no mass rename | Nothing to build; four of the five test files added since are in sentence style |
+| D4 | Where shared test support lives (C3, C4) | Linked source files from a `tests/Shared/` folder, included by the projects that need them. That keeps Testcontainers and PdfPig out of `Testing.Library`, which the Entities suites share. Alternative: a small `Testing.Support` project | Open |
+| D5 | Within-fixture parallelism (P10) | Trial it fixture by fixture with repeated runs; keep it only where five runs stay green | Open |
+| D6 | Output files | Keep writing them (P1 and P2 shrink them); attach only on failure (P12) | Settled: built in phase 2 |
 
 ## Steps
 
-1. **Wrong tests (W1–W57).** One commit per area. Prove each fix by running it against a broken copy of the source in a scratch snapshot. Tests that turn red on a real defect (S2, S3, possibly the vCard 4.0 TEL type) follow D1. Run the IO, Common and TreeList path fixes (W49) on Linux too (the `mcr.microsoft.com/dotnet/sdk:10.0` container).
-2. **Speed without changing an assertion (P1–P9, P11, P12).** Measure each project before and after, alone and in the parallel run.
-3. **Measurable results (M1–M10).**
+1. **Wrong tests (W1–W57) — done.** One commit per area. Prove each fix by running it against a broken copy of the source in a scratch snapshot. Tests that turn red on a real defect (S2, S3, possibly the vCard 4.0 TEL type) follow D1. Run the IO, Common and TreeList path fixes (W49) on Linux too (the `mcr.microsoft.com/dotnet/sdk:10.0` container).
+2. **Speed without changing an assertion (P1–P9, P11, P12) — done as easy wins.** Measure each project before and after, alone and in the parallel run.
+3. **Measurable results (M1–M10).** With the typed `SortBy` case W22 left open, and `EntityRefusalTests` under M3.
 4. **Useless tests and consistency (U1–U9, C1–C10)**, including the shared support (D4) and the CONTRIBUTING update (D2, C7).
-5. **Parallelism trials (P10)**, then a final measurement of the full run, recorded under *Outcome*.
+5. **Parallelism trials (P10)**, with one container per provider per assembly (the part of P4 phase 2 skipped), then a final measurement of the full run, recorded under *Outcome*. Take it once the `net11.0` leg of `proposals/dotnet-11.md` is in, or say that it is not.
+6. **The tests added since 6.6.1.** Read them under the *Wrong* lens, each suspect proven on a mutant as in step 1.
 
 Each step is safe to commit on its own. The test projects ship nothing, so no `<Version>` bump or CHANGELOG line is needed. The exceptions are the S fixes and any `src/` change a test needs, such as the internal `ToDocument` that W28 suggests.
 
 ## Risks
 
-- **Phase 1 may turn tests red** on behaviour that consumers rely on (S3, S6, S7). D1 keeps those as documented gaps until decided.
+- **Phase 1 may turn tests red** on behaviour that consumers rely on (S3, S6, S7). D1 keeps those as documented gaps until decided. As it went, all three were decided and shipped in 6.6.1 as behaviour changes, each with a changelog line.
 - **P10 can bring flaky tests.** Vendor libraries' thread safety is unknown. The trial runs each fixture 5 times, and any fixture that flakes goes back to serial with a note.
-- **P5 and P6 change how the test hosts start.** One Development boot test per surface keeps startup validation and the OpenAPI wiring covered.
+- **P5 and P6 change how the test hosts start.** One Development boot test per surface keeps startup validation and the OpenAPI wiring covered. Phase 2 skipped both restructurings for this reason.
+- **The findings age.** Sections 2 to 4 describe the tree of 2026-10-23. A file that grew since may hold a second copy of a pattern they name, as `EntityRefusalTests` does for M3, so each step starts by searching for its pattern, not by walking its list.
 
 ## Outcome (phase 1)
 
