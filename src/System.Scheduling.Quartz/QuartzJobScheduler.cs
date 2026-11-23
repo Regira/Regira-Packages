@@ -56,6 +56,9 @@ public sealed class QuartzJobScheduler(ISchedulerFactory schedulerFactory) : IJo
             cancelled |= await scheduler.InterruptFireInstance(running.FireInstanceId, token);
         }
 
+        // A recurring run is known by the id of its firing (JobContext.JobId).
+        cancelled |= await scheduler.InterruptFireInstance(jobId, token);
+
         return await scheduler.UnscheduleJob(triggerKey, token) || cancelled;
     }
 

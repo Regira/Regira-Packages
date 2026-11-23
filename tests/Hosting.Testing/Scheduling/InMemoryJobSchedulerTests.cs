@@ -300,6 +300,87 @@ public class InMemoryJobSchedulerTests
         Assert.That(_probe.Cancelled, Is.EqualTo(new[] { "stopping" }));
     }
 
+    private class StubbornJob(JobProbe probe) : IJobHandler
+    {
+        public async Task Execute(JobContext context, CancellationToken token)
+        {
+            probe.Add(new JobRun(nameof(StubbornJob), context));
+            // ignores its token
+            await probe.Released;
+        }
+    }
+
+    [Test]
+    public async Task Stop_Returns_When_Its_Token_Expires_Before_A_Job_Ends()
+    {
+        var scheduler = Start();
+        await scheduler.Enqueue<StubbornJob>();
+        await _probe.WaitFor(1);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+        await scheduler.Stop(timeout.Token);
+
+        Assert.That(timeout.IsCancellationRequested, Is.True);
+        _probe.Release();
+    }
+
+    [Test]
+    public async Task Dispose_Signals_The_Token_Of_A_Running_Job()
+    {
+        var scheduler = Start();
+        await scheduler.Enqueue<SlowJob, string>("disposing");
+        await _probe.WaitFor(1);
+
+        scheduler.Dispose();
+
+        await JobProbe.Until(() => _probe.Cancelled.Contains("disposing"));
+    }
+
+    // Nothing would run it any more: it is refused instead of lost.
+    [Test]
+    public async Task A_Job_Is_Refused_After_The_Stop()
+    {
+        var scheduler = Start();
+        await scheduler.AddOrUpdateRecurring<RecordJob>("yearly", "0 0 1 1 *");
+        await scheduler.Stop(CancellationToken.None);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => scheduler.Enqueue<RecordJob>());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => scheduler.Schedule<ReportJob, ReportInput>(new ReportInput(1, "late"), _time.GetUtcNow()));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => scheduler.Trigger("yearly"));
+        Assert.That(_probe.Runs, Is.Empty);
+    }
+
+    // The scheduler finds an occurrence far in the past when it starts late, or when the clock jumps.
+    [TestCase(MisfirePolicy.RunOnce, 1)]
+    [TestCase(MisfirePolicy.Skip, 0)]
+    public async Task An_Occurrence_Found_Late_Runs_Once_Or_Is_Skipped(MisfirePolicy policy, int expectedRuns)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton(_probe);
+        services.AddSingleton<TimeProvider>(_time);
+        services.AddScoped<ScopedDependency>();
+        services.AddScheduling();
+        _services = services.BuildServiceProvider();
+        var scheduler = _services.GetRequiredService<InMemoryJobScheduler>();
+        await scheduler.AddOrUpdateRecurring<RecordJob>("minutely", "* * * * *", new RecurringJobOptions { Misfire = policy });
+        var firstOccurrence = _time.GetUtcNow().AddMinutes(1);
+
+        // ten occurrences pass before the scheduler looks
+        _time.Advance(TimeSpan.FromMinutes(10) + TimeSpan.FromSeconds(30));
+        scheduler.Start();
+        await scheduler.WhenIdle();
+
+        Assert.That(_probe.Runs, Has.Count.EqualTo(expectedRuns));
+        if (expectedRuns == 1)
+        {
+            Assert.That(_probe.Runs.Single().Context.ScheduledAt, Is.EqualTo(firstOccurrence));
+        }
+        // the next occurrence is on time
+        await Advance(scheduler, TimeSpan.FromSeconds(30));
+        Assert.That(_probe.Runs, Has.Count.EqualTo(expectedRuns + 1));
+    }
+
     [Test]
     public async Task MaxConcurrency_Holds_Back_What_Is_Due()
     {

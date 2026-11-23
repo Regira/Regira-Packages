@@ -19,7 +19,7 @@ flowchart LR
     H --> J
 ```
 
-> **The built-in backend keeps everything in memory.** A job that was accepted is lost on a restart, a failed run is logged and not retried, and a recurring job runs on every node that hosts the application. When that is not enough, register an adapter: the jobs stay as they are.
+> **The built-in backend keeps everything in memory.** A job that was accepted is lost on a restart, a job offered after the host stopped is refused with `InvalidOperationException`, a failed run is logged and not retried, and a recurring job runs on every node that hosts the application. When that is not enough, register an adapter: the jobs stay as they are.
 
 ---
 
@@ -50,7 +50,7 @@ public class ExpireCart(ICartStore carts) : IJobHandler<ExpireCartInput>
 }
 ```
 
-`JobContext` tells a run about itself: `JobId` (the id `Enqueue` or `Schedule` returned; a new one for every recurring run), `RecurringId` (`null` for a one-off job) and `ScheduledAt` (the time the run was due, when the backend knows it).
+`JobContext` tells a run about itself: `JobId` (the id `Enqueue` or `Schedule` returned; a new one for every recurring run), `RecurringId` (`null` for a one-off job) and `ScheduledAt` (the time the run was due, when the backend knows it; on Hangfire a recurring run carries the time Hangfire created it, up to its polling interval later).
 
 ### The portable contract
 
@@ -115,12 +115,12 @@ app.MapPost("/carts/{id:int}/expire", async (int id, IJobScheduler jobs) =>
 |--------|------|
 | `Enqueue<TJob>()`, `Enqueue<TJob, TInput>(input)` | Runs the job as soon as possible and returns its id |
 | `Schedule<TJob, TInput>(input, at)` | Runs it once, at the given time, and returns its id |
-| `Cancel(jobId)` | Cancels a job that waits, or signals the token of one that runs. `false` for a job that already ran or does not exist |
-
-A job id identifies a job and grants nothing: Hangfire's are sequential numbers. An endpoint that cancels by an id a client sends checks first that the job is that caller's.
+| `Cancel(jobId)` | Cancels a job that waits, or signals the token of one that runs: also a recurring run, by the `JobId` of its context. `false` for a job that already ran or does not exist |
 | `AddOrUpdateRecurring<TJob>(id, schedule, options?)`, `AddOrUpdateRecurring<TJob, TInput>(id, input, schedule, options?)` | Adds a recurring job, or replaces the one with the same id |
 | `RemoveRecurring(id)` | Removes a recurring job. `false` when no recurring job has the id |
 | `Trigger(id)` | Runs a recurring job now, outside its schedule. `false` when no recurring job has the id |
+
+A job id identifies a job and grants nothing: Hangfire's are sequential numbers. An endpoint that cancels by an id a client sends checks first that the job is that caller's.
 
 There is no status, history or progress query. Quartz and Hangfire each have a dashboard for that, and progress a caller polls is what the [background task queue](hosting.md#background-task-queue) does. The queue runs a closure in this process; scheduling runs a named job class that may run later, on a schedule, after a restart or on another node. Both can be registered side by side.
 
@@ -195,6 +195,7 @@ builder.Services.AddScheduling(s => { /* as above */ }).UseHangfire();
 - The package references `Hangfire.Core` only. The application adds `Hangfire.AspNetCore` or `Hangfire.NetCore` and a storage package.
 - Hangfire's retry filter applies as the application configured it. With Hangfire's default, a handler that throws runs again up to ten times: rule 3 is not optional on this backend.
 - `AllowConcurrent = false` takes a distributed lock per recurring job for the length of the run. A run that finds it taken is skipped.
+- `JobContext.ScheduledAt` of a recurring run is the time Hangfire's poll created the run, not the cron occurrence: up to `SchedulePollingInterval` (15 seconds by default) later. A job that needs the occurrence rounds it down itself.
 - `Cancel` reaches the jobs this scheduler stored and no others: it returns `false` for a job the application gave Hangfire itself. Recurring ids are Hangfire's own, so a recurring job declared here and one the application registers with `RecurringJob.AddOrUpdate` under the same id are one job.
 - The input is serialized with Newtonsoft.Json, where Quartz and the built-in backend use `System.Text.Json`. An input of plain properties reads the same in all three.
 - Hangfire.Core is LGPL-3.0 (or commercially licensed). Some policies refuse LGPL dependencies outright; it is this adapter's dependency alone.
@@ -205,7 +206,7 @@ A persistent backend stores the handler's and the input's full type names with e
 
 ### Another scheduler
 
-The contract is public, so one more backend is one more `IJobScheduler`, registered with `AddScheduling(...).UseScheduler<TScheduler>()`. It runs a handler from the scope of its run with `JobHandlerInvoker.Run<TJob>(scopedServices, context, token)` or `JobHandlerInvoker.Run<TJob, TInput>(scopedServices, input, context, token)`.
+The contract is public, so one more backend is one more `IJobScheduler`, registered with `AddScheduling(...).UseScheduler<TScheduler>()`. It runs a handler from the scope of its run with `JobHandlerInvoker.Run<TJob>(scopedServices, context, token)` or `JobHandlerInvoker.Run<TJob, TInput>(scopedServices, input, context, token)`. `CronSchedule.GetDaysOfWeek()` gives the days an expression fires on, for a backend that numbers or names them differently, as Quartz does.
 
 ---
 

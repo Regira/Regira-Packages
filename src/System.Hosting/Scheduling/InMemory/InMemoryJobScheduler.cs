@@ -10,7 +10,7 @@ namespace Regira.System.Hosting.Scheduling.InMemory;
 /// The built-in scheduling backend: in process and in memory. Nothing is stored, a failed run is logged and not retried,
 /// and a recurring job runs on every node that hosts the application.
 /// </summary>
-public sealed class InMemoryJobScheduler(
+internal sealed class InMemoryJobScheduler(
     IServiceScopeFactory scopeFactory,
     TimeProvider time,
     InMemorySchedulerOptions options,
@@ -53,6 +53,7 @@ public sealed class InMemoryJobScheduler(
     private readonly CancellationTokenSource _stopping = new();
     private ITimer? _timer;
     private bool _started;
+    private bool _stopped;
     private bool _disposed;
     private TaskCompletionSource? _idle;
 
@@ -140,6 +141,7 @@ public sealed class InMemoryJobScheduler(
                 return Task.FromResult(false);
             }
 
+            RefuseWhenStopped();
             if (!recurring.Waiting)
             {
                 recurring.Waiting = true;
@@ -165,7 +167,14 @@ public sealed class InMemoryJobScheduler(
         Task[] running;
         lock (_gate)
         {
+            if (_disposed)
+            {
+                // disposing already signalled every run
+                return;
+            }
+
             _started = false;
+            _stopped = true;
             _timer?.Dispose();
             _timer = null;
             running = _running.Values.Select(r => r.Task).OfType<Task>().ToArray();
@@ -208,6 +217,7 @@ public sealed class InMemoryJobScheduler(
 
             _disposed = true;
             _started = false;
+            _stopped = true;
             _timer?.Dispose();
             _timer = null;
         }
@@ -225,12 +235,21 @@ public sealed class InMemoryJobScheduler(
         return (scopedServices, context, token) => JobHandlerInvoker.Run<TJob, TInput>(scopedServices, JsonSerializer.Deserialize<TInput>(json)!, context, token);
     }
     private static string NewId() => Guid.NewGuid().ToString("N");
+    // Before the start a job waits for it. After the stop nothing would ever run it: refusing it beats losing it in silence.
+    private void RefuseWhenStopped()
+    {
+        if (_stopped)
+        {
+            throw new InvalidOperationException("The scheduler has stopped: the job is not accepted.");
+        }
+    }
 
     private string Accept(JobInvoker invoke, DateTimeOffset dueAt, DateTimeOffset? scheduledAt)
     {
         var run = new Run(NewId(), dueAt, invoke, null, scheduledAt);
         lock (_gate)
         {
+            RefuseWhenStopped();
             _waiting.Add(run);
             Pump();
         }

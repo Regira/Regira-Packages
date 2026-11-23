@@ -16,4 +16,15 @@ public class QuartzJobSchedulerContractTests : JobSchedulerContractTests
         services.AddQuartzHostedService();
         services.AddScheduling(declare).UseQuartz();
     }
+    protected override async Task WhenSettled(string jobId)
+    {
+        var scheduler = await Services.GetRequiredService<ISchedulerFactory>().GetScheduler();
+        var done = false;
+        while (!done)
+        {
+            await Task.Delay(25);
+            done = await scheduler.GetTrigger(new TriggerKey(jobId, QuartzJobScheduler.JobGroup)) == null
+                   && (await scheduler.QueryFireInstances(new FireInstanceQuery { TriggerName = NameMatcher<TriggerKey>.NameEquals(jobId) })).Items.Count == 0;
+        }
+    }
 }

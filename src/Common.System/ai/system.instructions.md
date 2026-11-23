@@ -164,7 +164,8 @@ What a job can rely on, whichever backend runs it:
 7. **Cancellation is cooperative**: the token is signalled on shutdown and by `Cancel(jobId)`. Pass it on.
 
 `JobContext` carries `JobId` (the id `Enqueue` or `Schedule` returned; a new one for every recurring run), `RecurringId`
-(`null` for a one-off job) and `ScheduledAt` (the time the run was due, when the backend knows it).
+(`null` for a one-off job) and `ScheduledAt` (the time the run was due, when the backend knows it; on Hangfire a recurring
+run carries the time Hangfire created it, up to its polling interval later).
 
 #### Registration
 
@@ -209,7 +210,7 @@ await jobs.Cancel(laterId);
 |---|---|
 | `Enqueue<TJob>()`, `Enqueue<TJob, TInput>(input)` | runs the job as soon as possible; returns its id |
 | `Schedule<TJob, TInput>(input, at)` | runs it once, at `at`; returns its id |
-| `Cancel(jobId)` | cancels a job that waits, or signals the token of one that runs; `false` for a job that already ran or does not exist |
+| `Cancel(jobId)` | cancels a job that waits, or signals the token of one that runs (also a recurring run, by the `JobId` of its context); `false` for a job that already ran or does not exist |
 | `AddOrUpdateRecurring<TJob>(id, schedule, options?)`, `AddOrUpdateRecurring<TJob, TInput>(id, input, schedule, options?)` | adds a recurring job, or replaces the one with the same id |
 | `RemoveRecurring(id)` | removes it; `false` when no recurring job has the id |
 | `Trigger(id)` | runs a recurring job now, outside its schedule; `false` when no recurring job has the id |
@@ -286,7 +287,9 @@ builder.Services.AddScheduling(s => { /* as above */ }).UseHangfire();
   `Hangfire.NetCore` and a storage package. Some policies refuse LGPL dependencies; the contract and the built-in backend
   carry none.
 - **Another scheduler** is one more `IJobScheduler`: `AddScheduling(...).UseScheduler<TScheduler>()`, running each
-  handler with `JobHandlerInvoker.Run<TJob>(scopedServices, context, token)`.
+  handler with `JobHandlerInvoker.Run<TJob>(scopedServices, context, token)`. `CronSchedule.GetDaysOfWeek()` gives the
+  days an expression fires on, for a backend that numbers or names them differently.
+- **The built-in backend refuses a job after the host stopped** (`InvalidOperationException`): nothing would run it.
 
 ---
 

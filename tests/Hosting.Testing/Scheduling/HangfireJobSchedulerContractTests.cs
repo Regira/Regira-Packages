@@ -25,6 +25,12 @@ public class HangfireJobSchedulerContractTests : JobSchedulerContractTests
         });
         services.AddScheduling(declare).UseHangfire();
     }
+    protected override Task WhenSettled(string jobId)
+        => JobProbe.Until(() =>
+        {
+            using var connection = Services.GetRequiredService<JobStorage>().GetConnection();
+            return connection.GetStateData(jobId)?.Name == "Succeeded";
+        });
 
     // The storage is the application's: a job it gave Hangfire itself is not the scheduler's to cancel.
     [Test]

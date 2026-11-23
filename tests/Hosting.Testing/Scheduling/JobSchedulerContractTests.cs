@@ -34,6 +34,9 @@ public abstract class JobSchedulerContractTests
         }
     }
 
+    /// <summary>Completes when the backend has recorded that the run of <paramref name="jobId"/> ended.</summary>
+    protected abstract Task WhenSettled(string jobId);
+
     /// <summary>The services of the started host.</summary>
     protected IServiceProvider Services => _host!.Services;
 
@@ -139,9 +142,23 @@ public abstract class JobSchedulerContractTests
         var jobId = await scheduler.Enqueue<RecordJob>();
         await Probe.WaitFor(1);
         await JobProbe.Until(() => Probe.DisposedScopes == 1);
-        await Task.Delay(250);
+        await WhenSettled(jobId);
 
         Assert.That(await scheduler.Cancel(jobId), Is.False);
+    }
+
+    [Test]
+    public async Task Cancel_Signals_The_Token_Of_A_Recurring_Run()
+    {
+        var scheduler = await Start();
+        await scheduler.AddOrUpdateRecurring<SlowJob, string>("slow", "recurring", Yearly);
+        await scheduler.Trigger("slow");
+        var run = (await Probe.WaitFor(1)).Single();
+
+        var cancelled = await scheduler.Cancel(run.Context.JobId);
+
+        Assert.That(cancelled, Is.True);
+        await JobProbe.Until(() => Probe.Cancelled.Contains("recurring"));
     }
 
     [Test]
@@ -269,4 +286,6 @@ public class InMemoryJobSchedulerContractTests : JobSchedulerContractTests
 {
     protected override void AddScheduling(IServiceCollection services, Action<SchedulingBuilder> declare)
         => Regira.System.Hosting.Scheduling.DependencyInjection.ServiceCollectionExtensions.AddScheduling(services, declare);
+    protected override Task WhenSettled(string jobId)
+        => Services.GetRequiredService<Regira.System.Hosting.Scheduling.InMemory.InMemoryJobScheduler>().WhenIdle();
 }
