@@ -14,7 +14,9 @@ public class QuartzCronTests
     [TestCase("0 0 * * 7", "0 0 0 ? * 1")]
     [TestCase("0 0 * * 5-7", "0 0 0 ? * 1,6,7")]
     [TestCase("0 0 1,15 * *", "0 0 0 1,15 * ?")]
-    [TestCase("0 0 1-7 JAN,JUL *", "0 0 0 1-7 JAN,JUL ?")]
+    [TestCase("0 0 1-7 JAN,JUL *", "0 0 0 1-7 1,7 ?")]
+    [TestCase("0 0 1 mar-sep/2 *", "0 0 0 1 3-9/2 ?")]
+    [TestCase("0 0 * * 1/2", "0 0 0 ? * 1,2,4,6")]
     [TestCase("*/10 * * * * *", "*/10 * * * * ?")]
     [TestCase("30 0 7 * * SAT", "30 0 7 ? * 7")]
     public void Translates_To_The_Quartz_Dialect(string expression, string expected)

@@ -55,6 +55,35 @@ public class InMemoryJobSchedulerTests
         await scheduler.WhenIdle();
     }
 
+    private static readonly AsyncLocal<string?> Ambient = new();
+    private class AmbientJob(JobProbe probe) : IJobHandler
+    {
+        public Task Execute(JobContext context, CancellationToken token)
+        {
+            probe.Add(new JobRun(nameof(AmbientJob), context, Ambient.Value));
+            return Task.CompletedTask;
+        }
+    }
+
+    // A job enqueued from a request must not see that request's ambient state.
+    [Test]
+    public async Task A_Job_Does_Not_Run_In_The_Context_Of_Its_Caller()
+    {
+        var scheduler = Start();
+        Ambient.Value = "the caller";
+
+        await scheduler.Enqueue<AmbientJob>();
+        await scheduler.Schedule<ReportJob, ReportInput>(new ReportInput(1, "later"), _time.GetUtcNow().AddMinutes(1));
+        await scheduler.AddOrUpdateRecurring<AmbientJob>("ambient", "*/5 * * * *");
+        await scheduler.WhenIdle();
+        await Advance(scheduler, TimeSpan.FromMinutes(5));
+
+        var runs = _probe.Runs.Where(r => r.Handler == nameof(AmbientJob)).ToArray();
+        Assert.That(runs, Has.Length.EqualTo(2));
+        Assert.That(runs.Select(r => r.Input), Is.All.Null);
+        Assert.That(Ambient.Value, Is.EqualTo("the caller"));
+    }
+
     [Test]
     public async Task A_Recurring_Job_Fires_On_Its_Occurrences_In_Its_Time_Zone()
     {

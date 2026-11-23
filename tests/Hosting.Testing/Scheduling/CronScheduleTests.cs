@@ -24,6 +24,16 @@ public class CronScheduleTests
         "0 0 * * 5-7",
         "0 0 * * SUN,WED,SAT",
         "0 0 * * */2",
+        "0 0 * * 1/2",
+        "0 0 * * MON/2",
+        "0 0 * * 3/2",
+        "0 0 * * 1/3",
+        "0 0 * * 7/2",
+        "0 0 * * 2-6/2",
+        "0 0 1 MAR/2 *",
+        "0 0 1 JAN-MAR/2 *",
+        "0 0 1 feb-oct/4,DEC *",
+        "05 07 * * *",
         "0 22 31 12 *",
         "* * * * * *",
         "*/10 * * * * *",
@@ -64,6 +74,10 @@ public class CronScheduleTests
     [TestCase("*/5/2 * * * *", "more than one step")]
     [TestCase("1,,2 * * * *", "empty list item")]
     [TestCase("-5 * * * *", "'' in the minute field")]
+    [TestCase("*/+5 * * * *", "step '+5'")]
+    [TestCase("+5 * * * *", "'+5' in the minute field")]
+    [TestCase("007 * * * *", "'007' in the minute field")]
+    [TestCase("*/005 * * * *", "step '005'")]
     public void Refuses_What_Is_Outside_The_Subset(string expression, string reason)
     {
         var ex = Assert.Throws<FormatException>(() => CronSchedule.Parse(expression));
@@ -102,7 +116,9 @@ public class CronScheduleTests
     [TestCase("0 0 * * 7", new[] { 0 })]
     [TestCase("0 0 * * 5-7", new[] { 0, 5, 6 })]
     [TestCase("0 0 * * */2", new[] { 0, 2, 4, 6 })]
-    [TestCase("0 0 * * 1/2", new[] { 1, 3, 5 })]
+    [TestCase("0 0 * * 1/2", new[] { 0, 1, 3, 5 })]
+    [TestCase("0 0 * * 7/2", new[] { 0 })]
+    [TestCase("0 0 * * 2-6/2", new[] { 2, 4, 6 })]
     [TestCase("0 0 0 * * SUN,WED", new[] { 0, 3 })]
     public void Names_Its_Days_Of_The_Week(string expression, int[] days)
     {

@@ -323,7 +323,17 @@ public sealed class InMemoryJobScheduler(
 
             run.Cancellation = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token);
             _running[run.Id] = run;
-            run.Task = Task.Run(() => Execute(run));
+            // the run starts without the ExecutionContext of whoever pumped: a job enqueued from a request
+            // does not see that request's AsyncLocal values (the current activity, an ambient transaction, the culture)
+            var flow = ExecutionContext.IsFlowSuppressed() ? (AsyncFlowControl?)null : ExecutionContext.SuppressFlow();
+            try
+            {
+                run.Task = Task.Run(() => Execute(run));
+            }
+            finally
+            {
+                flow?.Undo();
+            }
         }
 
         var next = _recurring.Values.Select(r => r.Next)

@@ -28,6 +28,12 @@ public sealed class HangfireJobScheduler(IBackgroundJobClient client, IRecurring
 
     public Task<bool> Cancel(string jobId, CancellationToken token = default)
     {
+        // The storage also holds the jobs the application gave Hangfire itself: those are not this scheduler's to cancel.
+        if (!IsOwnJob(jobId))
+        {
+            return Task.FromResult(false);
+        }
+
         // Deleting a job that is processing signals its token on the server that runs it.
         var cancelled = CancellableStates.Any(state => client.ChangeState(jobId, new DeletedState(), state));
         return Task.FromResult(cancelled);
@@ -36,6 +42,7 @@ public sealed class HangfireJobScheduler(IBackgroundJobClient client, IRecurring
     public Task AddOrUpdateRecurring<TJob>(string id, CronSchedule schedule, RecurringJobOptions? options = null, CancellationToken token = default)
         where TJob : IJobHandler
     {
+        RequireId(id);
         var exclusive = options?.AllowConcurrent != true;
         recurringJobs.AddOrUpdate<HangfireJobRunner<TJob>>(id, r => r.Run(id, null, exclusive, null, CancellationToken.None), schedule.Expression, Map(options));
         return Task.CompletedTask;
@@ -43,6 +50,7 @@ public sealed class HangfireJobScheduler(IBackgroundJobClient client, IRecurring
     public Task AddOrUpdateRecurring<TJob, TInput>(string id, TInput input, CronSchedule schedule, RecurringJobOptions? options = null, CancellationToken token = default)
         where TJob : IJobHandler<TInput>
     {
+        RequireId(id);
         var exclusive = options?.AllowConcurrent != true;
         recurringJobs.AddOrUpdate<HangfireJobRunner<TJob, TInput>>(id, r => r.Run(input, id, null, exclusive, null, CancellationToken.None), schedule.Expression, Map(options));
         return Task.CompletedTask;
@@ -68,6 +76,21 @@ public sealed class HangfireJobScheduler(IBackgroundJobClient client, IRecurring
         return Task.FromResult(true);
     }
 
+    private bool IsOwnJob(string jobId)
+    {
+        using var connection = storage.GetConnection();
+        var runner = connection.GetJobData(jobId)?.Job?.Type;
+        return runner is { IsGenericType: true }
+               && runner.GetGenericTypeDefinition() is var definition
+               && (definition == typeof(HangfireJobRunner<>) || definition == typeof(HangfireJobRunner<,>));
+    }
+    private static void RequireId(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            throw new ArgumentException("A recurring job needs an id.", nameof(id));
+        }
+    }
     private bool Exists(string recurringId)
     {
         using var connection = storage.GetConnection();

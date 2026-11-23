@@ -116,6 +116,8 @@ app.MapPost("/carts/{id:int}/expire", async (int id, IJobScheduler jobs) =>
 | `Enqueue<TJob>()`, `Enqueue<TJob, TInput>(input)` | Runs the job as soon as possible and returns its id |
 | `Schedule<TJob, TInput>(input, at)` | Runs it once, at the given time, and returns its id |
 | `Cancel(jobId)` | Cancels a job that waits, or signals the token of one that runs. `false` for a job that already ran or does not exist |
+
+A job id identifies a job and grants nothing: Hangfire's are sequential numbers. An endpoint that cancels by an id a client sends checks first that the job is that caller's.
 | `AddOrUpdateRecurring<TJob>(id, schedule, options?)`, `AddOrUpdateRecurring<TJob, TInput>(id, input, schedule, options?)` | Adds a recurring job, or replaces the one with the same id |
 | `RemoveRecurring(id)` | Removes a recurring job. `false` when no recurring job has the id |
 | `Trigger(id)` | Runs a recurring job now, outside its schedule. `false` when no recurring job has the id |
@@ -131,6 +133,8 @@ There is no status, history or progress query. Quartz and Hangfire each have a d
 - Five fields: minute, hour, day of month, month, day of week. A sixth, leading field is seconds.
 - Values, `*`, lists (`1,15`), ranges (`MON-FRI`), steps (`*/15`, `9-17/2`), and month and weekday names.
 - Day of week is 0 to 6 with Sunday as 0; 7 is also Sunday.
+- A value with a step runs to the end of its field: `5/20` in minutes is 5, 25 and 45. In day of week the field ends at 7, so `1/2` is Monday, Wednesday, Friday and Sunday.
+- A number is one or two digits, without a sign.
 - At most one of day-of-month and day-of-week is restricted. Cron dialects disagree on whether both means either or both.
 - Not in the subset: `?`, `L`, `W`, `#`, year fields, macros such as `@daily`, and a range that runs backwards (`FRI-MON`; write `FRI-SAT,SUN-MON`).
 
@@ -173,7 +177,7 @@ builder.Services.AddScheduling(s => { /* as above */ }).UseQuartz();
 
 - Built on Quartz 4, which targets `net10.0` and later. A `net8.0` application uses the built-in backend or the Hangfire adapter.
 - A recurring job is a durable job with one cron trigger, both named by the job's id in group `regira.recurring`. A one-off job is a trigger in group `regira.jobs`, named by the id `Enqueue` or `Schedule` returned.
-- The cron expression is translated to the Quartz dialect (`QuartzCron.Translate`): a leading `0` for seconds when there are five fields, `?` in the day field that is not restricted, and weekdays as Quartz numbers them. The trigger always carries the option's time zone.
+- The cron expression is translated to the Quartz dialect (`QuartzCron.Translate`): a leading `0` for seconds when there are five fields, `?` in the day field that is not restricted, months as numbers, and weekdays as Quartz numbers them. The trigger always carries the option's time zone.
 - `AllowConcurrent = false` is Quartz's own rule against concurrent execution, per recurring job.
 
 ### Hangfire
@@ -191,6 +195,7 @@ builder.Services.AddScheduling(s => { /* as above */ }).UseHangfire();
 - The package references `Hangfire.Core` only. The application adds `Hangfire.AspNetCore` or `Hangfire.NetCore` and a storage package.
 - Hangfire's retry filter applies as the application configured it. With Hangfire's default, a handler that throws runs again up to ten times: rule 3 is not optional on this backend.
 - `AllowConcurrent = false` takes a distributed lock per recurring job for the length of the run. A run that finds it taken is skipped.
+- `Cancel` reaches the jobs this scheduler stored and no others: it returns `false` for a job the application gave Hangfire itself. Recurring ids are Hangfire's own, so a recurring job declared here and one the application registers with `RecurringJob.AddOrUpdate` under the same id are one job.
 - The input is serialized with Newtonsoft.Json, where Quartz and the built-in backend use `System.Text.Json`. An input of plain properties reads the same in all three.
 - Hangfire.Core is LGPL-3.0 (or commercially licensed). Some policies refuse LGPL dependencies outright; it is this adapter's dependency alone.
 

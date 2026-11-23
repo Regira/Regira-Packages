@@ -6,6 +6,7 @@ namespace Regira.System.Scheduling.Abstractions;
 /// <list type="bullet">
 /// <item>Values, <c>*</c>, lists (<c>,</c>), ranges (<c>-</c>), steps (<c>/</c>), and month and weekday names.</item>
 /// <item>Day of week is 0 to 6 with Sunday as 0; 7 is also Sunday.</item>
+/// <item>A value with a step runs to the end of its field, which for day of week is 7: <c>1/2</c> is Monday, Wednesday, Friday and Sunday.</item>
 /// <item>At most one of day-of-month and day-of-week is restricted.</item>
 /// <item>Not in the subset: <c>?</c>, <c>L</c>, <c>W</c>, <c>#</c>, year fields, and macros such as <c>@daily</c>.</item>
 /// </list>
@@ -135,8 +136,8 @@ public readonly struct CronSchedule : IEquatable<CronSchedule>
             else if (rangeParts.Length == 1)
             {
                 from = ReadValue(rangeParts[0], field, text, expression);
-                // a value with a step runs to the end of the field
-                to = stepParts.Length == 2 ? (field == WeekDay ? 6 : field.Max) : from;
+                // a value with a step runs to the end of the field: for a day of the week that is 7, the second Sunday
+                to = stepParts.Length == 2 ? field.Max : from;
             }
             else if (rangeParts.Length == 2)
             {
@@ -153,7 +154,7 @@ public readonly struct CronSchedule : IEquatable<CronSchedule>
             }
 
             var step = 1;
-            if (stepParts.Length == 2 && (!int.TryParse(stepParts[1], out step) || step < 1 || step > field.Max))
+            if (stepParts.Length == 2 && (!IsNumber(stepParts[1]) || !int.TryParse(stepParts[1], out step) || step < 1 || step > field.Max))
             {
                 throw Refuse(expression, $"the {field.Name} step '{stepParts[1]}' is not a number from 1 to {field.Max}");
             }
@@ -173,7 +174,7 @@ public readonly struct CronSchedule : IEquatable<CronSchedule>
         {
             return nameIndex + field.NamesStart;
         }
-        if (text.Length > 0 && text.All(c => c is >= '0' and <= '9') && int.TryParse(text, out var value) && value >= field.Min && value <= field.Max)
+        if (IsNumber(text) && int.TryParse(text, out var value) && value >= field.Min && value <= field.Max)
         {
             return value;
         }
@@ -181,6 +182,9 @@ public readonly struct CronSchedule : IEquatable<CronSchedule>
         throw Refuse(expression, $"'{text}' in the {field.Name} field '{fieldText}' is not a value from {field.Min} to {field.Max}"
                                  + (field.Names == null ? "" : $" or a name ({field.Names[0]}-{field.Names[^1]})"));
     }
+    // one or two digits, without a sign: what every backend reads as a number
+    private static bool IsNumber(string text)
+        => text.Length is 1 or 2 && text.All(c => c is >= '0' and <= '9');
     private static bool IsName(string item, Field field)
         => field.Names != null && item.Split('-', '/').All(p => p.All(char.IsLetter) ? field.Names.Contains(p, StringComparer.OrdinalIgnoreCase) : p.All(char.IsDigit));
     private static FormatException Refuse(string expression, string reason)

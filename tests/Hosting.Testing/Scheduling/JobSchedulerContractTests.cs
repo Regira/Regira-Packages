@@ -34,6 +34,9 @@ public abstract class JobSchedulerContractTests
         }
     }
 
+    /// <summary>The services of the started host.</summary>
+    protected IServiceProvider Services => _host!.Services;
+
     protected async Task<IJobScheduler> Start(Action<SchedulingBuilder>? declare = null)
     {
         var builder = Host.CreateApplicationBuilder();
@@ -117,6 +120,16 @@ public abstract class JobSchedulerContractTests
         Assert.That(unknown, Is.False);
         await Task.Delay(3000);
         Assert.That(Probe.Runs, Is.Empty);
+    }
+
+    [TestCase("")]
+    [TestCase(" ")]
+    public async Task A_Recurring_Job_Needs_An_Id(string id)
+    {
+        var scheduler = await Start();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => scheduler.AddOrUpdateRecurring<RecordJob>(id, Yearly));
+        await Assert.ThrowsAsync<ArgumentException>(() => scheduler.AddOrUpdateRecurring<ReportJob, ReportInput>(id, new ReportInput(1, "a"), Yearly));
     }
 
     [Test]

@@ -225,6 +225,9 @@ A string converts to a `CronSchedule` implicitly; `CronSchedule.Parse` / `TryPar
 - **Five fields**: minute, hour, day of month, month, day of week. A sixth, **leading** field is seconds.
 - Values, `*`, lists (`1,15`), ranges (`MON-FRI`), steps (`*/15`, `9-17/2`), and month and weekday names.
 - Day of week is `0`-`6` with **Sunday as 0**; `7` is also Sunday.
+- A value with a step runs to the end of its field: `5/20` in minutes is 5, 25 and 45. In day of week the field ends at
+  `7`, so `1/2` is Monday, Wednesday, Friday **and Sunday**.
+- A number is one or two digits, without a sign.
 - **At most one of day-of-month and day-of-week is restricted**; the other stays `*`.
 - **Refused**: `?`, `L`, `W`, `#`, a year field, macros such as `@daily`, and a range that runs backwards (`FRI-MON`:
   write `FRI-SAT,SUN-MON`).
@@ -268,6 +271,10 @@ builder.Services.AddScheduling(s => { /* as above */ }).UseHangfire();
 
 - **Hangfire retries a failed run** as the application configured its retry filter; with the default, a handler that
   throws runs up to ten more times. Rule 3 is not optional there.
+- **Hangfire `Cancel` reaches the jobs this scheduler stored** and returns `false` for one the application gave Hangfire
+  itself. Recurring ids are Hangfire's own: an id declared here and one passed to `RecurringJob.AddOrUpdate` are one job.
+- **A job id grants nothing**: Hangfire's are sequential numbers. An endpoint that cancels by an id a client sends checks
+  first that the job is that caller's.
 - **Hangfire serializes the input with Newtonsoft.Json**, Quartz and the built-in backend with `System.Text.Json`. An
   input of plain properties reads the same in all three.
 - **Stored jobs name the handler and input types.** Renaming or moving either breaks the jobs already stored in a

@@ -25,4 +25,20 @@ public class HangfireJobSchedulerContractTests : JobSchedulerContractTests
         });
         services.AddScheduling(declare).UseHangfire();
     }
+
+    // The storage is the application's: a job it gave Hangfire itself is not the scheduler's to cancel.
+    [Test]
+    public async Task Cancel_Leaves_The_Application_Its_Own_Jobs()
+    {
+        var scheduler = await Start();
+        var ownId = Services.GetRequiredService<IBackgroundJobClient>().Schedule(() => Console.WriteLine("the application's own job"), TimeSpan.FromHours(1));
+        var jobId = await scheduler.Schedule<ReportJob, ReportInput>(new ReportInput(1, "later"), DateTimeOffset.UtcNow.AddHours(1));
+
+        Assert.That(await scheduler.Cancel(ownId), Is.False);
+        Assert.That(await scheduler.Cancel("no-such-job"), Is.False);
+        Assert.That(await scheduler.Cancel(jobId), Is.True);
+        using var connection = Services.GetRequiredService<JobStorage>().GetConnection();
+        Assert.That(connection.GetStateData(ownId).Name, Is.EqualTo("Scheduled"));
+        Assert.That(connection.GetStateData(jobId).Name, Is.EqualTo("Deleted"));
+    }
 }
