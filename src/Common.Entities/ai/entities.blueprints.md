@@ -1235,8 +1235,8 @@ public class ArticleAttachmentScopeFilter(AppDbContext db, ICurrentUser currentU
 }
 ```
 
-Both open with the scope, never with `if (so == null) return query;`: a details read and the write existence checks
-run without a search object.
+Both open with the scope, never with `if (so == null) return query;`: `List()` and `Count()` called without a search
+object, and `POST /{entity}/list` or `/search` with the body `[]`, hand them a null one.
 
 ### Write scope — prepper + validators
 
