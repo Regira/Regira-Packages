@@ -898,7 +898,9 @@ e.ReactMany(change => change.ChangedTo(x => x.Status, OrderStatus.Shipped), (cha
 - **At most once** — a crash between the commit and the reaction loses it, the enqueue to a job system included,
   and nothing retries a reactor that threw. Work that must happen writes a row of its own in the same save (an
   outbox), and a hosted service delivers each row at least once, the row's id serving the receiver as its
-  deduplication key. The mail reactor above is the best-effort case.
+  deduplication key. A recurring job is that hosted service without a hand-written loop: `AddScheduling` in
+  `Regira.System.Hosting` (`get_package(id: "Regira.System", section: "system.instructions")`, *Scheduling*). The
+  mail reactor above is the best-effort case.
 - On **every** `SaveChanges()` — the `IEntityService` path and raw `DbContext` writers, sync and async alike.
   Wired by `UseDefaults()` (`DbContextWiring.Reactors`); à la carte, add that flag to `options.WireDbContext(...)` on
   the `UseEntities` options.

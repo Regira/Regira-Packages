@@ -159,9 +159,11 @@
         "src/Common.System/README.md",
         "src/Common.System/docs/processes.md",
         "src/Common.System/docs/hosting.md",
+        "src/Common.System/docs/scheduling.md",
         "src/Common.System/docs/projects.md"
       ],
       "usings": [
+        "System.Threading",
         "System.Xml.Linq",
         "Microsoft.AspNetCore.Builder",
         "Microsoft.Extensions.DependencyInjection",

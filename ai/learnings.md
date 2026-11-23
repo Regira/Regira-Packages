@@ -216,6 +216,9 @@ Lessons that keep coming back; the entries below lean on them instead of restati
 - **Take a database away with `SET OFFLINE`, not `SINGLE_USER` then `DROP`.** `SINGLE_USER WITH ROLLBACK IMMEDIATE` leaves the one session free for anyone between the two statements. The cost of `OFFLINE`: SQL Server keeps an offline database's files when it drops it. A restore `WITH REPLACE` to the same paths overwrites them, and other files stay on disk. *(2026-09-16)*
 
 - **`NpgsqlConnectionStringBuilder.ContainsKey` answers true for every keyword Npgsql knows, not for the ones the string holds.** To tell whether a connection string gives a `Port`, parse it with a plain `DbConnectionStringBuilder`; MySqlConnector's builder reports presence itself. *(2026-10-12)*
+- **Quartz lists the firing of a running one-off job by its trigger, and removing that trigger neither stops the run nor leaves the firing listed.** `QuartzJobScheduler.Cancel` therefore interrupts the firing (`QueryFireInstances`, `InterruptFireInstance`) before it unschedules the trigger. Quartz signals a run's token on an interrupt only, not when the host stops, so the runner links it to `ApplicationStopping`. *(2026-11-23)*
+- **Hangfire keeps scheduled times to the second.** A job scheduled for 12:00:02.9 can start at 12:00:02. `HangfireJobScheduler.Cancel` changes the state only from the states a job can still be cancelled from, so a job that already ran answers `false`. In tests, a second `UseInMemoryStorage()` in one process makes Hangfire re-apply the retry of a failed job in a loop and its server take the whole shutdown timeout, adapter or not: the contract fixture sets `AutomaticRetry` to no attempts. *(2026-11-23)*
+- **`Hangfire.Core` 1.8 asks for Newtonsoft.Json 11.0.1 or later, which resolves a version with a known advisory (GHSA-5crp-9r3c-p9vr).** `Regira.System.Scheduling.Hangfire` references 13.0.4 itself, so a consumer gets the fixed one. *(2026-11-23)*
 
 ## Other packages
 

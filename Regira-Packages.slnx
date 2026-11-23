@@ -135,6 +135,8 @@
     <Project Path="src/Common.System/Common.System.csproj" />
     <Project Path="src/System.Hosting/System.Hosting.csproj" />
     <Project Path="src/System.Projects/System.Projects.csproj" />
+    <Project Path="src/System.Scheduling.Hangfire/System.Scheduling.Hangfire.csproj" />
+    <Project Path="src/System.Scheduling.Quartz/System.Scheduling.Quartz.csproj" />
   </Folder>
   <Folder Name="/src/TreeList/">
     <Project Path="src/TreeList/TreeList.csproj" />

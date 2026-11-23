@@ -1,6 +1,6 @@
 # Regira System — Hosting
 
-Host configuration, background work and Windows Service deployment from `Regira.System.Hosting`. These apply to any host, including an ASP.NET Core application.
+Host configuration, background work and Windows Service deployment from `Regira.System.Hosting`. These apply to any host, including an ASP.NET Core application. Jobs that run later or on a cron schedule have a page of their own: [Scheduling](scheduling.md).
 
 ---
 
@@ -74,6 +74,9 @@ Work items run one at a time. One that throws is logged and the next one runs; a
 A worked end-to-end example — enqueue from a controller, then poll the task's status — is in the
 [Web examples](https://regira.github.io/Regira-Packages/src/Common.Web/docs/examples.html).
 
+The queue runs a closure in this process, with progress the caller polls. For a named job that may run later, on a
+schedule, after a restart or on another node, use [Scheduling](scheduling.md). Both can be registered side by side.
+
 ### Windows Service installer
 
 ```csharp
@@ -102,6 +105,7 @@ also call `UseWindowsService()` to run as a service. `Microsoft.Extensions.Hosti
 1. [Index](../README.md) — Overview, projects, and installation
 1. [Process Execution](processes.md) — Running commands and executables, capturing their output
 1. **[Hosting](hosting.md)** — `WebHostOptions`, background task queues, Windows Service installer
+1. [Scheduling](scheduling.md) — Jobs that run now, later or on a cron schedule, on the built-in backend, Quartz or Hangfire
 1. [Project Files](projects.md) — Parsing and managing `.csproj` files
 
 ## License

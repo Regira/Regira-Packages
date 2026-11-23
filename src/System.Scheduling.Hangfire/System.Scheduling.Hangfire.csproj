@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <!-- net11.0 is built by an SDK that can target it. -->
+    <TargetFrameworks Condition="$([MSBuild]::VersionGreaterThanOrEquals('$(NETCoreSdkVersion)', '11.0'))">$(TargetFrameworks);net11.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.System.Scheduling.Hangfire</RootNamespace>
+    <PackageId>Regira.System.Scheduling.Hangfire</PackageId>
+    <AssemblyName>Regira.System.Scheduling.Hangfire</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.7.0</Version>
+    <Description>Runs the Regira scheduling contract (IJobScheduler, IJobHandler) on a Hangfire installation the application configures itself.</Description>
+    <PackageTags>regira;system;scheduling;jobs;cron;hangfire</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\System.Hosting\System.Hosting.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Hangfire.Core" Version="1.8.25" />
+    <!-- Hangfire.Core asks for Newtonsoft.Json 11.0.1 or later, which has a known advisory (GHSA-5crp-9r3c-p9vr); 13.0.1 fixed it. -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+  </ItemGroup>
+</Project>

@@ -1,6 +1,6 @@
 # Regira.System.Hosting
 
-Hosting extensions for [Regira System](https://regira.github.io/Regira-Packages/src/Common.System/), built on [Microsoft.Extensions.Hosting](https://www.nuget.org/packages/Microsoft.Extensions.Hosting). `UseWebHostOptions()` binds the `Hosting` configuration section to `WebHostOptions`; `UseBackgroundQueue()` registers a queue for background work — `IBackgroundTaskQueue`, or `IBackgroundQueueManager<TTask>` for typed tasks with progress and a status to poll; `AddWindowsServiceInstaller()` writes install and uninstall scripts that register the app as a Windows Service. They apply to any host, including an ASP.NET Core application.
+Hosting extensions for [Regira System](https://regira.github.io/Regira-Packages/src/Common.System/), built on [Microsoft.Extensions.Hosting](https://www.nuget.org/packages/Microsoft.Extensions.Hosting). `UseWebHostOptions()` binds the `Hosting` configuration section to `WebHostOptions`; `UseBackgroundQueue()` registers a queue for background work — `IBackgroundTaskQueue`, or `IBackgroundQueueManager<TTask>` for typed tasks with progress and a status to poll; `AddScheduling()` registers `IJobScheduler`, which runs a job class now, once at a time or on a cron schedule, on a built-in in-memory backend that an adapter replaces with Quartz.NET or Hangfire; `AddWindowsServiceInstaller()` writes install and uninstall scripts that register the app as a Windows Service. They apply to any host, including an ASP.NET Core application.
 
 ## Installation
 
@@ -11,6 +11,7 @@ Hosting extensions for [Regira System](https://regira.github.io/Regira-Packages/
 ## Documentation
 
 - [Hosting](https://regira.github.io/Regira-Packages/src/Common.System/docs/hosting.html) — the `WebHostOptions` settings, background task queues and the Windows Service installer
+- [Scheduling](https://regira.github.io/Regira-Packages/src/Common.System/docs/scheduling.html) — job handlers, the cron subset, recurring jobs, and what each backend does with a failed or missed run
 - [Background export queue](https://regira.github.io/Regira-Packages/src/Common.Web/docs/examples.html#example-4-background-export-queue) — enqueuing a typed task from a controller and polling its status
 
 ## License
