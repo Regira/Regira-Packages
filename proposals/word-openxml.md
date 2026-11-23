@@ -1,7 +1,7 @@
 # A Word backend on the Open XML SDK
 <!-- {% raw %} -->
 
-As of 2026-11-23. Sources: the `Regira-Packages` repository, branch `wip` at `dce524e`; the nuget.org nuspecs of DocumentFormat.OpenXml 3.5.1, HtmlToOpenXml.dll 3.5.0 and Clippit 3.2.0 to 3.10.1, read on 2026-11-23; and a throwaway spike against DocumentFormat.OpenXml 3.5.1 run on 2026-10-05 (see *The importer*), which was not repeated. Vendor behaviour that the spike did not touch is taken from the vendors' own pages and was not measured here. Nothing on this page has been built.
+As of 2026-11-23. Sources: the `Regira-Packages` repository, branch `wip` at `796991f`; the nuget.org nuspecs of DocumentFormat.OpenXml 3.5.1, HtmlToOpenXml.dll 3.5.0 and Clippit 3.2.0 to 3.10.1, read on 2026-11-23; and a throwaway spike against DocumentFormat.OpenXml 3.5.1 run on 2026-10-05 (see *The importer*), which was not repeated. Vendor behaviour that the spike did not touch is taken from the vendors' own pages and was not measured here. Nothing on this page has been built.
 
 **Status: proposal, not scheduled. Five decisions are open (see *Decisions*).**
 
@@ -67,7 +67,7 @@ The steps, in order:
 
 ### Package and registration
 
-- `src/Word.OpenXml/`, package and assembly `Regira.Office.Word.OpenXml`, namespace `Regira.Office.Word.OpenXml`. Target frameworks as the rest of the family: `net8.0;net10.0` today.
+- `src/Word.OpenXml/`, package and assembly `Regira.Office.Word.OpenXml`, namespace `Regira.Office.Word.OpenXml`. Target frameworks as the rest of the family: `net8.0;net10.0` today, with `net11.0` from 6.7.0 (`proposals/dotnet-11.md`). DocumentFormat.OpenXml and HtmlToOpenXml.dll have no `net11.0` asset, so that target takes their `net10.0` one.
 - Apache-2.0 like Word.Mini, with no licence check and no size cap.
 - `WordService` has a parameterless constructor and no DI extension. The Office backends take their configuration through the constructor and ship no extension (`ai/learnings.md`, 2026-09-16).
 - An `[Obsolete]` alias is not needed: the package is new.
@@ -193,7 +193,7 @@ Word.Mini's `AppendText` appends every paragraph under the body, headers and foo
   - The latest release, 3.10.1 (2026-11-22), targets `net10.0` and `net11.0`. The last release with a `net8.0` asset is 3.4.4; Regira's packages target `net8.0` and `net10.0` today.
   - Since 3.5.0 it depends on SkiaSharp; 3.10.1 asks for SkiaSharp 4.153.1 and `SkiaSharp.NativeAssets.Linux.NoDependencies`, a native library for a package that merges XML. The family already carries SkiaSharp 4.156.0 in Drawing.SkiaSharp and PDF.PdfPig, so the version resolves, but a Word.OpenXml consumer would get it without asking. Up to 3.4.7 the dependency was SixLabors.ImageSharp.Drawing.
   - It edits parts as LINQ to XML documents cached on the part, beside the SDK's typed DOM. Mixing the two in one package needs a save between them.
-  - .NET 8 support ended on 2026-11-10, and `proposals/dotnet-11.md` recommends `net10.0;net11.0` for 7.0.0. Once that is decided, the framework objection goes away and the dependency one stays.
+  - `proposals/dotnet-11.md` keeps `net8.0` through 6.x, adding `net11.0` in 6.7.0, and drops it in a later 7.0. Until then the framework objection stands; after it, the dependency one stays.
 
 ## Decisions
 

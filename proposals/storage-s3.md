@@ -133,7 +133,7 @@ A presigned URL hands out the object as stored, so the `Content-Type` set by `Sa
 
 ## Dependencies
 
-- **AWSSDK.S3** 4.1.2, Apache-2.0. It depends on AWSSDK.Core `[4.1.1.1, 5.0.0)`, which ships `net8.0`, `net10.0` and `net11.0` assets beside `netstandard2.0` and `net472`, and depends on AWSSDK.Extensions.Numerics and System.IO.Hashing 11.0.0. Both of Regira's target-framework sets are covered: today's `net8.0;net10.0`, and `net10.0;net11.0` from `proposals/dotnet-11.md`.
+- **AWSSDK.S3** 4.1.2, Apache-2.0. It depends on AWSSDK.Core `[4.1.1.1, 5.0.0)`, which ships `net8.0`, `net10.0` and `net11.0` assets beside `netstandard2.0` and `net472`, and depends on AWSSDK.Extensions.Numerics and System.IO.Hashing 11.0.0. That covers today's `net8.0;net10.0`, and the `net8.0;net10.0;net11.0` that `proposals/dotnet-11.md` plans for 6.7.0.
 - **Minio** 7.0.0, evaluated and not taken (decision 1). Apache-2.0; `net8.0` and `netstandard2.0`; it depends on System.Reactive 6.0.1, CommunityToolkit.HighPerformance and Microsoft.Extensions.Logging 9.0.4.
 - **AWSSDK.Extensions.NETCore.Setup** 4.1.0.3 is not referenced. An application that uses it passes its `IAmazonS3` to the communicator.
 
