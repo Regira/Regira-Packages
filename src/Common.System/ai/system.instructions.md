@@ -272,8 +272,8 @@ builder.Services.AddScheduling(s => { /* as above */ }).UseHangfire();
 
 - **Hangfire retries a failed run** as the application configured its retry filter; with the default, a handler that
   throws runs up to ten more times. Rule 3 is not optional there.
-- **Hangfire `Cancel` reaches the jobs this scheduler stored** and returns `false` for one the application gave Hangfire
-  itself. Recurring ids are Hangfire's own: an id declared here and one passed to `RecurringJob.AddOrUpdate` are one job.
+- **`Cancel` on Hangfire and on Quartz reaches the jobs this scheduler stored** and returns `false` for one the
+  application gave Hangfire or Quartz itself. On Hangfire also for a stored job whose handler type no longer loads. Recurring ids are Hangfire's own: an id declared here and one passed to `RecurringJob.AddOrUpdate` are one job.
 - **A job id grants nothing**: Hangfire's are sequential numbers. An endpoint that cancels by an id a client sends checks
   first that the job is that caller's.
 - **Hangfire serializes the input with Newtonsoft.Json**, Quartz and the built-in backend with `System.Text.Json`. An
@@ -289,7 +289,8 @@ builder.Services.AddScheduling(s => { /* as above */ }).UseHangfire();
 - **Another scheduler** is one more `IJobScheduler`: `AddScheduling(...).UseScheduler<TScheduler>()`, running each
   handler with `JobHandlerInvoker.Run<TJob>(scopedServices, context, token)`. `CronSchedule.GetDaysOfWeek()` gives the
   days an expression fires on, for a backend that numbers or names them differently.
-- **The built-in backend refuses a job after the host stopped** (`InvalidOperationException`): nothing would run it.
+- **The built-in backend refuses a job once it has stopped** (`InvalidOperationException`): nothing would run it. A
+  hosted service that still enqueues while the host shuts down sees that exception.
 
 ---
 

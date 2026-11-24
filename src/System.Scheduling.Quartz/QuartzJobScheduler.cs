@@ -56,8 +56,13 @@ public sealed class QuartzJobScheduler(ISchedulerFactory schedulerFactory) : IJo
             cancelled |= await scheduler.InterruptFireInstance(running.FireInstanceId, token);
         }
 
-        // A recurring run is known by the id of its firing (JobContext.JobId).
-        cancelled |= await scheduler.InterruptFireInstance(jobId, token);
+        // A recurring run is known by the id of its firing (JobContext.JobId). The scheduler also runs the jobs the application
+        // gave Quartz itself: only a firing of a recurring job of this scheduler is interrupted.
+        var recurringRuns = await scheduler.QueryFireInstances(new FireInstanceQuery { Take = PagedQuery.All }, token);
+        if (recurringRuns.Items.Any(f => f.FireInstanceId == jobId && f.JobKey?.Group == RecurringGroup))
+        {
+            cancelled |= await scheduler.InterruptFireInstance(jobId, token);
+        }
 
         return await scheduler.UnscheduleJob(triggerKey, token) || cancelled;
     }

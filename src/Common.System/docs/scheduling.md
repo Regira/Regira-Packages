@@ -19,7 +19,7 @@ flowchart LR
     H --> J
 ```
 
-> **The built-in backend keeps everything in memory.** A job that was accepted is lost on a restart, a job offered after the host stopped is refused with `InvalidOperationException`, a failed run is logged and not retried, and a recurring job runs on every node that hosts the application. When that is not enough, register an adapter: the jobs stay as they are.
+> **The built-in backend keeps everything in memory.** A job that was accepted is lost on a restart, a job offered once the scheduler has stopped is refused with `InvalidOperationException` (a hosted service that still enqueues while the host shuts down sees it), a failed run is logged and not retried, and a recurring job runs on every node that hosts the application. When that is not enough, register an adapter: the jobs stay as they are.
 
 ---
 
@@ -179,6 +179,7 @@ builder.Services.AddScheduling(s => { /* as above */ }).UseQuartz();
 - A recurring job is a durable job with one cron trigger, both named by the job's id in group `regira.recurring`. A one-off job is a trigger in group `regira.jobs`, named by the id `Enqueue` or `Schedule` returned.
 - The cron expression is translated to the Quartz dialect (`QuartzCron.Translate`): a leading `0` for seconds when there are five fields, `?` in the day field that is not restricted, months as numbers, and weekdays as Quartz numbers them. The trigger always carries the option's time zone.
 - `AllowConcurrent = false` is Quartz's own rule against concurrent execution, per recurring job.
+- `Cancel` reaches the jobs this scheduler stored and no others: it returns `false` for a job the application gave Quartz itself.
 
 ### Hangfire
 
@@ -196,7 +197,7 @@ builder.Services.AddScheduling(s => { /* as above */ }).UseHangfire();
 - Hangfire's retry filter applies as the application configured it. With Hangfire's default, a handler that throws runs again up to ten times: rule 3 is not optional on this backend.
 - `AllowConcurrent = false` takes a distributed lock per recurring job for the length of the run. A run that finds it taken is skipped.
 - `JobContext.ScheduledAt` of a recurring run is the time Hangfire's poll created the run, not the cron occurrence: up to `SchedulePollingInterval` (15 seconds by default) later. A job that needs the occurrence rounds it down itself.
-- `Cancel` reaches the jobs this scheduler stored and no others: it returns `false` for a job the application gave Hangfire itself. Recurring ids are Hangfire's own, so a recurring job declared here and one the application registers with `RecurringJob.AddOrUpdate` under the same id are one job.
+- `Cancel` reaches the jobs this scheduler stored and no others: it returns `false` for a job the application gave Hangfire itself, and for a stored job whose handler type no longer loads, which Hangfire's dashboard can still delete. Recurring ids are Hangfire's own, so a recurring job declared here and one the application registers with `RecurringJob.AddOrUpdate` under the same id are one job.
 - The input is serialized with Newtonsoft.Json, where Quartz and the built-in backend use `System.Text.Json`. An input of plain properties reads the same in all three.
 - Hangfire.Core is LGPL-3.0 (or commercially licensed). Some policies refuse LGPL dependencies outright; it is this adapter's dependency alone.
 

@@ -342,17 +342,7 @@ internal sealed class InMemoryJobScheduler(
 
             run.Cancellation = CancellationTokenSource.CreateLinkedTokenSource(_stopping.Token);
             _running[run.Id] = run;
-            // the run starts without the ExecutionContext of whoever pumped: a job enqueued from a request
-            // does not see that request's AsyncLocal values (the current activity, an ambient transaction, the culture)
-            var flow = ExecutionContext.IsFlowSuppressed() ? (AsyncFlowControl?)null : ExecutionContext.SuppressFlow();
-            try
-            {
-                run.Task = Task.Run(() => Execute(run));
-            }
-            finally
-            {
-                flow?.Undo();
-            }
+            run.Task = WithoutCallerContext(() => Task.Run(() => Execute(run)));
         }
 
         var next = _recurring.Values.Select(r => r.Next)
@@ -363,7 +353,7 @@ internal sealed class InMemoryJobScheduler(
             var delay = due - now < MaxTimerDelay ? due - now : MaxTimerDelay;
             if (_timer == null)
             {
-                _timer = time.CreateTimer(_ => OnTimer(), null, delay, Timeout.InfiniteTimeSpan);
+                _timer = WithoutCallerContext(() => time.CreateTimer(_ => OnTimer(), null, delay, Timeout.InfiniteTimeSpan));
             }
             else
             {
@@ -375,6 +365,20 @@ internal sealed class InMemoryJobScheduler(
         {
             _idle.TrySetResult();
             _idle = null;
+        }
+    }
+    // A run and the timer start without the ExecutionContext of whoever pumped: a job enqueued from a request does not see
+    // that request's AsyncLocal values (the current activity, an ambient transaction, the culture), and neither does a later tick.
+    private static T WithoutCallerContext<T>(Func<T> start)
+    {
+        var flow = ExecutionContext.IsFlowSuppressed() ? (AsyncFlowControl?)null : ExecutionContext.SuppressFlow();
+        try
+        {
+            return start();
+        }
+        finally
+        {
+            flow?.Undo();
         }
     }
     private void OnTimer()
