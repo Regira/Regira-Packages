@@ -167,7 +167,8 @@ public class EntityServiceBuilder<TContext, TEntity, TKey>(EntityServiceCollecti
 
     // Entity service
     /// <summary>
-    /// Adds <see cref="EntityRepository{TEntity}"/> as implementation for:
+    /// Adds the repository this <c>For&lt;&gt;()</c> shape gets by default — <see cref="EntityRepository{TEntity, TKey}"/>,
+    /// or the app's own type of the same shape set with <c>UseEntities(o =&gt; o.UseRepository(...))</c> — as implementation for:
     /// <list type="bullet">
     ///     <item><see cref="IEntityService{TEntity}"/></item>
     ///     <item><see cref="IEntityService{TEntity, TKey}"/></item>
@@ -175,7 +176,18 @@ public class EntityServiceBuilder<TContext, TEntity, TKey>(EntityServiceCollecti
     /// </summary>
     /// <returns></returns>
     public EntityServiceBuilder<TContext, TEntity, TKey> AddDefaultService()
-        => UseEntityService<EntityRepository<TEntity, TKey>>();
+    {
+        RegisterDefaultService(typeof(EntityRepository<TEntity, TKey>));
+        return this;
+    }
+    /// <summary>
+    /// Registers, under the entity-service interfaces, the repository that serves a registration whose default is
+    /// <paramref name="defaultRepositoryType"/>: the app's type of that shape set with <c>UseRepository()</c> when it can
+    /// serve the entity, else the default. Neither checks nor records anything: a registration the configuration makes
+    /// afterwards may replace it, and <c>For&lt;&gt;()</c>'s own default registration does both for what is left.
+    /// </summary>
+    private protected void RegisterDefaultService(Type defaultRepositoryType)
+        => RegisterAs(EntityRepositoryRegistry.For(Services).ResolveOrDefault(defaultRepositoryType), null, EntityServiceFamily);
     /// <summary>
     /// Adds <typeparamref name="TService"/> implementation for
     /// <list type="bullet">

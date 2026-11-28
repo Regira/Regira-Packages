@@ -30,8 +30,12 @@ public class EntityIntServiceBuilder<TContext, TEntity>(EntityServiceCollectionO
     public new bool HasEntityService() => HasService<IEntityService<TEntity>>();
 
     // Entity service
+    /// <inheritdoc cref="EntityServiceBuilder{TContext, TEntity, TKey}.AddDefaultService()"/>
     public new EntityIntServiceBuilder<TContext, TEntity> AddDefaultService()
-        => UseEntityService<EntityRepository<TEntity>>();
+    {
+        RegisterDefaultService(typeof(EntityRepository<TEntity>));
+        return this;
+    }
     public new EntityIntServiceBuilder<TContext, TEntity> UseEntityService<TService>()
         where TService : class, IEntityService<TEntity>, IEntityService<TEntity, int, SearchObject<int>>
     {

@@ -1182,8 +1182,8 @@ Examples:
 
 To give **every** entity the same repository behaviour (auditing, caching, a logging hook), derive generic
 classes from `EntityRepository` and register them once with `UseRepository()`. Every `For<>()` that names no
-repository of its own then uses them, as `IEntityRepository<…>` and as `IEntityService<…>`; `e.HasRepository<T>()`
-and `e.UseEntityService<T>()` still win per entity.
+repository of its own then uses them, as `IEntityRepository<…>` and as `IEntityService<…>` — `e.AddDefaultService()`
+registers them too; `e.HasRepository<T>()` and `e.UseEntityService<T>()` still win per entity.
 
 A type is matched to a `For<>()` by its **number of type parameters**, mirroring the `EntityRepository` it
 derives from — so write one class per shape the app registers:

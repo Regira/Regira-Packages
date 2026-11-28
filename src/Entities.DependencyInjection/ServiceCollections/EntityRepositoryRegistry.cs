@@ -72,7 +72,7 @@ public class EntityRepositoryRegistry
         var entityType = typeArguments[0];
         if (!_typesByArity.TryGetValue(typeArguments.Length, out var repositoryType))
         {
-            if (_typesByArity.Count > 0)
+            if (_typesByArity.Count > 0 && !_entitiesOnDefault.Contains((entityType, typeArguments.Length)))
             {
                 _entitiesOnDefault.Add((entityType, typeArguments.Length));
             }
@@ -101,6 +101,31 @@ public class EntityRepositoryRegistry
                 $"Derive it from the EntityRepository with the same type parameters ({FriendlyName(defaultRepositoryType.GetGenericTypeDefinition())}).");
         }
         return closedType;
+    }
+
+    /// <summary>
+    /// Like <see cref="Resolve"/>, but neither throws nor records: the default when no app type of that shape was set,
+    /// or when it cannot serve these type arguments.
+    /// </summary>
+    internal Type ResolveOrDefault(Type defaultRepositoryType)
+    {
+        var typeArguments = defaultRepositoryType.GetGenericArguments();
+        if (!_typesByArity.TryGetValue(typeArguments.Length, out var repositoryType))
+        {
+            return defaultRepositoryType;
+        }
+        Type closedType;
+        try
+        {
+            closedType = repositoryType.MakeGenericType(typeArguments);
+        }
+        catch (ArgumentException)
+        {
+            return defaultRepositoryType;
+        }
+        return ServiceTypesOf(defaultRepositoryType, asRepository: true, asEntityService: true).All(i => i.IsAssignableFrom(closedType))
+            ? closedType
+            : defaultRepositoryType;
     }
 
     /// <summary>

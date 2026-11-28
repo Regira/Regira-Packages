@@ -12,6 +12,8 @@ Unreleased block becomes a dated release heading.
 - `Regira.Entities` 6.6.4 — the attachment guide defines `{Owner}` in a stored file's identifier: the link class's name without `Attachment` (`ProductAttachment` → `Product/`), not the owner's, and lists an owner's files through `GET {objectId}/attachments` rather than the folder. The attachment route list says `{id}` in `GET files/{id}` is the link id. *Transform uploaded files* also answers to *profile*, *avatar* and *picture*.
 - `Regira.Entities` 6.6.4 — the guide's *Scope before any early return* and the *Owned rows with a public subset* blueprint name where a global filter gets a null search object: `List()` and `Count()` called without one, `POST {entity}/list` or `/search` with the body `[]`, and, in the guide, every query of an entity whose key type is not the filter's. They said a details read and the write existence checks run without one; both pass a search object carrying the id.
 - `Regira.Office` 6.6.4 — the Word quick lookup names `IWordCreator`, `IWordConverter` and `FileFormat` (`Regira.Office.Models`), which `Convert(input, FileFormat.Pdf)` needs.
+- `Regira.Entities.DependencyInjection` 6.6.4 — bug fix: `e.AddDefaultService()` registered the stock `EntityRepository` as `IEntityService<…>` while `UseRepository()` served the same entity's `IEntityRepository<…>` with the app's repository, so the generated endpoints and the Mediator handlers bypassed the app's repository. It registers the app's repository of that shape, as `For<>()` does.
+- `Regira.Entities` 6.6.4 — the Entities guide, signatures and the services doc say `e.AddDefaultService()` registers the app's repository set with `UseRepository()`.
 
 ## 6.6.3 — 2026-11-18
 
