@@ -38,6 +38,7 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         var builder = new EntityIntServiceBuilder<TContext, TEntity>(Options);
         var configuredFrom = Services.Count;
         configure?.Invoke(builder);
+        builder.ResolveDefaultServices();
 
         // Query Builder
         if (!builder.HasService<IQueryBuilder<TEntity, int, SearchObject<int>, EntitySortBy, EntityIncludes>>())
@@ -77,6 +78,7 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         var builder = new EntityServiceBuilder<TContext, TEntity, TKey>(options);
         var configuredFrom = Services.Count;
         configure?.Invoke(builder);
+        builder.ResolveDefaultServices();
 
         EnsureGlobalKeyedFilters<TKey>();
 
@@ -112,6 +114,7 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         var builder = new EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject>(Options);
         var configuredFrom = Services.Count;
         configure?.Invoke(builder);
+        builder.ResolveDefaultServices();
 
         EnsureGlobalKeyedFilters<TKey>();
 
@@ -151,6 +154,7 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         var builder = new ComplexEntityIntServiceBuilder<TContext, TEntity, TSearchObject, TSortBy, TIncludes>(simpleBuilder);
         var configuredFrom = Services.Count;
         configure?.Invoke(builder);
+        builder.ResolveDefaultServices();
 
         // Query Builder
         if (!builder.HasService<IQueryBuilder<TEntity, int, TSearchObject, TSortBy, TIncludes>>())
@@ -200,6 +204,7 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         var builder = new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes>(simpleBuilder);
         var configuredFrom = Services.Count;
         configure?.Invoke(builder);
+        builder.ResolveDefaultServices();
 
         EnsureGlobalKeyedFilters<TKey>();
 

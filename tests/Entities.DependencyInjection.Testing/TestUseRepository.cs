@@ -186,6 +186,42 @@ public class TestUseRepository
     }
 
     [Test]
+    public void AddDefaultService_Replaced_Afterwards_Need_Not_Fit_The_App_Repository()
+    {
+        using var sp = new ServiceCollection()
+            .AddDbContext<ContosoContext>()
+            .UseEntities<ContosoContext>(o => o.UseDefaults().UseRepository(typeof(AttachmentOwnerRepository<>)))
+            .For<Department>(e => e.AddDefaultService().HasRepository<EntityRepository<Department>>())
+            .BuildServiceProvider();
+
+        Assert.That(sp.GetService<IEntityService<Department>>(), Is.TypeOf<EntityRepository<Department>>());
+        Assert.That(sp.GetService<IEntityRepository<Department>>(), Is.TypeOf<EntityRepository<Department>>());
+    }
+
+    [Test]
+    public void AddDefaultService_Outside_The_App_Repository_Constraints_Throws()
+    {
+        var entities = new ServiceCollection()
+            .UseEntities<ContosoContext>(o => o.UseRepository(typeof(AttachmentOwnerRepository<>)));
+
+        var ex = Assert.Throws<InvalidOperationException>(() => entities.For<Department>(e => e.AddDefaultService()));
+        Assert.That(ex!.Message, Does.Contain(nameof(Department)));
+    }
+
+    [Test]
+    public void AddDefaultService_After_Another_Entity_Service_Wins()
+    {
+        using var sp = new ServiceCollection()
+            .AddDbContext<ContosoContext>()
+            .UseEntities<ContosoContext>(o => o.UseDefaults().UseRepository(AppRepositories))
+            .For<Course>(e => e.HasManager<CourseManager1>().AddDefaultService())
+            .BuildServiceProvider();
+
+        Assert.That(sp.GetService<IEntityService<Course>>(), Is.TypeOf<AppRepository<Course>>());
+        Assert.That(sp.GetService<IEntityRepository<Course>>(), Is.TypeOf<AppRepository<Course>>());
+    }
+
+    [Test]
     public void AddDefaultService_On_A_Missing_Shape_Is_Recorded_As_Default()
     {
         using var sp = new ServiceCollection()
