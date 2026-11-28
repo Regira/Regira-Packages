@@ -324,6 +324,51 @@ public class InMemoryJobSchedulerTests
         _probe.Release();
     }
 
+    private class BlockingCallbackJob(JobProbe probe) : IJobHandler
+    {
+        public async Task Execute(JobContext context, CancellationToken token)
+        {
+            // a callback on the token that does not return
+            await using var registration = token.Register(() => probe.Released.Wait());
+            probe.Add(new JobRun(nameof(BlockingCallbackJob), context));
+            await probe.Released;
+        }
+    }
+
+    [Test]
+    public async Task Stop_Returns_When_Its_Token_Expires_While_A_Cancellation_Callback_Blocks()
+    {
+        var scheduler = Start();
+        await scheduler.Enqueue<BlockingCallbackJob>();
+        await _probe.WaitFor(1);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+        await scheduler.Stop(timeout.Token).WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(timeout.IsCancellationRequested, Is.True);
+        _probe.Release();
+    }
+
+    // The run of a removed job still counts as that job's run when the id is registered again.
+    [Test]
+    public async Task A_Job_Registered_Again_While_Its_Run_Is_Going_Does_Not_Overlap_It()
+    {
+        var scheduler = Start(s => s.InMemory.MaxConcurrency = 4);
+        await scheduler.AddOrUpdateRecurring<SlowJob, string>("job", "first", "0 0 1 1 *");
+        await scheduler.Trigger("job");
+        await _probe.WaitFor(1);
+
+        await scheduler.RemoveRecurring("job");
+        await scheduler.AddOrUpdateRecurring<SlowJob, string>("job", "second", "0 0 1 1 *");
+        await scheduler.Trigger("job");
+        await Task.Delay(100);
+        Assert.That(_probe.Runs, Has.Count.EqualTo(1));
+        _probe.Release();
+        await scheduler.WhenIdle();
+
+        Assert.That(_probe.Runs.Select(r => r.Input), Is.EqualTo(new[] { "first", "second" }));
+    }
+
     [Test]
     public async Task Dispose_Signals_The_Token_Of_A_Running_Job()
     {

@@ -128,6 +128,7 @@ internal sealed class InMemoryJobScheduler(
             }
 
             _waiting.RemoveAll(r => r.Recurring == recurring);
+            recurring.Waiting = false;
             Pump();
             return Task.FromResult(true);
         }
@@ -180,10 +181,11 @@ internal sealed class InMemoryJobScheduler(
             running = _running.Values.Select(r => r.Task).OfType<Task>().ToArray();
         }
 
-        await _stopping.CancelAsync();
+        // signalling the runs is bounded by the token as well: a handler can block in a callback on its own token
+        var signalled = _stopping.CancelAsync();
         try
         {
-            await Task.WhenAll(running).WaitAsync(token);
+            await Task.WhenAll([signalled, .. running]).WaitAsync(token);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -266,10 +268,11 @@ internal sealed class InMemoryJobScheduler(
         recurringOptions ??= new RecurringJobOptions();
         lock (_gate)
         {
-            // the same object is kept when a job is replaced, so a run of the previous definition still counts as this job's run
+            // the same object is kept when a job is replaced, so a run of the previous definition still counts as this job's run:
+            // also when the job was removed while that run was going
             if (!_recurring.TryGetValue(id, out var recurring))
             {
-                _recurring[id] = recurring = new Recurring(id);
+                _recurring[id] = recurring = _running.Values.Select(r => r.Recurring).FirstOrDefault(r => r?.Id == id) ?? new Recurring(id);
             }
             recurring.Cron = cron;
             recurring.Options = recurringOptions;
