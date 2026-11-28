@@ -127,7 +127,7 @@ await links.SaveChanges(); // pipeline writes the file, fills Path/Length, assig
 and `get_package(id: "Regira.Entities", section: "examples", heading: "Attachments")`.
 
 ### Transform uploaded files before they are stored (resize photos)
-<!-- how_to: key=transform-uploads aliases=resize,orient,exif,compress,photo,image,upload,thumbnail -->
+<!-- how_to: key=transform-uploads aliases=resize,orient,exif,compress,photo,image,upload,thumbnail,profile,avatar,picture -->
 A prepper changes a file before it is stored: every prepper runs in `Add`/`Modify`/`Save`, and `AttachmentPrimer`
 stores the file after them, inside `SaveChanges()`. Which preppers run, and where they find the content, depends on
 the route; the attachment routes sit under the owner's:

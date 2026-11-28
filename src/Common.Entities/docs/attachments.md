@@ -156,7 +156,7 @@ owner, the owner's `Attachments` loads empty and `?hasAttachment=true` matches n
 
 Mark the link entity — a flag, or its `SortOrder`, which is assigned from the incoming array position. A foreign
 key from the owner to one of its own attachments makes the two tables reference each other; see
-[Entity Models: Referencing one of your own children](models.md#referencing-one-of-your-own-children).
+[Built-in Features: Referencing one of your own children](built-in-features.md#referencing-one-of-your-own-children).
 
 ### Controllers
 

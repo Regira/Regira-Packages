@@ -16,47 +16,8 @@ public interface IEntity<TKey> : IEntity
 }
 ```
 
-## Referencing one of your own children
-
-An owner with an optional foreign key to one of its own child rows — while the child's foreign key back is
-required, and therefore cascades — makes the two tables reference each other. Prefer marking the child instead:
-a flag or a rank column identifies the same row with no foreign key.
-
-Where the reference has to stay, two things need handling:
-
-- **The schema.** SQL Server rejects a migration with two cascade paths between the same two tables
-  ("may cause cycles or multiple cascade paths"). Map the reference `DeleteBehavior.ClientSetNull` — `NO ACTION`
-  in the database, EF nulls the reference on the tracked owner. SQLite does not enforce this.
-- **The delete.** Both rows are deleted in one save, and EF Core cannot order them: it refuses with
-  "a circular dependency was detected in the data to be saved". A primer cannot fix it — the delete order comes
-  from the **original** foreign-key values — so the reference has to be dropped in an `UPDATE` of its own.
-
-`SaveChangesBreakingDeleteCycles` / `SaveChangesBreakingDeleteCyclesAsync` (`Regira.Entities.EFcore.Extensions`)
-do that. Call them from the context's own overrides — both of them, or synchronous callers stay broken:
-
-<!-- no-compile -->
-```csharp
-public override int SaveChanges(bool acceptAllChangesOnSuccess)
-    => this.SaveChangesBreakingDeleteCycles(base.SaveChanges, acceptAllChangesOnSuccess);
-
-public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken token = default)
-    => this.SaveChangesBreakingDeleteCyclesAsync(base.SaveChangesAsync, acceptAllChangesOnSuccess, token);
-```
-
-Pass `acceptAllChangesOnSuccess` to the extension and `base.SaveChanges` itself as the delegate. The extension
-nulls the optional side with a direct `UPDATE`, tells the change tracker the database no longer holds the
-reference, and then runs the save exactly once with your flag, all inside one transaction. Nothing is accepted
-before that save returns: a save the database rejects leaves every change pending, and the retry (EF's own or
-yours) drops the reference again. `SaveChanges(false)` + `AcceptAllChanges()` therefore behaves exactly as it
-does without the extension, and the count returned is the save's own — the `UPDATE` is not counted.
-
-A save without such a pair is a single round trip and opens no transaction. The change tracker is read only
-when the model has two entity types referencing each other and the provider is relational; any other context
-pays a cached lookup and nothing else, and the in-memory provider, which orders no deletes, saves the pair on
-its own. Already inside a transaction of your own — or a `TransactionScope` — the extension joins it rather
-than opening a second one, which is what lets the pattern work under `EnableRetryOnFailure()` inside EF's own
-`CreateExecutionStrategy().Execute(...)` recipe. A bare `BeginTransaction()` under a retrying strategy is
-refused by EF's own `SaveChanges`, extension or not.
+To single out one child row (a primary address, a cover image), mark the child with a flag or a rank column
+rather than giving the owner a foreign key to it.
 
 ## SearchObject
 

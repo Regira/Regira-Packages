@@ -162,8 +162,9 @@ Regira.Office.PDF.PdfPig         → PdfService           (registration only)
 ### Generate a Word document from a template
 
 ```
-Regira.Office.Word.Abstractions  → IWordService, IWordManager
+Regira.Office.Word.Abstractions  → IWordService, IWordManager, IWordCreator, IWordConverter
 Regira.Office.Word.Models        → WordTemplateInput, WordImage, WordTable, DocumentSettings
+Regira.Office.Models             → FileFormat           (Convert(input, FileFormat.Pdf))
 Regira.Office.Word.Spire         → WordService          (registration only)
 Regira.Office.Word.Syncfusion    → WordService, SyncfusionWordConfig  (licence key through the constructor)
 Regira.Office.Word.Aspose        → WordService, AsposeWordConfig      (licence through the constructor)

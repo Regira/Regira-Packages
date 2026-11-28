@@ -1101,7 +1101,7 @@ public class Product : IEntityWithSerial, IHasAttachments, IHasAttachments<Produ
 public class ProductAttachmentsController : EntityAttachmentControllerBase<ProductAttachment> { }
 // Endpoints exposed: POST {objectId}/files (upload, multipart field "file"), PUT {objectId}/files/{id} (replace, same field),
 // GET {objectId}/attachments (list), GET attachments/{id}, PUT {objectId}/attachments/{id} (metadata),
-// DELETE attachments/{id}, GET files/{id} and GET {objectId}/files/{fileName} (download).
+// DELETE attachments/{id}, GET files/{id} ({id} = the link id) and GET {objectId}/files/{fileName} (download).
 
 // DbContext:
 public DbSet<Attachment> Attachments { get; set; } = null!;
