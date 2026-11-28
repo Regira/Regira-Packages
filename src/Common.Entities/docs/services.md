@@ -886,7 +886,8 @@ services.UseEntities<ShopDbContext>(o => o.UseDefaults())
 ### Replacing the repository app-wide
 
 `options.UseRepository(...)` swaps the default `EntityRepository` for your own generic repository in every
-`For<>()` that does not name one itself (`e.HasRepository<T>()` and `e.UseEntityService<T>()` still win).
+`For<>()` that does not name one itself (`e.HasRepository<T>()` and `e.UseEntityService<T>()` still win;
+`e.AddDefaultService()` registers your repository as well).
 Pass the classes unbound; each is matched to a `For<>()` by its number of type parameters, the same as the
 `EntityRepository` it derives from — `AppRepository<TEntity>` serves `For<TEntity>()`, `AppRepository<TEntity, TKey>`
 serves `For<TEntity, TKey>()`, and so on up to the five-parameter complex shape.

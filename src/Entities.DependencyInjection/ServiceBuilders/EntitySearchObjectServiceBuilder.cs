@@ -25,8 +25,12 @@ public class EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchOb
     public new bool HasEntityService() => HasService<IEntityService<TEntity, TKey, TSearchObject>>();
 
     // Entity services
+    /// <inheritdoc cref="EntityServiceBuilder{TContext, TEntity, TKey}.AddDefaultService()"/>
     public new EntitySearchObjectServiceBuilder<TContext, TEntity, TKey, TSearchObject> AddDefaultService()
-        => UseEntityService<EntityRepository<TEntity, TKey, TSearchObject>>();
+    {
+        RegisterDefaultService(typeof(EntityRepository<TEntity, TKey, TSearchObject>));
+        return this;
+    }
     /// <summary> 
     /// Adds an implementation for
     /// <list type="bullet">

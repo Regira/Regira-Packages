@@ -1039,6 +1039,8 @@ public partial class EntityServiceBuilder<TContext, TEntity, TKey> : EntityServi
     EntityServiceBuilder<TContext, TEntity, TKey> AddMapping<TSource, TTarget>();
 
     // Service registration
+    // Registers the shape's default repository as IEntityService<TEntity, ...>: EntityRepository<…>, or the app's
+    // type of the same shape set with UseEntities(o => o.UseRepository(...)).
     EntityServiceBuilder<TContext, TEntity, TKey> AddDefaultService();
 
     // Registers TService under every IEntityService<TEntity, ...> it implements — the int shortcut IEntityService<TEntity>

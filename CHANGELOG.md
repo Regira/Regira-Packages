@@ -6,6 +6,11 @@ adds one bullet under **Unreleased** in the same change (format: `` `PackageId` 
 and leaves that package's `<Version>` higher than its last published version. At publish time the
 Unreleased block becomes a dated release heading.
 
+## Unreleased
+
+- `Regira.Entities.DependencyInjection` 6.6.4 — bug fix: `e.AddDefaultService()` registered the stock `EntityRepository` as `IEntityService<…>` while `UseRepository()` served the same entity's `IEntityRepository<…>` with the app's repository, so the generated endpoints and the Mediator handlers bypassed the app's repository. It registers the app's repository of that shape, as `For<>()` does.
+- `Regira.Entities` 6.6.4 — the Entities guide, signatures and the services doc say `e.AddDefaultService()` registers the app's repository set with `UseRepository()`.
+
 ## 6.6.3 — 2026-11-18
 
 - All packages — version aligned at 6.6.3 for a whole-family publish. Thirteen have a change of their own, in code or guides, in a bullet below. No package moves an upstream dependency, no package is new, and nothing is published outside the aligned number. The other seventy-four are republished unchanged so the family shares one version.

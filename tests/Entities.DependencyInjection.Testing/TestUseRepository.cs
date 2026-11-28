@@ -134,6 +134,58 @@ public class TestUseRepository
     }
 
     [Test]
+    public void AddDefaultService_Uses_App_Repository()
+    {
+        using var sp = new ServiceCollection()
+            .AddDbContext<ContosoContext>()
+            .UseEntities<ContosoContext>(o => o.UseDefaults().UseRepository(AppRepositories))
+            .For<Course>(e => e.AddDefaultService())
+            .For<Department, int>(e => e.AddDefaultService())
+            .For<Student, int, SearchObject<int>>(e => e.AddDefaultService())
+            .BuildServiceProvider();
+
+        Assert.That(sp.GetService<IEntityService<Course>>(), Is.TypeOf<AppRepository<Course>>());
+        Assert.That(sp.GetService<IEntityRepository<Course>>(), Is.TypeOf<AppRepository<Course>>());
+        Assert.That(sp.GetService<IEntityService<Department, int>>(), Is.TypeOf<AppRepository<Department, int>>());
+        Assert.That(sp.GetService<IEntityRepository<Department, int>>(), Is.TypeOf<AppRepository<Department, int>>());
+        Assert.That(sp.GetService<IEntityService<Student, int, SearchObject<int>>>(), Is.TypeOf<AppRepository<Student, int, SearchObject<int>>>());
+        Assert.That(sp.GetService<IEntityRepository<Student, int, SearchObject<int>>>(), Is.TypeOf<AppRepository<Student, int, SearchObject<int>>>());
+    }
+
+    [Test]
+    public void AddDefaultService_Uses_App_Repository_For_Complex_Shapes()
+    {
+        using var sp = new ServiceCollection()
+            .AddDbContext<ContosoContext>()
+            .UseEntities<ContosoContext>(o => o.UseDefaults().UseRepository(AppRepositories))
+            .For<Course, CourseSearchObject, CourseSortBy, CourseIncludes>(e => e.AddDefaultService())
+            .For<Department, int, CourseSearchObject, CourseSortBy, CourseIncludes>(e => e.AddDefaultService())
+            .BuildServiceProvider();
+
+        Assert.That(sp.GetService<IEntityService<Course, CourseSearchObject, CourseSortBy, CourseIncludes>>(),
+            Is.TypeOf<AppRepository<Course, CourseSearchObject, CourseSortBy, CourseIncludes>>());
+        Assert.That(sp.GetService<IEntityRepository<Course, CourseSearchObject, CourseSortBy, CourseIncludes>>(),
+            Is.TypeOf<AppRepository<Course, CourseSearchObject, CourseSortBy, CourseIncludes>>());
+        Assert.That(sp.GetService<IEntityService<Department, int, CourseSearchObject, CourseSortBy, CourseIncludes>>(),
+            Is.TypeOf<AppRepository<Department, int, CourseSearchObject, CourseSortBy, CourseIncludes>>());
+        Assert.That(sp.GetService<IEntityRepository<Department, int, CourseSearchObject, CourseSortBy, CourseIncludes>>(),
+            Is.TypeOf<AppRepository<Department, int, CourseSearchObject, CourseSortBy, CourseIncludes>>());
+    }
+
+    [Test]
+    public void AddDefaultService_Without_UseRepository_Uses_EntityRepository()
+    {
+        using var sp = new ServiceCollection()
+            .AddDbContext<ContosoContext>()
+            .UseEntities<ContosoContext>(o => o.UseDefaults())
+            .For<Course>(e => e.AddDefaultService())
+            .BuildServiceProvider();
+
+        Assert.That(sp.GetService<IEntityService<Course>>(), Is.TypeOf<EntityRepository<Course>>());
+        Assert.That(sp.GetService<IEntityRepository<Course>>(), Is.TypeOf<EntityRepository<Course>>());
+    }
+
+    [Test]
     public void Custom_EntityService_Keeps_App_Repository_Underneath()
     {
         using var sp = new ServiceCollection()

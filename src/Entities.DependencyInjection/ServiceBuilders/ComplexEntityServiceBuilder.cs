@@ -27,8 +27,12 @@ public class ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject,
     where TIncludes : struct, Enum
 {
     // Entity service
+    /// <inheritdoc cref="EntityServiceBuilder{TContext, TEntity, TKey}.AddDefaultService()"/>
     public new ComplexEntityServiceBuilder<TContext, TEntity, TKey, TSearchObject, TSortBy, TIncludes> AddDefaultService()
-        => UseEntityService<EntityRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>>();
+    {
+        RegisterDefaultService(typeof(EntityRepository<TEntity, TKey, TSearchObject, TSortBy, TIncludes>));
+        return this;
+    }
 
     /// <summary>
     /// Adds <typeparamref name="TService"/> implementation for
