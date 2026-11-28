@@ -52,7 +52,7 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         // Write Service
         if (!builder.HasService<IEntityWriteService<TEntity, int>>())
         {
-            builder.UseWriteService<EntityWriteService<TContext, TEntity>>();
+            builder.RegisterDefaultWriteService(typeof(EntityWriteService<TContext, TEntity>));
         }
         // Entity Repository + Entity Service
         AddDefaultRepository(typeof(EntityRepository<TEntity>),
@@ -93,7 +93,7 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         // Write Service
         if (!builder.HasService<IEntityWriteService<TEntity, TKey>>())
         {
-            builder.UseWriteService<EntityWriteService<TContext, TEntity, TKey>>();
+            builder.RegisterDefaultWriteService(typeof(EntityWriteService<TContext, TEntity, TKey>));
         }
         // Entity Repository + Entity Service
         AddDefaultRepository(typeof(EntityRepository<TEntity, TKey>),
@@ -128,7 +128,7 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         // Write Service
         if (!builder.HasService<IEntityWriteService<TEntity, TKey>>())
         {
-            builder.UseWriteService<EntityWriteService<TContext, TEntity, TKey>>();
+            builder.RegisterDefaultWriteService(typeof(EntityWriteService<TContext, TEntity, TKey>));
         }
         // Entity Repository + Entity Service
         AddDefaultRepository(typeof(EntityRepository<TEntity, TKey, TSearchObject>),
@@ -166,7 +166,7 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         // Write Service
         if (!builder.HasService<IEntityWriteService<TEntity, int>>())
         {
-            builder.UseWriteService<EntityWriteService<TContext, TEntity>>();
+            builder.RegisterDefaultWriteService(typeof(EntityWriteService<TContext, TEntity>));
         }
 
         // Entity Repository + Entity Service
@@ -217,7 +217,7 @@ public class EntityServiceCollection<TContext>(EntityServiceCollectionOptions op
         // Write Service
         if (!builder.HasService<IEntityWriteService<TEntity, TKey>>())
         {
-            builder.UseWriteService<EntityWriteService<TContext, TEntity, TKey>>();
+            builder.RegisterDefaultWriteService(typeof(EntityWriteService<TContext, TEntity, TKey>));
         }
 
         // Entity Repository + Entity Service

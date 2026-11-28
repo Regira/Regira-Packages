@@ -2191,6 +2191,11 @@ public class EntityServiceCollectionOptions(IServiceCollection services)
     // e.g. UseRepository(typeof(AppRepository<>), typeof(AppRepository<,>))
     public EntityServiceCollectionOptions UseRepository(params Type[] repositoryTypes);
 
+    // Replaces the default EntityWriteService for every For<>() that names no write service of its own.
+    // One open generic type <TContext, TEntity, TKey>, closed over each registration's context, entity and key.
+    // e.g. UseWriteService(typeof(AppWriteService<,,>))
+    public EntityServiceCollectionOptions UseWriteService(Type writeServiceType);
+
     // Startup validation (arity mismatches, unwired interceptors, ignored ?q=, competing write authorities,
     // null attachment Uri, out-of-scope global filters, missing archived query filter, archivable reference
     // data behind a required FK, attachments the input DTO cannot carry, For<>() shapes UseRepository() has no
