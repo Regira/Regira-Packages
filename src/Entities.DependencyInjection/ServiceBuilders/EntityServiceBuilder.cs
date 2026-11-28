@@ -222,12 +222,6 @@ public class EntityServiceBuilder<TContext, TEntity, TKey>(EntityServiceCollecti
         return this;
     }
     // Write Service
-    /// <summary>
-    /// Registers the write service that serves a registration whose default is <paramref name="defaultWriteServiceType"/>:
-    /// the app's type set with <c>UseWriteService()</c>, or the default.
-    /// </summary>
-    internal void RegisterDefaultWriteService(Type defaultWriteServiceType)
-        => RegisterAs(EntityWriteServiceRegistry.For(Services).Resolve(defaultWriteServiceType), null, WriteServiceFamily);
     public EntityServiceBuilder<TContext, TEntity, TKey> UseWriteService<TService>()
         where TService : class, IEntityWriteService<TEntity, TKey>
     {

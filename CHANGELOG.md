@@ -8,10 +8,8 @@ Unreleased block becomes a dated release heading.
 
 ## Unreleased
 
-- `Regira.Entities.DependencyInjection` 6.7.0 — new `UseEntities(o => o.UseWriteService(typeof(AppWriteService<,,>)))` replaces the default `EntityWriteService` for every `For<>()` that names no write service of its own (`e.UseWriteService<T>()` still wins). One open generic class with the type parameters of `EntityWriteService<TContext, TEntity, TKey>` serves every shape, the int-keyed ones included; a closed type, another number of type parameters, a type that is no write service and a repository throw `ArgumentException` at the call, and an entity outside the type's constraints throws at its `For<>()`. New `EntityWriteServiceRegistry` holds the type.
-- `Regira.Entities.DependencyInjection` 6.7.0 — bug fix: `e.AddDefaultService()` registered the stock `EntityRepository` as `IEntityService<…>` while `UseRepository()` served the same entity's `IEntityRepository<…>` with the app's repository, so the generated endpoints and the Mediator handlers bypassed the app's repository. It registers the app's repository of that shape, as `For<>()` does.
+- `Regira.Entities.DependencyInjection` 6.6.4 — bug fix: `e.AddDefaultService()` registered the stock `EntityRepository` as `IEntityService<…>` while `UseRepository()` served the same entity's `IEntityRepository<…>` with the app's repository, so the generated endpoints and the Mediator handlers bypassed the app's repository. It registers the app's repository of that shape, as `For<>()` does.
 - `Regira.Entities` 6.6.4 — the Entities guide, signatures and the services doc say `e.AddDefaultService()` registers the app's repository set with `UseRepository()`.
-- `Regira.Entities` 6.6.4 — the Entities guide (*Replacing the write service app-wide*), signatures, namespaces and the services doc describe `UseWriteService()`.
 
 ## 6.6.3 — 2026-11-18
 

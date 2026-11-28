@@ -22,7 +22,6 @@ IEntityService<TEntity, TKey, TSearchObject, TSortBy, TIncludes>
 - Replace the default for one entity with `HasRepository` (derive from `EntityRepository`) or `UseEntityService`
   (wrap it) — see [Replacing the repository for one entity](#replacing-the-repository-for-one-entity)
 - Replace the default `EntityRepository` for every entity at once with `UseRepository` — see [Replacing the repository app-wide](#replacing-the-repository-app-wide)
-- Replace the default `EntityWriteService` for every entity at once with `UseWriteService` — see [Replacing the write service app-wide](#replacing-the-write-service-app-wide)
 
 ```mermaid
 flowchart TB
@@ -941,58 +940,6 @@ repository calls.
 A `For<>()` whose shape has no matching class keeps the default `EntityRepository`, and the startup validation
 logs a warning naming those entities. A class that cannot serve an entity — a type constraint the entity does
 not meet, or a missing interface of the `EntityRepository` it replaces — throws at that `For<>()`.
-
-### Replacing the write service app-wide
-
-`options.UseWriteService(...)` swaps the default `EntityWriteService` for your own in every `For<>()` that does not
-name one itself (`e.UseWriteService<T>()` still wins). Write one class with the type parameters of
-`EntityWriteService<TContext, TEntity, TKey>`; it is closed over each registration's context, entity and key, so it
-serves every `For<>()` shape — the int-keyed ones too. Use it to change the write itself; behaviour that depends on
-what an entity implements belongs in [preppers](#entity-preppers), [primers](#entity-primers) and
-[validators](#entity-validators), which apply app-wide already.
-
-```csharp
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
-using Regira.Entities.EFcore.Services;
-using Regira.Entities.Models.Abstractions;
-using Regira.Entities.Preppers.Abstractions;
-using Regira.Entities.Services.Abstractions;
-using Regira.Entities.Validators.Abstractions;
-
-public class AppWriteService<TContext, TEntity, TKey>(
-    TContext dbContext,
-    IEntityReadService<TEntity, TKey> readService,
-    IEnumerable<IEntityPrepper> preppers,
-    IEnumerable<IEntityValidator> validators,
-    ILoggerFactory? loggerFactory = null)
-    : EntityWriteService<TContext, TEntity, TKey>(dbContext, readService, preppers, validators, loggerFactory)
-    where TContext : DbContext
-    where TEntity : class, IEntity<TKey>
-{
-    public override async Task<int> SaveChanges(CancellationToken token = default)
-    {
-        Logger?.LogInformation("Saving {Entity}", typeof(TEntity).Name);
-        return await base.SaveChanges(token);
-    }
-}
-```
-
-<!-- no-compile -->
-```csharp
-services
-    .UseEntities<MyDbContext>(options =>
-    {
-        options.UseDefaults();
-        options.UseWriteService(typeof(AppWriteService<,,>));
-    })
-    .For<Product>()                 // AppWriteService<MyDbContext, Product, int>
-    .For<Category, Guid>();         // AppWriteService<MyDbContext, Category, Guid>
-```
-
-Keep the `IEnumerable<IEntityValidator>` parameter and hand it to the base constructor, or the validators do not
-run. A type constraint an entity does not meet throws at that `For<>()`. Combined with `UseRepository`, your
-repository receives your write service.
 
 **Tip**:
 

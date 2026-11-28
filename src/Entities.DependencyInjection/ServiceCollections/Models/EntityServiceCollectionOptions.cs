@@ -182,23 +182,5 @@ public class EntityServiceCollectionOptions(IServiceCollection services)
         return this;
     }
 
-    /// <summary>
-    /// Replaces the default <c>EntityWriteService</c> with the app's own write service for every <c>For&lt;&gt;()</c>
-    /// registration that names no write service of its own (<c>e.UseWriteService&lt;T&gt;()</c> still wins).
-    /// <para>
-    /// Pass the type unbound, with the type parameters of the <c>EntityWriteService</c> it derives from:
-    /// <c>typeof(AppWriteService&lt;,,&gt;)</c> for <c>AppWriteService&lt;TContext, TEntity, TKey&gt;</c>. It is closed over each
-    /// registration's context, entity and key, so one type serves every <c>For&lt;&gt;()</c> shape, int-keyed ones included.
-    /// </para>
-    /// Applies to the <c>For&lt;&gt;()</c> calls that follow it, across every <c>UseEntities()</c> call on this service collection.
-    /// </summary>
-    /// <param name="writeServiceType">An open generic write service type with 3 type parameters.</param>
-    /// <returns>The current <see cref="EntityServiceCollectionOptions"/> instance.</returns>
-    public EntityServiceCollectionOptions UseWriteService(Type writeServiceType)
-    {
-        EntityWriteServiceRegistry.For(Services).Use(writeServiceType);
-        return this;
-    }
-
     // See extension methods for implementations
 }
