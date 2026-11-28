@@ -181,45 +181,13 @@ public class EntityServiceBuilder<TContext, TEntity, TKey>(EntityServiceCollecti
         return this;
     }
     /// <summary>
-    /// Registers <paramref name="defaultRepositoryType"/> under the entity-service interfaces, to be replaced by the
-    /// app's type of that shape set with <c>UseRepository()</c> once the <c>For&lt;&gt;()</c> configuration has run
-    /// (<see cref="ResolveDefaultServices"/>). Resolving it there, not here, lets a registration the configuration makes
-    /// afterwards replace it without the app's type having to serve the entity.
+    /// Registers, under the entity-service interfaces, the repository that serves a registration whose default is
+    /// <paramref name="defaultRepositoryType"/>: the app's type of that shape set with <c>UseRepository()</c> when it can
+    /// serve the entity, else the default. Neither checks nor records anything: a registration the configuration makes
+    /// afterwards may replace it, and <c>For&lt;&gt;()</c>'s own default registration does both for what is left.
     /// </summary>
     private protected void RegisterDefaultService(Type defaultRepositoryType)
-    {
-        var from = Services.Count;
-        RegisterAs(defaultRepositoryType, null, EntityServiceFamily);
-        _defaultServices.Add((Services.Skip(from).ToArray(), defaultRepositoryType));
-    }
-    private readonly List<(ServiceDescriptor[] Descriptors, Type DefaultRepositoryType)> _defaultServices = [];
-    /// <summary>
-    /// Replaces each <see cref="AddDefaultService"/> registration still in effect, the last one under its interface, with
-    /// the repository the registry resolves for it. Called by <c>For&lt;&gt;()</c> after its configuration.
-    /// </summary>
-    internal void ResolveDefaultServices()
-    {
-        foreach (var (descriptors, defaultRepositoryType) in _defaultServices)
-        {
-            var inEffect = descriptors
-                .Where(d => Services.LastOrDefault(s => s.ServiceType == d.ServiceType && !s.IsKeyedService) == d)
-                .ToArray();
-            if (inEffect.Length == 0)
-            {
-                continue;
-            }
-            var repositoryType = EntityRepositoryRegistry.For(Services).Resolve(defaultRepositoryType);
-            if (repositoryType == defaultRepositoryType)
-            {
-                continue;
-            }
-            foreach (var descriptor in inEffect)
-            {
-                Services[Services.IndexOf(descriptor)] = ServiceDescriptor.Transient(descriptor.ServiceType, repositoryType);
-            }
-        }
-        _defaultServices.Clear();
-    }
+        => RegisterAs(EntityRepositoryRegistry.For(Services).ResolveOrDefault(defaultRepositoryType), null, EntityServiceFamily);
     /// <summary>
     /// Adds <typeparamref name="TService"/> implementation for
     /// <list type="bullet">

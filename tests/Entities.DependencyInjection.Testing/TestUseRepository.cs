@@ -222,6 +222,24 @@ public class TestUseRepository
     }
 
     [Test]
+    public void AddDefaultService_On_A_Mapped_Builder_Uses_App_Repository()
+    {
+        using var sp = new ServiceCollection()
+            .AddDbContext<ContosoContext>()
+            .UseEntities<ContosoContext>(o =>
+            {
+                o.UseDefaults().UseRepository(AppRepositories);
+                o.EntityMapConfiguratorFactory = _ => new NullMapConfigurator();
+            })
+            .For<Course, int>(e => e.UseMapping<CourseDto, CourseInputDto>().AddDefaultService())
+            .For<Department, int>(e => e.UseMapping(typeof(CourseDto), typeof(CourseInputDto)).AddDefaultService())
+            .BuildServiceProvider();
+
+        Assert.That(sp.GetService<IEntityService<Course, int>>(), Is.TypeOf<AppRepository<Course, int>>());
+        Assert.That(sp.GetService<IEntityService<Department, int>>(), Is.TypeOf<AppRepository<Department, int>>());
+    }
+
+    [Test]
     public void AddDefaultService_On_A_Missing_Shape_Is_Recorded_As_Default()
     {
         using var sp = new ServiceCollection()

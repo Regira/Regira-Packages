@@ -104,6 +104,31 @@ public class EntityRepositoryRegistry
     }
 
     /// <summary>
+    /// Like <see cref="Resolve"/>, but neither throws nor records: the default when no app type of that shape was set,
+    /// or when it cannot serve these type arguments.
+    /// </summary>
+    internal Type ResolveOrDefault(Type defaultRepositoryType)
+    {
+        var typeArguments = defaultRepositoryType.GetGenericArguments();
+        if (!_typesByArity.TryGetValue(typeArguments.Length, out var repositoryType))
+        {
+            return defaultRepositoryType;
+        }
+        Type closedType;
+        try
+        {
+            closedType = repositoryType.MakeGenericType(typeArguments);
+        }
+        catch (ArgumentException)
+        {
+            return defaultRepositoryType;
+        }
+        return ServiceTypesOf(defaultRepositoryType, asRepository: true, asEntityService: true).All(i => i.IsAssignableFrom(closedType))
+            ? closedType
+            : defaultRepositoryType;
+    }
+
+    /// <summary>
     /// The service types a repository is registered under: the repository and/or entity-service interfaces that
     /// <paramref name="defaultRepositoryType"/> implements.
     /// </summary>
