@@ -185,7 +185,7 @@ public class EntityServiceBuilder<TContext, TEntity, TKey>(EntityServiceCollecti
     /// <paramref name="defaultRepositoryType"/>: the app's type of that shape set with <c>UseRepository()</c>, or the default.
     /// </summary>
     private protected void RegisterDefaultService(Type defaultRepositoryType)
-        => RegisterAs(EntityRepositoryRegistry.For(Services).Resolve(defaultRepositoryType), null, EntityServiceFamily);
+        => RegisterAs(EntityRepositoryRegistry.For(Services).Resolve(defaultRepositoryType, recordDefault: false), null, EntityServiceFamily);
     /// <summary>
     /// Adds <typeparamref name="TService"/> implementation for
     /// <list type="bullet">

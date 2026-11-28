@@ -66,13 +66,20 @@ public class EntityRepositoryRegistry
     /// arguments, or the default when no type of that shape was set.
     /// </summary>
     /// <exception cref="InvalidOperationException">The app's type cannot be closed over these type arguments, or misses an interface the default implements.</exception>
-    public Type Resolve(Type defaultRepositoryType)
+    public Type Resolve(Type defaultRepositoryType) => Resolve(defaultRepositoryType, recordDefault: true);
+
+    /// <inheritdoc cref="Resolve(Type)"/>
+    /// <param name="defaultRepositoryType">The closed <c>EntityRepository</c> the registration would otherwise get.</param>
+    /// <param name="recordDefault">Whether a registration left on the default is recorded in <see cref="EntitiesOnDefault"/>.
+    /// Only the registration's final default is: a lookup made while its <c>For&lt;&gt;()</c> configuration still runs
+    /// may be replaced by a repository that configuration names afterwards.</param>
+    internal Type Resolve(Type defaultRepositoryType, bool recordDefault)
     {
         var typeArguments = defaultRepositoryType.GetGenericArguments();
         var entityType = typeArguments[0];
         if (!_typesByArity.TryGetValue(typeArguments.Length, out var repositoryType))
         {
-            if (_typesByArity.Count > 0)
+            if (recordDefault && _typesByArity.Count > 0)
             {
                 _entitiesOnDefault.Add((entityType, typeArguments.Length));
             }

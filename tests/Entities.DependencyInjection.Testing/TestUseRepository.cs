@@ -173,6 +173,32 @@ public class TestUseRepository
     }
 
     [Test]
+    public void AddDefaultService_Replaced_Afterwards_Is_Not_Recorded_As_Default()
+    {
+        using var sp = new ServiceCollection()
+            .AddDbContext<ContosoContext>()
+            .UseEntities<ContosoContext>(o => o.UseDefaults().UseRepository(typeof(AppRepository<,>)))
+            .For<Course>(e => e.AddDefaultService().HasRepository<CourseRepository1>())
+            .BuildServiceProvider();
+
+        Assert.That(sp.GetService<IEntityService<Course>>(), Is.TypeOf<CourseRepository1>());
+        Assert.That(sp.GetRequiredService<EntityRepositoryRegistry>().EntitiesOnDefault, Is.Empty);
+    }
+
+    [Test]
+    public void AddDefaultService_On_A_Missing_Shape_Is_Recorded_As_Default()
+    {
+        using var sp = new ServiceCollection()
+            .AddDbContext<ContosoContext>()
+            .UseEntities<ContosoContext>(o => o.UseDefaults().UseRepository(typeof(AppRepository<,>)))
+            .For<Course>(e => e.AddDefaultService())
+            .BuildServiceProvider();
+
+        Assert.That(sp.GetService<IEntityService<Course>>(), Is.TypeOf<EntityRepository<Course>>());
+        Assert.That(sp.GetRequiredService<EntityRepositoryRegistry>().EntitiesOnDefault, Is.EquivalentTo(new[] { (typeof(Course), 1) }));
+    }
+
+    [Test]
     public void AddDefaultService_Without_UseRepository_Uses_EntityRepository()
     {
         using var sp = new ServiceCollection()
