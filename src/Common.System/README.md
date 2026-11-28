@@ -1,13 +1,15 @@
 # Regira System
 
-Regira System provides process execution helpers, application hosting utilities, background task management, Windows Service support, and .csproj project parsing.
+Regira System provides process execution helpers, application hosting utilities, background task management, job scheduling, Windows Service support, and .csproj project parsing.
 
 ## Projects
 
 | Project | Package | Purpose |
 |---------|---------|---------|
-| `Common.System` | `Regira.System` | Process execution helpers |
-| `System.Hosting` | `Regira.System.Hosting` | Host config, background queues, Windows Service |
+| `Common.System` | `Regira.System` | Process execution helpers, the scheduling contract |
+| `System.Hosting` | `Regira.System.Hosting` | Host config, background queues, job scheduling, Windows Service |
+| `System.Scheduling.Quartz` | `Regira.System.Scheduling.Quartz` | The scheduling contract on Quartz.NET |
+| `System.Scheduling.Hangfire` | `Regira.System.Scheduling.Hangfire` | The scheduling contract on Hangfire |
 | `System.Projects` | `Regira.System.Projects` | Parse and manage .csproj files |
 
 ## Installation
@@ -18,6 +20,13 @@ Regira System provides process execution helpers, application hosting utilities,
 <PackageReference Include="Regira.System.Projects" Version="6.*" />
 ```
 
+For jobs that must survive a restart or run on several nodes, add one of the scheduling adapters:
+
+```xml
+<PackageReference Include="Regira.System.Scheduling.Quartz" Version="6.*" />
+<PackageReference Include="Regira.System.Scheduling.Hangfire" Version="6.*" />
+```
+
 ---
 
 ## Overview
@@ -25,6 +34,7 @@ Regira System provides process execution helpers, application hosting utilities,
 1. **[Index](https://regira.github.io/Regira-Packages/src/Common.System/)** — Overview, projects, and installation
 1. [Process Execution](https://regira.github.io/Regira-Packages/src/Common.System/docs/processes.html) — Running commands and executables, capturing their output
 1. [Hosting](https://regira.github.io/Regira-Packages/src/Common.System/docs/hosting.html) — `WebHostOptions`, background task queues, Windows Service installer
+1. [Scheduling](https://regira.github.io/Regira-Packages/src/Common.System/docs/scheduling.html) — Jobs that run now, later or on a cron schedule, on the built-in backend, Quartz or Hangfire
 1. [Project Files](https://regira.github.io/Regira-Packages/src/Common.System/docs/projects.html) — Parsing and managing `.csproj` files
 
 ## License

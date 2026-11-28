@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net10.0</TargetFrameworks>
+    <!-- net11.0 is built by an SDK that can target it. -->
+    <TargetFrameworks Condition="$([MSBuild]::VersionGreaterThanOrEquals('$(NETCoreSdkVersion)', '11.0'))">$(TargetFrameworks);net11.0</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Regira bv</Authors>
+    <RootNamespace>Regira.System.Scheduling.Quartz</RootNamespace>
+    <PackageId>Regira.System.Scheduling.Quartz</PackageId>
+    <AssemblyName>Regira.System.Scheduling.Quartz</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1701;1702;1591</NoWarn>
+    <Version>6.7.0</Version>
+    <Description>Runs the Regira scheduling contract (IJobScheduler, IJobHandler) on a Quartz.NET 4 scheduler the application configures itself.</Description>
+    <PackageTags>regira;system;scheduling;jobs;cron;quartz</PackageTags>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\System.Hosting\System.Hosting.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Quartz" Version="4.8.1" />
+  </ItemGroup>
+</Project>

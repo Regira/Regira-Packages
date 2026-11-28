@@ -68,6 +68,7 @@ processHelper.OpenFileByOS(binaryFile);
 1. [Index](../README.md) — Overview, projects, and installation
 1. **[Process Execution](processes.md)** — Running commands and executables, capturing their output
 1. [Hosting](hosting.md) — `WebHostOptions`, background task queues, Windows Service installer
+1. [Scheduling](scheduling.md) — Jobs that run now, later or on a cron schedule, on the built-in backend, Quartz or Hangfire
 1. [Project Files](projects.md) — Parsing and managing `.csproj` files
 
 ## License
